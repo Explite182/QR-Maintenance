@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Preventative Maintenance Prototype</title>
+  <link rel="stylesheet" href="styles.css?v=20260615-2310">
+</head>
+<body>
+  <section id="publicReportScreen" class="report-screen hidden">
+    <div class="report-card">
+      <div>
+        <p class="eyebrow">Report an issue</p>
+        <h1 id="reportTitle">Send a quick report</h1>
+        <p id="reportContext" class="report-context"></p>
+      </div>
+      <form id="publicReportForm" class="stack">
+        <label>
+          Photo
+          <input id="publicReportPhoto" type="file" accept="image/*" capture="environment">
+        </label>
+        <label>
+          Quick note
+          <textarea id="publicReportNote" rows="4" required placeholder="What needs attention?"></textarea>
+        </label>
+        <label>
+          Name or contact
+          <input id="publicReportContact" placeholder="Optional">
+        </label>
+        <button type="submit">Send Report</button>
+        <p id="publicReportMessage" class="login-message"></p>
+      </form>
+      <small class="report-note">This prototype saves the report in this browser. The production version will send it directly to your service team.</small>
+    </div>
+  </section>
+
+  <section id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div>
+        <p class="eyebrow">Preventative Maintenance</p>
+        <h1>QR Maintenance Pilot</h1>
+      </div>
+      <form id="loginForm" class="stack">
+        <label>
+          Username
+          <input id="loginUsername" required autocomplete="username" placeholder="admin">
+        </label>
+        <label>
+          Password
+          <input id="loginPassword" required type="password" autocomplete="current-password" placeholder="admin123">
+        </label>
+        <button type="submit">Log In</button>
+        <p id="loginError" class="login-error"></p>
+      </form>
+      <details class="access-request">
+        <summary>Request user access</summary>
+        <form id="accessRequestForm" class="stack compact-form">
+          <label>
+            Name
+            <input id="requestName" required placeholder="Jordan Smith">
+          </label>
+          <label>
+            Email
+            <input id="requestEmail" required type="email" placeholder="jordan@example.com">
+          </label>
+          <label>
+            Company / customer
+            <input id="requestCompany" placeholder="ABC Manufacturing">
+          </label>
+          <label>
+            Requested role
+            <select id="requestRole">
+              <option value="Customer">Customer</option>
+              <option value="Technician">Technician</option>
+              <option value="Manager">Manager</option>
+            </select>
+          </label>
+          <label>
+            Notes
+            <textarea id="requestNotes" rows="3" placeholder="Tell us what location or equipment you need access to"></textarea>
+          </label>
+          <button type="submit" class="secondary">Send Request</button>
+          <p id="accessRequestMessage" class="login-message"></p>
+        </form>
+      </details>
+    </div>
+  </section>
+
+  <header class="app-header app-only hidden">
+    <div>
+      <p class="eyebrow">Preventative Maintenance</p>
+      <h1>QR Maintenance Pilot</h1>
+    </div>
+    <div class="header-actions">
+      <div class="user-chip">
+        <span id="currentUserName"></span>
+        <strong id="currentUserRole"></strong>
+      </div>
+      <button id="logoutBtn" class="secondary">Log Out</button>
+      <button id="printLabelsBtn">Print QR Labels</button>
+      <input id="importDataInput" class="hidden-input" type="file" accept="application/json,.json">
+    </div>
+  </header>
+
+  <main class="app-shell app-only hidden">
+    <aside class="sidebar">
+      <details id="adminToolsDrawer" class="sidebar-section setup-drawer admin-tools-drawer">
+        <summary>
+          <span>Admin & Settings</span>
+        </summary>
+      <details id="quickAddDrawer" class="quick-add setup-drawer">
+        <summary>
+          <span>Quick Add Equipment</span>
+          <span id="assetCount" class="drawer-count">0</span>
+        </summary>
+        <form id="assetForm" class="stack">
+          <label>
+            Customer
+            <select id="assetCustomer"></select>
+          </label>
+          <label>
+            Location
+            <select id="assetLocation"></select>
+          </label>
+          <label>
+            Equipment name
+            <input id="assetName" required placeholder="Rooftop Unit 1">
+          </label>
+          <label>
+            Maintenance template
+            <select id="assetTemplate"></select>
+          </label>
+          <label>
+            Maintenance frequency
+            <select id="assetFrequency">
+              <option value="7">Weekly</option>
+              <option value="30" selected>Monthly</option>
+              <option value="90">Quarterly</option>
+              <option value="365">Yearly</option>
+            </select>
+          </label>
+          <div class="form-grid">
+            <label>
+              Manufacturer
+              <input id="assetManufacturer" placeholder="Trane">
+            </label>
+            <label>
+              Model
+              <input id="assetModel" placeholder="XR-14">
+            </label>
+          </div>
+          <div class="form-grid">
+            <label>
+              Serial number
+              <input id="assetSerial" placeholder="SN-10492">
+            </label>
+            <label>
+              Install date
+              <input id="assetInstallDate" type="date">
+            </label>
+          </div>
+          <div class="form-grid">
+            <label>
+              Equipment type
+              <input id="assetType" placeholder="HVAC, pump, conveyor">
+            </label>
+            <label>
+              Criticality
+              <select id="assetCriticality">
+                <option value="">Not set</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Manual / document link
+            <input id="assetDocumentUrl" type="url" placeholder="https://example.com/manual.pdf">
+          </label>
+          <label>
+            Upload PDF manual
+            <input id="assetManualFile" type="file" accept="application/pdf,.pdf">
+          </label>
+          <label>
+            Equipment photo
+            <input id="assetPhoto" type="file" accept="image/*">
+          </label>
+          <label>
+            Equipment notes
+            <textarea id="assetNotes" rows="3" placeholder="Warranty notes, access instructions, or service cautions"></textarea>
+          </label>
+          <button type="submit">Add Equipment</button>
+        </form>
+      </details>
+
+      <details id="setupDrawer" class="sidebar-section setup-drawer">
+        <summary>Users & Setup</summary>
+        <section>
+          <div class="section-title">
+            <h2>Customers</h2>
+            <span id="customerCount">0</span>
+          </div>
+          <form id="customerForm" class="stack compact-form">
+            <label>
+              Customer name
+              <input id="customerName" required placeholder="ABC Manufacturing">
+            </label>
+            <button type="submit">Add Customer</button>
+          </form>
+        </section>
+
+        <section class="sidebar-section">
+          <div class="section-title">
+            <h2>Locations</h2>
+            <span id="locationCount">0</span>
+          </div>
+          <form id="locationForm" class="stack compact-form">
+            <label>
+              Customer
+              <select id="locationCustomer"></select>
+            </label>
+            <label>
+              Location name
+              <input id="locationName" required placeholder="Main Plant">
+            </label>
+            <button type="submit">Add Location</button>
+          </form>
+        </section>
+
+        <section class="sidebar-section">
+          <div class="section-title">
+            <h2>Users</h2>
+            <span id="userCount">0</span>
+          </div>
+          <form id="userForm" class="stack compact-form">
+            <label>
+              Username
+              <input id="newUsername" required placeholder="jsmith">
+            </label>
+            <label>
+              Display name
+              <input id="newUserName" required placeholder="Jordan Smith">
+            </label>
+            <label>
+              Password
+              <input id="newUserPassword" required type="password" placeholder="Temporary password">
+            </label>
+            <label>
+              Role
+              <select id="newUserRole">
+                <option value="Customer">Customer</option>
+                <option value="Technician">Technician</option>
+                <option value="Manager">Manager</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </label>
+            <label>
+              Assigned customer
+              <select id="newUserCustomer"></select>
+            </label>
+            <button type="submit">Add User</button>
+          </form>
+          <div id="userList" class="user-list"></div>
+          <div class="section-title access-request-title">
+            <h3>Access Requests</h3>
+            <span id="accessRequestCount">0</span>
+          </div>
+          <div id="accessRequestList" class="user-list"></div>
+        </section>
+
+        <section class="sidebar-section">
+          <div class="section-title">
+            <h2>Maintenance Templates</h2>
+            <span id="templateCount">0</span>
+          </div>
+          <form id="templateForm" class="stack compact-form">
+            <label>
+              Template name
+              <input id="templateName" required placeholder="HVAC Monthly PM">
+            </label>
+            <label>
+              Checklist items
+              <textarea id="templateItems" rows="4" required placeholder="Inspect belts&#10;Check filter condition&#10;Record temperature"></textarea>
+            </label>
+            <button type="submit">Add Template</button>
+          </form>
+        </section>
+
+        <section class="sidebar-section">
+          <div class="section-title">
+            <h2>Activity Log</h2>
+            <span id="activityLogCount">0</span>
+          </div>
+          <div id="activityLogList" class="activity-log-list"></div>
+        </section>
+      </details>
+
+      <details id="backupDrawer" class="sidebar-section setup-drawer">
+        <summary>Backups & QR</summary>
+        <div class="backup-controls">
+          <span id="backupStatus">No backup yet</span>
+          <div id="backupLocationBlock" class="backup-location">
+            <strong>Backup file location</strong>
+            <form id="backupLocationForm" class="stack compact-form">
+              <label>
+                Folder path
+                <input id="backupLocation" value="C:\Users\expli\Documents\QR Maintenance Backups\Data Backups" placeholder="C:\Users\expli\Documents\QR Maintenance Backups\Data Backups">
+              </label>
+              <button type="submit" class="secondary">Save Backup Location</button>
+            </form>
+            <small>Place exported data files here. Manual export: qr-maintenance-data-backup-YYYYMMDD-HHMMSS.json. Logout backup: qr-maintenance-logout-backup-YYYYMMDD-HHMMSS.json.</small>
+          </div>
+          <form id="qrBaseUrlForm" class="stack compact-form">
+            <label>
+              QR scan URL
+              <input id="qrBaseUrl" placeholder="http://10.0.0.12:8766/index.html">
+            </label>
+            <button type="submit" class="secondary">Save QR URL</button>
+          </form>
+          <button id="exportDataBtn" class="secondary">Export Data</button>
+          <button id="exportCompleteBackupBtn" class="secondary">Export Complete Backup</button>
+          <button id="importDataBtn" class="secondary">Import Data</button>
+          <button id="restoreBackupBtn" class="secondary">Restore Latest</button>
+          <button id="printReportLabelsBtn" class="secondary">Print Report QRs</button>
+        </div>
+      </details>
+      </details>
+
+      <nav id="assetList" class="asset-list" aria-label="Assets"></nav>
+    </aside>
+
+    <section class="workspace">
+      <div class="filters" aria-label="Customer and location filters">
+        <label>
+          Customer view
+          <select id="customerFilter"></select>
+        </label>
+        <label>
+          Location view
+          <select id="locationFilter"></select>
+        </label>
+      </div>
+
+      <section class="dashboard-panel" aria-label="Maintenance summary">
+        <div>
+          <p class="eyebrow">Today</p>
+          <h2>Maintenance overview</h2>
+        </div>
+        <div class="dashboard">
+          <button type="button" class="metric-card metric-warn" data-dashboard-filter="dueNow">
+            <span id="dueToday">0</span>
+            <p>Due now</p>
+          </button>
+          <button type="button" class="metric-card metric-danger" data-dashboard-filter="overdue">
+            <span id="overdue">0</span>
+            <p>Overdue</p>
+          </button>
+          <button type="button" class="metric-card metric-ok" data-dashboard-filter="all">
+            <span id="completed">0</span>
+            <p>Completed</p>
+          </button>
+          <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
+            <span id="openWorkOrders">0</span>
+            <p>Open issues</p>
+          </button>
+        </div>
+      </section>
+
+      <section class="asset-table-panel">
+        <div class="section-title">
+          <h2>Equipment Register</h2>
+          <span id="tableAssetCount">0</span>
+        </div>
+        <div class="asset-tools" aria-label="Asset register tools">
+          <label class="search-field">
+            Search
+            <input id="assetSearch" placeholder="Name, serial, model, customer, location">
+          </label>
+          <label>
+            Maintenance status
+            <select id="statusFilter">
+              <option value="all">All statuses</option>
+              <option value="dueNow">Due now</option>
+              <option value="overdue">Overdue</option>
+              <option value="due">Due today</option>
+              <option value="upcoming">Upcoming</option>
+            </select>
+          </label>
+          <label>
+            Template
+            <select id="templateFilter">
+              <option value="all">All templates</option>
+            </select>
+          </label>
+          <label>
+            Sort by
+            <select id="assetSort">
+              <option value="due">Next maintenance</option>
+              <option value="name">Equipment name</option>
+              <option value="location">Location</option>
+              <option value="status">Status</option>
+              <option value="workOrders">Open issues</option>
+            </select>
+          </label>
+          <label>
+            Rows
+            <select id="assetPageSize">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+          <div class="table-actions">
+            <button id="printFilteredLabelsBtn" class="secondary mini">Print Labels</button>
+            <button id="exportAssetRegisterBtn" class="secondary mini">Export CSV</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="asset-table">
+            <thead>
+              <tr>
+                <th>Equipment</th>
+                <th>Customer</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Next maintenance</th>
+                <th>Open issues</th>
+                <th>Template</th>
+                <th>Serial</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="assetTableBody"></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="assetPageInfo"></span>
+          <div>
+            <button id="prevAssetPageBtn" class="secondary mini">Previous</button>
+            <button id="nextAssetPageBtn" class="secondary mini">Next</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="work-orders-panel">
+        <div class="section-title">
+          <h2>Open Issues</h2>
+          <span id="workOrderCount">0</span>
+        </div>
+        <div id="workOrderList" class="work-order-list"></div>
+      </section>
+
+      <article id="emptyState" class="empty-state">
+        <h2>Add equipment to start</h2>
+        <p>Create equipment records, print QR labels, scan a label, and complete maintenance from a phone or browser.</p>
+      </article>
+
+      <article id="assetPanel" class="asset-panel hidden">
+        <div class="asset-heading">
+          <div class="selected-asset-summary">
+            <div id="selectedAssetThumb" class="asset-thumb"></div>
+            <div>
+              <p class="eyebrow" id="selectedLocation"></p>
+              <h2 id="selectedName"></h2>
+              <p id="selectedMeta"></p>
+              <div id="selectedBadges" class="selected-badges"></div>
+            </div>
+          </div>
+          <div id="selectedQr" class="qr-box" aria-label="Asset QR code"></div>
+        </div>
+
+        <div class="status-row">
+          <div class="status-tile">
+            <span class="label">Next maintenance</span>
+            <strong id="nextPm"></strong>
+          </div>
+          <form id="nextPmForm" class="next-pm-form">
+            <label>
+              Edit next maintenance
+              <input id="nextPmInput" type="date">
+            </label>
+            <button type="submit" class="secondary mini">Save</button>
+            <button id="clearNextPmBtn" type="button" class="secondary mini">Clear</button>
+          </form>
+          <div class="status-tile">
+            <span class="label">Status</span>
+            <strong id="pmStatus"></strong>
+          </div>
+          <button id="copyLinkBtn" class="secondary">Copy Scan Link</button>
+        </div>
+
+        <div class="asset-primary-grid">
+        <form id="pmForm" class="pm-form">
+          <div class="section-title">
+            <h3>Maintenance Checklist</h3>
+            <span id="selectedTemplate"></span>
+          </div>
+          <div id="checklistFields" class="checklist-fields"></div>
+          <div class="form-grid">
+            <label>
+              Technician
+              <input id="technician" required placeholder="Name">
+            </label>
+            <label>
+              Meter / reading
+              <input id="reading" placeholder="Optional">
+            </label>
+          </div>
+          <label>
+            Notes
+            <textarea id="notes" rows="4" placeholder="Findings, parts needed, or follow-up work"></textarea>
+          </label>
+          <label>
+            Photo evidence
+            <input id="photoInput" type="file" accept="image/*">
+          </label>
+          <label>
+            Result
+            <select id="result">
+              <option value="Passed">Passed</option>
+              <option value="Needs attention">Needs attention</option>
+              <option value="Failed">Failed</option>
+            </select>
+          </label>
+          <button type="submit">Complete Maintenance</button>
+        </form>
+
+        <section class="asset-details">
+          <div class="section-title">
+            <h3>Equipment Details</h3>
+          </div>
+          <div id="assetPhotoPanel" class="asset-photo-panel"></div>
+          <div id="assetManualPanel" class="asset-manual-panel"></div>
+          <div id="assetDetailsGrid" class="details-grid"></div>
+          <details class="asset-info-editor">
+            <summary>Edit Equipment</summary>
+            <form id="assetInfoForm" class="stack compact-form">
+              <label>
+                Equipment name
+                <input id="editAssetName" required placeholder="Rooftop Unit 1">
+              </label>
+              <div class="form-grid">
+                <label>
+                  Customer
+                  <select id="editAssetCustomer"></select>
+                </label>
+                <label>
+                  Location
+                  <select id="editAssetLocation"></select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Maintenance template
+                  <select id="editAssetTemplate"></select>
+                </label>
+                <label>
+                  Maintenance frequency
+                  <select id="editAssetFrequency">
+                    <option value="7">Weekly</option>
+                    <option value="30">Monthly</option>
+                    <option value="90">Quarterly</option>
+                    <option value="365">Yearly</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                Equipment type
+                  <input id="editAssetType" placeholder="HVAC, pump, conveyor">
+                </label>
+                <label>
+                  Criticality
+                  <select id="editAssetCriticality">
+                    <option value="">Not set</option>
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Manufacturer
+                  <input id="editAssetManufacturer" placeholder="Trane">
+                </label>
+                <label>
+                  Model
+                  <input id="editAssetModel" placeholder="XR-14">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Serial number
+                  <input id="editAssetSerial" placeholder="SN-10492">
+                </label>
+                <label>
+                  Install date
+                  <input id="editAssetInstallDate" type="date">
+                </label>
+              </div>
+              <label>
+                Manual / document link
+                <input id="editAssetDocumentUrl" type="url" placeholder="https://example.com/manual.pdf">
+              </label>
+              <label>
+                Upload PDF manual
+                <input id="editAssetManualFile" type="file" accept="application/pdf,.pdf">
+              </label>
+              <p id="assetManualUploadStatus" class="inline-status"></p>
+              <label>
+                Replace equipment photo
+                <input id="editAssetPhoto" type="file" accept="image/*">
+              </label>
+              <div class="section-title inline-section-title">
+                <h3>More Asset Photos</h3>
+                <span id="assetGalleryCount">0</span>
+              </div>
+              <div id="assetGalleryPanel" class="asset-gallery-panel"></div>
+              <label>
+                Add more equipment photos
+                <input id="editAssetGalleryPhotos" type="file" accept="image/*" multiple>
+              </label>
+              <p id="assetGalleryUploadStatus" class="inline-status"></p>
+              <label>
+                Equipment notes
+                <textarea id="editAssetNotes" rows="3" placeholder="Warranty notes, access instructions, or service cautions"></textarea>
+              </label>
+              <button type="submit" class="secondary">Save Asset Info</button>
+            </form>
+          </details>
+        </section>
+        </div>
+
+        <section>
+          <div class="section-title">
+            <h3>Maintenance History</h3>
+            <button id="exportBtn" class="secondary">Export CSV</button>
+          </div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+
+        <section>
+          <div class="section-title">
+            <h3>Equipment Issues</h3>
+            <span id="assetWorkOrderCount">0</span>
+          </div>
+          <div id="assetWorkOrderList" class="work-order-list"></div>
+        </section>
+
+      </article>
+    </section>
+  </main>
+
+  <section id="labelSheet" class="label-sheet" aria-label="Printable QR labels"></section>
+  <div id="photoViewer" class="photo-viewer hidden" role="dialog" aria-modal="true" aria-label="Equipment photo viewer">
+    <button id="photoViewerClose" class="photo-viewer-close" type="button" aria-label="Close photo viewer">Close</button>
+    <img id="photoViewerImage" alt="Equipment photo full screen">
+    <p id="photoViewerCaption"></p>
+  </div>
+
+  <script src="app.js?v=20260615-2310"></script>
+</body>
+</html>
