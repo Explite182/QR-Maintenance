@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QR Preventative Maintenance Prototype</title>
-  <link rel="stylesheet" href="styles.css?v=20260615-2310">
+  <link rel="stylesheet" href="styles.css?v=20260616-1915">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -43,14 +43,31 @@
       <form id="loginForm" class="stack">
         <label>
           Username
-          <input id="loginUsername" required autocomplete="username" placeholder="admin">
+          <input id="loginUsername" required autocomplete="username" placeholder="Username">
         </label>
         <label>
           Password
-          <input id="loginPassword" required type="password" autocomplete="current-password" placeholder="admin123">
+          <input id="loginPassword" required type="password" autocomplete="current-password" placeholder="Password">
         </label>
         <button type="submit">Log In</button>
         <p id="loginError" class="login-error"></p>
+      </form>
+      <form id="firstAdminForm" class="stack hidden">
+        <p class="login-message">Create the first admin account for this browser.</p>
+        <label>
+          Username
+          <input id="firstAdminUsername" autocomplete="username" placeholder="Choose a username">
+        </label>
+        <label>
+          Display name
+          <input id="firstAdminName" placeholder="Your name">
+        </label>
+        <label>
+          Password
+          <input id="firstAdminPassword" type="password" autocomplete="new-password" placeholder="Choose a password">
+        </label>
+        <button type="submit">Create Admin</button>
+        <p id="firstAdminMessage" class="login-error"></p>
       </form>
       <details class="access-request">
         <summary>Request user access</summary>
@@ -660,6 +677,6 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260615-2310"></script>
+  <script src="app.js?v=20260616-1915"></script>
 </body>
 </html>

@@ -53,12 +53,9 @@ If an old QR still opens the login screen, reprint/regenerate the QR from the up
 
 Your phone must be on the same Wi-Fi network, and Windows Firewall may need to allow Python or the local server on port `8766`.
 
-## Local Prototype Logins
+## First Admin Setup
 
-- `admin` / `admin123`
-- `manager` / `manager123`
-- `tech` / `tech123`
-- `customer` / `customer123`
+Fresh browsers no longer include preset login accounts. On first use, create the first Admin account from the login screen. After that, the Admin user can add Manager, Technician, and Customer users from **Admin & Settings**.
 
 ## What It Proves
 

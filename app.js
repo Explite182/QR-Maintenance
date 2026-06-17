@@ -39,6 +39,11 @@ const els = {
   loginPassword: document.getElementById("loginPassword"),
   scanAccessBtn: document.getElementById("scanAccessBtn"),
   loginError: document.getElementById("loginError"),
+  firstAdminForm: document.getElementById("firstAdminForm"),
+  firstAdminUsername: document.getElementById("firstAdminUsername"),
+  firstAdminName: document.getElementById("firstAdminName"),
+  firstAdminPassword: document.getElementById("firstAdminPassword"),
+  firstAdminMessage: document.getElementById("firstAdminMessage"),
   accessRequestForm: document.getElementById("accessRequestForm"),
   requestName: document.getElementById("requestName"),
   requestEmail: document.getElementById("requestEmail"),
@@ -216,6 +221,36 @@ els.loginForm.addEventListener("submit", (event) => {
   saveState();
   els.loginForm.reset();
   els.loginError.textContent = "";
+  render();
+});
+
+els.firstAdminForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (hasSetupUsers()) return;
+  const username = els.firstAdminUsername.value.trim();
+  const name = els.firstAdminName.value.trim() || username;
+  const password = els.firstAdminPassword.value;
+  if (!username || !password.trim()) {
+    els.firstAdminMessage.textContent = "Enter a username and password.";
+    return;
+  }
+  const user = {
+    id: crypto.randomUUID(),
+    username,
+    name,
+    password,
+    role: "Admin",
+    customerId: "",
+    createdAt: new Date().toISOString()
+  };
+  state.users.push(user);
+  currentUser = user;
+  currentRole = user.role;
+  state.currentUserId = user.id;
+  addActivity("First admin created", username);
+  saveState();
+  els.firstAdminForm.reset();
+  els.firstAdminMessage.textContent = "";
   render();
 });
 
@@ -919,8 +954,11 @@ function render() {
 function renderAuth() {
   const isReport = isPublicReportUrl();
   const isLoggedIn = Boolean(currentUser);
+  const needsFirstAdmin = !isReport && !isLoggedIn && !hasSetupUsers();
   els.publicReportScreen.classList.toggle("hidden", !isReport);
   els.loginScreen.classList.toggle("hidden", isReport || isLoggedIn);
+  els.loginForm.classList.toggle("hidden", needsFirstAdmin);
+  els.firstAdminForm.classList.toggle("hidden", !needsFirstAdmin);
   els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || !isLoggedIn));
   if (isReport || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
@@ -1809,6 +1847,10 @@ function canManageWorkOrders() {
   return currentRole === "Admin" || currentRole === "Manager";
 }
 
+function hasSetupUsers() {
+  return state.users.some((user) => user.username !== "scan-customer");
+}
+
 function visibleCustomers() {
   if (currentRole !== "Customer") return state.customers;
   return state.customers.filter((customer) => customer.id === currentUser?.customerId);
@@ -2081,7 +2123,7 @@ function normalizeState(input) {
     templates: input.templates?.length ? input.templates : seedTemplates(),
     assets: input.assets || [],
     workOrders: input.workOrders || [],
-    users: mergeDefaultUsers(input.users || []),
+    users: input.users || [],
     accessRequests: input.accessRequests || [],
     activityLog: input.activityLog || [],
     currentUserId: input.currentUserId || "",
@@ -2131,7 +2173,7 @@ function emptyState() {
     templates: seedTemplates(),
     assets: [],
     workOrders: [],
-    users: seedUsers(),
+    users: [],
     accessRequests: [],
     activityLog: [],
     currentUserId: "",
@@ -2149,58 +2191,6 @@ function guessNetworkQrUrl() {
     return getCurrentPageUrl();
   }
   return "http://10.0.0.12:8766/index.html";
-}
-
-function seedUsers() {
-  return [
-    {
-      id: crypto.randomUUID(),
-      username: "admin",
-      name: "Admin User",
-      password: "admin123",
-      role: "Admin",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: crypto.randomUUID(),
-      username: "manager",
-      name: "Manager User",
-      password: "manager123",
-      role: "Manager",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: crypto.randomUUID(),
-      username: "tech",
-      name: "Technician User",
-      password: "tech123",
-      role: "Technician",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: crypto.randomUUID(),
-      username: "customer",
-      name: "Customer User",
-      password: "customer123",
-      role: "Customer",
-      createdAt: new Date().toISOString()
-    }
-  ];
-}
-
-function mergeDefaultUsers(existingUsers) {
-  const merged = [...existingUsers];
-  seedUsers().forEach((defaultUser) => {
-    const match = merged.find((user) => user.username.toLowerCase() === defaultUser.username.toLowerCase());
-    if (!match) {
-      merged.push(defaultUser);
-    } else {
-      match.name = match.name || defaultUser.name;
-      match.password = match.password || defaultUser.password;
-      match.role = match.role || defaultUser.role;
-    }
-  });
-  return merged;
 }
 
 function saveState() {
@@ -2444,7 +2434,7 @@ function seedDemo() {
       createWorkOrderFromPm(conveyor, conveyor.history[0]),
       createWorkOrderFromPm(generator, generator.history[0])
     ],
-    users: state.users?.length ? state.users : seedUsers(),
+    users: state.users || [],
     currentUserId: currentUser?.id || ""
   };
   selectedCustomerId = state.customers[0].id;
