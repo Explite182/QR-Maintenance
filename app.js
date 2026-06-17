@@ -60,6 +60,7 @@ const els = {
   quickAddDrawer: document.getElementById("quickAddDrawer"),
   setupDrawer: document.getElementById("setupDrawer"),
   backupDrawer: document.getElementById("backupDrawer"),
+  dashboardPanel: document.querySelector(".dashboard-panel"),
   currentUserName: document.getElementById("currentUserName"),
   currentUserRole: document.getElementById("currentUserRole"),
   logoutBtn: document.getElementById("logoutBtn"),
@@ -1010,6 +1011,7 @@ function assignQrCustomerAccessUser() {
 function renderRole() {
   const setupDisabled = !canManageSetup();
   const isCustomer = currentRole === "Customer";
+  els.dashboardPanel.classList.toggle("hidden", isCustomer);
   els.adminToolsDrawer.classList.toggle("hidden", isCustomer);
   if (isCustomer) els.adminToolsDrawer.open = false;
   [els.quickAddDrawer, els.setupDrawer, els.backupDrawer].forEach((drawer) => {
