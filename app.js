@@ -2,6 +2,8 @@ const STORAGE_KEY = "qr-pm-prototype-v3";
 const AUTO_BACKUP_KEY = "qr-pm-prototype-auto-backups-v1";
 const MAX_AUTO_BACKUPS = 5;
 const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
+const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
   "Visual inspection complete",
@@ -23,6 +25,8 @@ let assetTemplateFilter = "all";
 let assetSort = "due";
 let assetPageSize = 25;
 let assetPage = 1;
+let remoteReportsLoaded = false;
+let remoteReportsLoading = false;
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -275,11 +279,15 @@ els.publicReportForm.addEventListener("submit", async (event) => {
   const note = els.publicReportNote.value.trim();
   const contact = els.publicReportContact.value.trim();
   const issue = createIssueFromPublicReport(report, note, contact, photo);
+  const remoteId = await savePublicReportToSupabase(report, note, contact, photo);
+  if (remoteId) issue.remoteReportId = remoteId;
   state.workOrders.unshift(issue);
   addActivity("Public issue reported", issue.title);
   saveState();
   els.publicReportForm.reset();
-  els.publicReportMessage.textContent = "Report sent. Thank you.";
+  els.publicReportMessage.textContent = remoteId
+    ? "Report sent. Thank you."
+    : "Report saved on this device. Shared sync will start after Supabase setup is complete.";
 });
 
 els.accessRequestForm.addEventListener("submit", (event) => {
@@ -894,6 +902,7 @@ function render() {
     return;
   }
   if (!currentUser) return;
+  syncPublicReportsFromSupabase();
   ensureSelection();
   renderUsers();
   renderAccessRequests();
@@ -1999,6 +2008,106 @@ function createIssueFromPublicReport(report, note, contact, photo) {
     ].filter(Boolean).join("\n"),
     photo,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+async function savePublicReportToSupabase(report, note, contact, photo) {
+  const payload = {
+    equipment_id: report.asset?.id || null,
+    customer_id: report.customer?.id || null,
+    customer_name: report.customer?.name || "",
+    location_id: report.location?.id || null,
+    location_name: report.location?.name || "",
+    equipment_name: report.asset?.name || "",
+    note,
+    contact,
+    photo_data_url: photo?.dataUrl || "",
+    photo_name: photo?.name || ""
+  };
+  try {
+    const response = await supabaseFetch("public_reports?select=id", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      console.warn("Supabase public report save skipped.", await response.text());
+      return "";
+    }
+    const data = await response.json();
+    return data?.[0]?.id || "";
+  } catch (error) {
+    console.warn("Supabase public report save skipped.", error);
+    return "";
+  }
+}
+
+async function syncPublicReportsFromSupabase() {
+  if (remoteReportsLoaded || remoteReportsLoading || !canManageWorkOrders()) return;
+  remoteReportsLoading = true;
+  let data = [];
+  try {
+    const response = await supabaseFetch("public_reports?select=*&order=created_at.desc&limit=100");
+    remoteReportsLoading = false;
+    remoteReportsLoaded = true;
+    if (!response.ok) {
+      console.warn("Supabase public report sync skipped.", await response.text());
+      return;
+    }
+    data = await response.json();
+  } catch (error) {
+    remoteReportsLoading = false;
+    remoteReportsLoaded = true;
+    console.warn("Supabase public report sync skipped.", error);
+    return;
+  }
+  const added = (data || []).reduce((count, report) => {
+    if (state.workOrders.some((item) => item.remoteReportId === report.id)) return count;
+    state.workOrders.unshift(createIssueFromRemoteReport(report));
+    return count + 1;
+  }, 0);
+  if (added) {
+    addActivity("Public reports synced", `${added} report${added === 1 ? "" : "s"} imported from Supabase.`);
+    saveState();
+    render();
+  }
+}
+
+function supabaseFetch(path, options = {}) {
+  const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  const headers = {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+  return fetch(url, { ...options, headers });
+}
+
+function createIssueFromRemoteReport(report) {
+  const asset = report.equipment_id ? getRawAsset(report.equipment_id) : null;
+  const customerId = asset?.customerId || report.customer_id || "";
+  const locationId = asset?.locationId || report.location_id || "";
+  return {
+    id: crypto.randomUUID(),
+    remoteReportId: report.id,
+    assetId: asset?.id || report.equipment_id || "",
+    customerId,
+    locationId,
+    areaName: asset ? "" : report.location_name || "Area report",
+    source: "Public QR report",
+    title: `Customer report: ${asset?.name || report.equipment_name || report.location_name || "Area"}`,
+    priority: "Medium",
+    status: "Open",
+    dueAt: addDays(new Date(report.created_at || Date.now()), 3).toISOString(),
+    notes: [
+      report.note || "",
+      report.contact ? `Contact: ${report.contact}` : "",
+      "Source: public QR report"
+    ].filter(Boolean).join("\n"),
+    photo: report.photo_data_url ? { name: report.photo_name || "Report photo", dataUrl: report.photo_data_url } : null,
+    createdAt: report.created_at || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 }

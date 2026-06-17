@@ -47,6 +47,18 @@ For the local prototype, maintenance completed on the phone is saved in the phon
 
 Use **Print Report QRs** to print customer/member report labels. These open a simple no-login report form with photo, note, and optional contact fields. In this browser prototype, submitted reports save in the phone/browser that submits them. In production, these should post to the shared database so your team sees them immediately.
 
+## Supabase Public Report Sync
+
+The public QR report form is wired to Supabase for first shared-data testing.
+
+1. Open Supabase.
+2. Go to **SQL Editor**.
+3. Paste and run the contents of `supabase-schema.sql`.
+4. Upload `index.html`, `app.js`, `styles.css`, `README.md`, and `supabase-schema.sql` to GitHub.
+5. Reprint **Print Report QRs** from the hosted app.
+
+After the table exists, reports submitted from a phone are saved to Supabase. Admin/Manager users can then open the app on a PC and the reports will import into **Open Issues**.
+
 When opening from a scanned QR code, the app automatically enters Customer access for the scanned asset. Regular non-QR visits still require login. Current QR links use normal URL query parameters, which work more reliably on iPhone/Safari than hash-only links.
 
 If an old QR still opens the login screen, reprint/regenerate the QR from the updated app so the link starts like `index.html?qr=1&a=...`.
