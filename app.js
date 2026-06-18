@@ -358,11 +358,10 @@ function logoutCurrentUser(reason = "manual") {
   if (!currentUser) return;
   window.clearTimeout(inactivityLogoutTimer);
 
-  if (reason === "manual") {
-    exportDataBackup("logout");
-  } else {
-    addActivity("Automatic logout", "No activity for 30 minutes.");
-  }
+  addActivity(
+    reason === "manual" ? "User logged out" : "Automatic logout",
+    reason === "manual" ? "Signed out from the logout button." : "No activity for 30 minutes."
+  );
 
   currentUser = null;
   currentRole = "Customer";
@@ -2447,7 +2446,7 @@ function exportCompleteBackup() {
 
 function buildBackupPayload(reason) {
   return {
-    app: "QR Maintenance Pilot",
+    app: "QR Maintenance",
     version: 4,
     backupReason: reason,
     exportedAt: new Date().toISOString(),
