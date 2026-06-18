@@ -4,6 +4,7 @@ const MAX_AUTO_BACKUPS = 5;
 const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
 const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
+const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
   "Visual inspection complete",
@@ -27,6 +28,8 @@ let assetPageSize = 25;
 let assetPage = 1;
 let remoteReportsLoaded = false;
 let remoteReportsLoading = false;
+let lastActivityAt = Date.now();
+let inactivityLogoutTimer = null;
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -196,6 +199,7 @@ const els = {
 };
 
 render();
+setupInactivityLogout();
 
 window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();
@@ -320,7 +324,46 @@ els.accessRequestForm.addEventListener("submit", (event) => {
 });
 
 els.logoutBtn.addEventListener("click", () => {
-  exportDataBackup("logout");
+  logoutCurrentUser("manual");
+});
+
+function setupInactivityLogout() {
+  ["pointerdown", "keydown", "input", "scroll", "touchstart"].forEach((eventName) => {
+    document.addEventListener(eventName, resetInactivityLogoutTimer, { passive: true });
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) resetInactivityLogoutTimer();
+  });
+  resetInactivityLogoutTimer();
+}
+
+function resetInactivityLogoutTimer() {
+  lastActivityAt = Date.now();
+  window.clearTimeout(inactivityLogoutTimer);
+  if (!currentUser || isPublicReportUrl()) return;
+  inactivityLogoutTimer = window.setTimeout(checkInactivityLogout, INACTIVITY_LOGOUT_MS);
+}
+
+function checkInactivityLogout() {
+  if (!currentUser || isPublicReportUrl()) return;
+  const inactiveFor = Date.now() - lastActivityAt;
+  if (inactiveFor >= INACTIVITY_LOGOUT_MS) {
+    logoutCurrentUser("inactivity");
+    return;
+  }
+  inactivityLogoutTimer = window.setTimeout(checkInactivityLogout, INACTIVITY_LOGOUT_MS - inactiveFor);
+}
+
+function logoutCurrentUser(reason = "manual") {
+  if (!currentUser) return;
+  window.clearTimeout(inactivityLogoutTimer);
+
+  if (reason === "manual") {
+    exportDataBackup("logout");
+  } else {
+    addActivity("Automatic logout", "No activity for 30 minutes.");
+  }
+
   currentUser = null;
   currentRole = "Customer";
   state.currentUserId = "";
@@ -329,7 +372,7 @@ els.logoutBtn.addEventListener("click", () => {
   }
   saveState();
   render();
-});
+}
 
 els.customerForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -903,6 +946,7 @@ function render() {
     return;
   }
   if (!currentUser) return;
+  resetInactivityLogoutTimer();
   syncPublicReportsFromSupabase();
   ensureSelection();
   renderUsers();
@@ -2210,15 +2254,20 @@ function getCurrentSessionUser() {
 }
 
 function getInitialUser() {
-  if (isQrAccessUrl() && getAssetIdFromUrl()) {
-    const user = getOrCreateCustomerAccessUser();
-    state.currentUserId = user.id;
-    user.customerId = getRawAsset(getAssetIdFromUrl())?.customerId || "";
-    selectedCustomerId = user.customerId || selectedCustomerId;
-    saveState();
+  const user = getCurrentSessionUser();
+  if (user?.username && user.username !== "scan-customer") {
     return user;
   }
-  const user = getCurrentSessionUser();
+
+  if (isQrAccessUrl() && getAssetIdFromUrl()) {
+    const scanUser = getOrCreateCustomerAccessUser();
+    state.currentUserId = scanUser.id;
+    scanUser.customerId = getRawAsset(getAssetIdFromUrl())?.customerId || "";
+    selectedCustomerId = scanUser.customerId || selectedCustomerId;
+    saveState();
+    return scanUser;
+  }
+
   if (user?.username === "scan-customer") {
     state.currentUserId = "";
     saveState();
