@@ -227,19 +227,14 @@ const els = {
 };
 
 render();
+window.setTimeout(syncLoginQrReportPrompt, 0);
+window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
 loadSupabaseProfiles();
 loadSharedStateFromSupabase();
 
 window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();
-  if (!currentUser && isQrAccessUrl() && getAssetIdFromUrl()) {
-    currentUser = getOrCreateCustomerAccessUser();
-    assignQrCustomerAccessUser();
-    currentRole = currentUser.role;
-    state.currentUserId = currentUser.id;
-    saveState();
-  }
   restoreScannedAssetSelection();
   selectedId = getAssetIdFromUrl() || selectedId;
   syncFiltersToSelectedAsset();
@@ -328,28 +323,20 @@ if (els.scanAccessBtn) {
 }
 
 if (els.loginQrReportBtn) {
-  els.loginQrReportBtn.addEventListener("click", () => {
-    const asset = getScannedReportAsset();
-    if (!asset) {
+  els.loginQrReportBtn.addEventListener("click", (event) => {
+    if (els.loginQrReportBtn.getAttribute("href") === "#") {
+      event.preventDefault();
       setLoginQrReportStatus(false);
-      return;
     }
-    location.href = getReportAssetUrl(asset.id);
   });
 }
 
 if (els.loginQrAreaReportBtn) {
-  els.loginQrAreaReportBtn.addEventListener("click", () => {
-    const asset = getScannedReportAsset();
-    if (!asset) {
+  els.loginQrAreaReportBtn.addEventListener("click", (event) => {
+    if (els.loginQrAreaReportBtn.getAttribute("href") === "#") {
+      event.preventDefault();
       setLoginQrReportStatus(false);
-      return;
     }
-    if (!asset?.locationId) {
-      location.href = getReportAssetUrl(asset.id);
-      return;
-    }
-    location.href = getReportLocationUrl(asset.locationId);
   });
 }
 
@@ -1145,6 +1132,7 @@ function renderAuth() {
   els.loginForm.classList.toggle("hidden", needsFirstAdmin);
   els.loginQrReportPrompt.classList.toggle("hidden", isReport || isLoggedIn || !hasScannedAsset);
   if (!isReport && !isLoggedIn && hasScannedAsset) setLoginQrReportStatus(Boolean(getScannedReportAsset()));
+  syncLoginQrReportPrompt();
   els.firstAdminForm.classList.toggle("hidden", !needsFirstAdmin);
   els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || !isLoggedIn));
   if (isReport || !isLoggedIn) return;
@@ -1159,13 +1147,63 @@ function getScannedReportAsset() {
   return getRawAsset(assetId);
 }
 
+function syncLoginQrReportPrompt() {
+  if (!els.loginQrReportPrompt) return;
+  const isReport = isPublicReportUrl();
+  const loginIsVisible = !els.loginScreen.classList.contains("hidden");
+  const assetId = getAssetIdFromUrl();
+  if (isReport || !loginIsVisible || !assetId) {
+    els.loginQrReportPrompt.classList.add("hidden");
+    return;
+  }
+  const asset = getScannedReportAsset();
+  setLoginQrReportStatus(isScannedReportLinkReady(asset));
+  els.loginQrReportPrompt.classList.remove("hidden");
+}
+
+function isScannedReportLinkReady(asset = getScannedReportAsset()) {
+  if (asset) return true;
+  const params = new URLSearchParams(location.search);
+  return Boolean(params.get("a") && params.get("n") && params.get("c") && params.get("l"));
+}
+
+function getScannedEquipmentReportUrl() {
+  const assetId = getAssetIdFromUrl();
+  if (!assetId) return "#";
+  const base = getCurrentPageUrl();
+  const params = new URLSearchParams(location.search);
+  params.set("report", "1");
+  params.delete("qr");
+  params.set("a", assetId);
+  return `${base}?${params.toString()}`;
+}
+
+function getScannedAreaReportUrl() {
+  const asset = getScannedReportAsset();
+  if (asset?.locationId) return getReportLocationUrl(asset.locationId);
+
+  const base = getCurrentPageUrl();
+  const params = new URLSearchParams();
+  const sourceParams = new URLSearchParams(location.search);
+  const customerName = sourceParams.get("c") || "";
+  const locationName = sourceParams.get("l") || "";
+  if (!customerName || !locationName) return getScannedEquipmentReportUrl();
+  params.set("report", "1");
+  params.set("c", customerName);
+  params.set("l", locationName);
+  return `${base}?${params.toString()}`;
+}
+
 function setLoginQrReportStatus(isReady) {
   if (!els.loginQrReportMessage) return;
   els.loginQrReportMessage.textContent = isReady
     ? "Send a photo and quick note without logging in."
     : "This scanned link is missing equipment details. Please scan a printed SiteWorks QR label for an existing asset.";
   [els.loginQrReportBtn, els.loginQrAreaReportBtn].forEach((button) => {
-    if (button) button.disabled = !isReady;
+    if (!button) return;
+    button.classList.toggle("disabled-link", !isReady);
+    button.setAttribute("aria-disabled", String(!isReady));
+    if (!isReady) button.setAttribute("href", "#");
   });
 }
 
@@ -2301,6 +2339,7 @@ function hydrateAssetFromHash() {
 function getReportContext() {
   const params = new URLSearchParams(location.search);
   const assetId = params.get("a");
+  if (assetId) hydrateAssetFromHash();
   const asset = assetId ? getRawAsset(assetId) : null;
   if (asset) {
     return {
@@ -2727,6 +2766,7 @@ function applySharedState(sharedData, updatedAt = "") {
   persistLocalStateOnly();
   applyingSharedState = false;
   render();
+  window.setTimeout(syncLoginQrReportPrompt, 0);
 }
 
 function isRemoteSharedStateNewer(remoteUpdatedAt = "") {
@@ -3023,15 +3063,6 @@ function getInitialUser() {
   const user = getCurrentSessionUser();
   if (user?.username && user.username !== "scan-customer") {
     return user;
-  }
-
-  if (isQrAccessUrl() && getAssetIdFromUrl()) {
-    const scanUser = getOrCreateCustomerAccessUser();
-    state.currentUserId = scanUser.id;
-    scanUser.customerId = getRawAsset(getAssetIdFromUrl())?.customerId || "";
-    selectedCustomerId = scanUser.customerId || selectedCustomerId;
-    saveState();
-    return scanUser;
   }
 
   if (user?.username === "scan-customer") {

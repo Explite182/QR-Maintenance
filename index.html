@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260619-1255">
+  <link rel="stylesheet" href="styles.css?v=20260619-1355">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -52,12 +52,12 @@
         <button type="submit">Log In</button>
         <p id="loginError" class="login-error"></p>
       </form>
-      <div id="loginQrReportPrompt" class="login-qr-report hidden">
+      <div id="loginQrReportPrompt" class="login-qr-report">
         <strong>Reporting an issue?</strong>
         <p id="loginQrReportMessage">Send a photo and quick note without logging in.</p>
         <div class="login-qr-actions">
-          <button id="loginQrReportBtn" type="button" class="secondary primary-action">Report Equipment Issue</button>
-          <button id="loginQrAreaReportBtn" type="button" class="secondary">Report Area Issue</button>
+          <a id="loginQrReportBtn" class="secondary primary-action" href="javascript:(()=>{const p=new URLSearchParams(location.search);p.set('report','1');p.delete('qr');location.href=location.href.split(/[?#]/)[0]+'?'+p.toString();setTimeout(()=>location.reload(),50);})()">Report Equipment Issue</a>
+          <a id="loginQrAreaReportBtn" class="secondary" href="javascript:(()=>{const s=new URLSearchParams(location.search);const p=new URLSearchParams();p.set('report','1');if(s.get('c')&&s.get('l')){p.set('c',s.get('c'));p.set('l',s.get('l'));}else{p.set('a',s.get('a')||'');if(s.get('n'))p.set('n',s.get('n'));if(s.get('c'))p.set('c',s.get('c'));if(s.get('l'))p.set('l',s.get('l'));}location.href=location.href.split(/[?#]/)[0]+'?'+p.toString();setTimeout(()=>location.reload(),50);})()">Report Area Issue</a>
         </div>
       </div>
       <form id="firstAdminForm" class="stack hidden">
@@ -727,6 +727,22 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260619-1255"></script>
+  <script src="app.js?v=20260619-1355"></script>
+  <script>
+    (() => {
+      const params = new URLSearchParams(location.search);
+      if (params.get("report") !== "1") return;
+      document.getElementById("publicReportScreen")?.classList.remove("hidden");
+      document.getElementById("loginScreen")?.classList.add("hidden");
+      document.querySelectorAll(".app-only").forEach((node) => node.classList.add("hidden"));
+      const title = document.getElementById("reportTitle");
+      const context = document.getElementById("reportContext");
+      if (title) title.textContent = params.get("a") ? "Report equipment issue" : "Report area issue";
+      if (context) {
+        const pieces = [params.get("c"), params.get("l"), params.get("n")].filter(Boolean);
+        context.textContent = pieces.join(" | ");
+      }
+    })();
+  </script>
 </body>
 </html>
