@@ -47,17 +47,20 @@ For the local prototype, maintenance completed on the phone is saved in the phon
 
 Use **Print Report QRs** to print customer/member report labels. These open a simple no-login report form with photo, note, and optional contact fields. In this browser prototype, submitted reports save in the phone/browser that submits them. In production, these should post to the shared database so your team sees them immediately.
 
-## Supabase Public Report Sync
+## Supabase Shared Data Sync
 
-The public QR report form is wired to Supabase for first shared-data testing.
+The app is wired to Supabase for first shared-data testing.
 
 1. Open Supabase.
 2. Go to **SQL Editor**.
 3. Paste and run the contents of `supabase-schema.sql`.
 4. Upload `index.html`, `app.js`, `styles.css`, `README.md`, and `supabase-schema.sql` to GitHub.
-5. Reprint **Print Report QRs** from the hosted app.
+5. Open the hosted app on the computer that already has the data so it can push the shared maintenance data to Supabase.
+6. Open the hosted app on the iPad or phone and log in locally.
 
-After the table exists, reports submitted from a phone are saved to Supabase. Admin/Manager users can then open the app on a PC and the reports will import into **Open Issues**.
+After the table exists, customers, locations, templates, assets, work orders, photos/manuals stored in the browser, and QR settings can sync through Supabase. User accounts are intentionally still local to each browser in this prototype so plain-text local prototype passwords are not copied into the shared table.
+
+Reports submitted from a phone are also saved to Supabase. Admin/Manager users can then open the app and the reports will import into **Open Issues**.
 
 When opening from a scanned QR code, the app automatically enters Customer access for the scanned asset. Regular non-QR visits still require login. Current QR links use normal URL query parameters, which work more reliably on iPhone/Safari than hash-only links.
 
@@ -130,7 +133,7 @@ Use **Export Data** regularly to download a portable `.json` backup file. Use **
 
 Use **Export Complete Backup** when you want the safest single-file backup. It includes the same restorable app data, plus a manifest that lists customer, location, equipment, user, activity log, issue, history, uploaded photo, and uploaded PDF manual counts.
 
-When a user clicks **Log Out**, the app automatically downloads a dated logout backup file named like `qr-maintenance-logout-backup-YYYYMMDD-HHMMSS.json`.
+Logging out does not automatically download a backup file. Use **Export Data** or **Export Complete Backup** when you want a file backup.
 
 Use **Restore Latest** to restore the newest automatic in-browser snapshot. This is useful for quick recovery inside the same browser.
 
@@ -139,5 +142,7 @@ Browser security does not allow this static prototype to silently write backup f
 ## Important Prototype Note
 
 The app stores data in the browser with `localStorage`. The login screen is for prototype flow only and stores local passwords in browser data. For real customer use, this should become a hosted web app with a database, real password hashing, server-side sessions, customer separation, durable file uploads, and durable QR labels.
+
+The current Supabase sync is prototype-level shared storage. Before using this with real customer/private data, move logins and customer permissions to Supabase Auth and locked-down database policies.
 
 The QR labels point to the current page URL. If opened as a local file, the QR code points to a `file://` URL that works only on the same machine. To scan labels from phones or other devices, host the app on a reachable web address first.

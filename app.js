@@ -4,6 +4,7 @@ const MAX_AUTO_BACKUPS = 5;
 const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
 const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
+const SHARED_APP_STATE_ID = "main";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
@@ -30,6 +31,10 @@ let remoteReportsLoaded = false;
 let remoteReportsLoading = false;
 let lastActivityAt = Date.now();
 let inactivityLogoutTimer = null;
+let sharedStateReady = false;
+let sharedStateLoading = false;
+let sharedStateSaveTimer = null;
+let applyingSharedState = false;
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -200,6 +205,7 @@ const els = {
 
 render();
 setupInactivityLogout();
+loadSharedStateFromSupabase();
 
 window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();
@@ -2130,6 +2136,123 @@ function supabaseFetch(path, options = {}) {
   return fetch(url, { ...options, headers });
 }
 
+async function loadSharedStateFromSupabase() {
+  if (sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+  sharedStateLoading = true;
+  const localHadSharedData = hasSharedMaintenanceData(state);
+
+  try {
+    const response = await supabaseFetch(`app_state?id=eq.${encodeURIComponent(SHARED_APP_STATE_ID)}&select=data,updated_at`);
+    sharedStateLoading = false;
+    sharedStateReady = true;
+
+    if (!response.ok) {
+      console.warn("Supabase shared data sync skipped.", await response.text());
+      return;
+    }
+
+    const rows = await response.json();
+    const remoteRecord = rows?.[0];
+    if (!remoteRecord?.data) {
+      if (localHadSharedData) scheduleSharedStateSave(0);
+      return;
+    }
+
+    if (!localHadSharedData || isRemoteSharedStateNewer(remoteRecord.updated_at)) {
+      applySharedState(remoteRecord.data, remoteRecord.updated_at);
+      return;
+    }
+  } catch (error) {
+    sharedStateLoading = false;
+    sharedStateReady = true;
+    console.warn("Supabase shared data sync skipped.", error);
+  }
+}
+
+function applySharedState(sharedData, updatedAt = "") {
+  const localUsers = state.users || [];
+  const localAccessRequests = state.accessRequests || [];
+  const localCurrentUserId = state.currentUserId || "";
+  applyingSharedState = true;
+  state = normalizeState({
+    ...state,
+    ...sharedData,
+    users: localUsers,
+    accessRequests: localAccessRequests,
+    currentUserId: localCurrentUserId,
+    sharedDataUpdatedAt: updatedAt || sharedData.sharedDataUpdatedAt || ""
+  });
+  currentUser = state.users.find((user) => user.id === state.currentUserId) || currentUser;
+  currentRole = currentUser?.role || "Customer";
+  selectedCustomerId = selectedCustomerId || state.customers[0]?.id || "";
+  selectedLocationId = "all";
+  selectedId = getAssetIdFromUrl() || state.assets[0]?.id || null;
+  persistLocalStateOnly();
+  applyingSharedState = false;
+  render();
+}
+
+function isRemoteSharedStateNewer(remoteUpdatedAt = "") {
+  const remoteTime = Date.parse(remoteUpdatedAt || "");
+  const localTime = Date.parse(state.sharedDataUpdatedAt || "");
+  return Number.isFinite(remoteTime) && (!Number.isFinite(localTime) || remoteTime > localTime);
+}
+
+function scheduleSharedStateSave(delay = 1200) {
+  if (!sharedStateReady || applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
+  window.clearTimeout(sharedStateSaveTimer);
+  sharedStateSaveTimer = window.setTimeout(saveSharedStateToSupabase, delay);
+}
+
+async function saveSharedStateToSupabase() {
+  if (!sharedStateReady || applyingSharedState || !hasSharedMaintenanceData(state)) return;
+  const uploadedAt = new Date().toISOString();
+  const payload = {
+    id: SHARED_APP_STATE_ID,
+    data: buildSharedStatePayload(uploadedAt),
+    updated_at: uploadedAt
+  };
+
+  try {
+    const response = await supabaseFetch("app_state?on_conflict=id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      console.warn("Supabase shared data save skipped.", await response.text());
+      return;
+    }
+    state.sharedDataUpdatedAt = uploadedAt;
+    persistLocalStateOnly();
+  } catch (error) {
+    console.warn("Supabase shared data save skipped.", error);
+  }
+}
+
+function buildSharedStatePayload(uploadedAt) {
+  return {
+    customers: state.customers || [],
+    locations: state.locations || [],
+    templates: state.templates || [],
+    assets: state.assets || [],
+    workOrders: state.workOrders || [],
+    activityLog: state.activityLog || [],
+    backupLocation: state.backupLocation || defaultBackupLocation(),
+    qrBaseUrl: state.qrBaseUrl || guessNetworkQrUrl(),
+    sharedDataUpdatedAt: uploadedAt
+  };
+}
+
+function hasSharedMaintenanceData(candidate) {
+  return Boolean(
+    candidate?.customers?.length ||
+    candidate?.locations?.length ||
+    candidate?.assets?.length ||
+    candidate?.workOrders?.length
+  );
+}
+
 function createIssueFromRemoteReport(report) {
   const asset = report.equipment_id ? getRawAsset(report.equipment_id) : null;
   const customerId = asset?.customerId || report.customer_id || "";
@@ -2287,7 +2410,9 @@ function normalizeState(input) {
     activityLog: input.activityLog || [],
     currentUserId: input.currentUserId || "",
     backupLocation: input.backupLocation || defaultBackupLocation(),
-    qrBaseUrl: input.qrBaseUrl || guessNetworkQrUrl()
+    qrBaseUrl: input.qrBaseUrl || guessNetworkQrUrl(),
+    updatedAt: input.updatedAt || "",
+    sharedDataUpdatedAt: input.sharedDataUpdatedAt || ""
   };
   const defaultCustomer = normalized.customers[0] || { id: crypto.randomUUID(), name: "Default Customer", createdAt: new Date().toISOString() };
   const defaultLocation = normalized.locations[0] || { id: crypto.randomUUID(), customerId: defaultCustomer.id, name: "Default Location", createdAt: new Date().toISOString() };
@@ -2337,7 +2462,9 @@ function emptyState() {
     activityLog: [],
     currentUserId: "",
     backupLocation: defaultBackupLocation(),
-    qrBaseUrl: guessNetworkQrUrl()
+    qrBaseUrl: guessNetworkQrUrl(),
+    updatedAt: "",
+    sharedDataUpdatedAt: ""
   };
 }
 
@@ -2353,6 +2480,12 @@ function guessNetworkQrUrl() {
 }
 
 function saveState() {
+  state.updatedAt = new Date().toISOString();
+  persistLocalStateOnly();
+  scheduleSharedStateSave();
+}
+
+function persistLocalStateOnly() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (error) {
