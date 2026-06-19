@@ -2302,9 +2302,9 @@ async function signInWithSupabase(email, password) {
     saveAuthSession(session);
     let profile = await getProfileForAuthUser(session.user);
     if (!profile) {
-      profile = await createFirstAdminProfileIfNeeded(session.user);
+      profile = await createMissingAuthProfile(session.user);
       if (!profile) {
-        lastAuthError = "Login worked, but no SiteWorks profile was found for this user. Create the user from Admin & Settings or run the Supabase SQL.";
+        lastAuthError = "Login worked, but SiteWorks could not create the missing profile. Run the Supabase SQL and try again.";
         return null;
       }
     }
@@ -2317,10 +2317,8 @@ async function signInWithSupabase(email, password) {
   }
 }
 
-async function createFirstAdminProfileIfNeeded(authUser) {
+async function createMissingAuthProfile(authUser) {
   if (!authUser?.id) return null;
-  await loadSupabaseProfiles();
-  if (hasSetupUsers()) return null;
   const profile = {
     id: authUser.id,
     username: authUser.email || "",
