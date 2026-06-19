@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260619-1615">
+  <link rel="stylesheet" href="styles.css?v=20260619-1700">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -127,7 +127,7 @@
   </header>
 
   <main class="app-shell app-only hidden">
-    <aside class="sidebar">
+    <aside id="appSidebar" class="sidebar">
       <details id="adminToolsDrawer" class="sidebar-section setup-drawer admin-tools-drawer">
         <summary>
           <span>Admin & Settings</span>
@@ -219,7 +219,7 @@
       </details>
 
       <details id="setupDrawer" class="sidebar-section setup-drawer">
-        <summary>Users & Setup</summary>
+        <summary>Setup</summary>
         <section>
           <div class="section-title">
             <h2>Customers</h2>
@@ -253,6 +253,35 @@
         </section>
 
         <section class="sidebar-section">
+          <div class="section-title">
+            <h2>Maintenance Templates</h2>
+            <span id="templateCount">0</span>
+          </div>
+          <form id="templateForm" class="stack compact-form">
+            <label>
+              Template name
+              <input id="templateName" required placeholder="HVAC Monthly PM">
+            </label>
+            <label>
+              Checklist items
+              <textarea id="templateItems" rows="4" required placeholder="Inspect belts&#10;Check filter condition&#10;Record temperature"></textarea>
+            </label>
+            <button type="submit">Add Template</button>
+          </form>
+        </section>
+
+        <section class="sidebar-section">
+          <div class="section-title">
+            <h2>Activity Log</h2>
+            <span id="activityLogCount">0</span>
+          </div>
+          <div id="activityLogList" class="activity-log-list"></div>
+        </section>
+      </details>
+
+      <details id="userDrawer" class="sidebar-section setup-drawer">
+        <summary>Users</summary>
+        <section>
           <div class="section-title">
             <h2>Users</h2>
             <span id="userCount">0</span>
@@ -292,32 +321,6 @@
           </div>
           <div id="accessRequestList" class="user-list"></div>
         </section>
-
-        <section class="sidebar-section">
-          <div class="section-title">
-            <h2>Maintenance Templates</h2>
-            <span id="templateCount">0</span>
-          </div>
-          <form id="templateForm" class="stack compact-form">
-            <label>
-              Template name
-              <input id="templateName" required placeholder="HVAC Monthly PM">
-            </label>
-            <label>
-              Checklist items
-              <textarea id="templateItems" rows="4" required placeholder="Inspect belts&#10;Check filter condition&#10;Record temperature"></textarea>
-            </label>
-            <button type="submit">Add Template</button>
-          </form>
-        </section>
-
-        <section class="sidebar-section">
-          <div class="section-title">
-            <h2>Activity Log</h2>
-            <span id="activityLogCount">0</span>
-          </div>
-          <div id="activityLogList" class="activity-log-list"></div>
-        </section>
       </details>
 
       <details id="backupDrawer" class="sidebar-section setup-drawer">
@@ -350,8 +353,6 @@
         </div>
       </details>
       </details>
-
-      <nav id="assetList" class="asset-list" aria-label="Assets"></nav>
     </aside>
 
     <section class="workspace">
@@ -399,7 +400,7 @@
         </div>
       </section>
 
-      <details class="asset-table-panel asset-register-drawer" open>
+      <details id="assetRegisterDrawer" class="asset-table-panel asset-register-drawer">
         <summary class="section-title drawer-title">
           <h2>Equipment Register</h2>
           <span id="tableAssetCount">0</span>
@@ -719,7 +720,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260619-1615"></script>
+  <script src="app.js?v=20260619-1700"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

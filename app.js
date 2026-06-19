@@ -78,9 +78,12 @@ const els = {
   requestNotes: document.getElementById("requestNotes"),
   accessRequestMessage: document.getElementById("accessRequestMessage"),
   appOnly: document.querySelectorAll(".app-only"),
+  appShell: document.querySelector(".app-shell"),
+  appSidebar: document.getElementById("appSidebar"),
   adminToolsDrawer: document.getElementById("adminToolsDrawer"),
   quickAddDrawer: document.getElementById("quickAddDrawer"),
   setupDrawer: document.getElementById("setupDrawer"),
+  userDrawer: document.getElementById("userDrawer"),
   backupDrawer: document.getElementById("backupDrawer"),
   dashboardPanel: document.querySelector(".dashboard-panel"),
   currentUserName: document.getElementById("currentUserName"),
@@ -137,7 +140,6 @@ const els = {
   assetManualFile: document.getElementById("assetManualFile"),
   assetPhoto: document.getElementById("assetPhoto"),
   assetNotes: document.getElementById("assetNotes"),
-  assetList: document.getElementById("assetList"),
   assetCount: document.getElementById("assetCount"),
   assetSearch: document.getElementById("assetSearch"),
   statusFilter: document.getElementById("statusFilter"),
@@ -153,6 +155,7 @@ const els = {
   clearSelectedAssetsBtn: document.getElementById("clearSelectedAssetsBtn"),
   printSelectedLabelsBtn: document.getElementById("printSelectedLabelsBtn"),
   exportAssetRegisterBtn: document.getElementById("exportAssetRegisterBtn"),
+  assetRegisterDrawer: document.getElementById("assetRegisterDrawer"),
   customerFilter: document.getElementById("customerFilter"),
   locationFilter: document.getElementById("locationFilter"),
   emptyState: document.getElementById("emptyState"),
@@ -263,6 +266,7 @@ els.loginForm.addEventListener("submit", async (event) => {
     currentRole = localUser.role;
     state.currentUserId = localUser.id;
     restoreScannedAssetSelection();
+    closeAssetRegisterDrawer();
     saveState();
     els.loginForm.reset();
     els.loginError.textContent = "";
@@ -274,6 +278,7 @@ els.loginForm.addEventListener("submit", async (event) => {
   currentRole = user.role;
   state.currentUserId = user.id;
   restoreScannedAssetSelection();
+  closeAssetRegisterDrawer();
   saveState();
   els.loginForm.reset();
   els.loginError.textContent = "";
@@ -305,6 +310,7 @@ els.firstAdminForm.addEventListener("submit", async (event) => {
   currentRole = user.role;
   state.currentUserId = user.id;
   upsertLocalUser(user);
+  closeAssetRegisterDrawer();
   addActivity("First admin created", email);
   saveState();
   els.firstAdminForm.reset();
@@ -318,6 +324,7 @@ if (els.scanAccessBtn) {
     currentUser = user;
     currentRole = user.role;
     state.currentUserId = user.id;
+    closeAssetRegisterDrawer();
     saveState();
     els.loginForm.reset();
     els.loginError.textContent = "";
@@ -1106,7 +1113,6 @@ function render() {
   renderAssetTableControls();
   renderAssetTable();
   renderWorkOrders();
-  renderAssetList();
 
   const asset = getSelectedAsset();
   els.customerCount.textContent = state.customers.length;
@@ -1168,6 +1174,10 @@ function renderAuth() {
   if (isReport || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
   els.currentUserRole.textContent = currentUser.role;
+}
+
+function closeAssetRegisterDrawer() {
+  if (els.assetRegisterDrawer) els.assetRegisterDrawer.open = false;
 }
 
 function getScannedReportAsset() {
@@ -1280,10 +1290,12 @@ function renderRole() {
   const setupDisabled = !canManageSetup();
   const isAdmin = currentRole === "Admin";
   const isCustomer = currentRole === "Customer";
+  els.appShell?.classList.toggle("no-sidebar", !isAdmin);
+  els.appSidebar?.classList.toggle("hidden", !isAdmin);
   els.dashboardPanel.classList.toggle("hidden", isCustomer);
   els.adminToolsDrawer.classList.toggle("hidden", !isAdmin);
   if (!isAdmin) els.adminToolsDrawer.open = false;
-  [els.quickAddDrawer, els.setupDrawer, els.backupDrawer].forEach((drawer) => {
+  [els.quickAddDrawer, els.setupDrawer, els.userDrawer, els.backupDrawer].forEach((drawer) => {
     drawer.classList.toggle("hidden", !isAdmin);
     if (!isAdmin) drawer.open = false;
   });
@@ -1737,31 +1749,6 @@ function filterWorkOrdersForView(workOrders) {
   if (workOrderViewFilter === "waitingParts") return active.filter((item) => item.status === "Waiting parts");
   if (workOrderViewFilter === "reported") return active.filter((item) => item.source === "Public QR report");
   return active;
-}
-
-function renderAssetList() {
-  const assets = assetTableAssets().slice(0, 12);
-  els.assetList.innerHTML = assets.length ? assets.map((asset) => {
-    const customer = getCustomer(asset.customerId);
-    const locationRecord = getLocation(asset.locationId);
-    const due = getDueInfo(asset);
-    const active = asset.id === selectedId ? " active" : "";
-    return `
-      <button class="asset-button${active}" type="button" data-id="${asset.id}">
-        <strong>${escapeHtml(asset.name)}</strong>
-        <span>${escapeHtml(customer?.name || "Unknown")} | ${escapeHtml(locationRecord?.name || "Unknown")} | ${escapeHtml(due.label)}</span>
-      </button>
-    `;
-  }).join("") : `<p class="muted">No equipment for this view.</p>`;
-
-  els.assetList.querySelectorAll("button").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedId = button.dataset.id;
-      syncFiltersToSelectedAsset();
-      location.hash = `asset/${selectedId}`;
-      render();
-    });
-  });
 }
 
 function renderEmptyStateContent(asset) {
