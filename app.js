@@ -246,6 +246,10 @@ els.loginForm.addEventListener("submit", async (event) => {
   if (!user) {
     const localUser = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
     if (!localUser) {
+      if (authProfilesLoaded && !hasSetupUsers()) {
+        showFirstAdminSetup("No SiteWorks admin account exists yet. Create the first admin below.");
+        return;
+      }
       els.loginError.textContent = lastAuthError || "Email or password is incorrect.";
       return;
     }
@@ -1080,6 +1084,12 @@ function renderAuth() {
   if (isReport || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
   els.currentUserRole.textContent = currentUser.role;
+}
+
+function showFirstAdminSetup(message = "") {
+  els.loginForm.classList.add("hidden");
+  els.firstAdminForm.classList.remove("hidden");
+  els.firstAdminMessage.textContent = message;
 }
 
 function findUserForLogin(username, password) {
