@@ -32,6 +32,7 @@ let selectedPrintAssetIds = new Set();
 let workOrderViewFilter = "active";
 let remoteReportsLoaded = false;
 let remoteReportsLoading = false;
+let lastRemoteReportsSyncAt = 0;
 let lastActivityAt = Date.now();
 let inactivityLogoutTimer = null;
 let sharedStateReady = false;
@@ -233,6 +234,7 @@ window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
 loadSupabaseProfiles();
 loadSharedStateFromSupabase();
+window.setInterval(syncPublicReportsFromSupabase, 30000);
 
 window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();
@@ -343,27 +345,41 @@ if (els.loginQrAreaReportBtn) {
 
 els.publicReportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const report = getReportContext();
-  if (!report) {
-    els.publicReportMessage.textContent = "This QR report link is missing location or equipment details.";
-    return;
+  const submitButton = els.publicReportForm.querySelector("button[type='submit']");
+  if (submitButton?.disabled) return;
+  try {
+    const report = getReportContext();
+    if (!report) {
+      els.publicReportMessage.textContent = "This QR report link is missing location or equipment details.";
+      return;
+    }
+    submitButton.disabled = true;
+    els.publicReportMessage.textContent = "Sending report...";
+    const photo = await safeReadPublicReportPhoto(els.publicReportPhoto.files[0]);
+    if (lastPublicReportError) {
+      els.publicReportMessage.textContent = lastPublicReportError;
+      return;
+    }
+    const note = els.publicReportNote.value.trim();
+    const contact = els.publicReportContact.value.trim();
+    const issue = createIssueFromPublicReport(report, note, contact, photo);
+    const remoteId = await savePublicReportToSupabase(report, note, contact, photo);
+    if (!remoteId) {
+      els.publicReportMessage.textContent = lastPublicReportError || "Report was not sent. Please try again with a smaller photo or no photo.";
+      return;
+    }
+    issue.remoteReportId = remoteId;
+    state.workOrders.unshift(issue);
+    addActivity("Public issue reported", issue.title);
+    saveState();
+    els.publicReportForm.reset();
+    els.publicReportMessage.textContent = "Report sent to SiteWorks. Thank you.";
+  } catch (error) {
+    console.warn("Public report submit failed.", error);
+    els.publicReportMessage.textContent = "Report was not sent. Try again with no photo first.";
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
-  els.publicReportMessage.textContent = "Sending report...";
-  const photo = await readPublicReportPhoto(els.publicReportPhoto.files[0]);
-  const note = els.publicReportNote.value.trim();
-  const contact = els.publicReportContact.value.trim();
-  const issue = createIssueFromPublicReport(report, note, contact, photo);
-  const remoteId = await savePublicReportToSupabase(report, note, contact, photo);
-  if (!remoteId) {
-    els.publicReportMessage.textContent = lastPublicReportError || "Report was not sent. Please try again with a smaller photo or no photo.";
-    return;
-  }
-  if (remoteId) issue.remoteReportId = remoteId;
-  state.workOrders.unshift(issue);
-  addActivity("Public issue reported", issue.title);
-  saveState();
-  els.publicReportForm.reset();
-  els.publicReportMessage.textContent = "Report sent to SiteWorks. Thank you.";
 });
 
 els.publicReportNote.addEventListener("invalid", () => {
@@ -1097,6 +1113,7 @@ function render() {
   els.templateCount.textContent = state.templates.length;
   els.locationCount.textContent = state.locations.length;
   els.assetCount.textContent = filteredAssets().length;
+  els.emptyState.innerHTML = renderEmptyStateContent(asset);
   els.emptyState.classList.toggle("hidden", Boolean(asset));
   els.assetPanel.classList.toggle("hidden", !asset);
   renderRole();
@@ -1745,6 +1762,26 @@ function renderAssetList() {
       render();
     });
   });
+}
+
+function renderEmptyStateContent(asset) {
+  if (asset) return "";
+  if (currentRole !== "Admin" && !currentUser?.customerId) {
+    return `
+      <h2>No customer assigned</h2>
+      <p>This ${escapeHtml(currentRole)} login needs an assigned customer before equipment can be shown. Ask an Admin to edit the user and choose a customer.</p>
+    `;
+  }
+  if (!visibleCustomers().length) {
+    return `
+      <h2>No customer access</h2>
+      <p>This login does not currently have access to a customer.</p>
+    `;
+  }
+  return `
+    <h2>No equipment found</h2>
+    <p>No equipment is available for the selected customer or filters.</p>
+  `;
 }
 
 function assetTableAssets() {
@@ -2464,7 +2501,10 @@ async function savePublicReportToSupabase(report, note, contact, photo) {
 }
 
 async function syncPublicReportsFromSupabase() {
-  if (remoteReportsLoaded || remoteReportsLoading || !canManageWorkOrders()) return;
+  if (remoteReportsLoading || !canManageWorkOrders()) return;
+  const now = Date.now();
+  if (now - lastRemoteReportsSyncAt < 15000) return;
+  lastRemoteReportsSyncAt = now;
   remoteReportsLoading = true;
   let data = [];
   try {
@@ -2961,7 +3001,8 @@ function isCodexTestPublicReport(report) {
   const note = String(report.note || "");
   return note === "Codex connectivity test" ||
     note.startsWith("Local submit test from Codex") ||
-    note.startsWith("Codex remote insert check");
+    note.startsWith("Codex remote insert check") ||
+    note.startsWith("Codex public report submit check");
 }
 
 function createIssueFromRemoteReport(report) {
@@ -3503,8 +3544,20 @@ async function readPhoto(file) {
 async function readPublicReportPhoto(file) {
   if (!file) return null;
   const rawDataUrl = await fileToDataUrl(file);
-  const dataUrl = await resizePhotoDataUrl(rawDataUrl, 720, 0.58);
+  const dataUrl = await resizePhotoDataUrl(rawDataUrl, 520, 0.45);
   return { name: file.name, dataUrl };
+}
+
+async function safeReadPublicReportPhoto(file) {
+  lastPublicReportError = "";
+  if (!file) return null;
+  try {
+    return await readPublicReportPhoto(file);
+  } catch (error) {
+    console.warn("Public report photo could not be read.", error);
+    lastPublicReportError = "That photo could not be attached. Send the report with no photo first, then try a smaller photo if needed.";
+    return null;
+  }
 }
 
 async function readPhotos(files) {
