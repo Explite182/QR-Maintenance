@@ -61,6 +61,7 @@ const els = {
   loginError: document.getElementById("loginError"),
   loginQrReportPrompt: document.getElementById("loginQrReportPrompt"),
   loginQrReportBtn: document.getElementById("loginQrReportBtn"),
+  loginQrAreaReportBtn: document.getElementById("loginQrAreaReportBtn"),
   firstAdminForm: document.getElementById("firstAdminForm"),
   firstAdminUsername: document.getElementById("firstAdminUsername"),
   firstAdminName: document.getElementById("firstAdminName"),
@@ -331,6 +332,20 @@ if (els.loginQrReportBtn) {
     if (!assetId) return;
     hydrateAssetFromHash();
     location.href = getReportAssetUrl(assetId);
+  });
+}
+
+if (els.loginQrAreaReportBtn) {
+  els.loginQrAreaReportBtn.addEventListener("click", () => {
+    const assetId = getAssetIdFromUrl();
+    if (!assetId) return;
+    hydrateAssetFromHash();
+    const asset = getRawAsset(assetId);
+    if (!asset?.locationId) {
+      location.href = getReportAssetUrl(assetId);
+      return;
+    }
+    location.href = getReportLocationUrl(asset.locationId);
   });
 }
 
@@ -1119,7 +1134,7 @@ function render() {
 function renderAuth() {
   const isReport = isPublicReportUrl();
   const isLoggedIn = Boolean(currentUser);
-  const hasScannedAsset = isQrAccessUrl() && Boolean(getAssetIdFromUrl());
+  const hasScannedAsset = Boolean(getAssetIdFromUrl());
   const needsFirstAdmin = !isReport && !isLoggedIn && !hasSetupUsers();
   els.publicReportScreen.classList.toggle("hidden", !isReport);
   els.loginScreen.classList.toggle("hidden", isReport || isLoggedIn);
@@ -1505,13 +1520,24 @@ function renderAssetBadges(asset, due = getDueInfo(asset)) {
 
 function renderScanActionPanel(asset) {
   const manualUrl = asset.manualFile?.dataUrl || safeDocumentLink(asset.documentUrl);
+  const locationRecord = getLocation(asset.locationId);
+  const customerScanCopy = currentRole === "Customer"
+    ? {
+        title: "Need to report an issue?",
+        note: "Send a photo and note for this equipment or the surrounding area."
+      }
+    : {
+        title: "Scan actions",
+        note: "Fast access for staff, technicians, and customers."
+      };
   return `
     <div class="scan-action-copy">
-      <strong>Scan actions</strong>
-      <span>Fast access for staff, technicians, and customers.</span>
+      <strong>${customerScanCopy.title}</strong>
+      <span>${customerScanCopy.note}</span>
     </div>
     <div class="scan-action-buttons">
-      <a class="secondary" href="${escapeAttribute(getReportAssetUrl(asset.id))}">Report Issue</a>
+      <a class="secondary primary-action" href="${escapeAttribute(getReportAssetUrl(asset.id))}">Report Equipment Issue</a>
+      ${locationRecord ? `<a class="secondary" href="${escapeAttribute(getReportLocationUrl(locationRecord.id))}">Report Area Issue</a>` : ""}
       ${manualUrl ? `<a class="secondary" href="${escapeAttribute(manualUrl)}" target="_blank" rel="noopener">Open Manual</a>` : ""}
       <button type="button" class="secondary" data-scroll-target="pmForm">Checklist</button>
       <button type="button" class="secondary" data-scroll-target="assetGalleryPanel">Photos</button>

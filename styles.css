@@ -107,6 +107,22 @@ body {
   line-height: 1.35;
 }
 
+.login-qr-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.login-qr-actions .primary-action {
+  color: white;
+  background: linear-gradient(180deg, #0b806e 0%, var(--accent) 100%);
+  border-color: var(--accent);
+}
+
+.login-qr-actions .primary-action:hover {
+  color: white;
+  background: var(--accent-dark);
+}
+
 .access-request {
   padding-top: 12px;
   border-top: 1px solid var(--line);
@@ -988,6 +1004,17 @@ textarea {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.scan-action-buttons .primary-action {
+  color: white;
+  background: linear-gradient(180deg, #0b806e 0%, var(--accent) 100%);
+  border-color: var(--accent);
+}
+
+.scan-action-buttons .primary-action:hover {
+  color: white;
+  background: var(--accent-dark);
 }
 
 .status-row {

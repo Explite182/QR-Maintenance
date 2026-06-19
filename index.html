@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260619-1145">
+  <link rel="stylesheet" href="styles.css?v=20260619-1200">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -54,8 +54,11 @@
       </form>
       <div id="loginQrReportPrompt" class="login-qr-report hidden">
         <strong>Reporting an issue?</strong>
-        <p>Send a photo and quick note for this scanned equipment without logging in.</p>
-        <button id="loginQrReportBtn" type="button" class="secondary">Report Issue Without Login</button>
+        <p>Send a photo and quick note without logging in.</p>
+        <div class="login-qr-actions">
+          <button id="loginQrReportBtn" type="button" class="secondary primary-action">Report Equipment Issue</button>
+          <button id="loginQrAreaReportBtn" type="button" class="secondary">Report Area Issue</button>
+        </div>
       </div>
       <form id="firstAdminForm" class="stack hidden">
         <p class="login-message">Create the first SiteWorks admin account.</p>
@@ -724,6 +727,6 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260619-1145"></script>
+  <script src="app.js?v=20260619-1200"></script>
 </body>
 </html>
