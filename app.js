@@ -41,6 +41,7 @@ let structuredSyncTimer = null;
 let structuredSyncActive = false;
 let authProfilesLoaded = false;
 let authProfilesLoading = false;
+let lastAuthError = "";
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -243,7 +244,18 @@ els.loginForm.addEventListener("submit", async (event) => {
   const user = await signInWithSupabase(els.loginUsername.value, els.loginPassword.value);
 
   if (!user) {
-    els.loginError.textContent = "Email or password is incorrect.";
+    const localUser = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
+    if (!localUser) {
+      els.loginError.textContent = lastAuthError || "Email or password is incorrect.";
+      return;
+    }
+    currentUser = localUser;
+    currentRole = localUser.role;
+    state.currentUserId = localUser.id;
+    saveState();
+    els.loginForm.reset();
+    els.loginError.textContent = "";
+    render();
     return;
   }
 
@@ -269,7 +281,7 @@ els.firstAdminForm.addEventListener("submit", async (event) => {
   els.firstAdminMessage.textContent = "Creating admin...";
   const user = await signUpSupabaseUser(email, password, name, "Admin", "");
   if (!user) {
-    els.firstAdminMessage.textContent = "Could not create admin. If email confirmation is on, confirm the email and then log in.";
+    els.firstAdminMessage.textContent = lastAuthError || "Could not create admin. If email confirmation is on, confirm the email and then log in.";
     return;
   }
   saveAuthSession(user.session);
@@ -2260,28 +2272,45 @@ function supabaseAuthFetch(path, options = {}, session = null) {
 }
 
 async function signInWithSupabase(email, password) {
+  lastAuthError = "";
   try {
     const response = await supabaseAuthFetch("token?grant_type=password", {
       method: "POST",
       body: JSON.stringify({ email: email.trim().toLowerCase(), password })
     });
     if (!response.ok) {
-      console.warn("Supabase sign in failed.", await response.text());
+      const errorText = await response.text();
+      lastAuthError = readableSupabaseError(errorText) || "Supabase login failed. Check the email, password, and Auth settings.";
+      console.warn("Supabase sign in failed.", errorText);
       return null;
     }
     const session = await response.json();
     saveAuthSession(session);
     const profile = await getProfileForAuthUser(session.user);
-    if (!profile) return null;
+    if (!profile) {
+      lastAuthError = "Login worked, but no SiteWorks profile was found for this user. Create the user from Admin & Settings or run the Supabase SQL.";
+      return null;
+    }
     upsertLocalUser(profile);
     return profile;
   } catch (error) {
+    lastAuthError = "Could not reach Supabase Auth. Local login will still work if this browser has a saved admin.";
     console.warn("Supabase sign in failed.", error);
     return null;
   }
 }
 
+function readableSupabaseError(errorText) {
+  try {
+    const error = JSON.parse(errorText);
+    return error.msg || error.message || error.error_description || error.error || "";
+  } catch {
+    return errorText || "";
+  }
+}
+
 async function signUpSupabaseUser(email, password, name, role, customerId) {
+  lastAuthError = "";
   try {
     const response = await supabaseAuthFetch("signup", {
       method: "POST",
@@ -2292,13 +2321,18 @@ async function signUpSupabaseUser(email, password, name, role, customerId) {
       })
     });
     if (!response.ok) {
-      console.warn("Supabase sign up failed.", await response.text());
+      const errorText = await response.text();
+      lastAuthError = readableSupabaseError(errorText) || "Supabase could not create this user.";
+      console.warn("Supabase sign up failed.", errorText);
       return null;
     }
     const authData = await response.json();
     const authUser = authData.user || authData;
     const session = authData.session || (authData.access_token ? authData : null);
-    if (!authUser?.id) return null;
+    if (!authUser?.id) {
+      lastAuthError = "Supabase created no user record. Check Auth email settings.";
+      return null;
+    }
     const profile = {
       id: authUser.id,
       username: authUser.email || email.trim().toLowerCase(),
