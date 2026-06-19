@@ -60,6 +60,7 @@ const els = {
   scanAccessBtn: document.getElementById("scanAccessBtn"),
   loginError: document.getElementById("loginError"),
   loginQrReportPrompt: document.getElementById("loginQrReportPrompt"),
+  loginQrReportMessage: document.getElementById("loginQrReportMessage"),
   loginQrReportBtn: document.getElementById("loginQrReportBtn"),
   loginQrAreaReportBtn: document.getElementById("loginQrAreaReportBtn"),
   firstAdminForm: document.getElementById("firstAdminForm"),
@@ -328,21 +329,24 @@ if (els.scanAccessBtn) {
 
 if (els.loginQrReportBtn) {
   els.loginQrReportBtn.addEventListener("click", () => {
-    const assetId = getAssetIdFromUrl();
-    if (!assetId) return;
-    hydrateAssetFromHash();
-    location.href = getReportAssetUrl(assetId);
+    const asset = getScannedReportAsset();
+    if (!asset) {
+      setLoginQrReportStatus(false);
+      return;
+    }
+    location.href = getReportAssetUrl(asset.id);
   });
 }
 
 if (els.loginQrAreaReportBtn) {
   els.loginQrAreaReportBtn.addEventListener("click", () => {
-    const assetId = getAssetIdFromUrl();
-    if (!assetId) return;
-    hydrateAssetFromHash();
-    const asset = getRawAsset(assetId);
+    const asset = getScannedReportAsset();
+    if (!asset) {
+      setLoginQrReportStatus(false);
+      return;
+    }
     if (!asset?.locationId) {
-      location.href = getReportAssetUrl(assetId);
+      location.href = getReportAssetUrl(asset.id);
       return;
     }
     location.href = getReportLocationUrl(asset.locationId);
@@ -1140,11 +1144,29 @@ function renderAuth() {
   els.loginScreen.classList.toggle("hidden", isReport || isLoggedIn);
   els.loginForm.classList.toggle("hidden", needsFirstAdmin);
   els.loginQrReportPrompt.classList.toggle("hidden", isReport || isLoggedIn || !hasScannedAsset);
+  if (!isReport && !isLoggedIn && hasScannedAsset) setLoginQrReportStatus(Boolean(getScannedReportAsset()));
   els.firstAdminForm.classList.toggle("hidden", !needsFirstAdmin);
   els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || !isLoggedIn));
   if (isReport || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
   els.currentUserRole.textContent = currentUser.role;
+}
+
+function getScannedReportAsset() {
+  const assetId = getAssetIdFromUrl();
+  if (!assetId) return null;
+  hydrateAssetFromHash();
+  return getRawAsset(assetId);
+}
+
+function setLoginQrReportStatus(isReady) {
+  if (!els.loginQrReportMessage) return;
+  els.loginQrReportMessage.textContent = isReady
+    ? "Send a photo and quick note without logging in."
+    : "This scanned link is missing equipment details. Please scan a printed SiteWorks QR label for an existing asset.";
+  [els.loginQrReportBtn, els.loginQrAreaReportBtn].forEach((button) => {
+    if (button) button.disabled = !isReady;
+  });
 }
 
 function showFirstAdminSetup(message = "") {
