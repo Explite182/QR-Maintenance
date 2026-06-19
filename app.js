@@ -43,6 +43,7 @@ let structuredSyncActive = false;
 let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
+let lastPublicReportError = "";
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -344,19 +345,22 @@ els.publicReportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const report = getReportContext();
   if (!report) return;
-  const photo = await readPhoto(els.publicReportPhoto.files[0]);
+  els.publicReportMessage.textContent = "Sending report...";
+  const photo = await readPublicReportPhoto(els.publicReportPhoto.files[0]);
   const note = els.publicReportNote.value.trim();
   const contact = els.publicReportContact.value.trim();
   const issue = createIssueFromPublicReport(report, note, contact, photo);
   const remoteId = await savePublicReportToSupabase(report, note, contact, photo);
+  if (!remoteId) {
+    els.publicReportMessage.textContent = lastPublicReportError || "Report was not sent. Please try again with a smaller photo or no photo.";
+    return;
+  }
   if (remoteId) issue.remoteReportId = remoteId;
   state.workOrders.unshift(issue);
   addActivity("Public issue reported", issue.title);
   saveState();
   els.publicReportForm.reset();
-  els.publicReportMessage.textContent = remoteId
-    ? "Report sent. Thank you."
-    : "Report saved on this device. Shared sync will start after Supabase setup is complete.";
+  els.publicReportMessage.textContent = "Report sent to SiteWorks. Thank you.";
 });
 
 els.accessRequestForm.addEventListener("submit", (event) => {
@@ -2411,6 +2415,7 @@ function createIssueFromPublicReport(report, note, contact, photo) {
 }
 
 async function savePublicReportToSupabase(report, note, contact, photo) {
+  lastPublicReportError = "";
   const payload = {
     equipment_id: report.asset?.id || null,
     customer_id: report.customer?.id || null,
@@ -2430,12 +2435,15 @@ async function savePublicReportToSupabase(report, note, contact, photo) {
       body: JSON.stringify(payload)
     });
     if (!response.ok) {
-      console.warn("Supabase public report save skipped.", await response.text());
+      const errorText = await response.text();
+      lastPublicReportError = "Report was not sent to SiteWorks. Try again with a smaller photo or no photo.";
+      console.warn("Supabase public report save skipped.", errorText);
       return "";
     }
     const data = await response.json();
     return data?.[0]?.id || "";
   } catch (error) {
+    lastPublicReportError = "Report was not sent. Check the phone connection and try again.";
     console.warn("Supabase public report save skipped.", error);
     return "";
   }
@@ -2461,6 +2469,7 @@ async function syncPublicReportsFromSupabase() {
     return;
   }
   const added = (data || []).reduce((count, report) => {
+    if (isCodexTestPublicReport(report)) return count;
     if (state.workOrders.some((item) => item.remoteReportId === report.id)) return count;
     state.workOrders.unshift(createIssueFromRemoteReport(report));
     return count + 1;
@@ -2932,6 +2941,11 @@ async function upsertStructuredRows(table, rows) {
   if (!response.ok) {
     console.warn(`Structured Supabase sync skipped for ${table}.`, await response.text());
   }
+}
+
+function isCodexTestPublicReport(report) {
+  const note = String(report.note || "");
+  return note === "Codex connectivity test" || note.startsWith("Local submit test from Codex");
 }
 
 function createIssueFromRemoteReport(report) {
@@ -3467,6 +3481,13 @@ async function readPhoto(file) {
   if (!file) return null;
   const rawDataUrl = await fileToDataUrl(file);
   const dataUrl = await resizePhotoDataUrl(rawDataUrl, 1000, 0.72);
+  return { name: file.name, dataUrl };
+}
+
+async function readPublicReportPhoto(file) {
+  if (!file) return null;
+  const rawDataUrl = await fileToDataUrl(file);
+  const dataUrl = await resizePhotoDataUrl(rawDataUrl, 720, 0.58);
   return { name: file.name, dataUrl };
 }
 
