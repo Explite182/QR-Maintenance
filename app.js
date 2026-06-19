@@ -28,6 +28,7 @@ let assetTemplateFilter = "all";
 let assetSort = "due";
 let assetPageSize = 25;
 let assetPage = 1;
+let workOrderViewFilter = "active";
 let remoteReportsLoaded = false;
 let remoteReportsLoading = false;
 let lastActivityAt = Date.now();
@@ -36,6 +37,8 @@ let sharedStateReady = false;
 let sharedStateLoading = false;
 let sharedStateSaveTimer = null;
 let applyingSharedState = false;
+let structuredSyncTimer = null;
+let structuredSyncActive = false;
 let authProfilesLoaded = false;
 let authProfilesLoading = false;
 
@@ -150,6 +153,7 @@ const els = {
   selectedMeta: document.getElementById("selectedMeta"),
   selectedBadges: document.getElementById("selectedBadges"),
   selectedQr: document.getElementById("selectedQr"),
+  scanActionPanel: document.getElementById("scanActionPanel"),
   selectedTemplate: document.getElementById("selectedTemplate"),
   assetPhotoPanel: document.getElementById("assetPhotoPanel"),
   assetManualPanel: document.getElementById("assetManualPanel"),
@@ -166,6 +170,10 @@ const els = {
   editAssetModel: document.getElementById("editAssetModel"),
   editAssetSerial: document.getElementById("editAssetSerial"),
   editAssetInstallDate: document.getElementById("editAssetInstallDate"),
+  editAssetVendor: document.getElementById("editAssetVendor"),
+  editAssetVendorContact: document.getElementById("editAssetVendorContact"),
+  editAssetWarrantyDate: document.getElementById("editAssetWarrantyDate"),
+  editAssetParts: document.getElementById("editAssetParts"),
   editAssetDocumentUrl: document.getElementById("editAssetDocumentUrl"),
   editAssetManualFile: document.getElementById("editAssetManualFile"),
   assetManualUploadStatus: document.getElementById("assetManualUploadStatus"),
@@ -191,6 +199,10 @@ const els = {
   overdue: document.getElementById("overdue"),
   completed: document.getElementById("completed"),
   openWorkOrders: document.getElementById("openWorkOrders"),
+  highPriorityIssues: document.getElementById("highPriorityIssues"),
+  waitingPartsIssues: document.getElementById("waitingPartsIssues"),
+  reportedIssues: document.getElementById("reportedIssues"),
+  activeLocations: document.getElementById("activeLocations"),
   workOrderCount: document.getElementById("workOrderCount"),
   workOrderList: document.getElementById("workOrderList"),
   assetWorkOrderCount: document.getElementById("assetWorkOrderCount"),
@@ -704,9 +716,19 @@ els.assetPageSize.addEventListener("change", () => {
 document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     const filter = button.dataset.dashboardFilter;
-    if (filter === "workOrders") {
+    const issueFilters = {
+      workOrders: "active",
+      highPriority: "highPriority",
+      waitingParts: "waitingParts",
+      reportedIssues: "reported"
+    };
+    if (issueFilters[filter]) {
+      workOrderViewFilter = issueFilters[filter];
       assetSort = "workOrders";
       assetStatusFilter = "all";
+      render();
+      document.querySelector(".work-orders-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
     } else {
       assetStatusFilter = filter;
       assetSort = filter === "all" ? "due" : assetSort;
@@ -832,6 +854,10 @@ els.assetInfoForm.addEventListener("submit", async (event) => {
   asset.model = els.editAssetModel.value.trim();
   asset.serial = els.editAssetSerial.value.trim();
   asset.installDate = els.editAssetInstallDate.value;
+  asset.vendor = els.editAssetVendor.value.trim();
+  asset.vendorContact = els.editAssetVendorContact.value.trim();
+  asset.warrantyDate = els.editAssetWarrantyDate.value;
+  asset.parts = els.editAssetParts.value.trim();
   asset.documentUrl = els.editAssetDocumentUrl.value.trim();
   asset.notes = els.editAssetNotes.value.trim();
   if (replacementPhoto) asset.photo = replacementPhoto;
@@ -939,12 +965,24 @@ els.restoreBackupBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (event) => {
+  const scrollButton = event.target.closest("[data-scroll-target]");
+  if (scrollButton) {
+    document.getElementById(scrollButton.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
   const button = event.target.closest("[data-work-order-action]");
   if (!button || !canManageWorkOrders()) return;
   const workOrder = getWorkOrder(button.dataset.workOrderId);
   if (!workOrder) return;
 
   workOrder.status = button.dataset.workOrderAction;
+  if (workOrder.status === "Resolved" || workOrder.status === "Closed") {
+    workOrder.resolvedAt = new Date().toISOString();
+  }
+  if (workOrder.status !== "Closed") {
+    workOrder.resolvedAt = workOrder.status === "Resolved" ? workOrder.resolvedAt : "";
+  }
   workOrder.updatedAt = new Date().toISOString();
   addActivity("Work order updated", `${workOrder.assetName} - ${workOrder.status}`);
   saveState();
@@ -998,6 +1036,7 @@ function render() {
   els.selectedAssetThumb.innerHTML = renderAssetThumbnail(asset);
   els.selectedTemplate.textContent = template?.name || "Template missing";
   els.selectedQr.innerHTML = `<img alt="QR code for ${escapeHtml(asset.name)}" src="${qrUrl(getAssetUrl(asset.id))}">`;
+  els.scanActionPanel.innerHTML = renderScanActionPanel(asset);
   els.nextPm.textContent = formatDate(due.nextDate);
   els.nextPmInput.value = asset.nextPmDate || toDateInputValue(due.nextDate);
   els.clearNextPmBtn.disabled = !asset.nextPmDate || !canManageWorkOrders();
@@ -1268,10 +1307,15 @@ function renderEditAssetLocationOptions(selectedLocationId = "") {
 function renderDashboard() {
   const assets = filteredAssets();
   const dueInfos = assets.map(getDueInfo);
+  const activeIssues = filteredWorkOrders().filter((item) => item.status !== "Closed");
   els.dueToday.textContent = dueInfos.filter((item) => item.daysUntil <= 0).length;
   els.overdue.textContent = dueInfos.filter((item) => item.daysUntil < 0).length;
   els.completed.textContent = assets.reduce((count, asset) => count + asset.history.length, 0);
-  els.openWorkOrders.textContent = filteredWorkOrders().filter((item) => item.status !== "Closed").length;
+  els.openWorkOrders.textContent = activeIssues.length;
+  els.highPriorityIssues.textContent = activeIssues.filter((item) => item.priority === "High").length;
+  els.waitingPartsIssues.textContent = activeIssues.filter((item) => item.status === "Waiting parts").length;
+  els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
+  els.activeLocations.textContent = locationsVisibleInCurrentView().length;
 }
 
 function renderAssetTableControls() {
@@ -1363,6 +1407,22 @@ function renderAssetBadges(asset, due = getDueInfo(asset)) {
   return badges.join("");
 }
 
+function renderScanActionPanel(asset) {
+  const manualUrl = asset.manualFile?.dataUrl || safeDocumentLink(asset.documentUrl);
+  return `
+    <div class="scan-action-copy">
+      <strong>Scan actions</strong>
+      <span>Fast access for staff, technicians, and customers.</span>
+    </div>
+    <div class="scan-action-buttons">
+      <a class="secondary" href="${escapeAttribute(getReportAssetUrl(asset.id))}">Report Issue</a>
+      ${manualUrl ? `<a class="secondary" href="${escapeAttribute(manualUrl)}" target="_blank" rel="noopener">Open Manual</a>` : ""}
+      <button type="button" class="secondary" data-scroll-target="pmForm">Checklist</button>
+      <button type="button" class="secondary" data-scroll-target="assetGalleryPanel">Photos</button>
+    </div>
+  `;
+}
+
 function renderStatusBadge(label, className) {
   return `<span class="status-badge ${badgeClassForStatus(className)}">${escapeHtml(label)}</span>`;
 }
@@ -1443,7 +1503,7 @@ function renderPublicReport() {
 }
 
 function renderWorkOrders() {
-  const workOrders = filteredWorkOrders().filter((item) => item.status !== "Closed");
+  const workOrders = filterWorkOrdersForView(filteredWorkOrders());
   els.workOrderCount.textContent = workOrders.length;
   els.workOrderList.innerHTML = workOrders.length
     ? workOrders.map(renderWorkOrderItem).join("")
@@ -1456,6 +1516,14 @@ function renderAssetWorkOrders(asset) {
   els.assetWorkOrderList.innerHTML = workOrders.length
     ? workOrders.map(renderWorkOrderItem).join("")
     : `<p class="muted">No issues for this equipment.</p>`;
+}
+
+function filterWorkOrdersForView(workOrders) {
+  const active = workOrders.filter((item) => item.status !== "Closed");
+  if (workOrderViewFilter === "highPriority") return active.filter((item) => item.priority === "High");
+  if (workOrderViewFilter === "waitingParts") return active.filter((item) => item.status === "Waiting parts");
+  if (workOrderViewFilter === "reported") return active.filter((item) => item.source === "Public QR report");
+  return active;
 }
 
 function renderAssetList() {
@@ -1505,6 +1573,10 @@ function matchesAssetSearch(asset) {
     asset.criticality,
     asset.documentUrl,
     asset.manualFile?.name,
+    asset.vendor,
+    asset.vendorContact,
+    asset.warrantyDate,
+    asset.parts,
     asset.notes,
     customer?.name,
     locationRecord?.name,
@@ -1556,6 +1628,10 @@ function renderAssetDetails(asset) {
     ["Model", asset.model],
     ["Serial", asset.serial],
     ["Install date", asset.installDate],
+    ["Vendor / service company", asset.vendor],
+    ["Vendor contact", asset.vendorContact],
+    ["Warranty expires", asset.warrantyDate],
+    ["Parts / supply notes", asset.parts],
     ["Notes", asset.notes]
   ];
   return rows.map(([label, value]) => `
@@ -1659,6 +1735,10 @@ function renderAssetInfoForm(asset) {
   els.editAssetModel.value = asset.model || "";
   els.editAssetSerial.value = asset.serial || "";
   els.editAssetInstallDate.value = asset.installDate || "";
+  els.editAssetVendor.value = asset.vendor || "";
+  els.editAssetVendorContact.value = asset.vendorContact || "";
+  els.editAssetWarrantyDate.value = asset.warrantyDate || "";
+  els.editAssetParts.value = asset.parts || "";
   els.editAssetDocumentUrl.value = asset.documentUrl || "";
   els.editAssetNotes.value = asset.notes || "";
   els.editAssetManualFile.value = "";
@@ -1692,18 +1772,33 @@ function renderWorkOrderItem(item) {
   const assetAction = asset
     ? `<button class="secondary mini" type="button" data-asset-link="${item.assetId}">View Equipment</button>`
     : "";
-  const actions = item.status === "Closed" ? "" : `
+  const actions = item.status === "Closed" ? `
+    <div class="work-order-actions">
+      <button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>
+    </div>
+  ` : `
     <div class="work-order-actions">
       ${item.status === "Open" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
+      ${item.status !== "Waiting parts" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
+      ${item.status !== "Resolved" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
       <button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>
     </div>
   `;
+  const statusClass = item.status === "Closed"
+    ? "badge-muted"
+    : item.status === "Waiting parts"
+      ? "badge-warn"
+      : item.status === "Resolved"
+        ? "badge-ok"
+        : item.priority === "High"
+          ? "badge-danger"
+          : "badge-warn";
   return `
     <article class="work-order-item">
       <header>
         <div>
           <strong>${escapeHtml(item.title)}</strong>
-          <span>${escapeHtml(item.priority)} | ${escapeHtml(item.status)} | Due ${formatDate(new Date(item.dueAt))}</span>
+          <span><span class="status-badge ${statusClass}">${escapeHtml(item.status)}</span> ${escapeHtml(item.priority)} priority | Due ${formatDate(new Date(item.dueAt))}</span>
         </div>
         ${assetAction}
       </header>
@@ -1922,6 +2017,14 @@ function hasSetupUsers() {
 function visibleCustomers() {
   if (currentRole !== "Customer") return state.customers;
   return state.customers.filter((customer) => customer.id === currentUser?.customerId);
+}
+
+function locationsVisibleInCurrentView() {
+  const customerIds = new Set(visibleCustomers().map((customer) => customer.id));
+  return state.locations.filter((locationRecord) =>
+    customerIds.has(locationRecord.customerId) &&
+    (selectedLocationId === "all" || locationRecord.id === selectedLocationId)
+  );
 }
 
 function canSeeCustomer(customerId) {
@@ -2437,6 +2540,110 @@ function hasSharedMaintenanceData(candidate) {
   );
 }
 
+function scheduleStructuredDataSync(delay = 2000) {
+  if (applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
+  window.clearTimeout(structuredSyncTimer);
+  structuredSyncTimer = window.setTimeout(syncStructuredDataToSupabase, delay);
+}
+
+async function syncStructuredDataToSupabase() {
+  if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
+  structuredSyncActive = true;
+  try {
+    await upsertStructuredRows("customers", state.customers.map((customer) => ({
+      id: customer.id,
+      name: customer.name || "",
+      created_at: customer.createdAt || new Date().toISOString(),
+      updated_at: customer.updatedAt || state.updatedAt || new Date().toISOString()
+    })));
+
+    await upsertStructuredRows("locations", state.locations.map((locationRecord) => ({
+      id: locationRecord.id,
+      customer_id: locationRecord.customerId,
+      name: locationRecord.name || "",
+      created_at: locationRecord.createdAt || new Date().toISOString(),
+      updated_at: locationRecord.updatedAt || state.updatedAt || new Date().toISOString()
+    })));
+
+    await upsertStructuredRows("pm_templates", state.templates.map((template) => ({
+      id: template.id,
+      name: template.name || "",
+      items: template.items || [],
+      created_at: template.createdAt || new Date().toISOString(),
+      updated_at: template.updatedAt || state.updatedAt || new Date().toISOString()
+    })));
+
+    await upsertStructuredRows("assets", state.assets.map((asset) => ({
+      id: asset.id,
+      customer_id: asset.customerId,
+      location_id: asset.locationId,
+      template_id: asset.templateId || null,
+      name: asset.name || "",
+      frequency_days: Number(asset.frequencyDays || 30),
+      next_pm_date: asset.nextPmDate || null,
+      manufacturer: asset.manufacturer || "",
+      model: asset.model || "",
+      serial: asset.serial || "",
+      install_date: asset.installDate || null,
+      type: asset.type || "",
+      criticality: asset.criticality || "",
+      document_url: asset.documentUrl || "",
+      vendor: asset.vendor || "",
+      vendor_contact: asset.vendorContact || "",
+      warranty_date: asset.warrantyDate || null,
+      parts: asset.parts || "",
+      notes: asset.notes || "",
+      created_at: asset.createdAt || new Date().toISOString(),
+      updated_at: asset.updatedAt || state.updatedAt || new Date().toISOString()
+    })));
+
+    await upsertStructuredRows("work_orders", state.workOrders.map((item) => ({
+      id: item.id,
+      asset_id: item.assetId || null,
+      customer_id: item.customerId || null,
+      location_id: item.locationId || null,
+      title: item.title || "",
+      priority: item.priority || "Medium",
+      status: item.status || "Open",
+      source: item.source || "",
+      area_name: item.areaName || "",
+      notes: item.notes || "",
+      due_at: item.dueAt || null,
+      resolved_at: item.resolvedAt || null,
+      created_at: item.createdAt || new Date().toISOString(),
+      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString()
+    })));
+
+    const historyRows = state.assets.flatMap((asset) => (asset.history || []).map((item) => ({
+      id: item.id,
+      asset_id: asset.id,
+      technician: item.technician || "",
+      result: item.result || "",
+      reading: item.reading || "",
+      notes: item.notes || "",
+      completed_checks: item.completedChecks || [],
+      completed_at: item.completedAt || new Date().toISOString()
+    })));
+    await upsertStructuredRows("pm_history", historyRows);
+  } catch (error) {
+    console.warn("Structured Supabase sync skipped.", error);
+  } finally {
+    structuredSyncActive = false;
+  }
+}
+
+async function upsertStructuredRows(table, rows) {
+  if (!rows.length) return;
+  const response = await supabaseFetch(`${table}?on_conflict=id`, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify(rows)
+  });
+  if (!response.ok) {
+    console.warn(`Structured Supabase sync skipped for ${table}.`, await response.text());
+  }
+}
+
 function createIssueFromRemoteReport(report) {
   const asset = report.equipment_id ? getRawAsset(report.equipment_id) : null;
   const customerId = asset?.customerId || report.customer_id || "";
@@ -2616,6 +2823,10 @@ function normalizeState(input) {
     model: asset.model || "",
     serial: asset.serial || "",
     installDate: asset.installDate || "",
+    vendor: asset.vendor || "",
+    vendorContact: asset.vendorContact || "",
+    warrantyDate: asset.warrantyDate || "",
+    parts: asset.parts || "",
     type: asset.type || "",
     criticality: asset.criticality || "",
     documentUrl: asset.documentUrl || "",
@@ -2656,7 +2867,7 @@ function emptyState() {
 }
 
 function defaultBackupLocation() {
-  return "C:\\Users\\expli\\Documents\\QR Maintenance Backups\\Data Backups";
+  return "C:\\Users\\expli\\Documents\\SiteWorks Backups\\Data Backups";
 }
 
 function guessNetworkQrUrl() {
@@ -2670,6 +2881,7 @@ function saveState() {
   state.updatedAt = new Date().toISOString();
   persistLocalStateOnly();
   scheduleSharedStateSave();
+  scheduleStructuredDataSync();
 }
 
 function persistLocalStateOnly() {
@@ -2744,8 +2956,8 @@ function exportDataBackup(reason = "manual") {
   const link = document.createElement("a");
   link.href = url;
   link.download = reason === "logout"
-    ? `qr-maintenance-logout-backup-${timestampForFile()}.json`
-    : `qr-maintenance-data-backup-${timestampForFile()}.json`;
+    ? `siteworks-logout-backup-${timestampForFile()}.json`
+    : `siteworks-data-backup-${timestampForFile()}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -2759,14 +2971,14 @@ function exportCompleteBackup() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `qr-maintenance-complete-backup-${timestampForFile()}.json`;
+  link.download = `siteworks-complete-backup-${timestampForFile()}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
 
 function buildBackupPayload(reason) {
   return {
-    app: "QR Maintenance",
+    app: "SiteWorks",
     version: 4,
     backupReason: reason,
     exportedAt: new Date().toISOString(),
@@ -2818,7 +3030,7 @@ async function importDataBackup(file) {
     if (selectedId) location.hash = `asset/${selectedId}`;
     render();
   } catch {
-    alert("That backup file could not be imported. Please choose a valid QR Maintenance data backup JSON file.");
+    alert("That backup file could not be imported. Please choose a valid SiteWorks data backup JSON file.");
   }
 }
 
@@ -3064,7 +3276,7 @@ function downloadCsv(asset) {
 
 function downloadAssetRegisterCsv(assets) {
   const rows = [
-    ["Customer", "Location", "Equipment", "Status", "Next Maintenance", "Open Issues", "Template", "Equipment Type", "Criticality", "Manufacturer", "Model", "Serial", "Install Date", "Manual / Document Link", "Uploaded Manual File", "Photo File", "Notes"],
+    ["Customer", "Location", "Equipment", "Status", "Next Maintenance", "Open Issues", "Template", "Equipment Type", "Criticality", "Manufacturer", "Model", "Serial", "Install Date", "Vendor", "Vendor Contact", "Warranty Expires", "Parts / Supply Notes", "Manual / Document Link", "Uploaded Manual File", "Photo File", "Notes"],
     ...assets.map((asset) => {
       const customer = getCustomer(asset.customerId);
       const locationRecord = getLocation(asset.locationId);
@@ -3084,6 +3296,10 @@ function downloadAssetRegisterCsv(assets) {
         asset.model,
         asset.serial,
         asset.installDate,
+        asset.vendor,
+        asset.vendorContact,
+        asset.warrantyDate,
+        asset.parts,
         asset.documentUrl,
         asset.manualFile?.name || "",
         asset.photo?.name || "",

@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>QR Preventative Maintenance Prototype</title>
-  <link rel="stylesheet" href="styles.css?v=20260616-1915">
+  <title>SiteWorks</title>
+  <link rel="stylesheet" href="styles.css?v=20260619-1125">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
     <div class="report-card">
       <div>
-        <p class="eyebrow">Report an issue</p>
+        <p class="eyebrow">Quick facility report</p>
         <h1 id="reportTitle">Send a quick report</h1>
         <p id="reportContext" class="report-context"></p>
       </div>
@@ -21,16 +21,16 @@
         </label>
         <label>
           Quick note
-          <textarea id="publicReportNote" rows="4" required placeholder="What needs attention?"></textarea>
+          <textarea id="publicReportNote" rows="4" required placeholder="What is wrong, where is it, or what should the team know?"></textarea>
         </label>
         <label>
           Name or contact
           <input id="publicReportContact" placeholder="Optional">
         </label>
-        <button type="submit">Send Report</button>
+        <button type="submit">Send to Maintenance</button>
         <p id="publicReportMessage" class="login-message"></p>
       </form>
-      <small class="report-note">This prototype saves the report in this browser. The production version will send it directly to your service team.</small>
+      <small class="report-note">No app download or login is required. Add a photo and note so the maintenance team can respond quickly.</small>
     </div>
   </section>
 
@@ -38,7 +38,7 @@
     <div class="login-card">
       <div>
         <p class="eyebrow">Preventative Maintenance</p>
-        <h1>QR Maintenance</h1>
+        <h1>SiteWorks</h1>
       </div>
       <form id="loginForm" class="stack">
         <label>
@@ -106,7 +106,7 @@
   <header class="app-header app-only hidden">
     <div>
       <p class="eyebrow">Preventative Maintenance</p>
-      <h1>QR Maintenance</h1>
+      <h1>SiteWorks</h1>
     </div>
     <div class="header-actions">
       <div class="user-chip">
@@ -322,11 +322,11 @@
             <form id="backupLocationForm" class="stack compact-form">
               <label>
                 Folder path
-                <input id="backupLocation" value="C:\Users\expli\Documents\QR Maintenance Backups\Data Backups" placeholder="C:\Users\expli\Documents\QR Maintenance Backups\Data Backups">
+                <input id="backupLocation" value="C:\Users\expli\Documents\SiteWorks Backups\Data Backups" placeholder="C:\Users\expli\Documents\SiteWorks Backups\Data Backups">
               </label>
               <button type="submit" class="secondary">Save Backup Location</button>
             </form>
-            <small>Place exported data files here. Manual export: qr-maintenance-data-backup-YYYYMMDD-HHMMSS.json. Logout backup: qr-maintenance-logout-backup-YYYYMMDD-HHMMSS.json.</small>
+            <small>Place exported data files here. Manual export: siteworks-data-backup-YYYYMMDD-HHMMSS.json. Complete backup: siteworks-complete-backup-YYYYMMDD-HHMMSS.json.</small>
           </div>
           <form id="qrBaseUrlForm" class="stack compact-form">
             <label>
@@ -380,6 +380,22 @@
           <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
             <span id="openWorkOrders">0</span>
             <p>Open issues</p>
+          </button>
+          <button type="button" class="metric-card metric-danger" data-dashboard-filter="highPriority">
+            <span id="highPriorityIssues">0</span>
+            <p>High priority</p>
+          </button>
+          <button type="button" class="metric-card metric-warn" data-dashboard-filter="waitingParts">
+            <span id="waitingPartsIssues">0</span>
+            <p>Waiting parts</p>
+          </button>
+          <button type="button" class="metric-card metric-neutral" data-dashboard-filter="reportedIssues">
+            <span id="reportedIssues">0</span>
+            <p>Reported by QR</p>
+          </button>
+          <button type="button" class="metric-card metric-ok" data-dashboard-filter="all">
+            <span id="activeLocations">0</span>
+            <p>Locations</p>
           </button>
         </div>
       </section>
@@ -486,6 +502,7 @@
           </div>
           <div id="selectedQr" class="qr-box" aria-label="Asset QR code"></div>
         </div>
+        <div id="scanActionPanel" class="scan-action-panel"></div>
 
         <div class="status-row">
           <div class="status-tile">
@@ -617,6 +634,26 @@
                   <input id="editAssetInstallDate" type="date">
                 </label>
               </div>
+              <div class="form-grid">
+                <label>
+                  Vendor / service company
+                  <input id="editAssetVendor" placeholder="ABC Mechanical">
+                </label>
+                <label>
+                  Vendor contact
+                  <input id="editAssetVendorContact" placeholder="604-555-0100">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Warranty expires
+                  <input id="editAssetWarrantyDate" type="date">
+                </label>
+                <label>
+                  Parts / supply notes
+                  <input id="editAssetParts" placeholder="Belt A42, filter 20x20x2">
+                </label>
+              </div>
               <label>
                 Manual / document link
                 <input id="editAssetDocumentUrl" type="url" placeholder="https://example.com/manual.pdf">
@@ -677,6 +714,6 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260619-0915"></script>
+  <script src="app.js?v=20260619-1125"></script>
 </body>
 </html>

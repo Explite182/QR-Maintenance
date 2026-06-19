@@ -1,6 +1,6 @@
-# QR Preventative Maintenance Prototype
+# SiteWorks
 
-This is a static browser prototype for proving a QR-code preventative maintenance workflow.
+SiteWorks is a facility maintenance and asset care prototype for proving QR-code reporting, preventative maintenance, and shared facility operations workflows.
 
 ## Run It
 
@@ -77,6 +77,7 @@ Fresh projects no longer include preset login accounts. On first use, create the
 ## What It Proves
 
 - Equipment registry
+- Facility-style shared database table structure for customers, locations, templates, assets, work orders, PM history, and asset files
 - Customer records
 - Customer-specific locations
 - Supabase Auth email/password login screen
@@ -89,10 +90,12 @@ Fresh projects no longer include preset login accounts. On first use, create the
 - Customer users can only see equipment and issues for their assigned customer
 - Customer role hides Admin & Settings
 - Public customer/member QR report form for quick photo and note submissions
+- Mobile scan action panel with Report Issue, Open Manual, Checklist, and Photos shortcuts
 - Report QR labels for equipment and location/area issue reporting
 - Activity log for setup, equipment, maintenance, issue, backup, import, and restore actions
 - Custom maintenance checklist templates
 - Equipment detail records with photo, type, criticality, manufacturer, model, serial, install date, manual link, and notes
+- Equipment knowledge base fields for vendor, vendor contact, warranty date, and parts/supply notes
 - Uploaded PDF manual storage for each equipment record, with manual links kept as an option
 - Existing equipment editing for name, customer, location, maintenance template, frequency, photo, and details
 - Existing equipment photo replacement updates immediately when a new photo is selected
@@ -104,6 +107,7 @@ Fresh projects no longer include preset login accounts. On first use, create the
 - Uploaded PDF manuals are limited to about 4 MB for the browser prototype; use manual links for larger manuals
 - Scalable equipment register table
 - Cleaner maintenance overview dashboard with quick filter cards
+- Facility dashboard cards for high-priority issues, waiting parts, QR-reported issues, and active locations
 - Search across equipment, customer, location, type, criticality, model, serial, manual link, and notes
 - Status/template filters, sorting, pagination, and filtered CSV exports
 - QR-linked asset records
@@ -116,6 +120,7 @@ Fresh projects no longer include preset login accounts. On first use, create the
 - Top-of-equipment photo thumbnail for quick visual identification
 - Automatic issue creation from failed maintenance
 - Issue status tracking
+- Expanded issue lifecycle: Open, In progress, Waiting parts, Resolved, Closed, and Reopen
 - Maintenance history
 - Basic reporting/export
 - Full data backup export/import
@@ -129,7 +134,7 @@ The app now keeps rolling automatic data snapshots in browser storage every time
 
 Recommended visible backup folder, editable by Admin users in **Admin & Settings > Backups & QR**:
 
-`C:\Users\expli\Documents\QR Maintenance Backups\Data Backups`
+`C:\Users\expli\Documents\SiteWorks Backups\Data Backups`
 
 Use **Export Data** regularly to download a portable `.json` backup file. Use **Import Data** to restore one of those files later.
 
