@@ -5,6 +5,7 @@ const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
 const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
 const SHARED_APP_STATE_ID = "main";
+const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
@@ -35,6 +36,8 @@ let sharedStateReady = false;
 let sharedStateLoading = false;
 let sharedStateSaveTimer = null;
 let applyingSharedState = false;
+let authProfilesLoaded = false;
+let authProfilesLoading = false;
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -205,6 +208,7 @@ const els = {
 
 render();
 setupInactivityLogout();
+loadSupabaseProfiles();
 loadSharedStateFromSupabase();
 
 window.addEventListener("hashchange", () => {
@@ -221,12 +225,13 @@ window.addEventListener("hashchange", () => {
   render();
 });
 
-els.loginForm.addEventListener("submit", (event) => {
+els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const user = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
+  els.loginError.textContent = "Signing in...";
+  const user = await signInWithSupabase(els.loginUsername.value, els.loginPassword.value);
 
   if (!user) {
-    els.loginError.textContent = "Username or password is incorrect.";
+    els.loginError.textContent = "Email or password is incorrect.";
     return;
   }
 
@@ -239,30 +244,28 @@ els.loginForm.addEventListener("submit", (event) => {
   render();
 });
 
-els.firstAdminForm.addEventListener("submit", (event) => {
+els.firstAdminForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (hasSetupUsers()) return;
-  const username = els.firstAdminUsername.value.trim();
-  const name = els.firstAdminName.value.trim() || username;
+  const email = els.firstAdminUsername.value.trim().toLowerCase();
+  const name = els.firstAdminName.value.trim() || email;
   const password = els.firstAdminPassword.value;
-  if (!username || !password.trim()) {
-    els.firstAdminMessage.textContent = "Enter a username and password.";
+  if (!email || !password.trim()) {
+    els.firstAdminMessage.textContent = "Enter an email and password.";
     return;
   }
-  const user = {
-    id: crypto.randomUUID(),
-    username,
-    name,
-    password,
-    role: "Admin",
-    customerId: "",
-    createdAt: new Date().toISOString()
-  };
-  state.users.push(user);
+  els.firstAdminMessage.textContent = "Creating admin...";
+  const user = await signUpSupabaseUser(email, password, name, "Admin", "");
+  if (!user) {
+    els.firstAdminMessage.textContent = "Could not create admin. If email confirmation is on, confirm the email and then log in.";
+    return;
+  }
+  saveAuthSession(user.session);
   currentUser = user;
   currentRole = user.role;
   state.currentUserId = user.id;
-  addActivity("First admin created", username);
+  upsertLocalUser(user);
+  addActivity("First admin created", email);
   saveState();
   els.firstAdminForm.reset();
   els.firstAdminMessage.textContent = "";
@@ -372,6 +375,7 @@ function logoutCurrentUser(reason = "manual") {
   currentUser = null;
   currentRole = "Customer";
   state.currentUserId = "";
+  clearAuthSession();
   if (!isQrAccessUrl()) {
     history.replaceState(null, "", getCurrentPageUrl());
   }
@@ -415,25 +419,27 @@ els.templateForm.addEventListener("submit", (event) => {
   render();
 });
 
-els.userForm.addEventListener("submit", (event) => {
+els.userForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSetup()) return;
-  const username = els.newUsername.value.trim();
+  const username = els.newUsername.value.trim().toLowerCase();
   if (state.users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
-    alert("That username already exists.");
+    alert("That email already exists.");
     return;
   }
 
-  const newUser = {
-    id: crypto.randomUUID(),
+  const newUser = await signUpSupabaseUser(
     username,
-    name: els.newUserName.value.trim(),
-    password: els.newUserPassword.value,
-    role: els.newUserRole.value,
-    customerId: els.newUserRole.value === "Customer" ? els.newUserCustomer.value : "",
-    createdAt: new Date().toISOString()
-  };
-  state.users.push(newUser);
+    els.newUserPassword.value,
+    els.newUserName.value.trim(),
+    els.newUserRole.value,
+    els.newUserRole.value === "Customer" ? els.newUserCustomer.value : ""
+  );
+  if (!newUser) {
+    alert("Could not create that user. Check that Supabase Auth allows email signups, then try again.");
+    return;
+  }
+  upsertLocalUser(newUser);
   addActivity("User added", `${newUser.username} (${newUser.role})`);
   const sourceRequest = state.accessRequests.find((request) => request.id === els.userForm.dataset.requestId);
   if (sourceRequest) {
@@ -447,7 +453,7 @@ els.userForm.addEventListener("submit", (event) => {
   render();
 });
 
-els.userList.addEventListener("submit", (event) => {
+els.userList.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSetup()) return;
   const form = event.target.closest("form[data-user-id]");
@@ -458,7 +464,6 @@ els.userList.addEventListener("submit", (event) => {
   const formData = new FormData(form);
   const username = String(formData.get("username") || "").trim();
   const name = String(formData.get("name") || "").trim();
-  const password = String(formData.get("password") || "");
   const role = String(formData.get("role") || "Customer");
   const customerId = role === "Customer" ? String(formData.get("customerId") || "") : "";
   const duplicateUsername = state.users.some((item) =>
@@ -479,8 +484,9 @@ els.userList.addEventListener("submit", (event) => {
   user.name = name;
   user.role = role;
   user.customerId = customerId;
-  if (password.trim()) user.password = password;
+  user.password = "";
   user.updatedAt = new Date().toISOString();
+  await saveSupabaseProfile(user);
   if (currentUser?.id === user.id) {
     currentUser = user;
     currentRole = user.role;
@@ -490,7 +496,7 @@ els.userList.addEventListener("submit", (event) => {
   render();
 });
 
-els.userList.addEventListener("click", (event) => {
+els.userList.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-user-action]");
   if (!button || !canManageSetup()) return;
   const user = state.users.find((item) => item.id === button.dataset.userId);
@@ -506,6 +512,7 @@ els.userList.addEventListener("click", (event) => {
       return;
     }
     if (!confirm(`Delete user ${user.username}?`)) return;
+    await deleteSupabaseProfile(user.id);
     addActivity("User deleted", `${user.username} (${user.role})`);
     state.users = state.users.filter((item) => item.id !== user.id);
     saveState();
@@ -1113,7 +1120,7 @@ function renderUserItem(user) {
       </summary>
       <form class="stack compact-form" data-user-id="${escapeAttribute(user.id)}">
         <label>
-          Username
+          Email
           <input name="username" required value="${escapeAttribute(user.username)}" ${disabled}>
         </label>
         <label>
@@ -1121,8 +1128,8 @@ function renderUserItem(user) {
           <input name="name" required value="${escapeAttribute(user.name || user.username)}" ${disabled}>
         </label>
         <label>
-          New password
-          <input name="password" type="password" placeholder="Leave blank to keep current password" ${disabled}>
+          Password
+          <input name="password" type="password" placeholder="Use Supabase password reset" disabled>
         </label>
         <label>
           Role
@@ -1908,7 +1915,8 @@ function canManageWorkOrders() {
 }
 
 function hasSetupUsers() {
-  return state.users.some((user) => user.username !== "scan-customer");
+  if (!authProfilesLoaded) return true;
+  return state.users.some((user) => user.username !== "scan-customer" && !user.password);
 }
 
 function visibleCustomers() {
@@ -2134,6 +2142,182 @@ function supabaseFetch(path, options = {}) {
     ...(options.headers || {})
   };
   return fetch(url, { ...options, headers });
+}
+
+function supabaseAuthFetch(path, options = {}, session = null) {
+  const url = `${SUPABASE_URL}/auth/v1/${path}`;
+  const token = session?.access_token || SUPABASE_ANON_KEY;
+  const headers = {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+  return fetch(url, { ...options, headers });
+}
+
+async function signInWithSupabase(email, password) {
+  try {
+    const response = await supabaseAuthFetch("token?grant_type=password", {
+      method: "POST",
+      body: JSON.stringify({ email: email.trim().toLowerCase(), password })
+    });
+    if (!response.ok) {
+      console.warn("Supabase sign in failed.", await response.text());
+      return null;
+    }
+    const session = await response.json();
+    saveAuthSession(session);
+    const profile = await getProfileForAuthUser(session.user);
+    if (!profile) return null;
+    upsertLocalUser(profile);
+    return profile;
+  } catch (error) {
+    console.warn("Supabase sign in failed.", error);
+    return null;
+  }
+}
+
+async function signUpSupabaseUser(email, password, name, role, customerId) {
+  try {
+    const response = await supabaseAuthFetch("signup", {
+      method: "POST",
+      body: JSON.stringify({
+        email: email.trim().toLowerCase(),
+        password,
+        data: { name }
+      })
+    });
+    if (!response.ok) {
+      console.warn("Supabase sign up failed.", await response.text());
+      return null;
+    }
+    const authData = await response.json();
+    const authUser = authData.user || authData;
+    const session = authData.session || (authData.access_token ? authData : null);
+    if (!authUser?.id) return null;
+    const profile = {
+      id: authUser.id,
+      username: authUser.email || email.trim().toLowerCase(),
+      name: name || authUser.email || email,
+      role,
+      customerId,
+      createdAt: new Date().toISOString(),
+      session
+    };
+    await saveSupabaseProfile(profile);
+    upsertLocalUser(profile);
+    return profile;
+  } catch (error) {
+    console.warn("Supabase sign up failed.", error);
+    return null;
+  }
+}
+
+async function loadSupabaseProfiles() {
+  if (authProfilesLoading) return;
+  authProfilesLoading = true;
+  try {
+    const response = await supabaseFetch("profiles?select=*&order=created_at.asc");
+    authProfilesLoading = false;
+    authProfilesLoaded = true;
+    if (!response.ok) {
+      console.warn("Supabase profiles sync skipped.", await response.text());
+      return;
+    }
+    const profiles = await response.json();
+    const scanUser = state.users.find((user) => user.username === "scan-customer");
+    state.users = [
+      ...(scanUser ? [scanUser] : []),
+      ...profiles.map(profileFromSupabase)
+    ];
+    persistLocalStateOnly();
+    render();
+  } catch (error) {
+    authProfilesLoading = false;
+    authProfilesLoaded = true;
+    console.warn("Supabase profiles sync skipped.", error);
+  }
+}
+
+async function saveSupabaseProfile(profile) {
+  const payload = {
+    id: profile.id,
+    email: profile.username,
+    name: profile.name || profile.username,
+    role: profile.role || "Customer",
+    customer_id: profile.role === "Customer" ? profile.customerId || "" : "",
+    updated_at: new Date().toISOString()
+  };
+  const response = await supabaseFetch("profiles?on_conflict=id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) console.warn("Supabase profile save skipped.", await response.text());
+}
+
+async function deleteSupabaseProfile(userId) {
+  const response = await supabaseFetch(`profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
+  if (!response.ok) console.warn("Supabase profile delete skipped.", await response.text());
+}
+
+async function getProfileForAuthUser(authUser) {
+  if (!authUser?.id) return null;
+  const response = await supabaseFetch(`profiles?id=eq.${encodeURIComponent(authUser.id)}&select=*&limit=1`);
+  if (!response.ok) {
+    console.warn("Supabase profile lookup failed.", await response.text());
+    return null;
+  }
+  const rows = await response.json();
+  return rows?.[0] ? profileFromSupabase(rows[0]) : null;
+}
+
+function profileFromSupabase(profile) {
+  return {
+    id: profile.id,
+    username: profile.email || "",
+    name: profile.name || profile.email || "User",
+    password: "",
+    role: profile.role || "Customer",
+    customerId: profile.customer_id || "",
+    createdAt: profile.created_at || new Date().toISOString(),
+    updatedAt: profile.updated_at || ""
+  };
+}
+
+function upsertLocalUser(user) {
+  const cleanUser = {
+    ...user,
+    password: "",
+    username: user.username || user.email || "",
+    customerId: user.role === "Customer" ? user.customerId || "" : ""
+  };
+  const index = state.users.findIndex((item) => item.id === cleanUser.id || item.username.toLowerCase() === cleanUser.username.toLowerCase());
+  if (index >= 0) {
+    state.users[index] = { ...state.users[index], ...cleanUser };
+  } else {
+    state.users.push(cleanUser);
+  }
+}
+
+function saveAuthSession(session) {
+  if (!session?.access_token) return;
+  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+}
+
+function getSavedAuthSession() {
+  try {
+    return JSON.parse(localStorage.getItem(AUTH_SESSION_KEY)) || null;
+  } catch {
+    return null;
+  }
+}
+
+function clearAuthSession() {
+  localStorage.removeItem(AUTH_SESSION_KEY);
 }
 
 async function loadSharedStateFromSupabase() {
@@ -2372,7 +2556,10 @@ function loadState() {
 function getCurrentSessionUser() {
   const loaded = loadState();
   const normalized = normalizeState(loaded);
-  return normalized.users.find((user) => user.id === normalized.currentUserId) || null;
+  const savedSession = getSavedAuthSession();
+  if (!savedSession?.user?.id) return null;
+  const sessionUserId = savedSession.user.id;
+  return normalized.users.find((user) => user.id === sessionUserId) || null;
 }
 
 function getInitialUser() {

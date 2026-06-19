@@ -58,7 +58,9 @@ The app is wired to Supabase for first shared-data testing.
 5. Open the hosted app on the computer that already has the data so it can push the shared maintenance data to Supabase.
 6. Open the hosted app on the iPad or phone and log in locally.
 
-After the table exists, customers, locations, templates, assets, work orders, photos/manuals stored in the browser, and QR settings can sync through Supabase. User accounts are intentionally still local to each browser in this prototype so plain-text local prototype passwords are not copied into the shared table.
+After the table exists, customers, locations, templates, assets, work orders, photos/manuals stored in the browser, and QR settings can sync through Supabase.
+
+User logins now use Supabase Auth with email/password. In Supabase, keep email signups enabled. If email confirmation is enabled, users may need to confirm their email before they can log in.
 
 Reports submitted from a phone are also saved to Supabase. Admin/Manager users can then open the app and the reports will import into **Open Issues**.
 
@@ -70,16 +72,16 @@ Your phone must be on the same Wi-Fi network, and Windows Firewall may need to a
 
 ## First Admin Setup
 
-Fresh browsers no longer include preset login accounts. On first use, create the first Admin account from the login screen. After that, the Admin user can add Manager, Technician, and Customer users from **Admin & Settings**.
+Fresh projects no longer include preset login accounts. On first use, create the first Admin account from the login screen using an email address and password. After that, the Admin user can add Manager, Technician, and Customer users from **Admin & Settings**. Those users can log in from other devices with the same email/password.
 
 ## What It Proves
 
 - Equipment registry
 - Customer records
 - Customer-specific locations
-- Local prototype login screen
+- Supabase Auth email/password login screen
 - Login page access request form
-- User creation with Admin, Manager, Technician, and Customer roles
+- User creation with Admin, Manager, Technician, and Customer roles using Supabase Auth profiles
 - Customer users can be assigned to one customer account
 - User editing and deletion with current-user and last-admin safeguards
 - Admin/Manager review of pending access requests
@@ -141,8 +143,8 @@ Browser security does not allow this static prototype to silently write backup f
 
 ## Important Prototype Note
 
-The app stores data in the browser with `localStorage`. The login screen is for prototype flow only and stores local passwords in browser data. For real customer use, this should become a hosted web app with a database, real password hashing, server-side sessions, customer separation, durable file uploads, and durable QR labels.
+The app still uses browser storage for some prototype behavior and uploaded file previews, while shared records and email/password login are connected to Supabase. For real customer use, this should become a fully hosted web app with locked-down database policies, durable file uploads, and server-side customer separation.
 
-The current Supabase sync is prototype-level shared storage. Before using this with real customer/private data, move logins and customer permissions to Supabase Auth and locked-down database policies.
+The current Supabase sync is still prototype-level shared storage. Before using this with real customer/private data, lock down the database policies so users can only read and write the customers, assets, and reports they are allowed to access.
 
 The QR labels point to the current page URL. If opened as a local file, the QR code points to a `file://` URL that works only on the same machine. To scan labels from phones or other devices, host the app on a reachable web address first.
