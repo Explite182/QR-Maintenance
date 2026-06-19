@@ -1488,8 +1488,8 @@ function renderDashboard() {
   els.openWorkOrders.textContent = activeIssues.length;
   els.highPriorityIssues.textContent = activeIssues.filter((item) => item.priority === "High").length;
   els.waitingPartsIssues.textContent = activeIssues.filter((item) => item.status === "Waiting parts").length;
-  els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
-  els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
+  if (els.reportedIssues) els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
+  if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
 }
 
 function renderAssetTableControls() {

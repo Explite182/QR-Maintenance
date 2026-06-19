@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260619-1600">
+  <link rel="stylesheet" href="styles.css?v=20260619-1615">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -396,14 +396,6 @@
             <span id="waitingPartsIssues">0</span>
             <p>Waiting parts</p>
           </button>
-          <button type="button" class="metric-card metric-neutral" data-dashboard-filter="reportedIssues">
-            <span id="reportedIssues">0</span>
-            <p>Reported by QR</p>
-          </button>
-          <div class="metric-card metric-ok metric-static">
-            <span id="activeLocations">0</span>
-            <p>Asset locations</p>
-          </div>
         </div>
       </section>
 
@@ -727,7 +719,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260619-1600"></script>
+  <script src="app.js?v=20260619-1615"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
@@ -785,14 +777,41 @@
         return String(value || "item").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
       }
 
-      async function optionalSmallPhoto(file) {
-        if (!file || file.size > 1200 * 1024) return null;
-        return new Promise((resolve) => {
+      function fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
           const reader = new FileReader();
-          reader.onload = () => resolve({ name: file.name || "Report photo", dataUrl: reader.result || "" });
-          reader.onerror = () => resolve(null);
+          reader.onload = () => resolve(reader.result || "");
+          reader.onerror = reject;
           reader.readAsDataURL(file);
         });
+      }
+
+      function resizeImageDataUrl(dataUrl, maxSize = 720, quality = 0.52) {
+        return new Promise((resolve) => {
+          const image = new Image();
+          image.onload = () => {
+            const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+            const width = Math.max(1, Math.round(image.width * scale));
+            const height = Math.max(1, Math.round(image.height * scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const context = canvas.getContext("2d");
+            context.fillStyle = "#ffffff";
+            context.fillRect(0, 0, width, height);
+            context.drawImage(image, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", quality));
+          };
+          image.onerror = () => resolve(dataUrl);
+          image.src = dataUrl;
+        });
+      }
+
+      async function optionalReportPhoto(file) {
+        if (!file) return null;
+        const rawDataUrl = await fileToDataUrl(file);
+        const dataUrl = await resizeImageDataUrl(rawDataUrl);
+        return { name: file.name || "Report photo.jpg", dataUrl };
       }
 
       form?.addEventListener("submit", async (event) => {
@@ -807,14 +826,15 @@
         }
         try {
           if (submitButton) submitButton.disabled = true;
-          if (message) message.textContent = "Sending report...";
+          if (message) message.textContent = "Preparing report...";
           const customer = await resolveCustomer();
           const locationRecord = await resolveLocation(customer);
           if (!customer.name && !locationRecord.name && !params.get("n")) {
             if (message) message.textContent = "This QR report link is missing equipment or location details.";
             return;
           }
-          const attachedPhoto = await optionalSmallPhoto(photo?.files?.[0]);
+          const attachedPhoto = await optionalReportPhoto(photo?.files?.[0]);
+          if (message) message.textContent = "Sending report...";
           const response = await fetch(`${SUPABASE_URL}/rest/v1/public_reports?select=id`, {
             method: "POST",
             headers: { ...headers, Prefer: "return=representation" },
