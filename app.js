@@ -233,6 +233,7 @@ window.addEventListener("hashchange", () => {
     state.currentUserId = currentUser.id;
     saveState();
   }
+  restoreScannedAssetSelection();
   selectedId = getAssetIdFromUrl() || selectedId;
   syncFiltersToSelectedAsset();
   render();
@@ -256,6 +257,7 @@ els.loginForm.addEventListener("submit", async (event) => {
     currentUser = localUser;
     currentRole = localUser.role;
     state.currentUserId = localUser.id;
+    restoreScannedAssetSelection();
     saveState();
     els.loginForm.reset();
     els.loginError.textContent = "";
@@ -266,6 +268,7 @@ els.loginForm.addEventListener("submit", async (event) => {
   currentUser = user;
   currentRole = user.role;
   state.currentUserId = user.id;
+  restoreScannedAssetSelection();
   saveState();
   els.loginForm.reset();
   els.loginError.textContent = "";
@@ -1017,6 +1020,7 @@ function render() {
   }
   if (!currentUser) return;
   resetInactivityLogoutTimer();
+  restoreScannedAssetSelection();
   syncPublicReportsFromSupabase();
   ensureSelection();
   renderUsers();
@@ -1931,6 +1935,17 @@ function syncFiltersToSelectedAsset() {
   const asset = getSelectedAsset();
   if (!asset) return;
   if (!canSeeCustomer(asset.customerId)) return;
+  selectedCustomerId = asset.customerId;
+  selectedLocationId = "all";
+}
+
+function restoreScannedAssetSelection() {
+  const scannedAssetId = getAssetIdFromUrl();
+  if (!scannedAssetId) return;
+  hydrateAssetFromHash();
+  const asset = getRawAsset(scannedAssetId);
+  if (!asset || !canSeeCustomer(asset.customerId)) return;
+  selectedId = asset.id;
   selectedCustomerId = asset.customerId;
   selectedLocationId = "all";
 }
