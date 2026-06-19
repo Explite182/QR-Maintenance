@@ -285,6 +285,10 @@ els.firstAdminForm.addEventListener("submit", async (event) => {
   els.firstAdminMessage.textContent = "Creating admin...";
   const user = await signUpSupabaseUser(email, password, name, "Admin", "");
   if (!user) {
+    if (lastAuthError.toLowerCase().includes("already")) {
+      els.firstAdminMessage.textContent = "That email already exists in Supabase. Use the Log In form once and SiteWorks will attach the first Admin profile.";
+      return;
+    }
     els.firstAdminMessage.textContent = lastAuthError || "Could not create admin. If email confirmation is on, confirm the email and then log in.";
     return;
   }
@@ -2296,10 +2300,13 @@ async function signInWithSupabase(email, password) {
     }
     const session = await response.json();
     saveAuthSession(session);
-    const profile = await getProfileForAuthUser(session.user);
+    let profile = await getProfileForAuthUser(session.user);
     if (!profile) {
-      lastAuthError = "Login worked, but no SiteWorks profile was found for this user. Create the user from Admin & Settings or run the Supabase SQL.";
-      return null;
+      profile = await createFirstAdminProfileIfNeeded(session.user);
+      if (!profile) {
+        lastAuthError = "Login worked, but no SiteWorks profile was found for this user. Create the user from Admin & Settings or run the Supabase SQL.";
+        return null;
+      }
     }
     upsertLocalUser(profile);
     return profile;
@@ -2308,6 +2315,23 @@ async function signInWithSupabase(email, password) {
     console.warn("Supabase sign in failed.", error);
     return null;
   }
+}
+
+async function createFirstAdminProfileIfNeeded(authUser) {
+  if (!authUser?.id) return null;
+  await loadSupabaseProfiles();
+  if (hasSetupUsers()) return null;
+  const profile = {
+    id: authUser.id,
+    username: authUser.email || "",
+    name: authUser.user_metadata?.name || authUser.email || "Admin",
+    role: "Admin",
+    customerId: "",
+    createdAt: new Date().toISOString()
+  };
+  await saveSupabaseProfile(profile);
+  upsertLocalUser(profile);
+  return profile;
 }
 
 function readableSupabaseError(errorText) {
