@@ -28,6 +28,7 @@ let assetTemplateFilter = "all";
 let assetSort = "due";
 let assetPageSize = 25;
 let assetPage = 1;
+let selectedPrintAssetIds = new Set();
 let workOrderViewFilter = "active";
 let remoteReportsLoaded = false;
 let remoteReportsLoading = false;
@@ -58,6 +59,8 @@ const els = {
   loginPassword: document.getElementById("loginPassword"),
   scanAccessBtn: document.getElementById("scanAccessBtn"),
   loginError: document.getElementById("loginError"),
+  loginQrReportPrompt: document.getElementById("loginQrReportPrompt"),
+  loginQrReportBtn: document.getElementById("loginQrReportBtn"),
   firstAdminForm: document.getElementById("firstAdminForm"),
   firstAdminUsername: document.getElementById("firstAdminUsername"),
   firstAdminName: document.getElementById("firstAdminName"),
@@ -142,7 +145,9 @@ const els = {
   assetPageInfo: document.getElementById("assetPageInfo"),
   prevAssetPageBtn: document.getElementById("prevAssetPageBtn"),
   nextAssetPageBtn: document.getElementById("nextAssetPageBtn"),
-  printFilteredLabelsBtn: document.getElementById("printFilteredLabelsBtn"),
+  selectPageAssetsBtn: document.getElementById("selectPageAssetsBtn"),
+  clearSelectedAssetsBtn: document.getElementById("clearSelectedAssetsBtn"),
+  printSelectedLabelsBtn: document.getElementById("printSelectedLabelsBtn"),
   exportAssetRegisterBtn: document.getElementById("exportAssetRegisterBtn"),
   customerFilter: document.getElementById("customerFilter"),
   locationFilter: document.getElementById("locationFilter"),
@@ -196,6 +201,7 @@ const els = {
   photoInput: document.getElementById("photoInput"),
   result: document.getElementById("result"),
   historyList: document.getElementById("historyList"),
+  historyCount: document.getElementById("historyCount"),
   dueToday: document.getElementById("dueToday"),
   overdue: document.getElementById("overdue"),
   completed: document.getElementById("completed"),
@@ -211,7 +217,6 @@ const els = {
   assetGalleryCount: document.getElementById("assetGalleryCount"),
   assetGalleryPanel: document.getElementById("assetGalleryPanel"),
   exportBtn: document.getElementById("exportBtn"),
-  printLabelsBtn: document.getElementById("printLabelsBtn"),
   labelSheet: document.getElementById("labelSheet"),
   photoViewer: document.getElementById("photoViewer"),
   photoViewerImage: document.getElementById("photoViewerImage"),
@@ -317,6 +322,15 @@ if (els.scanAccessBtn) {
     els.loginForm.reset();
     els.loginError.textContent = "";
     render();
+  });
+}
+
+if (els.loginQrReportBtn) {
+  els.loginQrReportBtn.addEventListener("click", () => {
+    const assetId = getAssetIdFromUrl();
+    if (!assetId) return;
+    hydrateAssetFromHash();
+    location.href = getReportAssetUrl(assetId);
   });
 }
 
@@ -689,6 +703,12 @@ els.assetGalleryPanel.addEventListener("click", (event) => {
   openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "Equipment photo");
 });
 
+els.historyList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-view-photo]");
+  if (!button) return;
+  openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "PM evidence photo");
+});
+
 els.selectedAssetThumb.addEventListener("click", () => {
   const asset = getSelectedAsset();
   if (asset?.photo?.dataUrl) openPhotoViewer(asset.photo.dataUrl, asset.photo.name || "Equipment photo");
@@ -928,18 +948,33 @@ els.exportBtn.addEventListener("click", () => {
   downloadCsv(asset);
 });
 
-els.printLabelsBtn.addEventListener("click", () => {
-  renderLabels();
-  window.print();
+els.selectPageAssetsBtn.addEventListener("click", () => {
+  getCurrentAssetTablePageAssets().forEach((asset) => selectedPrintAssetIds.add(asset.id));
+  renderAssetTable();
 });
 
-els.printFilteredLabelsBtn.addEventListener("click", () => {
-  renderLabels(assetTableAssets());
+els.clearSelectedAssetsBtn.addEventListener("click", () => {
+  selectedPrintAssetIds.clear();
+  renderAssetTable();
+});
+
+els.printSelectedLabelsBtn.addEventListener("click", () => {
+  const selectedAssets = selectedAssetsForPrinting();
+  if (!selectedAssets.length) {
+    alert("Select at least one equipment row to print.");
+    return;
+  }
+  renderLabels(selectedAssets);
   window.print();
 });
 
 els.printReportLabelsBtn.addEventListener("click", () => {
-  renderReportLabels(assetTableAssets());
+  const selectedAssets = selectedAssetsForPrinting();
+  if (!selectedAssets.length) {
+    alert("Select at least one equipment row to print report QRs.");
+    return;
+  }
+  renderReportLabels(selectedAssets);
   window.print();
 });
 
@@ -1075,6 +1110,7 @@ function render() {
   renderAssetGallery(asset);
   renderRole();
 
+  if (els.historyCount) els.historyCount.textContent = asset.history.length;
   els.historyList.innerHTML = asset.history.length
     ? asset.history.map(renderHistoryItem).join("")
     : `<p class="muted">No completed maintenance yet.</p>`;
@@ -1083,10 +1119,12 @@ function render() {
 function renderAuth() {
   const isReport = isPublicReportUrl();
   const isLoggedIn = Boolean(currentUser);
+  const hasScannedAsset = isQrAccessUrl() && Boolean(getAssetIdFromUrl());
   const needsFirstAdmin = !isReport && !isLoggedIn && !hasSetupUsers();
   els.publicReportScreen.classList.toggle("hidden", !isReport);
   els.loginScreen.classList.toggle("hidden", isReport || isLoggedIn);
   els.loginForm.classList.toggle("hidden", needsFirstAdmin);
+  els.loginQrReportPrompt.classList.toggle("hidden", isReport || isLoggedIn || !hasScannedAsset);
   els.firstAdminForm.classList.toggle("hidden", !needsFirstAdmin);
   els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || !isLoggedIn));
   if (isReport || !isLoggedIn) return;
@@ -1345,7 +1383,7 @@ function renderDashboard() {
   els.highPriorityIssues.textContent = activeIssues.filter((item) => item.priority === "High").length;
   els.waitingPartsIssues.textContent = activeIssues.filter((item) => item.status === "Waiting parts").length;
   els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
-  els.activeLocations.textContent = locationsVisibleInCurrentView().length;
+  els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
 }
 
 function renderAssetTableControls() {
@@ -1353,6 +1391,10 @@ function renderAssetTableControls() {
   els.statusFilter.value = assetStatusFilter;
   els.assetSort.value = assetSort;
   els.assetPageSize.value = String(assetPageSize);
+  els.printSelectedLabelsBtn.textContent = selectedPrintAssetIds.size
+    ? `Print Selected (${selectedPrintAssetIds.size})`
+    : "Print Selected";
+  els.clearSelectedAssetsBtn.disabled = selectedPrintAssetIds.size === 0;
   els.templateFilter.innerHTML = [
     `<option value="all">All templates</option>`,
     ...state.templates.map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`)
@@ -1362,24 +1404,45 @@ function renderAssetTableControls() {
     : "all";
 }
 
+function getCurrentAssetTablePageAssets(assets = assetTableAssets()) {
+  const start = (assetPage - 1) * assetPageSize;
+  return assets.slice(start, start + assetPageSize);
+}
+
+function selectedAssetsForPrinting() {
+  const selectedIds = new Set(selectedPrintAssetIds);
+  return assetTableAssets().filter((asset) => selectedIds.has(asset.id));
+}
+
 function renderAssetTable() {
   const assets = assetTableAssets();
   const totalPages = getAssetTablePageCount(assets);
   assetPage = Math.min(assetPage, totalPages);
+  const pageAssets = getCurrentAssetTablePageAssets(assets);
   const start = (assetPage - 1) * assetPageSize;
-  const pageAssets = assets.slice(start, start + assetPageSize);
   els.tableAssetCount.textContent = assets.length;
   els.assetTableBody.innerHTML = pageAssets.length
     ? pageAssets.map(renderAssetTableRow).join("")
-    : `<tr><td colspan="9" class="empty-cell">No equipment matches these filters.</td></tr>`;
+    : `<tr><td colspan="10" class="empty-cell">No equipment matches these filters.</td></tr>`;
 
   els.assetTableBody.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", (event) => {
-      if (event.target.closest("[data-edit-asset]")) return;
+      if (event.target.closest("[data-edit-asset], [data-print-select]")) return;
       selectedId = row.dataset.id;
       syncFiltersToSelectedAsset();
       location.hash = `asset/${selectedId}`;
       render();
+    });
+  });
+
+  els.assetTableBody.querySelectorAll("[data-print-select]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        selectedPrintAssetIds.add(checkbox.value);
+      } else {
+        selectedPrintAssetIds.delete(checkbox.value);
+      }
+      renderAssetTableControls();
     });
   });
 
@@ -1410,6 +1473,9 @@ function renderAssetTableRow(asset) {
   const active = asset.id === selectedId ? " selected-row" : "";
   return `
     <tr class="${active}" data-id="${asset.id}">
+      <td class="select-cell">
+        <input type="checkbox" data-print-select value="${escapeAttribute(asset.id)}" ${selectedPrintAssetIds.has(asset.id) ? "checked" : ""} aria-label="Select ${escapeAttribute(asset.name)} for QR printing">
+      </td>
       <td>
         <strong>${escapeHtml(asset.name)}</strong>
         <span>${escapeHtml(asset.manufacturer || asset.model || "No details")}</span>
@@ -1778,20 +1844,56 @@ function renderAssetInfoForm(asset) {
   els.assetGalleryUploadStatus.textContent = "";
 }
 
-function renderHistoryItem(item) {
-  const checks = item.completedChecks.length ? item.completedChecks.join(", ") : "No checklist items selected";
+function renderHistoryItem(item, index) {
+  const checks = item.completedChecks || [];
+  const completedAt = new Date(item.completedAt);
+  const photo = item.photo?.dataUrl ? `
+    <button type="button" class="history-photo-button" data-view-photo data-photo-src="${escapeAttribute(item.photo.dataUrl)}" data-photo-caption="${escapeAttribute(item.photo.name || "PM evidence photo")}">
+      <img class="history-photo" alt="PM evidence photo" src="${item.photo.dataUrl}">
+    </button>
+  ` : `<p class="muted">No photo attached.</p>`;
   return `
-    <article class="history-item">
-      <header>
-        <span>${escapeHtml(item.result)}</span>
-        <time>${formatDate(new Date(item.completedAt))}</time>
-      </header>
-      <p><strong>Technician:</strong> ${escapeHtml(item.technician)}</p>
-      <p><strong>Checks:</strong> ${escapeHtml(checks)}</p>
-      ${item.reading ? `<p><strong>Reading:</strong> ${escapeHtml(item.reading)}</p>` : ""}
-      ${item.notes ? `<p><strong>Notes:</strong> ${escapeHtml(item.notes)}</p>` : ""}
-      ${item.photo ? `<img class="history-photo" alt="PM evidence photo" src="${item.photo.dataUrl}">` : ""}
-    </article>
+    <details class="history-item pm-history-record" ${index === 0 ? "open" : ""}>
+      <summary>
+        <span>
+          <strong>${escapeHtml(item.result || "Completed")}</strong>
+          <small>${escapeHtml(formatDateTime(completedAt))} | ${escapeHtml(item.technician || "No technician entered")}</small>
+        </span>
+        <span class="history-open-label">View</span>
+      </summary>
+      <div class="history-detail-grid">
+        <div>
+          <span class="label">Completed</span>
+          <strong>${escapeHtml(formatDateTime(completedAt))}</strong>
+        </div>
+        <div>
+          <span class="label">Technician</span>
+          <strong>${escapeHtml(item.technician || "Not entered")}</strong>
+        </div>
+        <div>
+          <span class="label">Result</span>
+          <strong>${escapeHtml(item.result || "Completed")}</strong>
+        </div>
+        <div>
+          <span class="label">Meter / reading</span>
+          <strong>${escapeHtml(item.reading || "Not entered")}</strong>
+        </div>
+      </div>
+      <div class="history-checklist">
+        <strong>Completed checklist</strong>
+        ${checks.length
+          ? `<ul>${checks.map((check) => `<li>${escapeHtml(check)}</li>`).join("")}</ul>`
+          : `<p class="muted">No checklist items selected.</p>`}
+      </div>
+      <div class="history-notes">
+        <strong>Notes</strong>
+        <p>${escapeHtml(item.notes || "No notes entered.")}</p>
+      </div>
+      <div class="history-evidence">
+        <strong>Photo evidence</strong>
+        ${photo}
+      </div>
+    </details>
   `;
 }
 
@@ -1859,10 +1961,11 @@ function renderLabels(assets = filteredAssets()) {
       <div class="print-label">
         <img alt="" src="${qrUrl(getAssetUrl(asset.id))}">
         <div>
+          <span class="label-brand">SiteWorks</span>
           <strong>${escapeHtml(asset.name)}</strong>
           <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
           <span>${escapeHtml(locationRecord?.name || "Unknown location")}</span>
-      <span>Scan for maintenance checklist and history</span>
+          <span>Scan for maintenance checklist and history</span>
         </div>
       </div>
     `;
@@ -1877,6 +1980,7 @@ function renderReportLabels(assets = filteredAssets()) {
       <div class="print-label">
         <img alt="" src="${qrUrl(getReportAssetUrl(asset.id))}">
         <div>
+          <span class="label-brand">SiteWorks</span>
           <strong>${escapeHtml(asset.name)}</strong>
           <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
           <span>${escapeHtml(locationRecord?.name || "Unknown location")}</span>
@@ -1891,6 +1995,7 @@ function renderReportLabels(assets = filteredAssets()) {
       <div class="print-label">
         <img alt="" src="${qrUrl(getReportLocationUrl(locationRecord.id))}">
         <div>
+          <span class="label-brand">SiteWorks</span>
           <strong>${escapeHtml(locationRecord.name)}</strong>
           <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
           <span>Area report QR</span>
@@ -2060,12 +2165,15 @@ function visibleCustomers() {
   return state.customers.filter((customer) => customer.id === currentUser?.customerId);
 }
 
-function locationsVisibleInCurrentView() {
-  const customerIds = new Set(visibleCustomers().map((customer) => customer.id));
-  return state.locations.filter((locationRecord) =>
-    customerIds.has(locationRecord.customerId) &&
-    (selectedLocationId === "all" || locationRecord.id === selectedLocationId)
+function activeLocationCountForAssets(assets = filteredAssets()) {
+  return new Set(assets.map((asset) => asset.locationId).filter(Boolean)).size;
+}
+
+function activeAssetLocationCountForCurrentCustomer() {
+  const customerAssets = state.assets.filter((asset) =>
+    canSeeCustomer(asset.customerId) && asset.customerId === selectedCustomerId
   );
+  return activeLocationCountForAssets(customerAssets);
 }
 
 function canSeeCustomer(customerId) {
@@ -2415,6 +2523,7 @@ async function loadSupabaseProfiles() {
       ...(scanUser ? [scanUser] : []),
       ...profiles.map(profileFromSupabase)
     ];
+    restoreSavedSessionUser();
     persistLocalStateOnly();
     render();
   } catch (error) {
@@ -2485,6 +2594,18 @@ function upsertLocalUser(user) {
   } else {
     state.users.push(cleanUser);
   }
+}
+
+function restoreSavedSessionUser() {
+  if (currentUser || isPublicReportUrl()) return;
+  const savedSession = getSavedAuthSession();
+  const sessionUserId = savedSession?.user?.id || "";
+  if (!sessionUserId) return;
+  const user = state.users.find((item) => item.id === sessionUserId);
+  if (!user || user.username === "scan-customer") return;
+  currentUser = user;
+  currentRole = user.role || "Customer";
+  state.currentUserId = user.id;
 }
 
 function saveAuthSession(session) {

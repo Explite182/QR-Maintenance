@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260619-0935">
+  <link rel="stylesheet" href="styles.css?v=20260619-1145">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -52,6 +52,11 @@
         <button type="submit">Log In</button>
         <p id="loginError" class="login-error"></p>
       </form>
+      <div id="loginQrReportPrompt" class="login-qr-report hidden">
+        <strong>Reporting an issue?</strong>
+        <p>Send a photo and quick note for this scanned equipment without logging in.</p>
+        <button id="loginQrReportBtn" type="button" class="secondary">Report Issue Without Login</button>
+      </div>
       <form id="firstAdminForm" class="stack hidden">
         <p class="login-message">Create the first SiteWorks admin account.</p>
         <label>
@@ -114,7 +119,6 @@
         <strong id="currentUserRole"></strong>
       </div>
       <button id="logoutBtn" class="secondary">Log Out</button>
-      <button id="printLabelsBtn">Print QR Labels</button>
       <input id="importDataInput" class="hidden-input" type="file" accept="application/json,.json">
     </div>
   </header>
@@ -393,18 +397,18 @@
             <span id="reportedIssues">0</span>
             <p>Reported by QR</p>
           </button>
-          <button type="button" class="metric-card metric-ok" data-dashboard-filter="all">
+          <div class="metric-card metric-ok metric-static">
             <span id="activeLocations">0</span>
-            <p>Locations</p>
-          </button>
+            <p>Asset locations</p>
+          </div>
         </div>
       </section>
 
-      <section class="asset-table-panel">
-        <div class="section-title">
+      <details class="asset-table-panel asset-register-drawer" open>
+        <summary class="section-title drawer-title">
           <h2>Equipment Register</h2>
           <span id="tableAssetCount">0</span>
-        </div>
+        </summary>
         <div class="asset-tools" aria-label="Asset register tools">
           <label class="search-field">
             Search
@@ -445,7 +449,9 @@
             </select>
           </label>
           <div class="table-actions">
-            <button id="printFilteredLabelsBtn" class="secondary mini">Print Labels</button>
+            <button id="selectPageAssetsBtn" class="secondary mini" type="button">Select Page</button>
+            <button id="clearSelectedAssetsBtn" class="secondary mini" type="button">Clear</button>
+            <button id="printSelectedLabelsBtn" class="secondary mini" type="button">Print Selected</button>
             <button id="exportAssetRegisterBtn" class="secondary mini">Export CSV</button>
           </div>
         </div>
@@ -453,6 +459,7 @@
           <table class="asset-table">
             <thead>
               <tr>
+                <th>Select</th>
                 <th>Equipment</th>
                 <th>Customer</th>
                 <th>Location</th>
@@ -474,7 +481,7 @@
             <button id="nextAssetPageBtn" class="secondary mini">Next</button>
           </div>
         </div>
-      </section>
+      </details>
 
       <section class="work-orders-panel">
         <div class="section-title">
@@ -690,7 +697,10 @@
         <section>
           <div class="section-title">
             <h3>Maintenance History</h3>
-            <button id="exportBtn" class="secondary">Export CSV</button>
+            <div class="history-title-actions">
+              <span id="historyCount">0</span>
+              <button id="exportBtn" class="secondary">Export CSV</button>
+            </div>
           </div>
           <div id="historyList" class="history-list"></div>
         </section>
@@ -714,6 +724,6 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260619-0935"></script>
+  <script src="app.js?v=20260619-1145"></script>
 </body>
 </html>
