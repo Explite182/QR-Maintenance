@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260619-1545">
+  <link rel="stylesheet" href="styles.css?v=20260619-1600">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -727,13 +727,22 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260619-1545"></script>
+  <script src="app.js?v=20260619-1600"></script>
   <script>
     (() => {
+      const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
+      const SUPABASE_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
       const params = new URLSearchParams(location.search);
       if (params.get("report") !== "1") return;
-      document.getElementById("publicReportScreen")?.classList.remove("hidden");
-      document.getElementById("loginScreen")?.classList.add("hidden");
+      const reportScreen = document.getElementById("publicReportScreen");
+      const loginScreen = document.getElementById("loginScreen");
+      const form = document.getElementById("publicReportForm");
+      const note = document.getElementById("publicReportNote");
+      const contact = document.getElementById("publicReportContact");
+      const photo = document.getElementById("publicReportPhoto");
+      const message = document.getElementById("publicReportMessage");
+      reportScreen?.classList.remove("hidden");
+      loginScreen?.classList.add("hidden");
       document.querySelectorAll(".app-only").forEach((node) => node.classList.add("hidden"));
       const title = document.getElementById("reportTitle");
       const context = document.getElementById("reportContext");
@@ -742,6 +751,98 @@
         const pieces = [params.get("c"), params.get("l"), params.get("n")].filter(Boolean);
         context.textContent = pieces.join(" | ");
       }
+
+      const headers = {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json"
+      };
+
+      async function getRows(path) {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers });
+        if (!response.ok) return [];
+        return response.json();
+      }
+
+      async function resolveCustomer() {
+        if (params.get("cid")) return { id: params.get("cid"), name: params.get("c") || "" };
+        const name = params.get("c") || "";
+        if (!name) return { id: null, name: "" };
+        const rows = await getRows(`customers?name=eq.${encodeURIComponent(name)}&select=id,name&limit=1`);
+        return rows[0] || { id: `scan-customer-${slugify(name)}`, name };
+      }
+
+      async function resolveLocation(customer) {
+        if (params.get("lid")) return { id: params.get("lid"), name: params.get("l") || "" };
+        const name = params.get("l") || "";
+        if (!name) return { id: null, name: "" };
+        const customerFilter = customer?.id ? `&customer_id=eq.${encodeURIComponent(customer.id)}` : "";
+        const rows = await getRows(`locations?name=eq.${encodeURIComponent(name)}${customerFilter}&select=id,name,customer_id&limit=1`);
+        return rows[0] || { id: `scan-location-${slugify(customer?.name || "customer")}-${slugify(name)}`, name };
+      }
+
+      function slugify(value) {
+        return String(value || "item").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
+      }
+
+      async function optionalSmallPhoto(file) {
+        if (!file || file.size > 1200 * 1024) return null;
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve({ name: file.name || "Report photo", dataUrl: reader.result || "" });
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      form?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const submitButton = form.querySelector("button[type='submit']");
+        if (submitButton?.disabled) return;
+        const noteText = (note?.value || "").trim();
+        if (!noteText) {
+          if (message) message.textContent = "Add a quick note, then tap Send to Maintenance.";
+          return;
+        }
+        try {
+          if (submitButton) submitButton.disabled = true;
+          if (message) message.textContent = "Sending report...";
+          const customer = await resolveCustomer();
+          const locationRecord = await resolveLocation(customer);
+          if (!customer.name && !locationRecord.name && !params.get("n")) {
+            if (message) message.textContent = "This QR report link is missing equipment or location details.";
+            return;
+          }
+          const attachedPhoto = await optionalSmallPhoto(photo?.files?.[0]);
+          const response = await fetch(`${SUPABASE_URL}/rest/v1/public_reports?select=id`, {
+            method: "POST",
+            headers: { ...headers, Prefer: "return=representation" },
+            body: JSON.stringify({
+              equipment_id: params.get("a") || null,
+              customer_id: customer.id || null,
+              customer_name: customer.name || params.get("c") || "",
+              location_id: locationRecord.id || null,
+              location_name: locationRecord.name || params.get("l") || "",
+              equipment_name: params.get("n") || "",
+              note: noteText,
+              contact: (contact?.value || "").trim(),
+              photo_data_url: attachedPhoto?.dataUrl || "",
+              photo_name: attachedPhoto?.name || ""
+            })
+          });
+          if (!response.ok) {
+            if (message) message.textContent = "Report was not sent. Please try again with no photo.";
+            return;
+          }
+          form.reset();
+          if (message) message.textContent = "Report sent to SiteWorks. Thank you.";
+        } catch {
+          if (message) message.textContent = "Report was not sent. Check the phone connection and try again.";
+        } finally {
+          if (submitButton) submitButton.disabled = false;
+        }
+      }, true);
     })();
   </script>
 </body>

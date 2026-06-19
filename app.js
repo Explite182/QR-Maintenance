@@ -3040,8 +3040,8 @@ function getCompactAssetSnapshot(id) {
   const customerName = params.get("c") || "Scanned Customer";
   const locationName = params.get("l") || "Scanned Location";
   const templateName = params.get("t") || "General Equipment PM";
-  const customerId = `scan-customer-${slugify(customerName)}`;
-  const locationId = `scan-location-${slugify(customerName)}-${slugify(locationName)}`;
+  const customerId = params.get("cid") || `scan-customer-${slugify(customerName)}`;
+  const locationId = params.get("lid") || `scan-location-${slugify(customerName)}-${slugify(locationName)}`;
   const templateId = `scan-template-${slugify(templateName)}`;
   return {
     customer: {
@@ -3088,7 +3088,9 @@ function getCompactAssetParams(id) {
   const template = getTemplate(asset.templateId);
   const params = new URLSearchParams();
   params.set("n", asset.name);
+  if (customer?.id) params.set("cid", customer.id);
   if (customer?.name) params.set("c", customer.name);
+  if (locationRecord?.id) params.set("lid", locationRecord.id);
   if (locationRecord?.name) params.set("l", locationRecord.name);
   if (template?.name) params.set("t", template.name);
   params.set("f", String(asset.frequencyDays || 30));
