@@ -344,7 +344,10 @@ if (els.loginQrAreaReportBtn) {
 els.publicReportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const report = getReportContext();
-  if (!report) return;
+  if (!report) {
+    els.publicReportMessage.textContent = "This QR report link is missing location or equipment details.";
+    return;
+  }
   els.publicReportMessage.textContent = "Sending report...";
   const photo = await readPublicReportPhoto(els.publicReportPhoto.files[0]);
   const note = els.publicReportNote.value.trim();
@@ -361,6 +364,10 @@ els.publicReportForm.addEventListener("submit", async (event) => {
   saveState();
   els.publicReportForm.reset();
   els.publicReportMessage.textContent = "Report sent to SiteWorks. Thank you.";
+});
+
+els.publicReportNote.addEventListener("invalid", () => {
+  els.publicReportMessage.textContent = "Add a quick note, then tap Send to Maintenance.";
 });
 
 els.accessRequestForm.addEventListener("submit", (event) => {
@@ -487,12 +494,14 @@ els.userForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  const newUserRole = els.newUserRole.value;
+  const newUserCustomerId = newUserRole === "Admin" ? "" : els.newUserCustomer.value;
   const newUser = await signUpSupabaseUser(
     username,
     els.newUserPassword.value,
     els.newUserName.value.trim(),
-    els.newUserRole.value,
-    els.newUserRole.value === "Customer" ? els.newUserCustomer.value : ""
+    newUserRole,
+    newUserCustomerId
   );
   if (!newUser) {
     alert("Could not create that user. Check that Supabase Auth allows email signups, then try again.");
@@ -524,7 +533,7 @@ els.userList.addEventListener("submit", async (event) => {
   const username = String(formData.get("username") || "").trim();
   const name = String(formData.get("name") || "").trim();
   const role = String(formData.get("role") || "Customer");
-  const customerId = role === "Customer" ? String(formData.get("customerId") || "") : "";
+  const customerId = role === "Admin" ? "" : String(formData.get("customerId") || "");
   const duplicateUsername = state.users.some((item) =>
     item.id !== user.id && item.username.toLowerCase() === username.toLowerCase()
   );
@@ -1252,13 +1261,14 @@ function assignQrCustomerAccessUser() {
 
 function renderRole() {
   const setupDisabled = !canManageSetup();
+  const isAdmin = currentRole === "Admin";
   const isCustomer = currentRole === "Customer";
   els.dashboardPanel.classList.toggle("hidden", isCustomer);
-  els.adminToolsDrawer.classList.toggle("hidden", isCustomer);
-  if (isCustomer) els.adminToolsDrawer.open = false;
+  els.adminToolsDrawer.classList.toggle("hidden", !isAdmin);
+  if (!isAdmin) els.adminToolsDrawer.open = false;
   [els.quickAddDrawer, els.setupDrawer, els.backupDrawer].forEach((drawer) => {
-    drawer.classList.toggle("hidden", isCustomer);
-    if (isCustomer) drawer.open = false;
+    drawer.classList.toggle("hidden", !isAdmin);
+    if (!isAdmin) drawer.open = false;
   });
   els.backupLocationBlock.classList.toggle("hidden", currentRole !== "Admin");
   els.backupLocationForm.querySelectorAll("input, button").forEach((control) => {
@@ -1292,7 +1302,7 @@ function renderUserItem(user) {
   const customerOptions = state.customers.map((customerRecord) =>
     `<option value="${customerRecord.id}" ${user.customerId === customerRecord.id ? "selected" : ""}>${escapeHtml(customerRecord.name)}</option>`
   ).join("");
-  const customerAssignment = user.role === "Customer"
+  const customerAssignment = user.role !== "Admin"
     ? ` | ${escapeHtml(customer?.name || "No customer assigned")}`
     : "";
   return `
@@ -1402,7 +1412,7 @@ function renderCustomerOptions() {
   if (!els.newUserCustomer.value && state.customers[0]) {
     els.newUserCustomer.value = state.customers[0].id;
   }
-  els.customerFilter.disabled = currentRole === "Customer";
+  els.customerFilter.disabled = !canSeeAllCustomers();
 
   const setupAllowed = canManageSetup();
   els.locationForm.querySelector("button").disabled = !setupAllowed || !state.customers.length;
@@ -2234,7 +2244,7 @@ function createWorkOrderFromPm(asset, historyItem) {
 }
 
 function canManageSetup() {
-  return currentRole === "Admin" || currentRole === "Manager";
+  return currentRole === "Admin";
 }
 
 function canCompletePm() {
@@ -2251,7 +2261,7 @@ function hasSetupUsers() {
 }
 
 function visibleCustomers() {
-  if (currentRole !== "Customer") return state.customers;
+  if (canSeeAllCustomers()) return state.customers;
   return state.customers.filter((customer) => customer.id === currentUser?.customerId);
 }
 
@@ -2267,7 +2277,11 @@ function activeAssetLocationCountForCurrentCustomer() {
 }
 
 function canSeeCustomer(customerId) {
-  return currentRole !== "Customer" || currentUser?.customerId === customerId;
+  return canSeeAllCustomers() || currentUser?.customerId === customerId;
+}
+
+function canSeeAllCustomers() {
+  return currentRole === "Admin";
 }
 
 function getAssetUrl(id) {
@@ -2635,7 +2649,7 @@ async function saveSupabaseProfile(profile) {
     email: profile.username,
     name: profile.name || profile.username,
     role: profile.role || "Customer",
-    customer_id: profile.role === "Customer" ? profile.customerId || "" : "",
+    customer_id: profile.role === "Admin" ? "" : profile.customerId || "",
     updated_at: new Date().toISOString()
   };
   const response = await supabaseFetch("profiles?on_conflict=id", {
@@ -2682,7 +2696,7 @@ function upsertLocalUser(user) {
     ...user,
     password: "",
     username: user.username || user.email || "",
-    customerId: user.role === "Customer" ? user.customerId || "" : ""
+    customerId: user.role === "Admin" ? "" : user.customerId || ""
   };
   const index = state.users.findIndex((item) => item.id === cleanUser.id || item.username.toLowerCase() === cleanUser.username.toLowerCase());
   if (index >= 0) {
@@ -2945,7 +2959,9 @@ async function upsertStructuredRows(table, rows) {
 
 function isCodexTestPublicReport(report) {
   const note = String(report.note || "");
-  return note === "Codex connectivity test" || note.startsWith("Local submit test from Codex");
+  return note === "Codex connectivity test" ||
+    note.startsWith("Local submit test from Codex") ||
+    note.startsWith("Codex remote insert check");
 }
 
 function createIssueFromRemoteReport(report) {
@@ -3135,7 +3151,7 @@ function normalizeState(input) {
 
   normalized.users = normalized.users.map((user) => ({
     ...user,
-    customerId: user.role === "Customer" && user.username !== "scan-customer"
+    customerId: user.role !== "Admin" && user.username !== "scan-customer"
       ? user.customerId || normalized.customers[0]?.id || ""
       : user.customerId || ""
   }));
