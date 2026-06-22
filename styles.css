@@ -550,6 +550,17 @@ textarea:disabled {
   font-weight: 700;
 }
 
+.section-title .panel-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .history-title-actions {
   display: inline-flex;
   align-items: center;
@@ -660,6 +671,39 @@ textarea {
   align-items: center;
 }
 
+.panel-heading,
+.panel-title-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-heading {
+  min-width: 0;
+}
+
+.panel-toggle {
+  flex: 0 0 auto;
+}
+
+.clickable-panel-title {
+  cursor: pointer;
+  user-select: none;
+}
+
+.collapsible-panel.is-collapsed [data-panel-body] {
+  display: none !important;
+}
+
+.dashboard-panel.is-collapsed {
+  grid-template-columns: 1fr;
+}
+
+.dashboard-panel.is-collapsed .panel-heading {
+  width: 100%;
+}
+
 .dashboard-panel h2 {
   margin: 4px 0 0;
   font-size: 22px;
@@ -680,11 +724,10 @@ textarea {
 
 .drawer-title {
   position: relative;
-  padding-right: 34px;
 }
 
-.drawer-title::after {
-  content: "Show";
+.drawer-toggle-label,
+.panel-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -698,7 +741,18 @@ textarea {
   font-weight: 900;
 }
 
-.asset-register-drawer[open] > .drawer-title::after {
+.section-title .drawer-toggle-label,
+.section-title .panel-toggle {
+  display: inline-flex;
+  height: auto;
+  min-width: 0;
+}
+
+.drawer-toggle-label::before {
+  content: "Show";
+}
+
+.asset-register-drawer[open] .drawer-toggle-label::before {
   content: "Hide";
 }
 
@@ -778,6 +832,15 @@ textarea {
   display: grid;
   gap: 22px;
   padding: 22px;
+}
+
+.asset-panel.is-collapsed {
+  gap: 0;
+}
+
+.asset-panel-body {
+  display: grid;
+  gap: 22px;
 }
 
 .work-orders-panel {

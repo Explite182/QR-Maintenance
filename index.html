@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260622-1205">
+  <link rel="stylesheet" href="styles.css?v=20260622-1520">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -372,12 +372,15 @@
         </label>
       </div>
 
-      <section class="dashboard-panel" aria-label="Maintenance summary">
-        <div>
+      <section id="dashboardPanel" class="dashboard-panel collapsible-panel" aria-label="Maintenance summary">
+        <div class="panel-heading">
+          <div>
           <p class="eyebrow">Today</p>
           <h2>Maintenance overview</h2>
+          </div>
+          <button type="button" class="secondary mini panel-toggle" data-panel-toggle="dashboardPanel">Hide</button>
         </div>
-        <div class="dashboard">
+        <div class="dashboard" data-panel-body>
           <button type="button" class="metric-card metric-warn" data-dashboard-filter="dueNow">
             <span id="dueToday">0</span>
             <p>Due now</p>
@@ -410,9 +413,12 @@
       </section>
 
       <details id="assetRegisterDrawer" class="asset-table-panel asset-register-drawer">
-        <summary class="section-title drawer-title">
+        <summary class="section-title drawer-title clickable-panel-title">
           <h2>Equipment Register</h2>
-          <span id="tableAssetCount">0</span>
+          <span class="panel-title-actions">
+            <span id="tableAssetCount">0</span>
+            <span class="drawer-toggle-label" aria-hidden="true"></span>
+          </span>
         </summary>
         <div class="asset-tools" aria-label="Asset register tools">
           <label class="search-field">
@@ -488,12 +494,15 @@
         </div>
       </details>
 
-      <section class="work-orders-panel">
-        <div class="section-title">
+      <section id="workOrdersPanel" class="work-orders-panel collapsible-panel">
+        <div class="section-title clickable-panel-title" data-panel-toggle="workOrdersPanel">
           <h2>Open Issues</h2>
-          <span id="workOrderCount">0</span>
+          <div class="panel-title-actions">
+            <span id="workOrderCount">0</span>
+            <button type="button" class="secondary mini panel-toggle" data-panel-toggle="workOrdersPanel">Hide</button>
+          </div>
         </div>
-        <div id="workOrderList" class="work-order-list"></div>
+        <div id="workOrderList" class="work-order-list" data-panel-body></div>
       </section>
 
       <article id="emptyState" class="empty-state">
@@ -501,7 +510,14 @@
         <p>Create equipment records, print QR labels, scan a label, and complete maintenance from a phone or browser.</p>
       </article>
 
-      <article id="assetPanel" class="asset-panel hidden">
+      <article id="assetPanel" class="asset-panel collapsible-panel hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="assetPanel">
+          <h2>Selected Equipment</h2>
+          <div class="panel-title-actions">
+            <button type="button" class="secondary mini panel-toggle" data-panel-toggle="assetPanel">Hide</button>
+          </div>
+        </div>
+        <div class="asset-panel-body" data-panel-body>
         <div class="asset-heading">
           <div class="selected-asset-summary">
             <div id="selectedAssetThumb" class="asset-thumb"></div>
@@ -717,6 +733,7 @@
           </div>
           <div id="assetWorkOrderList" class="work-order-list"></div>
         </section>
+        </div>
 
       </article>
     </section>
@@ -729,7 +746,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260622-1205"></script>
+  <script src="app.js?v=20260622-1520"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

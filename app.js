@@ -4,6 +4,7 @@ const MAX_AUTO_BACKUPS = 5;
 const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
 const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
+const ISSUE_REPORT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-issue-report`;
 const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
@@ -903,16 +904,20 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
       workOrderViewFilter = issueFilters[filter];
       assetSort = "workOrders";
       assetStatusFilter = "all";
+      const willOpen = document.getElementById("workOrdersPanel")?.classList.contains("is-collapsed");
+      togglePanel("workOrdersPanel");
       render();
-      document.querySelector(".work-orders-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (willOpen) document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     } else {
       assetStatusFilter = filter;
       assetSort = filter === "all" ? "due" : assetSort;
     }
     assetPage = 1;
+    const willOpen = !els.assetRegisterDrawer?.open;
+    toggleAssetRegisterDrawer();
     render();
-    document.querySelector(".asset-table-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (willOpen) els.assetRegisterDrawer?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 });
 
@@ -944,7 +949,7 @@ els.locationFilter.addEventListener("change", () => {
 
 els.assetForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!canManageSetup()) return;
+  if (!canAddEquipment()) return;
   const photo = await readPhoto(els.assetPhoto.files[0]);
   const manualFile = await readDocumentFile(els.assetManualFile.files[0], "application/pdf");
   const asset = {
@@ -969,6 +974,7 @@ els.assetForm.addEventListener("submit", async (event) => {
     history: []
   };
 
+  if (!canSeeCustomer(asset.customerId)) return;
   state.assets.unshift(asset);
   addActivity("Asset added", asset.name);
   selectedId = asset.id;
@@ -1157,9 +1163,36 @@ els.restoreBackupBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (event) => {
+  const panelToggle = event.target.closest("[data-panel-toggle]");
+  if (panelToggle) {
+    togglePanel(panelToggle.dataset.panelToggle);
+    return;
+  }
+
   const scrollButton = event.target.closest("[data-scroll-target]");
   if (scrollButton) {
     document.getElementById(scrollButton.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const pdfButton = event.target.closest("[data-work-order-pdf]");
+  if (pdfButton) {
+    const workOrder = getWorkOrder(pdfButton.dataset.workOrderPdf);
+    if (workOrder) openIssuePdfForm(workOrder);
+    return;
+  }
+
+  const emailButton = event.target.closest("[data-work-order-email]");
+  if (emailButton) {
+    const workOrder = getWorkOrder(emailButton.dataset.workOrderEmail);
+    if (workOrder) emailIssueReport(workOrder);
+    return;
+  }
+
+  const sendPdfButton = event.target.closest("[data-work-order-send-pdf]");
+  if (sendPdfButton) {
+    const workOrder = getWorkOrder(sendPdfButton.dataset.workOrderSendPdf);
+    if (workOrder) sendIssuePdfEmail(workOrder, sendPdfButton);
     return;
   }
 
@@ -1220,6 +1253,7 @@ function render() {
   renderAssetTableControls();
   renderAssetTable();
   renderWorkOrders();
+  renderPanelToggles();
 
   const asset = getSelectedAsset();
   els.customerCount.textContent = state.customers.length;
@@ -1229,6 +1263,7 @@ function render() {
   els.emptyState.innerHTML = renderEmptyStateContent(asset);
   els.emptyState.classList.toggle("hidden", Boolean(asset));
   els.assetPanel.classList.toggle("hidden", !asset);
+  renderPanelToggles();
   renderRole();
 
   if (!asset) return;
@@ -1287,6 +1322,37 @@ function renderAuth() {
 
 function closeAssetRegisterDrawer() {
   if (els.assetRegisterDrawer) els.assetRegisterDrawer.open = false;
+}
+
+function openAssetRegisterDrawer() {
+  if (els.assetRegisterDrawer) els.assetRegisterDrawer.open = true;
+}
+
+function toggleAssetRegisterDrawer() {
+  if (els.assetRegisterDrawer) els.assetRegisterDrawer.open = !els.assetRegisterDrawer.open;
+}
+
+function togglePanel(panelId) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  panel.classList.toggle("is-collapsed");
+  renderPanelToggles();
+}
+
+function openPanel(panelId) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  panel.classList.remove("is-collapsed");
+  renderPanelToggles();
+}
+
+function renderPanelToggles() {
+  document.querySelectorAll(".panel-toggle[data-panel-toggle]").forEach((button) => {
+    const panel = document.getElementById(button.dataset.panelToggle);
+    if (!panel) return;
+    button.textContent = panel.classList.contains("is-collapsed") ? "Show" : "Hide";
+    button.setAttribute("aria-expanded", String(!panel.classList.contains("is-collapsed")));
+  });
 }
 
 function rememberAdminUserSwitcher(user) {
@@ -1441,13 +1507,16 @@ function assignQrCustomerAccessUser() {
 function renderRole() {
   const setupDisabled = !canManageSetup();
   const isAdmin = currentRole === "Admin";
+  const canAddAssets = canAddEquipment();
   const isCustomer = currentRole === "Customer";
-  els.appShell?.classList.toggle("no-sidebar", !isAdmin);
-  els.appSidebar?.classList.toggle("hidden", !isAdmin);
+  els.appShell?.classList.toggle("no-sidebar", !canAddAssets && !isAdmin);
+  els.appSidebar?.classList.toggle("hidden", !canAddAssets && !isAdmin);
   els.dashboardPanel.classList.toggle("hidden", isCustomer);
-  els.adminToolsDrawer.classList.toggle("hidden", !isAdmin);
-  if (!isAdmin) els.adminToolsDrawer.open = false;
-  [els.quickAddDrawer, els.setupDrawer, els.userDrawer, els.backupDrawer].forEach((drawer) => {
+  els.adminToolsDrawer.classList.toggle("hidden", !canAddAssets && !isAdmin);
+  if (!canAddAssets && !isAdmin) els.adminToolsDrawer.open = false;
+  els.quickAddDrawer.classList.toggle("hidden", !canAddAssets);
+  if (!canAddAssets) els.quickAddDrawer.open = false;
+  [els.setupDrawer, els.userDrawer, els.backupDrawer].forEach((drawer) => {
     drawer.classList.toggle("hidden", !isAdmin);
     if (!isAdmin) drawer.open = false;
   });
@@ -1459,6 +1528,9 @@ function renderRole() {
     form.querySelectorAll("input, select, textarea, button").forEach((control) => {
       control.disabled = setupDisabled;
     });
+  });
+  els.assetForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !canAddAssets;
   });
   els.pmForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canCompletePm();
@@ -1637,8 +1709,9 @@ function renderCustomerOptions() {
   els.customerFilter.disabled = !canSeeAllCustomers();
 
   const setupAllowed = canManageSetup();
+  const addEquipmentAllowed = canAddEquipment();
   els.locationForm.querySelector("button").disabled = !setupAllowed || !state.customers.length;
-  els.assetForm.querySelector("button").disabled = !setupAllowed || !state.customers.length || !state.locations.length || !state.templates.length;
+  els.assetForm.querySelector("button").disabled = !addEquipmentAllowed || !customers.length || !state.locations.length || !state.templates.length;
 }
 
 function renderTemplateOptions() {
@@ -1667,8 +1740,8 @@ function renderAssetLocationOptions() {
   els.assetLocation.innerHTML = locations.map((locationRecord) =>
     `<option value="${locationRecord.id}">${escapeHtml(locationRecord.name)}</option>`
   ).join("");
-  els.assetLocation.disabled = locations.length === 0 || !canManageSetup();
-  els.assetForm.querySelector("button").disabled = locations.length === 0 || !state.templates.length || !canManageSetup();
+  els.assetLocation.disabled = locations.length === 0 || !canAddEquipment();
+  els.assetForm.querySelector("button").disabled = locations.length === 0 || !state.templates.length || !canAddEquipment();
 }
 
 function renderEditAssetLocationOptions(selectedLocationId = "") {
@@ -1926,15 +1999,15 @@ function renderWorkOrders() {
   els.workOrderCount.textContent = workOrders.length;
   els.workOrderList.innerHTML = workOrders.length
     ? workOrders.map(renderWorkOrderItem).join("")
-    : `<p class="muted">No open issues for this view.</p>`;
+    : `<p class="muted">${currentRole === "Technician" ? "No open issues assigned to you for this view." : "No open issues for this view."}</p>`;
 }
 
 function renderAssetWorkOrders(asset) {
-  const workOrders = state.workOrders.filter((item) => item.assetId === asset.id);
+  const workOrders = state.workOrders.filter((item) => item.assetId === asset.id && canSeeWorkOrder(item));
   els.assetWorkOrderCount.textContent = workOrders.length;
   els.assetWorkOrderList.innerHTML = workOrders.length
     ? workOrders.map(renderWorkOrderItem).join("")
-    : `<p class="muted">No issues for this equipment.</p>`;
+    : `<p class="muted">${currentRole === "Technician" ? "No issues assigned to you for this equipment." : "No issues for this equipment."}</p>`;
 }
 
 function filterWorkOrdersForView(workOrders) {
@@ -1958,6 +2031,12 @@ function renderEmptyStateContent(asset) {
     return `
       <h2>No customer access</h2>
       <p>This login does not currently have access to a customer.</p>
+    `;
+  }
+  if (currentRole === "Technician") {
+    return `
+      <h2>No assigned equipment issues</h2>
+      <p>Equipment will appear here when an open issue is assigned to you.</p>
     `;
   }
   return `
@@ -2225,12 +2304,19 @@ function renderWorkOrderItem(item) {
   const assetAction = asset
     ? `<button class="secondary mini" type="button" data-asset-link="${item.assetId}">View Equipment</button>`
     : "";
+  const reportActions = `
+    <button class="secondary mini" type="button" data-work-order-pdf="${escapeAttribute(item.id)}">PDF Form</button>
+    <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Issue</button>
+    <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
+  `;
   const actions = item.status === "Closed" ? `
     <div class="work-order-actions">
+      ${reportActions}
       <button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>
     </div>
   ` : `
     <div class="work-order-actions">
+      ${reportActions}
       ${item.status === "Open" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
       ${item.status !== "Waiting parts" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
       ${item.status !== "Resolved" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
@@ -2284,6 +2370,212 @@ function renderWorkOrderAssignmentControl(item) {
       </select>
     </label>
   `;
+}
+
+function getIssueReportDetails(item) {
+  const asset = getAsset(item.assetId) || getRawAsset(item.assetId);
+  const customer = getCustomer(item.customerId);
+  const locationRecord = getLocation(item.locationId);
+  const assignedLabel = item.assignedUserName || getUser(item.assignedUserId)?.name || getUser(item.assignedUserId)?.username || "Unassigned";
+  return {
+    id: item.id,
+    title: item.title || "Open issue",
+    customer: customer?.name || "Unknown customer",
+    location: locationRecord?.name || "Unknown location",
+    equipment: asset?.name || item.areaName || "Area report",
+    status: item.status || "Open",
+    priority: item.priority || "Medium",
+    assignedTo: assignedLabel,
+    source: item.source || "Maintenance",
+    dueAt: item.dueAt ? formatDate(new Date(item.dueAt)) : "Not set",
+    createdAt: item.createdAt ? formatDateTime(new Date(item.createdAt)) : "Not recorded",
+    updatedAt: item.updatedAt ? formatDateTime(new Date(item.updatedAt)) : "Not recorded",
+    resolvedAt: item.resolvedAt ? formatDateTime(new Date(item.resolvedAt)) : "",
+    notes: item.notes || "No notes provided.",
+    photoDataUrl: item.photo?.dataUrl || ""
+  };
+}
+
+function openIssuePdfForm(item) {
+  const details = getIssueReportDetails(item);
+  const reportWindow = window.open("", "_blank");
+  if (!reportWindow) {
+    alert("Pop-up blocked. Please allow pop-ups for SiteWorks to create the PDF form.");
+    return;
+  }
+  reportWindow.document.write(buildIssuePdfHtml(details));
+  reportWindow.document.close();
+  reportWindow.focus();
+  window.setTimeout(() => {
+    try {
+      reportWindow.print();
+    } catch (error) {
+      console.warn("Issue report print skipped.", error);
+    }
+  }, 500);
+}
+
+function emailIssueReport(item) {
+  const details = getIssueReportDetails(item);
+  const subject = `SiteWorks Issue: ${details.priority} - ${details.equipment}`;
+  const body = [
+    "SiteWorks Issue Report",
+    "",
+    `Issue: ${details.title}`,
+    `Status: ${details.status}`,
+    `Priority: ${details.priority}`,
+    `Assigned to: ${details.assignedTo}`,
+    `Customer: ${details.customer}`,
+    `Location: ${details.location}`,
+    `Equipment / Area: ${details.equipment}`,
+    `Due: ${details.dueAt}`,
+    `Created: ${details.createdAt}`,
+    `Issue ID: ${details.id}`,
+    "",
+    "Notes:",
+    details.notes,
+    "",
+    "If a PDF copy is needed, use the PDF Form button in SiteWorks and attach the saved PDF to this email."
+  ].join("\n");
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+async function sendIssuePdfEmail(item, button) {
+  const details = getIssueReportDetails(item);
+  const recipient = window.prompt("Email this issue PDF to:", "");
+  if (!recipient) return;
+  if (!isEmailAddress(recipient)) {
+    alert("Please enter a valid email address.");
+    return;
+  }
+
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Sending...";
+  try {
+    const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        to: recipient.trim(),
+        issue: details
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || "The issue email could not be sent.");
+    }
+    addActivity("Issue PDF emailed", `${details.title} to ${recipient.trim()}`);
+    saveState();
+    alert("Issue PDF email sent.");
+  } catch (error) {
+    console.warn("Issue PDF email failed.", error);
+    alert(`${error.message || "Issue PDF email failed."}\n\nMake sure the Supabase Edge Function is deployed and the Resend API key is saved in Supabase secrets.`);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function buildIssuePdfHtml(details) {
+  const rows = [
+    ["Customer", details.customer],
+    ["Location", details.location],
+    ["Equipment / Area", details.equipment],
+    ["Status", details.status],
+    ["Priority", details.priority],
+    ["Assigned to", details.assignedTo],
+    ["Source", details.source],
+    ["Due", details.dueAt],
+    ["Created", details.createdAt],
+    ["Last updated", details.updatedAt],
+    ...(details.resolvedAt ? [["Resolved", details.resolvedAt]] : []),
+    ["Issue ID", details.id]
+  ];
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SiteWorks Issue Report</title>
+  <style>
+    @page { size: letter; margin: 0.5in; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #172126; font-family: Arial, Helvetica, sans-serif; line-height: 1.35; }
+    .report { min-height: 10in; border: 1px solid #cfd9d5; padding: 0.36in; }
+    .top { display: flex; justify-content: space-between; gap: 0.25in; border-bottom: 3px solid #08705f; padding-bottom: 0.18in; margin-bottom: 0.22in; }
+    .brand { color: #08705f; font-size: 13px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
+    h1 { margin: 0.04in 0 0; font-size: 28px; line-height: 1.05; }
+    .meta { text-align: right; color: #627179; font-size: 11px; }
+    .status { display: inline-block; margin-top: 0.08in; padding: 0.06in 0.12in; border-radius: 999px; background: #eef6f1; color: #08705f; font-weight: 800; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.12in; margin: 0.2in 0; }
+    .field { border: 1px solid #dbe4e1; padding: 0.1in; min-height: 0.58in; }
+    .field strong { display: block; color: #627179; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.03in; }
+    .notes { margin-top: 0.2in; border: 1px solid #dbe4e1; padding: 0.16in; min-height: 1.4in; white-space: pre-wrap; }
+    .notes strong, .photo strong, .signoff strong { display: block; color: #627179; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.05in; }
+    .photo { margin-top: 0.2in; }
+    .photo img { max-width: 100%; max-height: 3.2in; border: 1px solid #dbe4e1; object-fit: contain; }
+    .signoff { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2in; margin-top: 0.3in; }
+    .line { border-bottom: 1px solid #8b989e; height: 0.35in; }
+    .footer { margin-top: 0.25in; color: #627179; font-size: 10px; display: flex; justify-content: space-between; }
+    @media print { .no-print { display: none; } .report { border-color: #cfd9d5; } }
+  </style>
+</head>
+<body>
+  <button class="no-print" onclick="window.print()" style="margin:0 0 12px;padding:10px 14px;border:1px solid #cfd9d5;border-radius:8px;background:#08705f;color:white;font-weight:800;">Print / Save PDF</button>
+  <main class="report">
+    <section class="top">
+      <div>
+        <div class="brand">SiteWorks</div>
+        <h1>Issue Report</h1>
+        <div class="status">${escapeHtml(details.status)} | ${escapeHtml(details.priority)} Priority</div>
+      </div>
+      <div class="meta">
+        <strong>Generated</strong><br>
+        ${escapeHtml(formatDateTime(new Date()))}<br><br>
+        <strong>Issue ID</strong><br>
+        ${escapeHtml(details.id)}
+      </div>
+    </section>
+    <h2>${escapeHtml(details.title)}</h2>
+    <section class="grid">
+      ${rows.map(([label, value]) => `
+        <div class="field">
+          <strong>${escapeHtml(label)}</strong>
+          ${escapeHtml(value)}
+        </div>
+      `).join("")}
+    </section>
+    <section class="notes">
+      <strong>Issue Notes</strong>
+      ${escapeHtml(details.notes)}
+    </section>
+    ${details.photoDataUrl ? `
+      <section class="photo">
+        <strong>Submitted Photo</strong>
+        <img alt="Issue photo" src="${escapeAttribute(details.photoDataUrl)}">
+      </section>
+    ` : ""}
+    <section class="signoff">
+      <div>
+        <strong>Technician / Reviewer</strong>
+        <div class="line"></div>
+      </div>
+      <div>
+        <strong>Date Completed</strong>
+        <div class="line"></div>
+      </div>
+    </section>
+    <footer class="footer">
+      <span>Preventative Maintenance Issue Form</span>
+      <span>SiteWorks</span>
+    </footer>
+  </main>
+</body>
+</html>`;
 }
 
 function getAssignableUsersForWorkOrder(item) {
@@ -2408,7 +2700,7 @@ function restoreScannedAssetSelection() {
 
 function filteredAssets() {
   return state.assets.filter((asset) => {
-    if (!canSeeCustomer(asset.customerId)) return false;
+    if (!canSeeAsset(asset)) return false;
     const matchesCustomer = asset.customerId === selectedCustomerId;
     const matchesLocation = selectedLocationId === "all" || asset.locationId === selectedLocationId;
     return matchesCustomer && matchesLocation;
@@ -2417,6 +2709,7 @@ function filteredAssets() {
 
 function filteredWorkOrders() {
   return state.workOrders.filter((item) => {
+    if (!canSeeWorkOrder(item)) return false;
     if (!canSeeCustomer(item.customerId)) return false;
     const matchesCustomer = item.customerId === selectedCustomerId;
     const matchesLocation = selectedLocationId === "all" || item.locationId === selectedLocationId;
@@ -2425,7 +2718,7 @@ function filteredWorkOrders() {
 }
 
 function openWorkOrdersForAsset(assetId) {
-  return state.workOrders.filter((item) => item.assetId === assetId && item.status !== "Closed");
+  return state.workOrders.filter((item) => item.assetId === assetId && item.status !== "Closed" && canSeeWorkOrder(item));
 }
 
 function locationsForCustomer(customerId) {
@@ -2478,7 +2771,7 @@ function getSelectedAsset() {
 function getAsset(id) {
   const asset = state.assets.find((item) => item.id === id) || null;
   if (!asset || !currentUser) return asset;
-  return canSeeCustomer(asset.customerId) ? asset : null;
+  return canSeeAsset(asset) ? asset : null;
 }
 
 function getRawAsset(id) {
@@ -2543,12 +2836,34 @@ function canManageSetup() {
   return currentRole === "Admin";
 }
 
+function canAddEquipment() {
+  return currentRole === "Admin" || currentRole === "Manager";
+}
+
 function canCompletePm() {
   return currentRole === "Admin" || currentRole === "Manager" || currentRole === "Technician" || currentRole === "Customer";
 }
 
 function canManageWorkOrders() {
   return currentRole === "Admin" || currentRole === "Manager";
+}
+
+function canSeeWorkOrder(item) {
+  if (currentRole === "Admin" || currentRole === "Manager") return canSeeCustomer(item.customerId);
+  if (currentRole === "Technician") {
+    return canSeeCustomer(item.customerId) && item.assignedUserId === currentUser?.id;
+  }
+  return canSeeCustomer(item.customerId);
+}
+
+function canSeeAsset(asset) {
+  if (!asset || !canSeeCustomer(asset.customerId)) return false;
+  if (currentRole !== "Technician") return true;
+  return state.workOrders.some((item) =>
+    item.assetId === asset.id &&
+    item.status !== "Closed" &&
+    canSeeWorkOrder(item)
+  );
 }
 
 function hasSetupUsers() {
