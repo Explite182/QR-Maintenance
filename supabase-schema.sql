@@ -49,6 +49,7 @@ create table if not exists public.assets (
 
 create table if not exists public.work_orders (
   id text primary key,
+  issue_number integer,
   asset_id text references public.assets(id) on delete set null,
   customer_id text references public.customers(id) on delete cascade,
   location_id text references public.locations(id) on delete cascade,
@@ -68,6 +69,7 @@ create table if not exists public.work_orders (
 
 alter table public.work_orders add column if not exists assigned_user_id text not null default '';
 alter table public.work_orders add column if not exists assigned_user_name text not null default '';
+alter table public.work_orders add column if not exists issue_number integer;
 
 create table if not exists public.pm_history (
   id text primary key,

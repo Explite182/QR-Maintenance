@@ -1165,6 +1165,7 @@ els.restoreBackupBtn.addEventListener("click", () => {
 document.addEventListener("click", (event) => {
   const panelToggle = event.target.closest("[data-panel-toggle]");
   if (panelToggle) {
+    if (panelToggle.dataset.panelToggle === "dashboardPanel") return;
     togglePanel(panelToggle.dataset.panelToggle);
     return;
   }
@@ -1193,6 +1194,13 @@ document.addEventListener("click", (event) => {
   if (sendPdfButton) {
     const workOrder = getWorkOrder(sendPdfButton.dataset.workOrderSendPdf);
     if (workOrder) sendIssuePdfEmail(workOrder, sendPdfButton);
+    return;
+  }
+
+  const createIssueButton = event.target.closest("[data-create-asset-issue]");
+  if (createIssueButton) {
+    const asset = getAsset(createIssueButton.dataset.createAssetIssue);
+    if (asset) createManualIssueForAsset(asset);
     return;
   }
 
@@ -1906,6 +1914,7 @@ function renderScanActionPanel(asset) {
       <span>${customerScanCopy.note}</span>
     </div>
     <div class="scan-action-buttons">
+      ${canManageWorkOrders() ? `<button type="button" class="secondary primary-action" data-create-asset-issue="${escapeAttribute(asset.id)}">Create Open Issue</button>` : ""}
       <a class="secondary primary-action" href="${escapeAttribute(getReportAssetUrl(asset.id))}">Report Equipment Issue</a>
       ${locationRecord ? `<a class="secondary" href="${escapeAttribute(getReportLocationUrl(locationRecord.id))}">Report Area Issue</a>` : ""}
       ${manualUrl ? `<a class="secondary" href="${escapeAttribute(manualUrl)}" target="_blank" rel="noopener">Open Manual</a>` : ""}
@@ -2336,7 +2345,7 @@ function renderWorkOrderItem(item) {
     <article class="work-order-item">
       <header>
         <div>
-          <strong>${escapeHtml(item.title)}</strong>
+          <strong>${escapeHtml(formatIssueNumber(item))} - ${escapeHtml(item.title)}</strong>
           <span><span class="status-badge ${statusClass}">${escapeHtml(item.status)}</span> ${escapeHtml(item.priority)} priority | Due ${formatDate(new Date(item.dueAt))}</span>
           <span class="assigned-label">Assigned to ${escapeHtml(assignedLabel)}</span>
         </div>
@@ -2379,6 +2388,7 @@ function getIssueReportDetails(item) {
   const assignedLabel = item.assignedUserName || getUser(item.assignedUserId)?.name || getUser(item.assignedUserId)?.username || "Unassigned";
   return {
     id: item.id,
+    issueNumber: formatIssueNumber(item),
     title: item.title || "Open issue",
     customer: customer?.name || "Unknown customer",
     location: locationRecord?.name || "Unknown location",
@@ -2421,6 +2431,7 @@ function emailIssueReport(item) {
   const body = [
     "SiteWorks Issue Report",
     "",
+    `Issue Number: ${details.issueNumber}`,
     `Issue: ${details.title}`,
     `Status: ${details.status}`,
     `Priority: ${details.priority}`,
@@ -2494,6 +2505,7 @@ function buildIssuePdfHtml(details) {
     ["Created", details.createdAt],
     ["Last updated", details.updatedAt],
     ...(details.resolvedAt ? [["Resolved", details.resolvedAt]] : []),
+    ["Issue Number", details.issueNumber],
     ["Issue ID", details.id]
   ];
   return `<!doctype html>
@@ -2536,6 +2548,8 @@ function buildIssuePdfHtml(details) {
       <div class="meta">
         <strong>Generated</strong><br>
         ${escapeHtml(formatDateTime(new Date()))}<br><br>
+        <strong>Issue Number</strong><br>
+        ${escapeHtml(details.issueNumber)}<br><br>
         <strong>Issue ID</strong><br>
         ${escapeHtml(details.id)}
       </div>
@@ -2816,6 +2830,7 @@ function createWorkOrderFromPm(asset, historyItem) {
   const priority = historyItem.result === "Failed" ? "High" : "Medium";
   return {
     id: crypto.randomUUID(),
+    issueNumber: nextIssueNumber(),
     assetId: asset.id,
     customerId: asset.customerId,
     locationId: asset.locationId,
@@ -2830,6 +2845,61 @@ function createWorkOrderFromPm(asset, historyItem) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+}
+
+function createManualIssueForAsset(asset) {
+  if (!canManageWorkOrders() || !canSeeAsset(asset)) return;
+  const title = window.prompt("Issue title:", `Issue: ${asset.name}`);
+  if (!title?.trim()) return;
+  const notes = window.prompt("Issue notes:", "");
+  if (notes === null) return;
+  const priorityInput = window.prompt("Priority: Low, Medium, or High", "Medium");
+  if (priorityInput === null) return;
+  const priority = normalizePriority(priorityInput);
+  const issue = {
+    id: crypto.randomUUID(),
+    issueNumber: nextIssueNumber(),
+    assetId: asset.id,
+    customerId: asset.customerId,
+    locationId: asset.locationId,
+    source: "Manual issue",
+    title: title.trim(),
+    priority,
+    status: "Open",
+    assignedUserId: "",
+    assignedUserName: "",
+    dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
+    notes: notes.trim() || "No notes entered.",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  state.workOrders.unshift(issue);
+  workOrderViewFilter = "active";
+  addActivity("Issue created", `${formatIssueNumber(issue)} - ${issue.title}`);
+  saveState();
+  openPanel("workOrdersPanel");
+  render();
+  document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function normalizePriority(value) {
+  const clean = String(value || "").trim().toLowerCase();
+  if (clean === "high") return "High";
+  if (clean === "low") return "Low";
+  return "Medium";
+}
+
+function nextIssueNumber() {
+  const highest = state.workOrders.reduce((max, item) => {
+    const numeric = Number(item.issueNumber || String(item.issueNo || "").replace(/\D/g, ""));
+    return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
+  }, 0);
+  return highest + 1;
+}
+
+function formatIssueNumber(item) {
+  const numeric = Number(item?.issueNumber || 0);
+  return numeric ? `SW-${String(numeric).padStart(4, "0")}` : "SW-0000";
 }
 
 function canManageSetup() {
@@ -3019,6 +3089,7 @@ function createIssueFromPublicReport(report, note, contact, photo) {
   const subject = report.asset?.name || report.location?.name || "Area";
   return {
     id: crypto.randomUUID(),
+    issueNumber: nextIssueNumber(),
     assetId: report.asset?.id || "",
     customerId: report.customer?.id || "",
     locationId: report.location?.id || "",
@@ -3534,6 +3605,7 @@ async function syncStructuredDataToSupabase() {
 
     await upsertStructuredRows("work_orders", state.workOrders.map((item) => ({
       id: item.id,
+      issue_number: item.issueNumber || null,
       asset_id: item.assetId || null,
       customer_id: item.customerId || null,
       location_id: item.locationId || null,
@@ -3607,6 +3679,7 @@ function createIssueFromRemoteReport(report) {
   const locationId = asset?.locationId || report.location_id || "";
   return {
     id: crypto.randomUUID(),
+    issueNumber: nextIssueNumber(),
     remoteReportId: report.id,
     assetId: asset?.id || report.equipment_id || "",
     customerId,
@@ -3790,11 +3863,27 @@ function normalizeState(input) {
     ...asset
   }));
 
-  normalized.workOrders = normalized.workOrders.map((item) => ({
-    assignedUserId: "",
-    assignedUserName: "",
-    ...item
-  }));
+  const usedIssueNumbers = new Set();
+  normalized.workOrders = normalized.workOrders.map((item) => {
+    const numeric = Number(item.issueNumber || String(item.issueNo || "").replace(/\D/g, ""));
+    const issueNumber = Number.isFinite(numeric) && numeric > 0 && !usedIssueNumbers.has(numeric)
+      ? numeric
+      : 0;
+    if (issueNumber) usedIssueNumbers.add(issueNumber);
+    return {
+      assignedUserId: "",
+      assignedUserName: "",
+      ...item,
+      issueNumber
+    };
+  });
+  let issueNumberCursor = 1;
+  normalized.workOrders.forEach((item) => {
+    if (item.issueNumber) return;
+    while (usedIssueNumbers.has(issueNumberCursor)) issueNumberCursor += 1;
+    item.issueNumber = issueNumberCursor;
+    usedIssueNumbers.add(issueNumberCursor);
+  });
 
   normalized.users = normalized.users.map((user) => ({
     ...user,
