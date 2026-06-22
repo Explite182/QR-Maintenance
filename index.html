@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260622-1610">
+  <link rel="stylesheet" href="styles.css?v=20260622-1720">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -388,7 +388,7 @@
             <span id="overdue">0</span>
             <p>Overdue</p>
           </button>
-          <button type="button" class="metric-card metric-ok" data-dashboard-filter="all">
+          <button type="button" class="metric-card metric-ok" data-dashboard-filter="completedPm">
             <span id="completed">0</span>
             <p>Completed</p>
           </button>
@@ -500,6 +500,16 @@
           </div>
         </div>
         <div id="workOrderList" class="work-order-list" data-panel-body></div>
+      </section>
+
+      <section id="completedPmPanel" class="work-orders-panel collapsible-panel is-collapsed">
+        <div class="section-title clickable-panel-title" data-panel-toggle="completedPmPanel">
+          <h2>Completed PMs</h2>
+          <div class="panel-title-actions">
+            <span id="completedPmCount">0</span>
+          </div>
+        </div>
+        <div id="completedPmList" class="work-order-list" data-panel-body></div>
       </section>
 
       <article id="emptyState" class="empty-state">
@@ -740,7 +750,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260622-1610"></script>
+  <script src="app.js?v=20260622-1720"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

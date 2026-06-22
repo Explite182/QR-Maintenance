@@ -225,6 +225,8 @@ const els = {
   assignedToMeIssues: document.getElementById("assignedToMeIssues"),
   workOrderCount: document.getElementById("workOrderCount"),
   workOrderList: document.getElementById("workOrderList"),
+  completedPmCount: document.getElementById("completedPmCount"),
+  completedPmList: document.getElementById("completedPmList"),
   assetWorkOrderCount: document.getElementById("assetWorkOrderCount"),
   assetWorkOrderList: document.getElementById("assetWorkOrderList"),
   assetGalleryCount: document.getElementById("assetGalleryCount"),
@@ -442,7 +444,8 @@ els.userSwitcher?.addEventListener("change", () => {
   state.currentUserId = user.id;
   selectedCustomerId = visibleCustomers()[0]?.id || "";
   selectedLocationId = "all";
-  selectedId = getAssetIdFromUrl() || null;
+  selectedId = null;
+  clearSelectedAssetUrl();
   closeAssetRegisterDrawer();
   persistLocalStateOnly();
   render();
@@ -900,6 +903,14 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
       reportedIssues: "reported",
       assignedToMe: "assignedToMe"
     };
+    if (filter === "completedPm") {
+      const panel = document.getElementById("completedPmPanel");
+      const willOpen = panel?.classList.contains("is-collapsed");
+      togglePanel("completedPmPanel");
+      render();
+      if (willOpen) panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     if (issueFilters[filter]) {
       workOrderViewFilter = issueFilters[filter];
       assetSort = "workOrders";
@@ -909,13 +920,19 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
       render();
       if (willOpen) document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
-    } else {
-      assetStatusFilter = filter;
-      assetSort = filter === "all" ? "due" : assetSort;
     }
+    const openedByMetric = els.assetRegisterDrawer?.dataset.openedByMetric || "";
+    const clickedOpenRegisterMetric = els.assetRegisterDrawer?.open && openedByMetric === filter;
+    if (clickedOpenRegisterMetric) {
+      closeAssetRegisterDrawer();
+      render();
+      return;
+    }
+    assetStatusFilter = filter;
+    assetSort = filter === "all" ? "due" : assetSort;
     assetPage = 1;
     const willOpen = !els.assetRegisterDrawer?.open;
-    toggleAssetRegisterDrawer();
+    openAssetRegisterDrawer(filter);
     render();
     if (willOpen) els.assetRegisterDrawer?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
@@ -936,6 +953,7 @@ els.customerFilter.addEventListener("change", () => {
   selectedCustomerId = els.customerFilter.value;
   selectedLocationId = "all";
   selectedId = null;
+  clearSelectedAssetUrl();
   assetPage = 1;
   render();
 });
@@ -943,8 +961,13 @@ els.customerFilter.addEventListener("change", () => {
 els.locationFilter.addEventListener("change", () => {
   selectedLocationId = els.locationFilter.value;
   selectedId = null;
+  clearSelectedAssetUrl();
   assetPage = 1;
   render();
+});
+
+els.assetRegisterDrawer?.addEventListener("toggle", () => {
+  if (!els.assetRegisterDrawer.open) delete els.assetRegisterDrawer.dataset.openedByMetric;
 });
 
 els.assetForm.addEventListener("submit", async (event) => {
@@ -997,6 +1020,7 @@ els.pmForm.addEventListener("submit", async (event) => {
   const photo = await readPhoto(els.photoInput.files[0]);
   const historyItem = {
     id: crypto.randomUUID(),
+    pmNumber: nextPmNumber(),
     completedAt: new Date().toISOString(),
     technician: els.technician.value.trim(),
     reading: els.reading.value.trim(),
@@ -1007,7 +1031,7 @@ els.pmForm.addEventListener("submit", async (event) => {
   };
 
   asset.history.unshift(historyItem);
-  addActivity("PM completed", `${asset.name} - ${historyItem.result}`);
+  addActivity("PM completed", `${formatPmNumber(historyItem)} - ${asset.name} - ${historyItem.result}`);
 
   if (historyItem.result !== "Passed") {
     state.workOrders.unshift(createWorkOrderFromPm(asset, historyItem));
@@ -1197,6 +1221,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const completedPmButton = event.target.closest("[data-completed-pm-asset]");
+  if (completedPmButton) {
+    const asset = getAsset(completedPmButton.dataset.completedPmAsset);
+    if (!asset) return;
+    selectedId = asset.id;
+    syncFiltersToSelectedAsset();
+    location.hash = `asset/${selectedId}`;
+    render();
+    document.getElementById("assetPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
   const button = event.target.closest("[data-work-order-action]");
   if (!button || !canManageWorkOrders()) return;
   const workOrder = getWorkOrder(button.dataset.workOrderId);
@@ -1285,6 +1321,7 @@ function render() {
   renderAssetTableControls();
   renderAssetTable();
   renderWorkOrders();
+  renderCompletedPms();
   renderPanelToggles();
 
   const asset = getSelectedAsset();
@@ -1353,11 +1390,15 @@ function renderAuth() {
 }
 
 function closeAssetRegisterDrawer() {
-  if (els.assetRegisterDrawer) els.assetRegisterDrawer.open = false;
+  if (!els.assetRegisterDrawer) return;
+  els.assetRegisterDrawer.open = false;
+  delete els.assetRegisterDrawer.dataset.openedByMetric;
 }
 
-function openAssetRegisterDrawer() {
-  if (els.assetRegisterDrawer) els.assetRegisterDrawer.open = true;
+function openAssetRegisterDrawer(openedByMetric = "") {
+  if (!els.assetRegisterDrawer) return;
+  if (openedByMetric) els.assetRegisterDrawer.dataset.openedByMetric = openedByMetric;
+  els.assetRegisterDrawer.open = true;
 }
 
 function toggleAssetRegisterDrawer() {
@@ -1845,6 +1886,12 @@ function renderAssetTable() {
   els.assetTableBody.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", (event) => {
       if (event.target.closest("[data-edit-asset], [data-print-select]")) return;
+      if (selectedId === row.dataset.id) {
+        selectedId = null;
+        clearSelectedAssetUrl();
+        render();
+        return;
+      }
       selectedId = row.dataset.id;
       syncFiltersToSelectedAsset();
       location.hash = `asset/${selectedId}`;
@@ -2018,6 +2065,12 @@ function scrollToAssetManual() {
   manual.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function scrollToMaintenanceHistory() {
+  const historyPanel = document.getElementById("historyList");
+  if (!historyPanel) return;
+  historyPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function setGalleryUploadStatus(message) {
   els.assetGalleryUploadStatus.textContent = message;
 }
@@ -2066,6 +2119,31 @@ function renderWorkOrders() {
   els.workOrderList.innerHTML = workOrders.length
     ? workOrders.map(renderWorkOrderItem).join("")
     : `<p class="muted">${currentRole === "Technician" ? "No open issues assigned to you for this view." : "No open issues for this view."}</p>`;
+}
+
+function renderCompletedPms() {
+  const records = completedPmRecords();
+  if (els.completedPmCount) els.completedPmCount.textContent = records.length;
+  if (!els.completedPmList) return;
+  els.completedPmList.innerHTML = records.length
+    ? records.map(renderCompletedPmItem).join("")
+    : `<p class="muted">No completed PMs for this view.</p>`;
+}
+
+function renderCompletedPmItem(record) {
+  return `
+    <article class="work-order-item completed-pm-item">
+      <header>
+        <div>
+          <strong>${escapeHtml(formatPmNumber(record.history))} - ${escapeHtml(record.asset.name)}</strong>
+          <span>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</span>
+        </div>
+        <button type="button" class="secondary mini" data-completed-pm-asset="${escapeAttribute(record.asset.id)}">View Equipment</button>
+      </header>
+      <p><strong>${escapeHtml(record.history.result || "Completed")}</strong> by ${escapeHtml(record.history.technician || "No technician entered")} on ${escapeHtml(formatDateTime(new Date(record.history.completedAt)))}</p>
+      <p>${escapeHtml(record.history.notes || "No notes entered.")}</p>
+    </article>
+  `;
 }
 
 function renderAssetWorkOrders(asset) {
@@ -2320,7 +2398,7 @@ function renderHistoryItem(item, index) {
     <details class="history-item pm-history-record" ${index === 0 ? "open" : ""}>
       <summary>
         <span>
-          <strong>${escapeHtml(item.result || "Completed")}</strong>
+          <strong>${escapeHtml(formatPmNumber(item))} - ${escapeHtml(item.result || "Completed")}</strong>
           <small>${escapeHtml(formatDateTime(completedAt))} | ${escapeHtml(item.technician || "No technician entered")}</small>
         </span>
         <span class="history-open-label">View</span>
@@ -2792,6 +2870,23 @@ function openWorkOrdersForAsset(assetId) {
   return state.workOrders.filter((item) => item.assetId === assetId && item.status !== "Closed" && canSeeWorkOrder(item));
 }
 
+function completedPmRecords() {
+  return filteredAssets()
+    .flatMap((asset) => (asset.history || []).map((history) => ({
+      asset,
+      history,
+      customer: getCustomer(asset.customerId),
+      location: getLocation(asset.locationId)
+    })))
+    .sort((a, b) => new Date(b.history.completedAt || 0) - new Date(a.history.completedAt || 0));
+}
+
+function getMostRecentAssetWithCompletedPm() {
+  return filteredAssets()
+    .filter((asset) => asset.history?.length)
+    .sort((a, b) => new Date(b.history[0]?.completedAt || 0) - new Date(a.history[0]?.completedAt || 0))[0] || null;
+}
+
 function locationsForCustomer(customerId) {
   return state.locations.filter((locationRecord) => locationRecord.customerId === customerId);
 }
@@ -2956,6 +3051,22 @@ function formatIssueNumber(item) {
   return numeric ? `SW-${String(numeric).padStart(4, "0")}` : "SW-0000";
 }
 
+function nextPmNumber() {
+  const highest = state.assets.reduce((max, asset) => {
+    const assetHighest = (asset.history || []).reduce((innerMax, item) => {
+      const numeric = Number(item.pmNumber || String(item.pmNo || "").replace(/\D/g, ""));
+      return Number.isFinite(numeric) ? Math.max(innerMax, numeric) : innerMax;
+    }, max);
+    return Math.max(max, assetHighest);
+  }, 0);
+  return highest + 1;
+}
+
+function formatPmNumber(item) {
+  const numeric = Number(item?.pmNumber || 0);
+  return numeric ? `SW-PM-${String(numeric).padStart(4, "0")}` : "SW-PM-0000";
+}
+
 function canManageSetup() {
   return currentRole === "Admin";
 }
@@ -3045,6 +3156,14 @@ function getReportLocationUrl(locationId) {
 
 function getCurrentPageUrl() {
   return location.href.split(/[?#]/)[0];
+}
+
+function clearSelectedAssetUrl() {
+  const params = new URLSearchParams(location.search);
+  params.delete("a");
+  params.delete("qr");
+  const query = params.toString();
+  history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}`);
 }
 
 function normalizeBaseUrl(value) {
@@ -3679,6 +3798,7 @@ async function syncStructuredDataToSupabase() {
 
     const historyRows = state.assets.flatMap((asset) => (asset.history || []).map((item) => ({
       id: item.id,
+      pm_number: item.pmNumber || null,
       asset_id: asset.id,
       technician: item.technician || "",
       result: item.result || "",
@@ -3916,6 +4036,27 @@ function normalizeState(input) {
     history: (asset.history || []).map((item) => ({ photo: null, ...item })),
     ...asset
   }));
+
+  const usedPmNumbers = new Set();
+  normalized.assets.forEach((asset) => {
+    asset.history = (asset.history || []).map((item) => {
+      const numeric = Number(item.pmNumber || String(item.pmNo || "").replace(/\D/g, ""));
+      const pmNumber = Number.isFinite(numeric) && numeric > 0 && !usedPmNumbers.has(numeric)
+        ? numeric
+        : 0;
+      if (pmNumber) usedPmNumbers.add(pmNumber);
+      return { photo: null, ...item, pmNumber };
+    });
+  });
+  let pmNumberCursor = 1;
+  normalized.assets.forEach((asset) => {
+    (asset.history || []).forEach((item) => {
+      if (item.pmNumber) return;
+      while (usedPmNumbers.has(pmNumberCursor)) pmNumberCursor += 1;
+      item.pmNumber = pmNumberCursor;
+      usedPmNumbers.add(pmNumberCursor);
+    });
+  });
 
   const usedIssueNumbers = new Set();
   normalized.workOrders = normalized.workOrders.map((item) => {

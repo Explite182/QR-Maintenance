@@ -73,6 +73,7 @@ alter table public.work_orders add column if not exists issue_number integer;
 
 create table if not exists public.pm_history (
   id text primary key,
+  pm_number integer,
   asset_id text not null references public.assets(id) on delete cascade,
   technician text not null default '',
   result text not null default '',
@@ -81,6 +82,8 @@ create table if not exists public.pm_history (
   completed_checks jsonb not null default '[]'::jsonb,
   completed_at timestamptz not null default now()
 );
+
+alter table public.pm_history add column if not exists pm_number integer;
 
 create table if not exists public.asset_files (
   id text primary key,
