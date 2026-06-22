@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260622-1520">
+  <link rel="stylesheet" href="styles.css?v=20260622-1540">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -372,15 +372,14 @@
         </label>
       </div>
 
-      <section id="dashboardPanel" class="dashboard-panel collapsible-panel" aria-label="Maintenance summary">
+      <section id="dashboardPanel" class="dashboard-panel" aria-label="Maintenance summary">
         <div class="panel-heading">
           <div>
           <p class="eyebrow">Today</p>
           <h2>Maintenance overview</h2>
           </div>
-          <button type="button" class="secondary mini panel-toggle" data-panel-toggle="dashboardPanel">Hide</button>
         </div>
-        <div class="dashboard" data-panel-body>
+        <div class="dashboard">
           <button type="button" class="metric-card metric-warn" data-dashboard-filter="dueNow">
             <span id="dueToday">0</span>
             <p>Due now</p>
@@ -417,7 +416,6 @@
           <h2>Equipment Register</h2>
           <span class="panel-title-actions">
             <span id="tableAssetCount">0</span>
-            <span class="drawer-toggle-label" aria-hidden="true"></span>
           </span>
         </summary>
         <div class="asset-tools" aria-label="Asset register tools">
@@ -499,7 +497,6 @@
           <h2>Open Issues</h2>
           <div class="panel-title-actions">
             <span id="workOrderCount">0</span>
-            <button type="button" class="secondary mini panel-toggle" data-panel-toggle="workOrdersPanel">Hide</button>
           </div>
         </div>
         <div id="workOrderList" class="work-order-list" data-panel-body></div>
@@ -513,9 +510,6 @@
       <article id="assetPanel" class="asset-panel collapsible-panel hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="assetPanel">
           <h2>Selected Equipment</h2>
-          <div class="panel-title-actions">
-            <button type="button" class="secondary mini panel-toggle" data-panel-toggle="assetPanel">Hide</button>
-          </div>
         </div>
         <div class="asset-panel-body" data-panel-body>
         <div class="asset-heading">
@@ -746,7 +740,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260622-1520"></script>
+  <script src="app.js?v=20260622-1540"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
