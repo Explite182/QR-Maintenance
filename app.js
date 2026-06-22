@@ -1833,9 +1833,10 @@ function renderDashboard() {
   const assets = filteredAssets();
   const dueInfos = assets.map(getDueInfo);
   const activeIssues = filteredWorkOrders().filter((item) => item.status !== "Closed");
+  const completedIssues = completedIssueRecords();
   els.dueToday.textContent = dueInfos.filter((item) => item.daysUntil <= 0).length;
   els.overdue.textContent = dueInfos.filter((item) => item.daysUntil < 0).length;
-  els.completed.textContent = assets.reduce((count, asset) => count + asset.history.length, 0);
+  els.completed.textContent = completedIssues.length;
   els.openWorkOrders.textContent = activeIssues.length;
   els.highPriorityIssues.textContent = activeIssues.filter((item) => item.priority === "High").length;
   els.waitingPartsIssues.textContent = activeIssues.filter((item) => item.status === "Waiting parts").length;
@@ -2122,15 +2123,31 @@ function renderWorkOrders() {
 }
 
 function renderCompletedPms() {
-  const records = completedPmRecords();
+  const records = completedIssueRecords();
   if (els.completedPmCount) els.completedPmCount.textContent = records.length;
   if (!els.completedPmList) return;
   els.completedPmList.innerHTML = records.length
-    ? records.map(renderCompletedPmItem).join("")
-    : `<p class="muted">No completed PMs for this view.</p>`;
+    ? records.map(renderCompletedIssueItem).join("")
+    : `<p class="muted">No completed issues for this view.</p>`;
 }
 
-function renderCompletedPmItem(record) {
+function renderCompletedIssueItem(record) {
+  if (record.type === "workOrder") {
+    return `
+      <article class="work-order-item completed-pm-item">
+        <header>
+          <div>
+            <strong>${escapeHtml(formatIssueNumber(record.workOrder))} - ${escapeHtml(record.workOrder.title || "Completed issue")}</strong>
+            <span>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</span>
+          </div>
+          ${record.asset ? `<button type="button" class="secondary mini" data-completed-pm-asset="${escapeAttribute(record.asset.id)}">View Equipment</button>` : ""}
+        </header>
+        <p><strong>${escapeHtml(record.workOrder.status || "Closed")}</strong> ${escapeHtml(record.workOrder.priority || "Medium")} priority | Completed ${escapeHtml(formatDateTime(new Date(record.completedAt)))}</p>
+        <p>${escapeHtml(record.workOrder.notes || "No notes entered.")}</p>
+      </article>
+    `;
+  }
+
   return `
     <article class="work-order-item completed-pm-item">
       <header>
@@ -2202,6 +2219,11 @@ function matchesAssetSearch(asset) {
   const customer = getCustomer(asset.customerId);
   const locationRecord = getLocation(asset.locationId);
   const template = getTemplate(asset.templateId);
+  const relatedIssueNumbers = state.workOrders
+    .filter((item) => item.assetId === asset.id)
+    .flatMap((item) => [formatIssueNumber(item), item.issueNumber]);
+  const relatedPmNumbers = (asset.history || [])
+    .flatMap((item) => [formatPmNumber(item), item.pmNumber]);
   const haystack = [
     asset.name,
     asset.serial,
@@ -2219,6 +2241,8 @@ function matchesAssetSearch(asset) {
     customer?.name,
     locationRecord?.name,
     template?.name,
+    ...relatedIssueNumbers,
+    ...relatedPmNumbers,
     asset.id
   ].join(" ").toLowerCase();
   return haystack.includes(assetQuery);
@@ -2873,12 +2897,29 @@ function openWorkOrdersForAsset(assetId) {
 function completedPmRecords() {
   return filteredAssets()
     .flatMap((asset) => (asset.history || []).map((history) => ({
+      type: "pm",
       asset,
       history,
       customer: getCustomer(asset.customerId),
       location: getLocation(asset.locationId)
     })))
     .sort((a, b) => new Date(b.history.completedAt || 0) - new Date(a.history.completedAt || 0));
+}
+
+function completedIssueRecords() {
+  const closedWorkOrders = filteredWorkOrders()
+    .filter((item) => item.status === "Closed")
+    .map((workOrder) => ({
+      type: "workOrder",
+      workOrder,
+      asset: getAsset(workOrder.assetId),
+      customer: getCustomer(workOrder.customerId),
+      location: getLocation(workOrder.locationId),
+      completedAt: workOrder.resolvedAt || workOrder.updatedAt || workOrder.createdAt
+    }));
+
+  return [...completedPmRecords(), ...closedWorkOrders]
+    .sort((a, b) => new Date(b.completedAt || b.history?.completedAt || 0) - new Date(a.completedAt || a.history?.completedAt || 0));
 }
 
 function getMostRecentAssetWithCompletedPm() {
