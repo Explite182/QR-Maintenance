@@ -19,7 +19,7 @@ const DEFAULT_TEMPLATE_ITEMS = [
 
 let state = normalizeState(loadState());
 hydrateAssetFromHash();
-let selectedId = getAssetIdFromUrl() || state.assets[0]?.id || null;
+let selectedId = getAssetIdFromUrl() || null;
 let selectedCustomerId = state.customers[0]?.id || "";
 let selectedLocationId = "all";
 let currentUser = getInitialUser();
@@ -442,7 +442,7 @@ els.userSwitcher?.addEventListener("change", () => {
   state.currentUserId = user.id;
   selectedCustomerId = visibleCustomers()[0]?.id || "";
   selectedLocationId = "all";
-  selectedId = filteredAssets()[0]?.id || null;
+  selectedId = getAssetIdFromUrl() || null;
   closeAssetRegisterDrawer();
   persistLocalStateOnly();
   render();
@@ -935,14 +935,14 @@ els.nextAssetPageBtn.addEventListener("click", () => {
 els.customerFilter.addEventListener("change", () => {
   selectedCustomerId = els.customerFilter.value;
   selectedLocationId = "all";
-  selectedId = filteredAssets()[0]?.id || null;
+  selectedId = null;
   assetPage = 1;
   render();
 });
 
 els.locationFilter.addEventListener("change", () => {
   selectedLocationId = els.locationFilter.value;
-  selectedId = filteredAssets()[0]?.id || null;
+  selectedId = null;
   assetPage = 1;
   render();
 });
@@ -1197,13 +1197,6 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const createIssueButton = event.target.closest("[data-create-asset-issue]");
-  if (createIssueButton) {
-    const asset = getAsset(createIssueButton.dataset.createAssetIssue);
-    if (asset) createManualIssueForAsset(asset);
-    return;
-  }
-
   const button = event.target.closest("[data-work-order-action]");
   if (!button || !canManageWorkOrders()) return;
   const workOrder = getWorkOrder(button.dataset.workOrderId);
@@ -1234,6 +1227,37 @@ document.addEventListener("change", (event) => {
   addActivity("Issue assigned", `${workOrder.title} - ${workOrder.assignedUserName || "Unassigned"}`);
   saveState();
   render();
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-manual-issue-form]");
+  if (!form) return;
+  event.preventDefault();
+  const asset = getAsset(form.dataset.manualIssueForm);
+  if (!asset || !canManageWorkOrders()) return;
+  const submitButton = form.querySelector("button[type='submit']");
+  try {
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = "Creating...";
+    }
+    const formData = new FormData(form);
+    const photo = await readPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+    createManualIssueForAsset(asset, {
+      title: String(formData.get("title") || "").trim(),
+      priority: String(formData.get("priority") || "Medium"),
+      notes: String(formData.get("notes") || "").trim(),
+      photo
+    });
+  } catch (error) {
+    console.warn("Manual issue creation failed.", error);
+    alert("Issue was not created. Try again with no photo or a smaller photo.");
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = "Create Issue";
+    }
+  }
 });
 
 function render() {
@@ -1914,13 +1938,46 @@ function renderScanActionPanel(asset) {
       <span>${customerScanCopy.note}</span>
     </div>
     <div class="scan-action-buttons">
-      ${canManageWorkOrders() ? `<button type="button" class="secondary primary-action" data-create-asset-issue="${escapeAttribute(asset.id)}">Create Open Issue</button>` : ""}
       <a class="secondary primary-action" href="${escapeAttribute(getReportAssetUrl(asset.id))}">Report Equipment Issue</a>
       ${locationRecord ? `<a class="secondary" href="${escapeAttribute(getReportLocationUrl(locationRecord.id))}">Report Area Issue</a>` : ""}
       ${manualUrl ? `<a class="secondary" href="${escapeAttribute(manualUrl)}" target="_blank" rel="noopener">Open Manual</a>` : ""}
       <button type="button" class="secondary" data-scroll-target="pmForm">Checklist</button>
       <button type="button" class="secondary" data-scroll-target="assetGalleryPanel">Photos</button>
     </div>
+    ${canManageWorkOrders() ? renderManualIssueForm(asset) : ""}
+  `;
+}
+
+function renderManualIssueForm(asset) {
+  return `
+    <details class="manual-issue-form">
+      <summary>Create Open Issue</summary>
+      <form class="stack compact-form" data-manual-issue-form="${escapeAttribute(asset.id)}">
+        <div class="form-grid">
+          <label>
+            Issue title
+            <input name="title" required value="Issue: ${escapeAttribute(asset.name)}">
+          </label>
+          <label>
+            Priority
+            <select name="priority">
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Low">Low</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Notes
+          <textarea name="notes" rows="3" placeholder="What needs attention?"></textarea>
+        </label>
+        <label>
+          Issue photo
+          <input name="photo" type="file" accept="image/*">
+        </label>
+        <button type="submit" class="secondary primary-action">Create Issue</button>
+      </form>
+    </details>
   `;
 }
 
@@ -2688,7 +2745,7 @@ function ensureSelection() {
       selectedCustomerId = asset.customerId;
       selectedLocationId = "all";
     } else {
-      selectedId = filteredAssets()[0]?.id || null;
+      selectedId = null;
     }
   }
 }
@@ -2759,7 +2816,7 @@ async function deleteLocation(locationId) {
   );
 
   if (selectedLocationId === locationId) selectedLocationId = "all";
-  if (removedAssetIds.has(selectedId)) selectedId = filteredAssets()[0]?.id || state.assets[0]?.id || null;
+  if (removedAssetIds.has(selectedId)) selectedId = null;
   selectedCustomerId = state.customers.some((customer) => customer.id === selectedCustomerId)
     ? selectedCustomerId
     : state.customers[0]?.id || "";
@@ -2847,15 +2904,11 @@ function createWorkOrderFromPm(asset, historyItem) {
   };
 }
 
-function createManualIssueForAsset(asset) {
+function createManualIssueForAsset(asset, issueData = {}) {
   if (!canManageWorkOrders() || !canSeeAsset(asset)) return;
-  const title = window.prompt("Issue title:", `Issue: ${asset.name}`);
-  if (!title?.trim()) return;
-  const notes = window.prompt("Issue notes:", "");
-  if (notes === null) return;
-  const priorityInput = window.prompt("Priority: Low, Medium, or High", "Medium");
-  if (priorityInput === null) return;
-  const priority = normalizePriority(priorityInput);
+  const title = issueData.title || `Issue: ${asset.name}`;
+  if (!title.trim()) return;
+  const priority = normalizePriority(issueData.priority);
   const issue = {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
@@ -2869,7 +2922,8 @@ function createManualIssueForAsset(asset) {
     assignedUserId: "",
     assignedUserName: "",
     dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
-    notes: notes.trim() || "No notes entered.",
+    notes: issueData.notes || "No notes entered.",
+    photo: issueData.photo || null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -3478,7 +3532,7 @@ function applySharedState(sharedData, updatedAt = "") {
   currentRole = currentUser?.role || "Customer";
   selectedCustomerId = selectedCustomerId || state.customers[0]?.id || "";
   selectedLocationId = "all";
-  selectedId = getAssetIdFromUrl() || state.assets[0]?.id || null;
+  selectedId = getAssetIdFromUrl() || null;
   persistLocalStateOnly();
   applyingSharedState = false;
   render();
@@ -4071,7 +4125,7 @@ async function importDataBackup(file) {
     currentRole = currentUser?.role || "Customer";
     selectedCustomerId = state.customers[0]?.id || "";
     selectedLocationId = "all";
-    selectedId = state.assets[0]?.id || null;
+    selectedId = getAssetIdFromUrl() || null;
     addActivity("Data imported", file.name || "Backup file");
     saveState();
     if (selectedId) location.hash = `asset/${selectedId}`;
@@ -4089,7 +4143,7 @@ function restoreLatestAutoBackup() {
   currentRole = currentUser?.role || "Customer";
   selectedCustomerId = state.customers[0]?.id || "";
   selectedLocationId = "all";
-  selectedId = state.assets[0]?.id || null;
+  selectedId = getAssetIdFromUrl() || null;
   addActivity("Latest auto backup restored", formatDateTime(new Date(latest.createdAt)));
   saveState();
   if (selectedId) location.hash = `asset/${selectedId}`;
@@ -4177,9 +4231,9 @@ function seedDemo() {
   };
   selectedCustomerId = state.customers[0].id;
   selectedLocationId = "all";
-  selectedId = state.assets[0].id;
+  selectedId = null;
   saveState();
-  location.hash = `asset/${selectedId}`;
+  history.replaceState(null, "", getCurrentPageUrl());
   render();
 }
 
