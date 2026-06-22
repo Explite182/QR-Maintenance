@@ -57,12 +57,17 @@ create table if not exists public.work_orders (
   status text not null default 'Open',
   source text not null default '',
   area_name text not null default '',
+  assigned_user_id text not null default '',
+  assigned_user_name text not null default '',
   notes text not null default '',
   due_at timestamptz,
   resolved_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.work_orders add column if not exists assigned_user_id text not null default '';
+alter table public.work_orders add column if not exists assigned_user_name text not null default '';
 
 create table if not exists public.pm_history (
   id text primary key,

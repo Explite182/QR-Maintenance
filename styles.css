@@ -272,6 +272,20 @@ textarea:disabled {
   text-align: left;
 }
 
+.user-switcher {
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.user-switcher select {
+  min-height: 38px;
+  padding: 0 34px 0 12px;
+}
+
 .user-chip {
   display: grid;
   gap: 2px;
@@ -336,6 +350,23 @@ textarea:disabled {
   margin-top: 10px;
 }
 
+.location-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  margin-top: 10px;
+  overflow: auto;
+}
+
+.location-editor {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfdfc;
+}
+
 .user-list-item {
   display: grid;
   gap: 2px;
@@ -381,7 +412,8 @@ textarea:disabled {
   font-weight: 800;
 }
 
-.user-actions {
+.user-actions,
+.record-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -445,6 +477,10 @@ textarea:disabled {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
   min-height: calc(100vh - 86px);
+}
+
+.app-shell.no-sidebar {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .sidebar {
@@ -596,38 +632,6 @@ textarea {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-}
-
-.asset-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.asset-button {
-  display: grid;
-  gap: 4px;
-  width: 100%;
-  min-height: 58px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  color: var(--ink);
-  text-align: left;
-  box-shadow: none;
-}
-
-.asset-button.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: inset 4px 0 0 var(--accent);
-}
-
-.asset-button span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
 }
 
 .workspace {
@@ -1497,6 +1501,32 @@ textarea {
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
+}
+
+.work-order-item header .assigned-label {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.work-order-assignment {
+  display: grid;
+  gap: 5px;
+  max-width: 360px;
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.work-order-assignment select {
+  min-height: 38px;
+}
+
+.assigned-readonly {
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .work-order-actions {

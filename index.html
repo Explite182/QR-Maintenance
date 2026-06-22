@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260619-1700">
+  <link rel="stylesheet" href="styles.css?v=20260622-1205">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -42,8 +42,8 @@
       </div>
       <form id="loginForm" class="stack">
         <label>
-          Email
-          <input id="loginUsername" required autocomplete="username" placeholder="name@example.com">
+          Email or login name
+          <input id="loginUsername" required autocomplete="username" placeholder="tech1 or name@example.com">
         </label>
         <label>
           Password
@@ -117,6 +117,10 @@
       <h1>SiteWorks</h1>
     </div>
     <div class="header-actions">
+      <label id="userSwitcherWrap" class="user-switcher hidden">
+        Test as
+        <select id="userSwitcher"></select>
+      </label>
       <div class="user-chip">
         <span id="currentUserName"></span>
         <strong id="currentUserRole"></strong>
@@ -250,6 +254,7 @@
             </label>
             <button type="submit">Add Location</button>
           </form>
+          <div id="locationList" class="location-list"></div>
         </section>
 
         <section class="sidebar-section">
@@ -288,8 +293,8 @@
           </div>
           <form id="userForm" class="stack compact-form">
             <label>
-              Email
-              <input id="newUsername" required type="email" placeholder="name@example.com">
+              Login name
+              <input id="newUsername" required placeholder="tech1 or name@example.com">
             </label>
             <label>
               Display name
@@ -396,6 +401,10 @@
           <button type="button" class="metric-card metric-warn" data-dashboard-filter="waitingParts">
             <span id="waitingPartsIssues">0</span>
             <p>Waiting parts</p>
+          </button>
+          <button type="button" class="metric-card metric-neutral" data-dashboard-filter="assignedToMe">
+            <span id="assignedToMeIssues">0</span>
+            <p>Assigned to me</p>
           </button>
         </div>
       </section>
@@ -720,7 +729,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260619-1700"></script>
+  <script src="app.js?v=20260622-1205"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

@@ -6,6 +6,7 @@ const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
 const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
+const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
@@ -86,6 +87,8 @@ const els = {
   userDrawer: document.getElementById("userDrawer"),
   backupDrawer: document.getElementById("backupDrawer"),
   dashboardPanel: document.querySelector(".dashboard-panel"),
+  userSwitcherWrap: document.getElementById("userSwitcherWrap"),
+  userSwitcher: document.getElementById("userSwitcher"),
   currentUserName: document.getElementById("currentUserName"),
   currentUserRole: document.getElementById("currentUserRole"),
   logoutBtn: document.getElementById("logoutBtn"),
@@ -124,6 +127,7 @@ const els = {
   locationCustomer: document.getElementById("locationCustomer"),
   locationName: document.getElementById("locationName"),
   locationCount: document.getElementById("locationCount"),
+  locationList: document.getElementById("locationList"),
   assetForm: document.getElementById("assetForm"),
   assetCustomer: document.getElementById("assetCustomer"),
   assetLocation: document.getElementById("assetLocation"),
@@ -217,6 +221,7 @@ const els = {
   waitingPartsIssues: document.getElementById("waitingPartsIssues"),
   reportedIssues: document.getElementById("reportedIssues"),
   activeLocations: document.getElementById("activeLocations"),
+  assignedToMeIssues: document.getElementById("assignedToMeIssues"),
   workOrderCount: document.getElementById("workOrderCount"),
   workOrderList: document.getElementById("workOrderList"),
   assetWorkOrderCount: document.getElementById("assetWorkOrderCount"),
@@ -265,6 +270,7 @@ els.loginForm.addEventListener("submit", async (event) => {
     currentUser = localUser;
     currentRole = localUser.role;
     state.currentUserId = localUser.id;
+    rememberAdminUserSwitcher(localUser);
     restoreScannedAssetSelection();
     closeAssetRegisterDrawer();
     saveState();
@@ -277,6 +283,7 @@ els.loginForm.addEventListener("submit", async (event) => {
   currentUser = user;
   currentRole = user.role;
   state.currentUserId = user.id;
+  rememberAdminUserSwitcher(user);
   restoreScannedAssetSelection();
   closeAssetRegisterDrawer();
   saveState();
@@ -310,6 +317,7 @@ els.firstAdminForm.addEventListener("submit", async (event) => {
   currentRole = user.role;
   state.currentUserId = user.id;
   upsertLocalUser(user);
+  rememberAdminUserSwitcher(user);
   closeAssetRegisterDrawer();
   addActivity("First admin created", email);
   saveState();
@@ -425,6 +433,20 @@ els.logoutBtn.addEventListener("click", () => {
   logoutCurrentUser("manual");
 });
 
+els.userSwitcher?.addEventListener("change", () => {
+  const user = state.users.find((item) => item.id === els.userSwitcher.value);
+  if (!user || !canUseUserSwitcher()) return;
+  currentUser = user;
+  currentRole = user.role;
+  state.currentUserId = user.id;
+  selectedCustomerId = visibleCustomers()[0]?.id || "";
+  selectedLocationId = "all";
+  selectedId = filteredAssets()[0]?.id || null;
+  closeAssetRegisterDrawer();
+  persistLocalStateOnly();
+  render();
+});
+
 function setupInactivityLogout() {
   ["pointerdown", "keydown", "input", "scroll", "touchstart"].forEach((eventName) => {
     document.addEventListener(eventName, resetInactivityLogoutTimer, { passive: true });
@@ -464,6 +486,7 @@ function logoutCurrentUser(reason = "manual") {
   currentUser = null;
   currentRole = "Customer";
   state.currentUserId = "";
+  sessionStorage.removeItem(USER_SWITCH_ADMIN_KEY);
   clearAuthSession();
   if (!isQrAccessUrl()) {
     history.replaceState(null, "", getCurrentPageUrl());
@@ -513,21 +536,29 @@ els.userForm.addEventListener("submit", async (event) => {
   if (!canManageSetup()) return;
   const username = els.newUsername.value.trim().toLowerCase();
   if (state.users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
-    alert("That email already exists.");
+    alert("That login name already exists.");
     return;
   }
 
   const newUserRole = els.newUserRole.value;
   const newUserCustomerId = newUserRole === "Admin" ? "" : els.newUserCustomer.value;
-  const newUser = await signUpSupabaseUser(
-    username,
-    els.newUserPassword.value,
-    els.newUserName.value.trim(),
-    newUserRole,
-    newUserCustomerId
-  );
+  const newUser = isEmailAddress(username)
+    ? await signUpSupabaseUser(
+      username,
+      els.newUserPassword.value,
+      els.newUserName.value.trim(),
+      newUserRole,
+      newUserCustomerId
+    )
+    : createLocalUser(
+      username,
+      els.newUserPassword.value,
+      els.newUserName.value.trim(),
+      newUserRole,
+      newUserCustomerId
+    );
   if (!newUser) {
-    alert("Could not create that user. Check that Supabase Auth allows email signups, then try again.");
+    alert("Could not create that user. For shared cloud login, use an email address. For local testing, use a simple login name.");
     return;
   }
   upsertLocalUser(newUser);
@@ -553,8 +584,9 @@ els.userList.addEventListener("submit", async (event) => {
   if (!user) return;
 
   const formData = new FormData(form);
-  const username = String(formData.get("username") || "").trim();
+  const username = String(formData.get("username") || "").trim().toLowerCase();
   const name = String(formData.get("name") || "").trim();
+  const password = String(formData.get("password") || "").trim();
   const role = String(formData.get("role") || "Customer");
   const customerId = role === "Admin" ? "" : String(formData.get("customerId") || "");
   const duplicateUsername = state.users.some((item) =>
@@ -575,9 +607,11 @@ els.userList.addEventListener("submit", async (event) => {
   user.name = name;
   user.role = role;
   user.customerId = customerId;
-  user.password = "";
+  user.localOnly = user.localOnly || !isEmailAddress(username);
+  if (user.localOnly && password) user.password = password;
+  if (!user.localOnly && isEmailAddress(username)) user.password = "";
   user.updatedAt = new Date().toISOString();
-  await saveSupabaseProfile(user);
+  if (!user.localOnly && isEmailAddress(username)) await saveSupabaseProfile(user);
   if (currentUser?.id === user.id) {
     currentUser = user;
     currentRole = user.role;
@@ -657,6 +691,63 @@ els.locationForm.addEventListener("submit", (event) => {
   saveState();
   els.locationForm.reset();
   render();
+});
+
+els.locationList.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!canManageSetup()) return;
+  const form = event.target.closest("form[data-location-id]");
+  if (!form) return;
+  const locationRecord = getLocation(form.dataset.locationId);
+  if (!locationRecord) return;
+  const formData = new FormData(form);
+  const oldCustomerId = locationRecord.customerId;
+  const nextCustomerId = String(formData.get("customerId") || "");
+  const nextName = String(formData.get("name") || "").trim();
+  if (!nextCustomerId || !nextName) return;
+
+  locationRecord.customerId = nextCustomerId;
+  locationRecord.name = nextName;
+  locationRecord.updatedAt = new Date().toISOString();
+
+  if (oldCustomerId !== nextCustomerId) {
+    state.assets
+      .filter((asset) => asset.locationId === locationRecord.id)
+      .forEach((asset) => {
+        asset.customerId = nextCustomerId;
+        asset.updatedAt = new Date().toISOString();
+      });
+    state.workOrders
+      .filter((item) => item.locationId === locationRecord.id)
+      .forEach((item) => {
+        item.customerId = nextCustomerId;
+        item.updatedAt = new Date().toISOString();
+      });
+  }
+
+  selectedCustomerId = nextCustomerId;
+  selectedLocationId = locationRecord.id;
+  addActivity("Location updated", `${locationRecord.name} for ${getCustomer(nextCustomerId)?.name || "customer"}`);
+  saveState();
+  render();
+});
+
+els.locationList.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-location-action='delete']");
+  if (!button || !canManageSetup()) return;
+  const locationRecord = getLocation(button.dataset.locationId);
+  if (!locationRecord) return;
+
+  const locationAssets = state.assets.filter((asset) => asset.locationId === locationRecord.id);
+  const locationWorkOrders = state.workOrders.filter((item) => item.locationId === locationRecord.id);
+  const customerName = getCustomer(locationRecord.customerId)?.name || "customer";
+  const confirmed = window.confirm(
+    `Delete ${locationRecord.name} for ${customerName}?\n\n` +
+    `This will also delete ${locationAssets.length} equipment record(s) and ${locationWorkOrders.length} issue(s) tied to this location.`
+  );
+  if (!confirmed) return;
+
+  await deleteLocation(locationRecord.id);
 });
 
 els.assetCustomer.addEventListener("change", () => {
@@ -805,7 +896,8 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
       workOrders: "active",
       highPriority: "highPriority",
       waitingParts: "waitingParts",
-      reportedIssues: "reported"
+      reportedIssues: "reported",
+      assignedToMe: "assignedToMe"
     };
     if (issueFilters[filter]) {
       workOrderViewFilter = issueFilters[filter];
@@ -1084,7 +1176,21 @@ document.addEventListener("click", (event) => {
     workOrder.resolvedAt = workOrder.status === "Resolved" ? workOrder.resolvedAt : "";
   }
   workOrder.updatedAt = new Date().toISOString();
-  addActivity("Work order updated", `${workOrder.assetName} - ${workOrder.status}`);
+  addActivity("Work order updated", `${workOrder.title} - ${workOrder.status}`);
+  saveState();
+  render();
+});
+
+document.addEventListener("change", (event) => {
+  const select = event.target.closest("[data-work-order-assignee]");
+  if (!select || !canManageWorkOrders()) return;
+  const workOrder = getWorkOrder(select.dataset.workOrderAssignee);
+  if (!workOrder) return;
+  const user = getAssignableUsersForWorkOrder(workOrder).find((item) => item.id === select.value) || null;
+  workOrder.assignedUserId = user?.id || "";
+  workOrder.assignedUserName = user ? user.name || user.username : "";
+  workOrder.updatedAt = new Date().toISOString();
+  addActivity("Issue assigned", `${workOrder.title} - ${workOrder.assignedUserName || "Unassigned"}`);
   saveState();
   render();
 });
@@ -1103,6 +1209,7 @@ function render() {
   renderUsers();
   renderAccessRequests();
   renderActivityLog();
+  renderLocations();
   renderCustomerOptions();
   renderTemplateOptions();
   renderLocationOptions();
@@ -1167,6 +1274,7 @@ function renderAuth() {
   els.loginScreen.classList.toggle("hidden", isReport || isLoggedIn);
   els.loginForm.classList.toggle("hidden", needsFirstAdmin);
   els.loginQrReportPrompt.classList.toggle("hidden", isReport || isLoggedIn || !hasScannedAsset);
+  els.userSwitcherWrap?.classList.add("hidden");
   if (!isReport && !isLoggedIn && hasScannedAsset) setLoginQrReportStatus(Boolean(getScannedReportAsset()));
   syncLoginQrReportPrompt();
   els.firstAdminForm.classList.toggle("hidden", !needsFirstAdmin);
@@ -1174,10 +1282,34 @@ function renderAuth() {
   if (isReport || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
   els.currentUserRole.textContent = currentUser.role;
+  renderUserSwitcher();
 }
 
 function closeAssetRegisterDrawer() {
   if (els.assetRegisterDrawer) els.assetRegisterDrawer.open = false;
+}
+
+function rememberAdminUserSwitcher(user) {
+  if (user?.role === "Admin") {
+    sessionStorage.setItem(USER_SWITCH_ADMIN_KEY, user.id);
+  }
+}
+
+function canUseUserSwitcher() {
+  const adminId = sessionStorage.getItem(USER_SWITCH_ADMIN_KEY);
+  return Boolean(adminId && state.users.some((user) => user.id === adminId && user.role === "Admin"));
+}
+
+function renderUserSwitcher() {
+  const canSwitch = canUseUserSwitcher();
+  els.userSwitcherWrap?.classList.toggle("hidden", !canSwitch);
+  if (!canSwitch || !els.userSwitcher) return;
+  const users = state.users
+    .filter((user) => user.username !== "scan-customer")
+    .sort((a, b) => `${a.role} ${a.name || a.username}`.localeCompare(`${b.role} ${b.name || b.username}`));
+  els.userSwitcher.innerHTML = users.map((user) =>
+    `<option value="${escapeAttribute(user.id)}" ${currentUser?.id === user.id ? "selected" : ""}>${escapeHtml(user.name || user.username)} (${escapeHtml(user.role)})</option>`
+  ).join("");
 }
 
 function getScannedReportAsset() {
@@ -1262,6 +1394,26 @@ function findUserForLogin(username, password) {
   );
 }
 
+function createLocalUser(username, password, name, role, customerId) {
+  const cleanUsername = username.trim().toLowerCase();
+  const cleanPassword = password.trim();
+  if (!cleanUsername || !cleanPassword) return null;
+  return {
+    id: crypto.randomUUID(),
+    username: cleanUsername,
+    name: name || cleanUsername,
+    password: cleanPassword,
+    role: role || "Customer",
+    customerId: role === "Admin" ? "" : customerId || "",
+    createdAt: new Date().toISOString(),
+    localOnly: true
+  };
+}
+
+function isEmailAddress(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
 function getOrCreateCustomerAccessUser() {
   let user = state.users.find((item) => item.username === "scan-customer");
   if (!user) {
@@ -1326,6 +1478,10 @@ function renderUsers() {
 
 function renderUserItem(user) {
   const disabled = canManageSetup() ? "" : "disabled";
+  const passwordDisabled = user.localOnly || !isEmailAddress(user.username) ? disabled : "disabled";
+  const passwordHelp = user.localOnly || !isEmailAddress(user.username)
+    ? "Leave blank to keep current password"
+    : "Use Supabase password reset";
   const currentLabel = currentUser?.id === user.id ? `<span class="current-user-label">Current user</span>` : "";
   const customer = getCustomer(user.customerId);
   const customerOptions = state.customers.map((customerRecord) =>
@@ -1345,7 +1501,7 @@ function renderUserItem(user) {
       </summary>
       <form class="stack compact-form" data-user-id="${escapeAttribute(user.id)}">
         <label>
-          Email
+          Login name
           <input name="username" required value="${escapeAttribute(user.username)}" ${disabled}>
         </label>
         <label>
@@ -1354,7 +1510,7 @@ function renderUserItem(user) {
         </label>
         <label>
           Password
-          <input name="password" type="password" placeholder="Use Supabase password reset" disabled>
+          <input name="password" type="password" placeholder="${passwordHelp}" ${passwordDisabled}>
         </label>
         <label>
           Role
@@ -1418,6 +1574,43 @@ function renderActivityLogItem(item) {
       <span>${escapeHtml(formatDateTime(new Date(item.createdAt)))} | ${escapeHtml(item.userName || "Unknown user")} | ${escapeHtml(item.userRole || "Unknown role")}</span>
       <p>${escapeHtml(item.details || "")}</p>
     </div>
+  `;
+}
+
+function renderLocations() {
+  if (!els.locationList) return;
+  const locations = [...state.locations].sort((a, b) => {
+    const customerA = getCustomer(a.customerId)?.name || "";
+    const customerB = getCustomer(b.customerId)?.name || "";
+    return `${customerA} ${a.name}`.localeCompare(`${customerB} ${b.name}`);
+  });
+  els.locationList.innerHTML = locations.length
+    ? locations.map(renderLocationEditor).join("")
+    : `<p class="muted">No locations added yet.</p>`;
+}
+
+function renderLocationEditor(locationRecord) {
+  const disabled = canManageSetup() ? "" : "disabled";
+  const customerOptions = state.customers.map((customer) =>
+    `<option value="${escapeAttribute(customer.id)}" ${locationRecord.customerId === customer.id ? "selected" : ""}>${escapeHtml(customer.name)}</option>`
+  ).join("");
+  return `
+    <form class="location-editor compact-form" data-location-id="${escapeAttribute(locationRecord.id)}">
+      <label>
+        Customer
+        <select name="customerId" ${disabled}>
+          ${customerOptions.replace(`value="${escapeAttribute(locationRecord.customerId)}"`, `value="${escapeAttribute(locationRecord.customerId)}" selected`)}
+        </select>
+      </label>
+      <label>
+        Location name
+        <input name="name" required value="${escapeAttribute(locationRecord.name)}" ${disabled}>
+      </label>
+      <div class="record-actions">
+        <button type="submit" class="secondary mini" ${disabled}>Save Location</button>
+        <button type="button" class="secondary mini danger-action" data-location-action="delete" data-location-id="${escapeAttribute(locationRecord.id)}" ${disabled}>Delete</button>
+      </div>
+    </form>
   `;
 }
 
@@ -1500,6 +1693,7 @@ function renderDashboard() {
   els.openWorkOrders.textContent = activeIssues.length;
   els.highPriorityIssues.textContent = activeIssues.filter((item) => item.priority === "High").length;
   els.waitingPartsIssues.textContent = activeIssues.filter((item) => item.status === "Waiting parts").length;
+  if (els.assignedToMeIssues) els.assignedToMeIssues.textContent = activeIssues.filter((item) => item.assignedUserId === currentUser?.id).length;
   if (els.reportedIssues) els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
   if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
 }
@@ -1748,6 +1942,7 @@ function filterWorkOrdersForView(workOrders) {
   if (workOrderViewFilter === "highPriority") return active.filter((item) => item.priority === "High");
   if (workOrderViewFilter === "waitingParts") return active.filter((item) => item.status === "Waiting parts");
   if (workOrderViewFilter === "reported") return active.filter((item) => item.source === "Public QR report");
+  if (workOrderViewFilter === "assignedToMe") return active.filter((item) => item.assignedUserId === currentUser?.id);
   return active;
 }
 
@@ -2025,6 +2220,8 @@ function renderWorkOrderItem(item) {
   const asset = getAsset(item.assetId);
   const customer = getCustomer(item.customerId);
   const locationRecord = getLocation(item.locationId);
+  const assignedLabel = item.assignedUserName || getUser(item.assignedUserId)?.name || getUser(item.assignedUserId)?.username || "Unassigned";
+  const assignmentControl = renderWorkOrderAssignmentControl(item);
   const assetAction = asset
     ? `<button class="secondary mini" type="button" data-asset-link="${item.assetId}">View Equipment</button>`
     : "";
@@ -2055,15 +2252,45 @@ function renderWorkOrderItem(item) {
         <div>
           <strong>${escapeHtml(item.title)}</strong>
           <span><span class="status-badge ${statusClass}">${escapeHtml(item.status)}</span> ${escapeHtml(item.priority)} priority | Due ${formatDate(new Date(item.dueAt))}</span>
+          <span class="assigned-label">Assigned to ${escapeHtml(assignedLabel)}</span>
         </div>
         ${assetAction}
       </header>
+      ${assignmentControl}
       <p>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")} | ${escapeHtml(asset?.name || item.areaName || "Area report")}</p>
       <p>${escapeHtml(item.notes)}</p>
       ${item.photo ? `<img class="history-photo" alt="Issue report photo" src="${item.photo.dataUrl}">` : ""}
       ${actions}
     </article>
   `;
+}
+
+function renderWorkOrderAssignmentControl(item) {
+  if (!canManageWorkOrders()) {
+    return `<p class="assigned-readonly">Assigned to ${escapeHtml(item.assignedUserName || "Unassigned")}</p>`;
+  }
+  const users = getAssignableUsersForWorkOrder(item);
+  const options = [
+    `<option value="">Unassigned</option>`,
+    ...users.map((user) =>
+      `<option value="${escapeAttribute(user.id)}" ${item.assignedUserId === user.id ? "selected" : ""}>${escapeHtml(user.name || user.username)} (${escapeHtml(user.role)})</option>`
+    )
+  ].join("");
+  return `
+    <label class="work-order-assignment">
+      Assigned to
+      <select data-work-order-assignee="${escapeAttribute(item.id)}">
+        ${options}
+      </select>
+    </label>
+  `;
+}
+
+function getAssignableUsersForWorkOrder(item) {
+  return state.users
+    .filter((user) => user.username !== "scan-customer")
+    .filter((user) => user.role === "Admin" || user.customerId === item.customerId)
+    .sort((a, b) => `${a.role} ${a.name || a.username}`.localeCompare(`${b.role} ${b.name || b.username}`));
 }
 
 document.addEventListener("click", (event) => {
@@ -2205,6 +2432,45 @@ function locationsForCustomer(customerId) {
   return state.locations.filter((locationRecord) => locationRecord.customerId === customerId);
 }
 
+async function deleteLocation(locationId) {
+  const locationRecord = getLocation(locationId);
+  if (!locationRecord) return;
+  const removedAssetIds = new Set(
+    state.assets
+      .filter((asset) => asset.locationId === locationId)
+      .map((asset) => asset.id)
+  );
+  const removedAssetCount = removedAssetIds.size;
+  const removedWorkOrderCount = state.workOrders.filter((item) =>
+    item.locationId === locationId || removedAssetIds.has(item.assetId)
+  ).length;
+
+  state.locations = state.locations.filter((item) => item.id !== locationId);
+  state.assets = state.assets.filter((asset) => asset.locationId !== locationId);
+  state.workOrders = state.workOrders.filter((item) =>
+    item.locationId !== locationId && !removedAssetIds.has(item.assetId)
+  );
+
+  if (selectedLocationId === locationId) selectedLocationId = "all";
+  if (removedAssetIds.has(selectedId)) selectedId = filteredAssets()[0]?.id || state.assets[0]?.id || null;
+  selectedCustomerId = state.customers.some((customer) => customer.id === selectedCustomerId)
+    ? selectedCustomerId
+    : state.customers[0]?.id || "";
+
+  addActivity(
+    "Location deleted",
+    `${locationRecord.name}: ${removedAssetCount} equipment record(s), ${removedWorkOrderCount} issue(s)`
+  );
+  saveState();
+  await deleteStructuredRows("locations", "id", [locationId]);
+  if (selectedId) {
+    location.hash = `asset/${selectedId}`;
+  } else {
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  render();
+}
+
 function getSelectedAsset() {
   return getAsset(selectedId);
 }
@@ -2235,6 +2501,10 @@ function getWorkOrder(id) {
   return state.workOrders.find((item) => item.id === id) || null;
 }
 
+function getUser(id) {
+  return state.users.find((user) => user.id === id) || null;
+}
+
 function getDueInfo(asset) {
   const last = asset.history[0]?.completedAt ? new Date(asset.history[0].completedAt) : new Date(asset.createdAt);
   const nextDate = asset.nextPmDate ? parseLocalDate(asset.nextPmDate) : addDays(last, asset.frequencyDays);
@@ -2260,6 +2530,8 @@ function createWorkOrderFromPm(asset, historyItem) {
     title: `${historyItem.result}: ${asset.name}`,
     priority,
     status: "Open",
+    assignedUserId: "",
+    assignedUserName: "",
     dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
     notes: historyItem.notes || "Created automatically from PM result.",
     createdAt: new Date().toISOString(),
@@ -2440,6 +2712,8 @@ function createIssueFromPublicReport(report, note, contact, photo) {
     title: `Customer report: ${subject}`,
     priority: "Medium",
     status: "Open",
+    assignedUserId: "",
+    assignedUserName: "",
     dueAt: addDays(new Date(), 3).toISOString(),
     notes: [
       note,
@@ -2655,10 +2929,16 @@ async function loadSupabaseProfiles() {
       return;
     }
     const profiles = await response.json();
-    const scanUser = state.users.find((user) => user.username === "scan-customer");
+    const localUsers = state.users.filter((user) =>
+      user.username === "scan-customer" ||
+      user.localOnly ||
+      Boolean(user.password) ||
+      !isEmailAddress(user.username)
+    );
+    const localUsernames = new Set(localUsers.map((user) => user.username.toLowerCase()));
     state.users = [
-      ...(scanUser ? [scanUser] : []),
-      ...profiles.map(profileFromSupabase)
+      ...localUsers,
+      ...profiles.map(profileFromSupabase).filter((user) => !localUsernames.has(user.username.toLowerCase()))
     ];
     restoreSavedSessionUser();
     persistLocalStateOnly();
@@ -2947,6 +3227,8 @@ async function syncStructuredDataToSupabase() {
       status: item.status || "Open",
       source: item.source || "",
       area_name: item.areaName || "",
+      assigned_user_id: item.assignedUserId || "",
+      assigned_user_name: item.assignedUserName || "",
       notes: item.notes || "",
       due_at: item.dueAt || null,
       resolved_at: item.resolvedAt || null,
@@ -2984,6 +3266,18 @@ async function upsertStructuredRows(table, rows) {
   }
 }
 
+async function deleteStructuredRows(table, column, values) {
+  const cleanValues = values.filter(Boolean);
+  if (!cleanValues.length) return;
+  const filter = cleanValues.map((value) => encodeURIComponent(value)).join(",");
+  const response = await supabaseFetch(`${table}?${column}=in.(${filter})`, {
+    method: "DELETE"
+  });
+  if (!response.ok) {
+    console.warn(`Structured Supabase delete skipped for ${table}.`, await response.text());
+  }
+}
+
 function isCodexTestPublicReport(report) {
   const note = String(report.note || "");
   return note === "Codex connectivity test" ||
@@ -3007,6 +3301,8 @@ function createIssueFromRemoteReport(report) {
     title: `Customer report: ${asset?.name || report.equipment_name || report.location_name || "Area"}`,
     priority: "Medium",
     status: "Open",
+    assignedUserId: "",
+    assignedUserName: "",
     dueAt: addDays(new Date(report.created_at || Date.now()), 3).toISOString(),
     notes: [
       report.note || "",
@@ -3177,6 +3473,12 @@ function normalizeState(input) {
     notes: asset.notes || "",
     history: (asset.history || []).map((item) => ({ photo: null, ...item })),
     ...asset
+  }));
+
+  normalized.workOrders = normalized.workOrders.map((item) => ({
+    assignedUserId: "",
+    assignedUserName: "",
+    ...item
   }));
 
   normalized.users = normalized.users.map((user) => ({
