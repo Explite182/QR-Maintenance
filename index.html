@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260622-1740">
+  <link rel="stylesheet" href="styles.css?v=20260622-1755">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -396,6 +396,16 @@
             <span id="openWorkOrders">0</span>
             <p>Open issues</p>
           </button>
+          <div id="serviceRequestMetricWrap" class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="serviceRequests" aria-haspopup="true" aria-expanded="false">
+              <span id="serviceRequestsMetric">0</span>
+              <p>Service requests</p>
+            </button>
+            <div id="serviceRequestMetricMenu" class="metric-dropdown hidden" role="menu">
+              <button type="button" data-service-request-menu="new">New Service Request</button>
+              <button type="button" data-service-request-menu="history">Service Request History</button>
+            </div>
+          </div>
           <button type="button" class="metric-card metric-danger" data-dashboard-filter="highPriority">
             <span id="highPriorityIssues">0</span>
             <p>High priority</p>
@@ -502,6 +512,71 @@
         <div id="workOrderList" class="work-order-list" data-panel-body></div>
       </section>
 
+      <section id="serviceRequestsPanel" class="work-orders-panel collapsible-panel is-collapsed">
+        <div class="section-title clickable-panel-title" data-panel-toggle="serviceRequestsPanel">
+          <h2>Service Requests</h2>
+          <div class="panel-title-actions">
+            <span id="serviceRequestCount">0</span>
+          </div>
+        </div>
+        <div data-panel-body>
+          <details id="serviceRequestCreateDrawer" class="service-request-create-drawer">
+            <summary>Create Service Request</summary>
+            <form id="serviceRequestForm" class="stack compact-form">
+              <div class="form-grid">
+                <label>
+                  Customer
+                  <select id="serviceRequestCustomer"></select>
+                </label>
+                <label>
+                  Location
+                  <select id="serviceRequestLocation"></select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Equipment
+                  <select id="serviceRequestAsset"></select>
+                </label>
+                <label>
+                  Priority
+                  <select id="serviceRequestPriority">
+                    <option>Medium</option>
+                    <option>High</option>
+                    <option>Low</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Requested by
+                  <input id="serviceRequestRequestedBy" placeholder="Name">
+                </label>
+                <label>
+                  Preferred date
+                  <input id="serviceRequestPreferredDate" type="date">
+                </label>
+              </div>
+              <label>
+                Request
+                <input id="serviceRequestTitle" required placeholder="Short service request">
+              </label>
+              <label>
+                Details
+                <textarea id="serviceRequestNotes" rows="3" placeholder="What needs service?"></textarea>
+              </label>
+              <label>
+                Photo
+                <input id="serviceRequestPhoto" type="file" accept="image/*">
+              </label>
+              <button type="submit" class="primary">Create Service Request</button>
+              <p id="serviceRequestStatus" class="inline-status"></p>
+            </form>
+          </details>
+          <div id="serviceRequestList" class="work-order-list"></div>
+        </div>
+      </section>
+
       <section id="completedPmPanel" class="work-orders-panel collapsible-panel is-collapsed">
         <div class="section-title clickable-panel-title" data-panel-toggle="completedPmPanel">
           <h2>Completed Issues</h2>
@@ -509,7 +584,9 @@
             <span id="completedPmCount">0</span>
           </div>
         </div>
-        <div id="completedPmList" class="work-order-list" data-panel-body></div>
+        <div data-panel-body>
+          <div id="completedPmList" class="work-order-list"></div>
+        </div>
       </section>
 
       <article id="emptyState" class="empty-state">
@@ -750,7 +827,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260622-1740"></script>
+  <script src="app.js?v=20260622-1755"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

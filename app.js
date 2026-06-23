@@ -218,6 +218,7 @@ const els = {
   overdue: document.getElementById("overdue"),
   completed: document.getElementById("completed"),
   openWorkOrders: document.getElementById("openWorkOrders"),
+  serviceRequestsMetric: document.getElementById("serviceRequestsMetric"),
   highPriorityIssues: document.getElementById("highPriorityIssues"),
   waitingPartsIssues: document.getElementById("waitingPartsIssues"),
   reportedIssues: document.getElementById("reportedIssues"),
@@ -227,6 +228,19 @@ const els = {
   workOrderList: document.getElementById("workOrderList"),
   completedPmCount: document.getElementById("completedPmCount"),
   completedPmList: document.getElementById("completedPmList"),
+  serviceRequestCount: document.getElementById("serviceRequestCount"),
+  serviceRequestList: document.getElementById("serviceRequestList"),
+  serviceRequestForm: document.getElementById("serviceRequestForm"),
+  serviceRequestCustomer: document.getElementById("serviceRequestCustomer"),
+  serviceRequestLocation: document.getElementById("serviceRequestLocation"),
+  serviceRequestAsset: document.getElementById("serviceRequestAsset"),
+  serviceRequestPriority: document.getElementById("serviceRequestPriority"),
+  serviceRequestRequestedBy: document.getElementById("serviceRequestRequestedBy"),
+  serviceRequestPreferredDate: document.getElementById("serviceRequestPreferredDate"),
+  serviceRequestTitle: document.getElementById("serviceRequestTitle"),
+  serviceRequestNotes: document.getElementById("serviceRequestNotes"),
+  serviceRequestPhoto: document.getElementById("serviceRequestPhoto"),
+  serviceRequestStatus: document.getElementById("serviceRequestStatus"),
   assetWorkOrderCount: document.getElementById("assetWorkOrderCount"),
   assetWorkOrderList: document.getElementById("assetWorkOrderList"),
   assetGalleryCount: document.getElementById("assetGalleryCount"),
@@ -727,6 +741,12 @@ els.locationList.addEventListener("submit", (event) => {
         item.customerId = nextCustomerId;
         item.updatedAt = new Date().toISOString();
       });
+    state.serviceRequests
+      .filter((item) => item.locationId === locationRecord.id)
+      .forEach((item) => {
+        item.customerId = nextCustomerId;
+        item.updatedAt = new Date().toISOString();
+      });
   }
 
   selectedCustomerId = nextCustomerId;
@@ -744,10 +764,11 @@ els.locationList.addEventListener("click", async (event) => {
 
   const locationAssets = state.assets.filter((asset) => asset.locationId === locationRecord.id);
   const locationWorkOrders = state.workOrders.filter((item) => item.locationId === locationRecord.id);
+  const locationServiceRequests = state.serviceRequests.filter((item) => item.locationId === locationRecord.id);
   const customerName = getCustomer(locationRecord.customerId)?.name || "customer";
   const confirmed = window.confirm(
     `Delete ${locationRecord.name} for ${customerName}?\n\n` +
-    `This will also delete ${locationAssets.length} equipment record(s) and ${locationWorkOrders.length} issue(s) tied to this location.`
+    `This will also delete ${locationAssets.length} equipment record(s), ${locationWorkOrders.length} issue(s), and ${locationServiceRequests.length} service request(s) tied to this location.`
   );
   if (!confirmed) return;
 
@@ -846,6 +867,12 @@ els.historyList.addEventListener("click", (event) => {
   openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "PM evidence photo");
 });
 
+els.serviceRequestList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-view-photo]");
+  if (!button) return;
+  openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "Service request photo");
+});
+
 els.selectedAssetThumb.addEventListener("click", () => {
   const asset = getSelectedAsset();
   if (asset?.photo?.dataUrl) openPhotoViewer(asset.photo.dataUrl, asset.photo.name || "Equipment photo");
@@ -906,9 +933,13 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
     if (filter === "completedPm") {
       const panel = document.getElementById("completedPmPanel");
       const willOpen = panel?.classList.contains("is-collapsed");
-      togglePanel("completedPmPanel");
+      openPanel("completedPmPanel");
       render();
-      if (willOpen) panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+      panel?.scrollIntoView({ behavior: "smooth", block: willOpen ? "start" : "nearest" });
+      return;
+    }
+    if (filter === "serviceRequests") {
+      toggleServiceRequestMetricMenu();
       return;
     }
     if (issueFilters[filter]) {
@@ -964,6 +995,19 @@ els.locationFilter.addEventListener("change", () => {
   clearSelectedAssetUrl();
   assetPage = 1;
   render();
+});
+
+els.serviceRequestCustomer?.addEventListener("change", () => {
+  renderServiceRequestFormOptions();
+});
+
+els.serviceRequestLocation?.addEventListener("change", () => {
+  renderServiceRequestFormOptions();
+});
+
+els.serviceRequestForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await createServiceRequest();
 });
 
 els.assetRegisterDrawer?.addEventListener("toggle", () => {
@@ -1187,6 +1231,14 @@ els.restoreBackupBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (event) => {
+  if (!event.target.closest("#serviceRequestMetricWrap")) closeServiceRequestMetricMenu();
+
+  const serviceRequestMenuButton = event.target.closest("[data-service-request-menu]");
+  if (serviceRequestMenuButton) {
+    openServiceRequestPanel(serviceRequestMenuButton.dataset.serviceRequestMenu);
+    return;
+  }
+
   const panelToggle = event.target.closest("[data-panel-toggle]");
   if (panelToggle) {
     if (panelToggle.dataset.panelToggle === "dashboardPanel") return;
@@ -1221,6 +1273,27 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const servicePdfButton = event.target.closest("[data-service-request-pdf]");
+  if (servicePdfButton) {
+    const request = getServiceRequest(servicePdfButton.dataset.serviceRequestPdf);
+    if (request) openServiceRequestPdfForm(request);
+    return;
+  }
+
+  const serviceEmailButton = event.target.closest("[data-service-request-email]");
+  if (serviceEmailButton) {
+    const request = getServiceRequest(serviceEmailButton.dataset.serviceRequestEmail);
+    if (request) emailServiceRequest(request);
+    return;
+  }
+
+  const serviceSendPdfButton = event.target.closest("[data-service-request-send-pdf]");
+  if (serviceSendPdfButton) {
+    const request = getServiceRequest(serviceSendPdfButton.dataset.serviceRequestSendPdf);
+    if (request) sendServiceRequestPdfEmail(request, serviceSendPdfButton);
+    return;
+  }
+
   const completedPmButton = event.target.closest("[data-completed-pm-asset]");
   if (completedPmButton) {
     const asset = getAsset(completedPmButton.dataset.completedPmAsset);
@@ -1230,6 +1303,24 @@ document.addEventListener("click", (event) => {
     location.hash = `asset/${selectedId}`;
     render();
     document.getElementById("assetPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const serviceActionButton = event.target.closest("[data-service-request-action]");
+  if (serviceActionButton && canManageWorkOrders()) {
+    updateServiceRequestStatus(serviceActionButton.dataset.serviceRequestId, serviceActionButton.dataset.serviceRequestAction);
+    return;
+  }
+
+  const serviceConvertButton = event.target.closest("[data-service-request-convert]");
+  if (serviceConvertButton && canManageWorkOrders()) {
+    convertServiceRequestToIssue(serviceConvertButton.dataset.serviceRequestConvert);
+    return;
+  }
+
+  const workOrderConvertButton = event.target.closest("[data-work-order-convert-service]");
+  if (workOrderConvertButton && canManageWorkOrders()) {
+    convertOpenIssueToServiceRequest(workOrderConvertButton.dataset.workOrderConvertService);
     return;
   }
 
@@ -1256,11 +1347,76 @@ document.addEventListener("change", (event) => {
   if (!select || !canManageWorkOrders()) return;
   const workOrder = getWorkOrder(select.dataset.workOrderAssignee);
   if (!workOrder) return;
-  const user = getAssignableUsersForWorkOrder(workOrder).find((item) => item.id === select.value) || null;
+  const users = getAssignableUsersForWorkOrder(workOrder);
+  const user = users.find((item) => item.id === select.value) || null;
   workOrder.assignedUserId = user?.id || "";
   workOrder.assignedUserName = user ? user.name || user.username : "";
   workOrder.updatedAt = new Date().toISOString();
   addActivity("Issue assigned", `${workOrder.title} - ${workOrder.assignedUserName || "Unassigned"}`);
+  saveState();
+  render();
+});
+
+document.addEventListener("change", (event) => {
+  const select = event.target.closest("[data-service-request-assignee]");
+  if (!select || !canManageWorkOrders()) return;
+  const request = getServiceRequest(select.dataset.serviceRequestAssignee);
+  if (!request) return;
+  const users = getAssignableUsersForWorkOrder(request);
+  const user = users.find((item) => item.id === select.value);
+  request.assignedUserId = user?.id || "";
+  request.assignedUserName = user?.name || user?.username || "";
+  request.updatedAt = new Date().toISOString();
+  addActivity("Service request assigned", `${formatServiceRequestNumber(request)} - ${request.assignedUserName || "Unassigned"}`);
+  saveState();
+  render();
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-work-order-edit-form]");
+  if (!form) return;
+  event.preventDefault();
+  if (!canManageWorkOrders()) return;
+  const workOrder = getWorkOrder(form.dataset.workOrderEditForm);
+  if (!workOrder) return;
+  const formData = new FormData(form);
+  const photo = await readPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+  workOrder.title = String(formData.get("title") || "").trim() || workOrder.title;
+  workOrder.priority = normalizePriority(formData.get("priority"));
+  workOrder.status = String(formData.get("status") || workOrder.status);
+  const dueDate = String(formData.get("dueDate") || "");
+  workOrder.dueAt = dueDate ? parseLocalDate(dueDate).toISOString() : workOrder.dueAt;
+  workOrder.notes = String(formData.get("notes") || "").trim();
+  if (photo) workOrder.photo = photo;
+  if (workOrder.status === "Resolved" || workOrder.status === "Closed") {
+    workOrder.resolvedAt = workOrder.resolvedAt || new Date().toISOString();
+  } else {
+    workOrder.resolvedAt = "";
+  }
+  workOrder.updatedAt = new Date().toISOString();
+  addActivity("Issue edited", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
+  saveState();
+  render();
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-service-request-edit-form]");
+  if (!form) return;
+  event.preventDefault();
+  if (!canManageWorkOrders()) return;
+  const request = getServiceRequest(form.dataset.serviceRequestEditForm);
+  if (!request) return;
+  const formData = new FormData(form);
+  const photo = await readPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+  request.title = String(formData.get("title") || "").trim() || request.title;
+  request.priority = normalizePriority(formData.get("priority"));
+  request.status = String(formData.get("status") || request.status);
+  request.preferredDate = String(formData.get("preferredDate") || "");
+  request.requestedBy = String(formData.get("requestedBy") || "").trim();
+  request.notes = String(formData.get("notes") || "").trim();
+  if (photo) request.photo = photo;
+  request.updatedAt = new Date().toISOString();
+  addActivity("Service request edited", `${formatServiceRequestNumber(request)} - ${request.title}`);
   saveState();
   render();
 });
@@ -1321,6 +1477,8 @@ function render() {
   renderAssetTableControls();
   renderAssetTable();
   renderWorkOrders();
+  renderServiceRequests();
+  renderServiceRequestFormOptions();
   renderCompletedPms();
   renderPanelToggles();
 
@@ -1417,6 +1575,32 @@ function openPanel(panelId) {
   if (!panel) return;
   panel.classList.remove("is-collapsed");
   renderPanelToggles();
+}
+
+function toggleServiceRequestMetricMenu() {
+  const menu = document.getElementById("serviceRequestMetricMenu");
+  const button = document.querySelector("[data-dashboard-filter='serviceRequests']");
+  if (!menu) return;
+  const willOpen = menu.classList.contains("hidden");
+  menu.classList.toggle("hidden", !willOpen);
+  button?.setAttribute("aria-expanded", String(willOpen));
+}
+
+function closeServiceRequestMetricMenu() {
+  const menu = document.getElementById("serviceRequestMetricMenu");
+  const button = document.querySelector("[data-dashboard-filter='serviceRequests']");
+  menu?.classList.add("hidden");
+  button?.setAttribute("aria-expanded", "false");
+}
+
+function openServiceRequestPanel(mode = "history") {
+  closeServiceRequestMetricMenu();
+  const panel = document.getElementById("serviceRequestsPanel");
+  openPanel("serviceRequestsPanel");
+  render();
+  const drawer = document.getElementById("serviceRequestCreateDrawer");
+  if (drawer) drawer.open = mode === "new";
+  panel?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderPanelToggles() {
@@ -1833,11 +2017,13 @@ function renderDashboard() {
   const assets = filteredAssets();
   const dueInfos = assets.map(getDueInfo);
   const activeIssues = filteredWorkOrders().filter((item) => item.status !== "Closed");
+  const activeServiceRequests = filteredServiceRequests().filter((item) => item.status !== "Completed" && item.status !== "Declined");
   const completedIssues = completedIssueRecords();
   els.dueToday.textContent = dueInfos.filter((item) => item.daysUntil <= 0).length;
   els.overdue.textContent = dueInfos.filter((item) => item.daysUntil < 0).length;
   els.completed.textContent = completedIssues.length;
   els.openWorkOrders.textContent = activeIssues.length;
+  if (els.serviceRequestsMetric) els.serviceRequestsMetric.textContent = activeServiceRequests.length;
   els.highPriorityIssues.textContent = activeIssues.filter((item) => item.priority === "High").length;
   els.waitingPartsIssues.textContent = activeIssues.filter((item) => item.status === "Waiting parts").length;
   if (els.assignedToMeIssues) els.assignedToMeIssues.textContent = activeIssues.filter((item) => item.assignedUserId === currentUser?.id).length;
@@ -1887,16 +2073,12 @@ function renderAssetTable() {
   els.assetTableBody.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", (event) => {
       if (event.target.closest("[data-edit-asset], [data-print-select]")) return;
-      if (selectedId === row.dataset.id) {
-        selectedId = null;
-        clearSelectedAssetUrl();
-        render();
-        return;
-      }
       selectedId = row.dataset.id;
       syncFiltersToSelectedAsset();
       location.hash = `asset/${selectedId}`;
+      openPanel("assetPanel");
       render();
+      document.getElementById("assetPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
 
@@ -2127,7 +2309,13 @@ function renderCompletedPms() {
   if (els.completedPmCount) els.completedPmCount.textContent = records.length;
   if (!els.completedPmList) return;
   els.completedPmList.innerHTML = records.length
-    ? records.map(renderCompletedIssueItem).join("")
+    ? records.map((record) => {
+        try {
+          return renderCompletedIssueItem(record);
+        } catch {
+          return `<article class="work-order-item"><p class="muted">A completed record could not be displayed.</p></article>`;
+        }
+      }).join("")
     : `<p class="muted">No completed issues for this view.</p>`;
 }
 
@@ -2160,6 +2348,169 @@ function renderCompletedIssueItem(record) {
       <p><strong>${escapeHtml(record.history.result || "Completed")}</strong> by ${escapeHtml(record.history.technician || "No technician entered")} on ${escapeHtml(formatDateTime(new Date(record.history.completedAt)))}</p>
       <p>${escapeHtml(record.history.notes || "No notes entered.")}</p>
     </article>
+  `;
+}
+
+function renderServiceRequestFormOptions() {
+  if (!els.serviceRequestForm) return;
+  const customers = visibleCustomers();
+  const currentCustomerId = customers.some((customer) => customer.id === els.serviceRequestCustomer.value)
+    ? els.serviceRequestCustomer.value
+    : customers.some((customer) => customer.id === selectedCustomerId)
+      ? selectedCustomerId
+      : customers[0]?.id || "";
+  els.serviceRequestCustomer.innerHTML = customers.map((customer) =>
+    `<option value="${escapeAttribute(customer.id)}">${escapeHtml(customer.name)}</option>`
+  ).join("");
+  els.serviceRequestCustomer.value = currentCustomerId;
+  els.serviceRequestCustomer.disabled = currentRole !== "Admin";
+  els.serviceRequestCustomer.title = currentRole === "Admin"
+    ? "Choose the customer for this service request."
+    : "Only admin users can choose a different customer.";
+
+  const locations = locationsForCustomer(currentCustomerId);
+  const currentLocationId = locations.some((locationRecord) => locationRecord.id === els.serviceRequestLocation.value)
+    ? els.serviceRequestLocation.value
+    : locations.some((locationRecord) => locationRecord.id === selectedLocationId)
+      ? selectedLocationId
+      : locations[0]?.id || "";
+  els.serviceRequestLocation.innerHTML = locations.map((locationRecord) =>
+    `<option value="${escapeAttribute(locationRecord.id)}">${escapeHtml(locationRecord.name)}</option>`
+  ).join("");
+  els.serviceRequestLocation.value = currentLocationId;
+
+  const assets = state.assets.filter((asset) =>
+    canSeeAsset(asset) &&
+    asset.customerId === currentCustomerId &&
+    (!currentLocationId || asset.locationId === currentLocationId)
+  );
+  const currentAssetId = assets.some((asset) => asset.id === els.serviceRequestAsset.value)
+    ? els.serviceRequestAsset.value
+    : "";
+  els.serviceRequestAsset.innerHTML = [
+    `<option value="">No equipment selected</option>`,
+    ...assets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name)}</option>`)
+  ].join("");
+  els.serviceRequestAsset.value = currentAssetId;
+  els.serviceRequestForm.querySelector("button").disabled = !customers.length || !locations.length || !canCreateServiceRequests();
+}
+
+function renderServiceRequests() {
+  const requests = filteredServiceRequests();
+  if (els.serviceRequestCount) els.serviceRequestCount.textContent = requests.filter((item) => item.status !== "Completed" && item.status !== "Declined").length;
+  if (!els.serviceRequestList) return;
+  els.serviceRequestList.innerHTML = requests.length
+    ? requests.map((request) => {
+        try {
+          return renderServiceRequestItem(request);
+        } catch {
+          return `<article class="work-order-item"><p class="muted">A service request could not be displayed.</p></article>`;
+        }
+      }).join("")
+    : `<p class="muted">No service requests for this view.</p>`;
+}
+
+function renderServiceRequestItem(request) {
+  const customer = getCustomer(request.customerId);
+  const locationRecord = getLocation(request.locationId);
+  const asset = getAsset(request.assetId);
+  const assignedLabel = request.assignedUserName || "Unassigned";
+  const canEdit = canManageWorkOrders();
+  const statusClass = request.status === "Completed"
+    ? "badge-ok"
+    : request.status === "Declined"
+      ? "badge-muted"
+      : request.priority === "High"
+        ? "badge-danger"
+        : "badge-warn";
+  const assignableUsers = getAssignableUsersForWorkOrder(request);
+  const selectedAssigneeId = getSelectedAssigneeId(request, assignableUsers);
+  const assigneeOptions = [`<option value="">Unassigned</option>`, ...assignableUsers.map((user) =>
+    `<option value="${escapeAttribute(user.id)}" ${selectedAssigneeId === user.id ? "selected" : ""}>${escapeHtml(user.name || user.username)} (${escapeHtml(user.role)})</option>`
+  )].join("");
+  const requestPhoto = request.photo?.dataUrl
+    ? `<button type="button" class="history-photo-button" data-view-photo data-photo-src="${escapeAttribute(request.photo.dataUrl)}" data-photo-caption="${escapeAttribute(request.photo.name || "Service request photo")}">
+        <img class="history-photo" alt="Service request photo" src="${escapeAttribute(request.photo.dataUrl)}">
+      </button>`
+    : "";
+  return `
+    <article class="work-order-item service-request-item">
+      <header>
+        <div>
+          <strong>${escapeHtml(formatServiceRequestNumber(request))} - ${escapeHtml(request.title || "Service request")}</strong>
+          <span><span class="status-badge ${statusClass}">${escapeHtml(request.status || "New")}</span> ${escapeHtml(request.priority || "Medium")} priority | Preferred ${request.preferredDate ? escapeHtml(formatDate(parseLocalDate(request.preferredDate))) : "Not set"}</span>
+          <span class="assigned-label">Assigned to ${escapeHtml(assignedLabel)}</span>
+        </div>
+      </header>
+      ${canEdit ? `<label class="work-order-assignment">Assign to<select data-service-request-assignee="${escapeAttribute(request.id)}">${assigneeOptions}</select></label>` : ""}
+      <p>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")} | ${escapeHtml(asset?.name || "No equipment selected")}</p>
+      <p>Requested by ${escapeHtml(request.requestedBy || "Not entered")}. ${escapeHtml(request.notes || "No details entered.")}</p>
+      ${requestPhoto}
+      ${canEdit ? `
+        <div class="work-order-actions">
+          <details class="inline-edit-drawer">
+            <summary>Edit</summary>
+            ${renderServiceRequestEditForm(request)}
+          </details>
+          <button class="secondary" data-service-request-pdf="${escapeAttribute(request.id)}">PDF Form</button>
+          <button class="secondary" data-service-request-email="${escapeAttribute(request.id)}">Email Request</button>
+          <button class="secondary" data-service-request-send-pdf="${escapeAttribute(request.id)}">Send PDF Email</button>
+          ${request.status !== "Reviewed" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Reviewed">Review</button>` : ""}
+          ${request.status !== "Scheduled" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Scheduled">Schedule</button>` : ""}
+          ${request.status !== "Completed" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Completed">Complete</button>` : ""}
+          ${request.status !== "Declined" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Declined">Decline</button>` : ""}
+          ${!request.convertedWorkOrderId ? `<button class="primary" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Issue</button>` : `<span class="status-badge badge-ok">Converted</span>`}
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
+function renderServiceRequestEditForm(request) {
+  const priorities = ["Low", "Medium", "High"];
+  const statuses = ["New", "Reviewed", "Scheduled", "Completed", "Declined"];
+  return `
+    <form class="inline-edit-form compact-form" data-service-request-edit-form="${escapeAttribute(request.id)}">
+      <div class="form-grid">
+        <label>
+          Request
+          <input name="title" value="${escapeAttribute(request.title || "")}" required>
+        </label>
+        <label>
+          Priority
+          <select name="priority">
+            ${priorities.map((priority) => `<option ${request.priority === priority ? "selected" : ""}>${priority}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          Status
+          <select name="status">
+            ${statuses.map((status) => `<option ${request.status === status ? "selected" : ""}>${status}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Preferred date
+          <input name="preferredDate" type="date" value="${escapeAttribute(request.preferredDate || "")}">
+        </label>
+      </div>
+      <label>
+        Requested by
+        <input name="requestedBy" value="${escapeAttribute(request.requestedBy || "")}">
+      </label>
+      <label>
+        Details
+        <textarea name="notes" rows="3">${escapeHtml(request.notes || "")}</textarea>
+      </label>
+      <label>
+        Replace photo
+        <input name="photo" type="file" accept="image/*">
+      </label>
+      <div class="work-order-actions">
+        <button class="primary" type="submit">Save Changes</button>
+      </div>
+    </form>
   `;
 }
 
@@ -2224,6 +2575,9 @@ function matchesAssetSearch(asset) {
     .flatMap((item) => [formatIssueNumber(item), item.issueNumber]);
   const relatedPmNumbers = (asset.history || [])
     .flatMap((item) => [formatPmNumber(item), item.pmNumber]);
+  const relatedServiceRequestNumbers = state.serviceRequests
+    .filter((item) => item.assetId === asset.id)
+    .flatMap((item) => [formatServiceRequestNumber(item), item.serviceRequestNumber]);
   const haystack = [
     asset.name,
     asset.serial,
@@ -2243,6 +2597,7 @@ function matchesAssetSearch(asset) {
     template?.name,
     ...relatedIssueNumbers,
     ...relatedPmNumbers,
+    ...relatedServiceRequestNumbers,
     asset.id
   ].join(" ").toLowerCase();
   return haystack.includes(assetQuery);
@@ -2473,6 +2828,10 @@ function renderWorkOrderItem(item) {
     ? `<button class="secondary mini" type="button" data-asset-link="${item.assetId}">View Equipment</button>`
     : "";
   const reportActions = `
+    <details class="inline-edit-drawer">
+      <summary>Edit</summary>
+      ${renderWorkOrderEditForm(item)}
+    </details>
     <button class="secondary mini" type="button" data-work-order-pdf="${escapeAttribute(item.id)}">PDF Form</button>
     <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Issue</button>
     <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
@@ -2488,6 +2847,7 @@ function renderWorkOrderItem(item) {
       ${item.status === "Open" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
       ${item.status !== "Waiting parts" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
       ${item.status !== "Resolved" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
+      <button class="secondary" data-work-order-convert-service="${escapeAttribute(item.id)}">Convert to Service Request</button>
       <button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>
     </div>
   `;
@@ -2519,15 +2879,61 @@ function renderWorkOrderItem(item) {
   `;
 }
 
+function renderWorkOrderEditForm(item) {
+  const priorities = ["Low", "Medium", "High"];
+  const statuses = ["Open", "In progress", "Waiting parts", "Resolved", "Closed"];
+  const dueValue = item.dueAt ? toDateInputValue(new Date(item.dueAt)) : "";
+  return `
+    <form class="inline-edit-form compact-form" data-work-order-edit-form="${escapeAttribute(item.id)}">
+      <div class="form-grid">
+        <label>
+          Issue
+          <input name="title" value="${escapeAttribute(item.title || "")}" required>
+        </label>
+        <label>
+          Priority
+          <select name="priority">
+            ${priorities.map((priority) => `<option ${item.priority === priority ? "selected" : ""}>${priority}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          Status
+          <select name="status">
+            ${statuses.map((status) => `<option ${item.status === status ? "selected" : ""}>${status}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Due date
+          <input name="dueDate" type="date" value="${escapeAttribute(dueValue)}">
+        </label>
+      </div>
+      <label>
+        Notes
+        <textarea name="notes" rows="3">${escapeHtml(item.notes || "")}</textarea>
+      </label>
+      <label>
+        Replace photo
+        <input name="photo" type="file" accept="image/*">
+      </label>
+      <div class="work-order-actions">
+        <button class="primary" type="submit">Save Changes</button>
+      </div>
+    </form>
+  `;
+}
+
 function renderWorkOrderAssignmentControl(item) {
   if (!canManageWorkOrders()) {
     return `<p class="assigned-readonly">Assigned to ${escapeHtml(item.assignedUserName || "Unassigned")}</p>`;
   }
   const users = getAssignableUsersForWorkOrder(item);
+  const selectedAssigneeId = getSelectedAssigneeId(item, users);
   const options = [
     `<option value="">Unassigned</option>`,
     ...users.map((user) =>
-      `<option value="${escapeAttribute(user.id)}" ${item.assignedUserId === user.id ? "selected" : ""}>${escapeHtml(user.name || user.username)} (${escapeHtml(user.role)})</option>`
+      `<option value="${escapeAttribute(user.id)}" ${selectedAssigneeId === user.id ? "selected" : ""}>${escapeHtml(user.name || user.username)} (${escapeHtml(user.role)})</option>`
     )
   ].join("");
   return `
@@ -2548,6 +2954,9 @@ function getIssueReportDetails(item) {
   return {
     id: item.id,
     issueNumber: formatIssueNumber(item),
+    reportTitle: "Issue Report",
+    numberLabel: "Issue Number",
+    footerLabel: "Preventative Maintenance Issue Form",
     title: item.title || "Open issue",
     customer: customer?.name || "Unknown customer",
     location: locationRecord?.name || "Unknown location",
@@ -2651,6 +3060,123 @@ async function sendIssuePdfEmail(item, button) {
   }
 }
 
+function getServiceRequestReportDetails(request) {
+  const asset = getAsset(request.assetId) || getRawAsset(request.assetId);
+  const customer = getCustomer(request.customerId);
+  const locationRecord = getLocation(request.locationId);
+  const assignedLabel = request.assignedUserName || getUser(request.assignedUserId)?.name || getUser(request.assignedUserId)?.username || "Unassigned";
+  return {
+    id: request.id,
+    issueNumber: formatServiceRequestNumber(request),
+    reportTitle: "Service Request",
+    numberLabel: "Service Request Number",
+    footerLabel: "Service Request Form",
+    title: request.title || "Service request",
+    customer: customer?.name || "Unknown customer",
+    location: locationRecord?.name || "Unknown location",
+    equipment: asset?.name || "No equipment selected",
+    status: request.status || "New",
+    priority: request.priority || "Medium",
+    assignedTo: assignedLabel,
+    source: "Service request",
+    dueAt: request.preferredDate ? formatDate(parseLocalDate(request.preferredDate)) : "Not set",
+    createdAt: request.createdAt ? formatDateTime(new Date(request.createdAt)) : "Not recorded",
+    updatedAt: request.updatedAt ? formatDateTime(new Date(request.updatedAt)) : "Not recorded",
+    resolvedAt: request.status === "Completed" && request.updatedAt ? formatDateTime(new Date(request.updatedAt)) : "",
+    notes: [
+      `Requested by: ${request.requestedBy || "Not entered"}`,
+      request.notes || "No details entered."
+    ].join("\n"),
+    photoDataUrl: request.photo?.dataUrl || ""
+  };
+}
+
+function openServiceRequestPdfForm(request) {
+  const details = getServiceRequestReportDetails(request);
+  const reportWindow = window.open("", "_blank");
+  if (!reportWindow) {
+    alert("Pop-up blocked. Please allow pop-ups for SiteWorks to create the PDF form.");
+    return;
+  }
+  reportWindow.document.write(buildIssuePdfHtml(details));
+  reportWindow.document.close();
+  reportWindow.focus();
+  window.setTimeout(() => {
+    try {
+      reportWindow.print();
+    } catch (error) {
+      console.warn("Service request print skipped.", error);
+    }
+  }, 500);
+}
+
+function emailServiceRequest(request) {
+  const details = getServiceRequestReportDetails(request);
+  const subject = `SiteWorks Service Request: ${details.priority} - ${details.equipment}`;
+  const body = [
+    "SiteWorks Service Request",
+    "",
+    `Service Request Number: ${details.issueNumber}`,
+    `Request: ${details.title}`,
+    `Status: ${details.status}`,
+    `Priority: ${details.priority}`,
+    `Assigned to: ${details.assignedTo}`,
+    `Customer: ${details.customer}`,
+    `Location: ${details.location}`,
+    `Equipment / Area: ${details.equipment}`,
+    `Preferred date: ${details.dueAt}`,
+    `Created: ${details.createdAt}`,
+    `Request ID: ${details.id}`,
+    "",
+    "Notes:",
+    details.notes,
+    "",
+    "If a PDF copy is needed, use the PDF Form button in SiteWorks and attach the saved PDF to this email."
+  ].join("\n");
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+async function sendServiceRequestPdfEmail(request, button) {
+  const details = getServiceRequestReportDetails(request);
+  const recipient = window.prompt("Email this service request PDF to:", "");
+  if (!recipient) return;
+  if (!isEmailAddress(recipient)) {
+    alert("Please enter a valid email address.");
+    return;
+  }
+
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Sending...";
+  try {
+    const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        to: recipient.trim(),
+        issue: details
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || "The service request email could not be sent.");
+    }
+    addActivity("Service request PDF emailed", `${details.title} to ${recipient.trim()}`);
+    saveState();
+    alert("Service request PDF email sent.");
+  } catch (error) {
+    console.warn("Service request PDF email failed.", error);
+    alert(`${error.message || "Service request PDF email failed."}\n\nMake sure the Supabase Edge Function is deployed and the Resend API key is saved in Supabase secrets.`);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
 function buildIssuePdfHtml(details) {
   const rows = [
     ["Customer", details.customer],
@@ -2664,8 +3190,8 @@ function buildIssuePdfHtml(details) {
     ["Created", details.createdAt],
     ["Last updated", details.updatedAt],
     ...(details.resolvedAt ? [["Resolved", details.resolvedAt]] : []),
-    ["Issue Number", details.issueNumber],
-    ["Issue ID", details.id]
+    [details.numberLabel || "Issue Number", details.issueNumber],
+    ["Record ID", details.id]
   ];
   return `<!doctype html>
 <html>
@@ -2701,15 +3227,15 @@ function buildIssuePdfHtml(details) {
     <section class="top">
       <div>
         <div class="brand">SiteWorks</div>
-        <h1>Issue Report</h1>
+        <h1>${escapeHtml(details.reportTitle || "Issue Report")}</h1>
         <div class="status">${escapeHtml(details.status)} | ${escapeHtml(details.priority)} Priority</div>
       </div>
       <div class="meta">
         <strong>Generated</strong><br>
         ${escapeHtml(formatDateTime(new Date()))}<br><br>
-        <strong>Issue Number</strong><br>
+        <strong>${escapeHtml(details.numberLabel || "Issue Number")}</strong><br>
         ${escapeHtml(details.issueNumber)}<br><br>
-        <strong>Issue ID</strong><br>
+        <strong>Record ID</strong><br>
         ${escapeHtml(details.id)}
       </div>
     </section>
@@ -2723,7 +3249,7 @@ function buildIssuePdfHtml(details) {
       `).join("")}
     </section>
     <section class="notes">
-      <strong>Issue Notes</strong>
+      <strong>Notes</strong>
       ${escapeHtml(details.notes)}
     </section>
     ${details.photoDataUrl ? `
@@ -2743,7 +3269,7 @@ function buildIssuePdfHtml(details) {
       </div>
     </section>
     <footer class="footer">
-      <span>Preventative Maintenance Issue Form</span>
+      <span>${escapeHtml(details.footerLabel || "Preventative Maintenance Issue Form")}</span>
       <span>SiteWorks</span>
     </footer>
   </main>
@@ -2756,6 +3282,16 @@ function getAssignableUsersForWorkOrder(item) {
     .filter((user) => user.username !== "scan-customer")
     .filter((user) => user.role === "Admin" || user.customerId === item.customerId)
     .sort((a, b) => `${a.role} ${a.name || a.username}`.localeCompare(`${b.role} ${b.name || b.username}`));
+}
+
+function getSelectedAssigneeId(item, users = getAssignableUsersForWorkOrder(item)) {
+  if (users.some((user) => user.id === item.assignedUserId)) return item.assignedUserId;
+  const assignedName = String(item.assignedUserName || "").trim().toLowerCase();
+  if (!assignedName) return "";
+  const matchedUser = users.find((user) =>
+    [user.name, user.username].some((value) => String(value || "").trim().toLowerCase() === assignedName)
+  );
+  return matchedUser?.id || "";
 }
 
 document.addEventListener("click", (event) => {
@@ -2890,6 +3426,16 @@ function filteredWorkOrders() {
   });
 }
 
+function filteredServiceRequests() {
+  return state.serviceRequests.filter((item) => {
+    if (!canSeeServiceRequest(item)) return false;
+    if (!canSeeCustomer(item.customerId)) return false;
+    const matchesCustomer = item.customerId === selectedCustomerId;
+    const matchesLocation = selectedLocationId === "all" || item.locationId === selectedLocationId;
+    return matchesCustomer && matchesLocation;
+  });
+}
+
 function openWorkOrdersForAsset(assetId) {
   return state.workOrders.filter((item) => item.assetId === assetId && item.status !== "Closed" && canSeeWorkOrder(item));
 }
@@ -2950,6 +3496,9 @@ async function deleteLocation(locationId) {
   state.workOrders = state.workOrders.filter((item) =>
     item.locationId !== locationId && !removedAssetIds.has(item.assetId)
   );
+  state.serviceRequests = state.serviceRequests.filter((item) =>
+    item.locationId !== locationId && !removedAssetIds.has(item.assetId)
+  );
 
   if (selectedLocationId === locationId) selectedLocationId = "all";
   if (removedAssetIds.has(selectedId)) selectedId = null;
@@ -2999,6 +3548,10 @@ function getTemplate(id) {
 
 function getWorkOrder(id) {
   return state.workOrders.find((item) => item.id === id) || null;
+}
+
+function getServiceRequest(id) {
+  return state.serviceRequests.find((item) => item.id === id) || null;
 }
 
 function getUser(id) {
@@ -3072,6 +3625,139 @@ function createManualIssueForAsset(asset, issueData = {}) {
   document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+async function createServiceRequest() {
+  if (!els.serviceRequestForm) return;
+  if (!canCreateServiceRequests()) {
+    setServiceRequestStatus("This login cannot create service requests.");
+    return;
+  }
+  const photo = await readPhoto(els.serviceRequestPhoto?.files?.[0]);
+  const request = {
+    id: crypto.randomUUID(),
+    serviceRequestNumber: nextServiceRequestNumber(),
+    customerId: els.serviceRequestCustomer.value,
+    locationId: els.serviceRequestLocation.value,
+    assetId: els.serviceRequestAsset.value,
+    title: els.serviceRequestTitle.value.trim(),
+    priority: normalizePriority(els.serviceRequestPriority.value),
+    status: "New",
+    requestedBy: els.serviceRequestRequestedBy.value.trim(),
+    preferredDate: els.serviceRequestPreferredDate.value,
+    assignedUserId: "",
+    assignedUserName: "",
+    notes: els.serviceRequestNotes.value.trim(),
+    photo,
+    convertedWorkOrderId: "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  if (!request.customerId || !request.locationId) {
+    setServiceRequestStatus("Choose a customer and location first.");
+    return;
+  }
+  if (!request.title) {
+    setServiceRequestStatus("Enter a short service request.");
+    return;
+  }
+  state.serviceRequests.unshift(request);
+  addActivity("Service request created", `${formatServiceRequestNumber(request)} - ${request.title}`);
+  saveState();
+  els.serviceRequestForm.reset();
+  const successMessage = `${formatServiceRequestNumber(request)} created.`;
+  document.getElementById("serviceRequestCreateDrawer")?.removeAttribute("open");
+  openPanel("serviceRequestsPanel");
+  render();
+  setServiceRequestStatus(successMessage);
+  document.getElementById("serviceRequestsPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function setServiceRequestStatus(message) {
+  if (els.serviceRequestStatus) els.serviceRequestStatus.textContent = message;
+}
+
+function updateServiceRequestStatus(requestId, status) {
+  const request = getServiceRequest(requestId);
+  if (!request) return;
+  request.status = status;
+  request.updatedAt = new Date().toISOString();
+  addActivity("Service request updated", `${formatServiceRequestNumber(request)} - ${status}`);
+  saveState();
+  render();
+}
+
+function convertServiceRequestToIssue(requestId) {
+  const request = getServiceRequest(requestId);
+  if (!request || request.convertedWorkOrderId) return;
+  const issue = {
+    id: crypto.randomUUID(),
+    issueNumber: nextIssueNumber(),
+    assetId: request.assetId || "",
+    customerId: request.customerId,
+    locationId: request.locationId,
+    source: "Service request",
+    areaName: request.assetId ? "" : getLocation(request.locationId)?.name || "Service request",
+    title: request.title || `Service request ${formatServiceRequestNumber(request)}`,
+    priority: request.priority || "Medium",
+    status: "Open",
+    assignedUserId: request.assignedUserId || "",
+    assignedUserName: request.assignedUserName || "",
+    dueAt: addDays(new Date(), request.priority === "High" ? 2 : 7).toISOString(),
+    notes: `${formatServiceRequestNumber(request)}\nRequested by: ${request.requestedBy || "Not entered"}\n${request.notes || "No details entered."}`,
+    photo: request.photo || null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  state.workOrders.unshift(issue);
+  request.convertedWorkOrderId = issue.id;
+  request.status = "Reviewed";
+  request.updatedAt = new Date().toISOString();
+  workOrderViewFilter = "active";
+  addActivity("Service request converted", `${formatServiceRequestNumber(request)} to ${formatIssueNumber(issue)}`);
+  saveState();
+  openPanel("workOrdersPanel");
+  render();
+}
+
+function convertOpenIssueToServiceRequest(workOrderId) {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || workOrder.status === "Closed") return;
+  const serviceRequest = {
+    id: crypto.randomUUID(),
+    serviceRequestNumber: nextServiceRequestNumber(),
+    customerId: workOrder.customerId || "",
+    locationId: workOrder.locationId || "",
+    assetId: workOrder.assetId || "",
+    title: workOrder.title || `Service request from ${formatIssueNumber(workOrder)}`,
+    priority: workOrder.priority || "Medium",
+    status: "New",
+    requestedBy: workOrder.source || "Converted from open issue",
+    preferredDate: "",
+    assignedUserId: workOrder.assignedUserId || "",
+    assignedUserName: workOrder.assignedUserName || "",
+    notes: [
+      `Converted from open issue ${formatIssueNumber(workOrder)}.`,
+      workOrder.notes || "No details entered."
+    ].join("\n"),
+    photo: workOrder.photo || null,
+    convertedWorkOrderId: workOrder.id,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  state.serviceRequests.unshift(serviceRequest);
+  workOrder.status = "Closed";
+  workOrder.resolvedAt = new Date().toISOString();
+  workOrder.updatedAt = new Date().toISOString();
+  workOrder.notes = [
+    workOrder.notes || "",
+    `Converted to service request ${formatServiceRequestNumber(serviceRequest)}.`
+  ].filter(Boolean).join("\n");
+  addActivity("Open issue converted", `${formatIssueNumber(workOrder)} to ${formatServiceRequestNumber(serviceRequest)}`);
+  saveState();
+  openPanel("serviceRequestsPanel");
+  render();
+  document.getElementById("serviceRequestsPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function normalizePriority(value) {
   const clean = String(value || "").trim().toLowerCase();
   if (clean === "high") return "High";
@@ -3108,6 +3794,19 @@ function formatPmNumber(item) {
   return numeric ? `SW-PM-${String(numeric).padStart(4, "0")}` : "SW-PM-0000";
 }
 
+function nextServiceRequestNumber() {
+  const highest = state.serviceRequests.reduce((max, item) => {
+    const numeric = Number(item.serviceRequestNumber || String(item.serviceRequestNo || "").replace(/\D/g, ""));
+    return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
+  }, 0);
+  return highest + 1;
+}
+
+function formatServiceRequestNumber(item) {
+  const numeric = Number(item?.serviceRequestNumber || 0);
+  return numeric ? `SW-SR-${String(numeric).padStart(4, "0")}` : "SW-SR-0000";
+}
+
 function canManageSetup() {
   return currentRole === "Admin";
 }
@@ -3124,7 +3823,19 @@ function canManageWorkOrders() {
   return currentRole === "Admin" || currentRole === "Manager";
 }
 
+function canCreateServiceRequests() {
+  return Boolean(currentUser && visibleCustomers().length);
+}
+
 function canSeeWorkOrder(item) {
+  if (currentRole === "Admin" || currentRole === "Manager") return canSeeCustomer(item.customerId);
+  if (currentRole === "Technician") {
+    return canSeeCustomer(item.customerId) && item.assignedUserId === currentUser?.id;
+  }
+  return canSeeCustomer(item.customerId);
+}
+
+function canSeeServiceRequest(item) {
   if (currentRole === "Admin" || currentRole === "Manager") return canSeeCustomer(item.customerId);
   if (currentRole === "Technician") {
     return canSeeCustomer(item.customerId) && item.assignedUserId === currentUser?.id;
@@ -3744,6 +4455,7 @@ function buildSharedStatePayload(uploadedAt) {
     templates: state.templates || [],
     assets: state.assets || [],
     workOrders: state.workOrders || [],
+    serviceRequests: state.serviceRequests || [],
     activityLog: state.activityLog || [],
     backupLocation: state.backupLocation || defaultBackupLocation(),
     qrBaseUrl: state.qrBaseUrl || guessNetworkQrUrl(),
@@ -3756,7 +4468,8 @@ function hasSharedMaintenanceData(candidate) {
     candidate?.customers?.length ||
     candidate?.locations?.length ||
     candidate?.assets?.length ||
-    candidate?.workOrders?.length
+    candidate?.workOrders?.length ||
+    candidate?.serviceRequests?.length
   );
 }
 
@@ -3833,6 +4546,27 @@ async function syncStructuredDataToSupabase() {
       notes: item.notes || "",
       due_at: item.dueAt || null,
       resolved_at: item.resolvedAt || null,
+      created_at: item.createdAt || new Date().toISOString(),
+      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString()
+    })));
+
+    await upsertStructuredRows("service_requests", state.serviceRequests.map((item) => ({
+      id: item.id,
+      service_request_number: item.serviceRequestNumber || null,
+      asset_id: item.assetId || null,
+      customer_id: item.customerId || null,
+      location_id: item.locationId || null,
+      title: item.title || "",
+      priority: item.priority || "Medium",
+      status: item.status || "New",
+      requested_by: item.requestedBy || "",
+      preferred_date: item.preferredDate || null,
+      assigned_user_id: item.assignedUserId || "",
+      assigned_user_name: item.assignedUserName || "",
+      converted_work_order_id: item.convertedWorkOrderId || null,
+      notes: item.notes || "",
+      photo_data_url: item.photo?.dataUrl || "",
+      photo_name: item.photo?.name || "",
       created_at: item.createdAt || new Date().toISOString(),
       updated_at: item.updatedAt || state.updatedAt || new Date().toISOString()
     })));
@@ -4039,6 +4773,7 @@ function normalizeState(input) {
     templates: input.templates?.length ? input.templates : seedTemplates(),
     assets: input.assets || [],
     workOrders: input.workOrders || [],
+    serviceRequests: input.serviceRequests || [],
     users: input.users || [],
     accessRequests: input.accessRequests || [],
     activityLog: input.activityLog || [],
@@ -4119,6 +4854,33 @@ function normalizeState(input) {
     while (usedIssueNumbers.has(issueNumberCursor)) issueNumberCursor += 1;
     item.issueNumber = issueNumberCursor;
     usedIssueNumbers.add(issueNumberCursor);
+  });
+
+  const usedServiceRequestNumbers = new Set();
+  normalized.serviceRequests = normalized.serviceRequests.map((item) => {
+    const numeric = Number(item.serviceRequestNumber || String(item.serviceRequestNo || "").replace(/\D/g, ""));
+    const serviceRequestNumber = Number.isFinite(numeric) && numeric > 0 && !usedServiceRequestNumbers.has(numeric)
+      ? numeric
+      : 0;
+    if (serviceRequestNumber) usedServiceRequestNumbers.add(serviceRequestNumber);
+    return {
+      assetId: "",
+      status: "New",
+      assignedUserId: "",
+      assignedUserName: "",
+      convertedWorkOrderId: "",
+      photo: null,
+      ...item,
+      photo: item.photo || null,
+      serviceRequestNumber
+    };
+  });
+  let serviceRequestNumberCursor = 1;
+  normalized.serviceRequests.forEach((item) => {
+    if (item.serviceRequestNumber) return;
+    while (usedServiceRequestNumbers.has(serviceRequestNumberCursor)) serviceRequestNumberCursor += 1;
+    item.serviceRequestNumber = serviceRequestNumberCursor;
+    usedServiceRequestNumbers.add(serviceRequestNumberCursor);
   });
 
   normalized.users = normalized.users.map((user) => ({
@@ -4286,6 +5048,7 @@ function buildBackupManifest() {
     activityLogEntries: state.activityLog?.length || 0,
     pmTemplates: state.templates.length,
     workOrders: state.workOrders.length,
+    serviceRequests: state.serviceRequests.length,
     publicQrReports: state.workOrders.filter((item) => item.source === "Public QR report").length,
     maintenanceHistoryRecords: state.assets.reduce((total, asset) => total + (asset.history || []).length, 0),
     primaryAssetPhotos: primaryPhotos,

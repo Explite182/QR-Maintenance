@@ -71,6 +71,30 @@ alter table public.work_orders add column if not exists assigned_user_id text no
 alter table public.work_orders add column if not exists assigned_user_name text not null default '';
 alter table public.work_orders add column if not exists issue_number integer;
 
+create table if not exists public.service_requests (
+  id text primary key,
+  service_request_number integer,
+  asset_id text references public.assets(id) on delete set null,
+  customer_id text references public.customers(id) on delete cascade,
+  location_id text references public.locations(id) on delete cascade,
+  title text not null,
+  priority text not null default 'Medium',
+  status text not null default 'New',
+  requested_by text not null default '',
+  preferred_date date,
+  assigned_user_id text not null default '',
+  assigned_user_name text not null default '',
+  converted_work_order_id text references public.work_orders(id) on delete set null,
+  notes text not null default '',
+  photo_data_url text not null default '',
+  photo_name text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.service_requests add column if not exists photo_data_url text not null default '';
+alter table public.service_requests add column if not exists photo_name text not null default '';
+
 create table if not exists public.pm_history (
   id text primary key,
   pm_number integer,
@@ -99,6 +123,7 @@ alter table public.locations enable row level security;
 alter table public.pm_templates enable row level security;
 alter table public.assets enable row level security;
 alter table public.work_orders enable row level security;
+alter table public.service_requests enable row level security;
 alter table public.pm_history enable row level security;
 alter table public.asset_files enable row level security;
 
@@ -126,6 +151,11 @@ drop policy if exists "Prototype read work orders" on public.work_orders;
 create policy "Prototype read work orders" on public.work_orders for select to anon using (true);
 drop policy if exists "Prototype write work orders" on public.work_orders;
 create policy "Prototype write work orders" on public.work_orders for all to anon using (true) with check (true);
+
+drop policy if exists "Prototype read service requests" on public.service_requests;
+create policy "Prototype read service requests" on public.service_requests for select to anon using (true);
+drop policy if exists "Prototype write service requests" on public.service_requests;
+create policy "Prototype write service requests" on public.service_requests for all to anon using (true) with check (true);
 
 drop policy if exists "Prototype read pm history" on public.pm_history;
 create policy "Prototype read pm history" on public.pm_history for select to anon using (true);
