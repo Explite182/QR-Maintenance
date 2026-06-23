@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260623-0952">
+  <link rel="stylesheet" href="styles.css?v=20260623-1648">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -136,152 +136,107 @@
         <summary>
           <span>Admin & Settings</span>
         </summary>
-      <details id="quickAddDrawer" class="quick-add setup-drawer">
-        <summary>
-          <span>Quick Add Equipment</span>
-          <span id="assetCount" class="drawer-count">0</span>
-        </summary>
-        <form id="assetForm" class="stack">
-          <label>
-            Customer
-            <select id="assetCustomer"></select>
-          </label>
-          <label>
-            Location
-            <select id="assetLocation"></select>
-          </label>
-          <label>
-            Equipment name
-            <input id="assetName" required placeholder="Rooftop Unit 1">
-          </label>
-          <label>
-            Maintenance template
-            <select id="assetTemplate"></select>
-          </label>
-          <label>
-            Maintenance frequency
-            <select id="assetFrequency">
-              <option value="7">Weekly</option>
-              <option value="30" selected>Monthly</option>
-              <option value="90">Quarterly</option>
-              <option value="365">Yearly</option>
-            </select>
-          </label>
-          <div class="form-grid">
-            <label>
-              Manufacturer
-              <input id="assetManufacturer" placeholder="Trane">
-            </label>
-            <label>
-              Model
-              <input id="assetModel" placeholder="XR-14">
-            </label>
-          </div>
-          <div class="form-grid">
-            <label>
-              Serial number
-              <input id="assetSerial" placeholder="SN-10492">
-            </label>
-            <label>
-              Install date
-              <input id="assetInstallDate" type="date">
-            </label>
-          </div>
-          <div class="form-grid">
-            <label>
-              Equipment type
-              <input id="assetType" placeholder="HVAC, pump, conveyor">
-            </label>
-            <label>
-              Criticality
-              <select id="assetCriticality">
-                <option value="">Not set</option>
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-              </select>
-            </label>
-          </div>
-          <label>
-            Manual / document link
-            <input id="assetDocumentUrl" type="url" placeholder="https://example.com/manual.pdf">
-          </label>
-          <label>
-            Upload PDF manual
-            <input id="assetManualFile" type="file" accept="application/pdf,.pdf">
-          </label>
-          <label>
-            Equipment photo
-            <input id="assetPhoto" type="file" accept="image/*">
-          </label>
-          <label>
-            Equipment notes
-            <textarea id="assetNotes" rows="3" placeholder="Warranty notes, access instructions, or service cautions"></textarea>
-          </label>
-          <button type="submit">Add Equipment</button>
-        </form>
-      </details>
-
       <details id="setupDrawer" class="sidebar-section setup-drawer">
         <summary>Setup</summary>
-        <section>
-          <div class="section-title">
-            <h2>Customers</h2>
+        <details class="setup-subdrawer">
+          <summary>
+            <span>Customers</span>
             <span id="customerCount">0</span>
-          </div>
-          <form id="customerForm" class="stack compact-form">
-            <label>
-              Customer name
-              <input id="customerName" required placeholder="ABC Manufacturing">
-            </label>
-            <button type="submit">Add Customer</button>
-          </form>
-        </section>
+          </summary>
+          <section>
+            <form id="customerForm" class="stack compact-form">
+              <label>
+                Customer name
+                <input id="customerName" required placeholder="ABC Manufacturing">
+              </label>
+              <label>
+                Main contact
+                <input id="customerContactName" placeholder="Contact name">
+              </label>
+              <label>
+                Contact email
+                <input id="customerContactEmail" type="email" placeholder="name@example.com">
+              </label>
+              <label>
+                Contact phone
+                <input id="customerContactPhone" placeholder="604-555-0123">
+              </label>
+              <label>
+                Contact notes
+                <textarea id="customerContactNotes" rows="2" placeholder="Access notes, billing contact, or site instructions"></textarea>
+              </label>
+              <button type="submit">Add Customer</button>
+            </form>
+            <div id="customerList" class="location-list"></div>
+          </section>
+        </details>
 
-        <section class="sidebar-section">
-          <div class="section-title">
-            <h2>Locations</h2>
+        <details class="setup-subdrawer">
+          <summary>
+            <span>Locations</span>
             <span id="locationCount">0</span>
-          </div>
-          <form id="locationForm" class="stack compact-form">
-            <label>
-              Customer
-              <select id="locationCustomer"></select>
-            </label>
-            <label>
-              Location name
-              <input id="locationName" required placeholder="Main Plant">
-            </label>
-            <button type="submit">Add Location</button>
-          </form>
-          <div id="locationList" class="location-list"></div>
-        </section>
+          </summary>
+          <section>
+            <form id="locationForm" class="stack compact-form">
+              <label>
+                Customer
+                <select id="locationCustomer"></select>
+              </label>
+              <label>
+                Location name
+                <input id="locationName" required placeholder="Main Plant">
+              </label>
+              <label>
+                Site contact
+                <input id="locationContactName" placeholder="Contact name">
+              </label>
+              <label>
+                Contact email
+                <input id="locationContactEmail" type="email" placeholder="name@example.com">
+              </label>
+              <label>
+                Contact phone
+                <input id="locationContactPhone" placeholder="604-555-0123">
+              </label>
+              <label>
+                Location notes
+                <textarea id="locationContactNotes" rows="2" placeholder="Access notes, suite number, gate code, or parking"></textarea>
+              </label>
+              <button type="submit">Add Location</button>
+            </form>
+            <div id="locationList" class="location-list"></div>
+          </section>
+        </details>
 
-        <section class="sidebar-section">
-          <div class="section-title">
-            <h2>Maintenance Templates</h2>
+        <details class="setup-subdrawer">
+          <summary>
+            <span>Maintenance Templates</span>
             <span id="templateCount">0</span>
-          </div>
-          <form id="templateForm" class="stack compact-form">
-            <label>
-              Template name
-              <input id="templateName" required placeholder="HVAC Monthly PM">
-            </label>
-            <label>
-              Checklist items
-              <textarea id="templateItems" rows="4" required placeholder="Inspect belts&#10;Check filter condition&#10;Record temperature"></textarea>
-            </label>
-            <button type="submit">Add Template</button>
-          </form>
-        </section>
+          </summary>
+          <section>
+            <form id="templateForm" class="stack compact-form">
+              <label>
+                Template name
+                <input id="templateName" required placeholder="HVAC Monthly PM">
+              </label>
+              <label>
+                Checklist items
+                <textarea id="templateItems" rows="4" required placeholder="Inspect belts&#10;Check filter condition&#10;Record temperature"></textarea>
+              </label>
+              <button type="submit">Add Template</button>
+            </form>
+          </section>
+        </details>
 
-        <section class="sidebar-section">
-          <div class="section-title">
-            <h2>Activity Log</h2>
+        <details class="setup-subdrawer">
+          <summary>
+            <span>Activity Log</span>
             <span id="activityLogCount">0</span>
-          </div>
-          <div id="activityLogList" class="activity-log-list"></div>
-        </section>
+          </summary>
+          <section>
+            <div id="activityLogList" class="activity-log-list"></div>
+          </section>
+        </details>
       </details>
 
       <details id="userDrawer" class="sidebar-section setup-drawer">
@@ -393,7 +348,7 @@
 
     <section class="workspace">
       <div class="filters" aria-label="Customer and location filters">
-        <label>
+        <label id="customerFilterField">
           Customer view
           <select id="customerFilter"></select>
         </label>
@@ -401,7 +356,154 @@
           Location view
           <select id="locationFilter"></select>
         </label>
+        <label class="global-search-field">
+          Global search
+          <input id="globalSearch" type="search" placeholder="Search equipment, SW number, customer, location">
+          <div id="globalSearchResults" class="global-search-results hidden" role="status" aria-live="polite"></div>
+        </label>
       </div>
+
+      <section id="workHeader" class="work-header">
+        <div>
+          <p class="eyebrow">Current View</p>
+          <h2 id="currentViewLabel">All customers | All locations</h2>
+        </div>
+        <div id="newActionBar" class="new-action-bar">
+          <button id="newEquipmentBtn" type="button">New Equipment</button>
+          <button id="newIssueBtn" type="button" class="secondary">New Issue</button>
+          <button id="newServiceRequestBtn" type="button" class="secondary">New Service Request</button>
+        </div>
+      </section>
+
+      <details id="quickAddDrawer" class="quick-add setup-drawer work-create-drawer">
+        <summary>
+          <span>New Equipment</span>
+          <span id="assetCount" class="drawer-count">0</span>
+        </summary>
+        <form id="assetForm" class="stack">
+          <label>
+            Customer
+            <select id="assetCustomer"></select>
+          </label>
+          <label>
+            Location
+            <select id="assetLocation"></select>
+          </label>
+          <label>
+            Equipment name
+            <input id="assetName" required placeholder="Rooftop Unit 1">
+          </label>
+          <label>
+            Maintenance template
+            <select id="assetTemplate"></select>
+          </label>
+          <label>
+            Maintenance frequency
+            <select id="assetFrequency">
+              <option value="7">Weekly</option>
+              <option value="30" selected>Monthly</option>
+              <option value="90">Quarterly</option>
+              <option value="365">Yearly</option>
+            </select>
+          </label>
+          <div class="form-grid">
+            <label>
+              Manufacturer
+              <input id="assetManufacturer" placeholder="Trane">
+            </label>
+            <label>
+              Model
+              <input id="assetModel" placeholder="XR-14">
+            </label>
+          </div>
+          <div class="form-grid">
+            <label>
+              Serial number
+              <input id="assetSerial" placeholder="SN-10492">
+            </label>
+            <label>
+              Install date
+              <input id="assetInstallDate" type="date">
+            </label>
+          </div>
+          <div class="form-grid">
+            <label>
+              Equipment type
+              <input id="assetType" placeholder="HVAC, pump, conveyor">
+            </label>
+            <label>
+              Criticality
+              <select id="assetCriticality">
+                <option value="">Not set</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Manual / document link
+            <input id="assetDocumentUrl" type="url" placeholder="https://example.com/manual.pdf">
+          </label>
+          <label>
+            Upload PDF manual
+            <input id="assetManualFile" type="file" accept="application/pdf,.pdf">
+          </label>
+          <label>
+            Equipment photo
+            <input id="assetPhoto" type="file" accept="image/*">
+          </label>
+          <label>
+            Equipment notes
+            <textarea id="assetNotes" rows="3" placeholder="Warranty notes, access instructions, or service cautions"></textarea>
+          </label>
+          <button type="submit">Add Equipment</button>
+        </form>
+      </details>
+
+      <details id="newIssueDrawer" class="quick-add setup-drawer work-create-drawer">
+        <summary>
+          <span>New Issue</span>
+        </summary>
+        <form id="newIssueForm" class="stack compact-form">
+          <label>
+            Customer
+            <select id="newIssueCustomer"></select>
+          </label>
+          <label>
+            Location
+            <select id="newIssueLocation"></select>
+          </label>
+          <label>
+            Equipment
+            <select id="newIssueAsset" required></select>
+          </label>
+          <div class="form-grid">
+            <label>
+              Issue title
+              <input id="newIssueTitle" required placeholder="What needs attention?">
+            </label>
+            <label>
+              Priority
+              <select id="newIssuePriority">
+                <option>Medium</option>
+                <option>High</option>
+                <option>Low</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Notes
+            <textarea id="newIssueNotes" rows="3" placeholder="Add details for the technician"></textarea>
+          </label>
+          <label>
+            Photo
+            <input id="newIssuePhoto" type="file" accept="image/*">
+          </label>
+          <button type="submit" class="primary">Create Issue</button>
+          <p id="newIssueStatus" class="inline-status"></p>
+        </form>
+      </details>
 
       <section id="dashboardPanel" class="dashboard-panel" aria-label="Maintenance summary">
         <div class="panel-heading">
@@ -411,38 +513,78 @@
           </div>
         </div>
         <div class="dashboard">
-          <button type="button" class="metric-card metric-warn" data-dashboard-filter="dueNow">
-            <span id="dueToday">0</span>
-            <p>Due now</p>
-          </button>
-          <button type="button" class="metric-card metric-danger" data-dashboard-filter="overdue">
-            <span id="overdue">0</span>
-            <p>Overdue</p>
-          </button>
-          <button type="button" class="metric-card metric-ok" data-dashboard-filter="completedPm">
-            <span id="completed">0</span>
-            <p>Completed</p>
-          </button>
-          <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
-            <span id="openWorkOrders">0</span>
-            <p>Open issues</p>
-          </button>
-          <button type="button" class="metric-card metric-neutral" data-dashboard-filter="serviceRequests">
-            <span id="serviceRequestsMetric">0</span>
-            <p>Service requests</p>
-          </button>
-          <button type="button" class="metric-card metric-danger" data-dashboard-filter="highPriority">
-            <span id="highPriorityIssues">0</span>
-            <p>High priority</p>
-          </button>
-          <button type="button" class="metric-card metric-warn" data-dashboard-filter="waitingParts">
-            <span id="waitingPartsIssues">0</span>
-            <p>Waiting parts</p>
-          </button>
-          <button type="button" class="metric-card metric-neutral" data-dashboard-filter="assignedToMe">
-            <span id="assignedToMeIssues">0</span>
-            <p>Assigned to me</p>
-          </button>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-warn" data-dashboard-filter="dueNow">
+              <span id="dueToday">0</span>
+              <p>Due now</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="dueNow">
+              <p class="metric-dropdown-empty">No equipment is due now.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-danger" data-dashboard-filter="overdue">
+              <span id="overdue">0</span>
+              <p>Overdue</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="overdue">
+              <p class="metric-dropdown-empty">No equipment is overdue.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-ok" data-dashboard-filter="completedPm">
+              <span id="completed">0</span>
+              <p>Completed</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="completedPm">
+              <p class="metric-dropdown-empty">No completed issues for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
+              <span id="openWorkOrders">0</span>
+              <p>Open issues</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="workOrders">
+              <p class="metric-dropdown-empty">No open issues for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="serviceRequests">
+              <span id="serviceRequestsMetric">0</span>
+              <p>Service requests</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="serviceRequests">
+              <p class="metric-dropdown-empty">No service requests for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-danger" data-dashboard-filter="highPriority">
+              <span id="highPriorityIssues">0</span>
+              <p>High priority</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="highPriority">
+              <p class="metric-dropdown-empty">No high priority issues for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-warn" data-dashboard-filter="waitingParts">
+              <span id="waitingPartsIssues">0</span>
+              <p>Waiting parts</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="waitingParts">
+              <p class="metric-dropdown-empty">No waiting parts issues for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="assignedToMe">
+              <span id="assignedToMeIssues">0</span>
+              <p>Assigned to me</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="assignedToMe">
+              <p class="metric-dropdown-empty">No issues assigned to you for this view.</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -545,7 +687,7 @@
           </div>
         </div>
         <div data-panel-body>
-          <details id="serviceRequestCreateDrawer" class="service-request-create-drawer">
+          <details id="serviceRequestCreateDrawer" class="service-request-create-drawer work-create-drawer">
             <summary>Create Service Request</summary>
             <form id="serviceRequestForm" class="stack compact-form">
               <div class="form-grid">
@@ -662,7 +804,7 @@
         </div>
 
         <div class="asset-drawer-row">
-          <details class="asset-sub-drawer" open>
+          <details class="asset-sub-drawer">
             <summary>
               <h3>Maintenance Checklist</h3>
               <span id="selectedTemplate"></span>
@@ -699,7 +841,7 @@
             </form>
           </details>
 
-          <details class="asset-details asset-sub-drawer" open>
+          <details class="asset-details asset-sub-drawer">
             <summary>
               <h3>Equipment Details</h3>
             </summary>
@@ -825,7 +967,7 @@
             </details>
           </details>
 
-          <details class="asset-sub-drawer" open>
+          <details class="asset-sub-drawer">
             <summary>
               <h3>Maintenance History</h3>
               <span id="historyCount">0</span>
@@ -837,7 +979,7 @@
           </details>
         </div>
 
-        <details class="asset-sub-drawer" open>
+        <details class="asset-sub-drawer">
           <summary>
             <h3>Equipment Issues</h3>
             <span id="assetWorkOrderCount">0</span>
@@ -857,7 +999,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260623-0952"></script>
+  <script src="app.js?v=20260623-1648"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

@@ -25,6 +25,7 @@ let selectedLocationId = "all";
 let selectedContractorCustomerId = selectedCustomerId;
 let currentUser = getInitialUser();
 let currentRole = currentUser?.role || "Customer";
+let globalQuery = "";
 let assetQuery = "";
 let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
@@ -85,6 +86,22 @@ const els = {
   appSidebar: document.getElementById("appSidebar"),
   adminToolsDrawer: document.getElementById("adminToolsDrawer"),
   quickAddDrawer: document.getElementById("quickAddDrawer"),
+  workHeader: document.getElementById("workHeader"),
+  currentViewLabel: document.getElementById("currentViewLabel"),
+  newActionBar: document.getElementById("newActionBar"),
+  newEquipmentBtn: document.getElementById("newEquipmentBtn"),
+  newIssueBtn: document.getElementById("newIssueBtn"),
+  newServiceRequestBtn: document.getElementById("newServiceRequestBtn"),
+  newIssueDrawer: document.getElementById("newIssueDrawer"),
+  newIssueForm: document.getElementById("newIssueForm"),
+  newIssueCustomer: document.getElementById("newIssueCustomer"),
+  newIssueLocation: document.getElementById("newIssueLocation"),
+  newIssueAsset: document.getElementById("newIssueAsset"),
+  newIssueTitle: document.getElementById("newIssueTitle"),
+  newIssuePriority: document.getElementById("newIssuePriority"),
+  newIssueNotes: document.getElementById("newIssueNotes"),
+  newIssuePhoto: document.getElementById("newIssuePhoto"),
+  newIssueStatus: document.getElementById("newIssueStatus"),
   setupDrawer: document.getElementById("setupDrawer"),
   userDrawer: document.getElementById("userDrawer"),
   contractorDrawer: document.getElementById("contractorDrawer"),
@@ -109,7 +126,12 @@ const els = {
   printReportLabelsBtn: document.getElementById("printReportLabelsBtn"),
   customerForm: document.getElementById("customerForm"),
   customerName: document.getElementById("customerName"),
+  customerContactName: document.getElementById("customerContactName"),
+  customerContactEmail: document.getElementById("customerContactEmail"),
+  customerContactPhone: document.getElementById("customerContactPhone"),
+  customerContactNotes: document.getElementById("customerContactNotes"),
   customerCount: document.getElementById("customerCount"),
+  customerList: document.getElementById("customerList"),
   templateForm: document.getElementById("templateForm"),
   templateName: document.getElementById("templateName"),
   templateItems: document.getElementById("templateItems"),
@@ -137,6 +159,10 @@ const els = {
   locationForm: document.getElementById("locationForm"),
   locationCustomer: document.getElementById("locationCustomer"),
   locationName: document.getElementById("locationName"),
+  locationContactName: document.getElementById("locationContactName"),
+  locationContactEmail: document.getElementById("locationContactEmail"),
+  locationContactPhone: document.getElementById("locationContactPhone"),
+  locationContactNotes: document.getElementById("locationContactNotes"),
   locationCount: document.getElementById("locationCount"),
   locationList: document.getElementById("locationList"),
   assetForm: document.getElementById("assetForm"),
@@ -171,8 +197,11 @@ const els = {
   printSelectedLabelsBtn: document.getElementById("printSelectedLabelsBtn"),
   exportAssetRegisterBtn: document.getElementById("exportAssetRegisterBtn"),
   assetRegisterDrawer: document.getElementById("assetRegisterDrawer"),
+  customerFilterField: document.getElementById("customerFilterField"),
   customerFilter: document.getElementById("customerFilter"),
   locationFilter: document.getElementById("locationFilter"),
+  globalSearch: document.getElementById("globalSearch"),
+  globalSearchResults: document.getElementById("globalSearchResults"),
   emptyState: document.getElementById("emptyState"),
   assetPanel: document.getElementById("assetPanel"),
   selectedLocation: document.getElementById("selectedLocation"),
@@ -240,6 +269,7 @@ const els = {
   completedPmList: document.getElementById("completedPmList"),
   serviceRequestCount: document.getElementById("serviceRequestCount"),
   serviceRequestList: document.getElementById("serviceRequestList"),
+  serviceRequestCreateDrawer: document.getElementById("serviceRequestCreateDrawer"),
   serviceRequestForm: document.getElementById("serviceRequestForm"),
   serviceRequestCustomer: document.getElementById("serviceRequestCustomer"),
   serviceRequestLocation: document.getElementById("serviceRequestLocation"),
@@ -263,6 +293,7 @@ const els = {
   photoViewerClose: document.getElementById("photoViewerClose")
 };
 
+moveTopActionDrawers();
 render();
 window.setTimeout(syncLoginQrReportPrompt, 0);
 window.setTimeout(syncLoginQrReportPrompt, 600);
@@ -525,10 +556,14 @@ function logoutCurrentUser(reason = "manual") {
 
 els.customerForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  if (!canManageSetup()) return;
+  if (!canCreateCustomers()) return;
   const customer = {
     id: crypto.randomUUID(),
     name: els.customerName.value.trim(),
+    contactName: els.customerContactName?.value.trim() || "",
+    contactEmail: els.customerContactEmail?.value.trim() || "",
+    contactPhone: els.customerContactPhone?.value.trim() || "",
+    contactNotes: els.customerContactNotes?.value.trim() || "",
     createdAt: new Date().toISOString()
   };
 
@@ -557,6 +592,29 @@ els.templateForm.addEventListener("submit", (event) => {
   addActivity("Maintenance template added", template.name);
   saveState();
   els.templateForm.reset();
+  render();
+});
+
+els.customerList?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!canManageSetup()) return;
+  const form = event.target.closest("form[data-customer-id]");
+  if (!form) return;
+  const customer = getCustomer(form.dataset.customerId);
+  if (!customer) return;
+  if (!canManageCustomerSetup(customer.id)) return;
+  const formData = new FormData(form);
+  const nextName = String(formData.get("name") || "").trim();
+  if (!nextName) return;
+
+  customer.name = nextName;
+  customer.contactName = String(formData.get("contactName") || "").trim();
+  customer.contactEmail = String(formData.get("contactEmail") || "").trim();
+  customer.contactPhone = String(formData.get("contactPhone") || "").trim();
+  customer.contactNotes = String(formData.get("contactNotes") || "").trim();
+  customer.updatedAt = new Date().toISOString();
+  addActivity("Customer updated", customer.name);
+  saveState();
   render();
 });
 
@@ -720,10 +778,15 @@ els.locationForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!canManageSetup()) return;
   const customerId = els.locationCustomer.value;
+  if (!canManageCustomerSetup(customerId)) return;
   const locationRecord = {
     id: crypto.randomUUID(),
     customerId,
     name: els.locationName.value.trim(),
+    contactName: els.locationContactName?.value.trim() || "",
+    contactEmail: els.locationContactEmail?.value.trim() || "",
+    contactPhone: els.locationContactPhone?.value.trim() || "",
+    contactNotes: els.locationContactNotes?.value.trim() || "",
     createdAt: new Date().toISOString()
   };
 
@@ -749,9 +812,14 @@ els.locationList.addEventListener("submit", (event) => {
   const nextCustomerId = String(formData.get("customerId") || "");
   const nextName = String(formData.get("name") || "").trim();
   if (!nextCustomerId || !nextName) return;
+  if (!canManageCustomerSetup(oldCustomerId) || !canManageCustomerSetup(nextCustomerId)) return;
 
   locationRecord.customerId = nextCustomerId;
   locationRecord.name = nextName;
+  locationRecord.contactName = String(formData.get("contactName") || "").trim();
+  locationRecord.contactEmail = String(formData.get("contactEmail") || "").trim();
+  locationRecord.contactPhone = String(formData.get("contactPhone") || "").trim();
+  locationRecord.contactNotes = String(formData.get("contactNotes") || "").trim();
   locationRecord.updatedAt = new Date().toISOString();
 
   if (oldCustomerId !== nextCustomerId) {
@@ -787,6 +855,7 @@ els.locationList.addEventListener("click", async (event) => {
   if (!button || !canManageSetup()) return;
   const locationRecord = getLocation(button.dataset.locationId);
   if (!locationRecord) return;
+  if (!canManageCustomerSetup(locationRecord.customerId)) return;
 
   const locationAssets = state.assets.filter((asset) => asset.locationId === locationRecord.id);
   const locationWorkOrders = state.workOrders.filter((item) => item.locationId === locationRecord.id);
@@ -922,6 +991,31 @@ els.assetSearch.addEventListener("input", () => {
   render();
 });
 
+els.globalSearch?.addEventListener("input", () => {
+  globalQuery = els.globalSearch.value.trim().toLowerCase();
+  assetPage = 1;
+  render();
+});
+
+els.globalSearch?.addEventListener("focus", () => {
+  renderGlobalSearchResults();
+});
+
+els.globalSearchResults?.addEventListener("click", (event) => {
+  const result = event.target.closest("[data-search-result-type]");
+  if (!result) return;
+  openDashboardResult(result.dataset.searchResultType, result.dataset.searchResultId);
+  els.globalSearchResults.classList.add("hidden");
+});
+
+document.addEventListener("click", (event) => {
+  const result = event.target.closest("[data-dashboard-result-type]");
+  if (!result) return;
+  event.stopPropagation();
+  openDashboardResult(result.dataset.dashboardResultType, result.dataset.dashboardResultId);
+  closeMetricMenus();
+});
+
 els.statusFilter.addEventListener("change", () => {
   assetStatusFilter = els.statusFilter.value;
   assetPage = 1;
@@ -947,56 +1041,33 @@ els.assetPageSize.addEventListener("change", () => {
 });
 
 document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const filter = button.dataset.dashboardFilter;
-    const issueFilters = {
-      workOrders: "active",
-      highPriority: "highPriority",
-      waitingParts: "waitingParts",
-      reportedIssues: "reported",
-      assignedToMe: "assignedToMe"
-    };
-    if (filter === "completedPm") {
-      const panel = document.getElementById("completedPmPanel");
-      const willOpen = panel?.classList.contains("is-collapsed");
-      togglePanel("completedPmPanel");
-      render();
-      panel?.scrollIntoView({ behavior: "smooth", block: willOpen ? "start" : "nearest" });
-      return;
-    }
-    if (filter === "serviceRequests") {
-      const panel = document.getElementById("serviceRequestsPanel");
-      const willOpen = panel?.classList.contains("is-collapsed");
-      togglePanel("serviceRequestsPanel");
-      render();
-      panel?.scrollIntoView({ behavior: "smooth", block: willOpen ? "start" : "nearest" });
-      return;
-    }
-    if (issueFilters[filter]) {
-      workOrderViewFilter = issueFilters[filter];
-      assetSort = "workOrders";
-      assetStatusFilter = "all";
-      const willOpen = document.getElementById("workOrdersPanel")?.classList.contains("is-collapsed");
-      togglePanel("workOrdersPanel");
-      render();
-      if (willOpen) document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-    const openedByMetric = els.assetRegisterDrawer?.dataset.openedByMetric || "";
-    const clickedOpenRegisterMetric = els.assetRegisterDrawer?.open && openedByMetric === filter;
-    if (clickedOpenRegisterMetric) {
-      closeAssetRegisterDrawer();
-      render();
-      return;
-    }
-    assetStatusFilter = filter;
-    assetSort = filter === "all" ? "due" : assetSort;
-    assetPage = 1;
-    const willOpen = !els.assetRegisterDrawer?.open;
-    openAssetRegisterDrawer(filter);
-    render();
-    if (willOpen) els.assetRegisterDrawer?.scrollIntoView({ behavior: "smooth", block: "start" });
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleMetricMenu(button.dataset.dashboardFilter);
   });
+});
+
+els.newEquipmentBtn?.addEventListener("click", () => {
+  if (!canAddEquipment()) return;
+  toggleTopActionDrawer(els.quickAddDrawer);
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #newEquipmentBtn, #newIssueBtn, #newServiceRequestBtn")) return;
+  closeTopActionDrawers();
+  closeMetricMenus();
+});
+
+els.newIssueBtn?.addEventListener("click", () => {
+  if (!canManageWorkOrders()) return;
+  renderNewIssueFormOptions();
+  toggleTopActionDrawer(els.newIssueDrawer);
+});
+
+els.newServiceRequestBtn?.addEventListener("click", () => {
+  if (!canCreateServiceRequests() || !canManageWorkOrders()) return;
+  renderServiceRequestFormOptions();
+  toggleTopActionDrawer(els.serviceRequestCreateDrawer);
 });
 
 els.prevAssetPageBtn.addEventListener("click", () => {
@@ -1034,6 +1105,23 @@ els.serviceRequestCustomer?.addEventListener("change", () => {
 
 els.serviceRequestLocation?.addEventListener("change", () => {
   renderServiceRequestFormOptions();
+});
+
+els.newIssueCustomer?.addEventListener("change", () => {
+  renderNewIssueFormOptions();
+});
+
+els.newIssueLocation?.addEventListener("change", () => {
+  renderNewIssueFormOptions();
+});
+
+els.newIssueAsset?.addEventListener("change", () => {
+  syncNewIssueTitle();
+});
+
+els.newIssueForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await createIssueFromTopAction();
 });
 
 els.serviceRequestForm?.addEventListener("submit", async (event) => {
@@ -1081,6 +1169,7 @@ els.assetForm.addEventListener("submit", async (event) => {
   saveState();
   els.assetForm.reset();
   els.assetFrequency.value = "30";
+  els.quickAddDrawer.open = false;
   location.hash = `asset/${asset.id}`;
   render();
 });
@@ -1532,6 +1621,7 @@ function render() {
   renderPreferredContractors();
   renderAccessRequests();
   renderActivityLog();
+  renderCustomers();
   renderLocations();
   renderCustomerOptions();
   renderTemplateOptions();
@@ -1545,13 +1635,16 @@ function render() {
   renderWorkOrders();
   renderServiceRequests();
   renderServiceRequestFormOptions();
+  renderNewIssueFormOptions();
   renderCompletedPms();
   renderPanelToggles();
 
   const asset = getSelectedAsset();
-  els.customerCount.textContent = state.customers.length;
+  els.customerCount.textContent = manageableSetupCustomers().length;
   els.templateCount.textContent = state.templates.length;
-  els.locationCount.textContent = state.locations.length;
+  els.locationCount.textContent = state.locations.filter((locationRecord) =>
+    manageableSetupCustomers().some((customer) => customer.id === locationRecord.customerId)
+  ).length;
   els.assetCount.textContent = filteredAssets().length;
   els.emptyState.innerHTML = renderEmptyStateContent(asset);
   els.emptyState.classList.toggle("hidden", Boolean(asset));
@@ -1632,15 +1725,25 @@ function toggleAssetRegisterDrawer() {
 function togglePanel(panelId) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
+  const wasCollapsed = panel.classList.contains("is-collapsed");
   panel.classList.toggle("is-collapsed");
+  if (panelId === "assetPanel" && wasCollapsed) closeSelectedAssetDrawers();
   renderPanelToggles();
 }
 
 function openPanel(panelId) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
+  const wasCollapsed = panel.classList.contains("is-collapsed");
   panel.classList.remove("is-collapsed");
+  if (panelId === "assetPanel" && wasCollapsed) closeSelectedAssetDrawers();
   renderPanelToggles();
+}
+
+function closeSelectedAssetDrawers() {
+  document.querySelectorAll("#assetPanel .asset-sub-drawer").forEach((drawer) => {
+    drawer.open = false;
+  });
 }
 
 function renderPanelToggles() {
@@ -1806,19 +1909,36 @@ function renderRole() {
   const userManagementAllowed = canManageUsers();
   const contractorManagementAllowed = canManageContractors();
   const isAdmin = currentRole === "Admin";
+  const canCreateCustomerRecords = canCreateCustomers();
+  const canManageTemplates = canManageTemplateSetup();
   const canAddAssets = canAddEquipment();
+  const canUseNewActions = currentRole === "Admin" || currentRole === "Manager";
   const isCustomer = currentRole === "Customer";
-  els.appShell?.classList.toggle("no-sidebar", !canAddAssets && !isAdmin);
-  els.appSidebar?.classList.toggle("hidden", !canAddAssets && !isAdmin);
+  const hasSidebarAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed;
+  els.appShell?.classList.toggle("no-sidebar", !hasSidebarAccess);
+  els.appSidebar?.classList.toggle("hidden", !hasSidebarAccess);
   els.dashboardPanel.classList.toggle("hidden", isCustomer);
-  els.adminToolsDrawer.classList.toggle("hidden", !canAddAssets && !isAdmin);
-  if (!canAddAssets && !isAdmin) els.adminToolsDrawer.open = false;
+  els.customerFilterField?.classList.toggle("hidden", !isAdmin);
+  els.workHeader?.classList.toggle("hidden", !currentUser || isCustomer);
+  els.newActionBar?.classList.toggle("hidden", !canUseNewActions);
+  els.newEquipmentBtn?.classList.toggle("hidden", !canAddAssets);
+  els.newIssueBtn?.classList.toggle("hidden", !canManageWorkOrders());
+  els.newServiceRequestBtn?.classList.toggle("hidden", !canUseNewActions || !canCreateServiceRequests());
+  if (els.newEquipmentBtn) els.newEquipmentBtn.disabled = !canAddAssets;
+  if (els.newIssueBtn) els.newIssueBtn.disabled = !canManageWorkOrders();
+  if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canUseNewActions || !canCreateServiceRequests();
+  els.adminToolsDrawer.classList.toggle("hidden", !hasSidebarAccess);
+  if (!hasSidebarAccess) els.adminToolsDrawer.open = false;
   els.quickAddDrawer.classList.toggle("hidden", !canAddAssets);
   if (!canAddAssets) els.quickAddDrawer.open = false;
-  [els.setupDrawer, els.backupDrawer].forEach((drawer) => {
-    drawer.classList.toggle("hidden", !isAdmin);
-    if (!isAdmin) drawer.open = false;
-  });
+  els.newIssueDrawer?.classList.toggle("hidden", !canManageWorkOrders());
+  if (!canManageWorkOrders() && els.newIssueDrawer) els.newIssueDrawer.open = false;
+  els.serviceRequestCreateDrawer?.classList.toggle("hidden", !canUseNewActions || !canCreateServiceRequests());
+  if ((!canUseNewActions || !canCreateServiceRequests()) && els.serviceRequestCreateDrawer) els.serviceRequestCreateDrawer.open = false;
+  els.setupDrawer.classList.toggle("hidden", setupDisabled);
+  if (setupDisabled) els.setupDrawer.open = false;
+  els.backupDrawer.classList.toggle("hidden", !isAdmin);
+  if (!isAdmin) els.backupDrawer.open = false;
   els.contractorDrawer.classList.toggle("hidden", !contractorManagementAllowed);
   if (!contractorManagementAllowed) els.contractorDrawer.open = false;
   els.userDrawer.classList.toggle("hidden", !userManagementAllowed);
@@ -1831,6 +1951,17 @@ function renderRole() {
     form.querySelectorAll("input, select, textarea, button").forEach((control) => {
       control.disabled = setupDisabled;
     });
+  });
+  els.customerForm.classList.toggle("hidden", !canCreateCustomerRecords);
+  els.customerForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !canCreateCustomerRecords;
+  });
+  els.templateForm.closest(".setup-subdrawer")?.classList.toggle("hidden", !canManageTemplates);
+  els.templateForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !canManageTemplates;
+  });
+  els.locationForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !canManageSetup();
   });
   els.userForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !userManagementAllowed;
@@ -2019,9 +2150,64 @@ function renderActivityLogItem(item) {
   `;
 }
 
+function renderCustomers() {
+  if (!els.customerList) return;
+  const customers = manageableSetupCustomers().sort((a, b) => a.name.localeCompare(b.name));
+  els.customerList.innerHTML = customers.length
+    ? customers.map(renderCustomerEditor).join("")
+    : `<p class="muted">No customers added yet.</p>`;
+}
+
+function renderCustomerEditor(customer) {
+  const disabled = canManageSetup() ? "" : "disabled";
+  const contactSummary = [
+    customer.contactName,
+    customer.contactEmail,
+    customer.contactPhone
+  ].filter(Boolean).join(" | ");
+  return `
+    <details class="location-editor compact-form">
+      <summary>
+        <span>
+          <strong>${escapeHtml(customer.name)}</strong>
+          ${contactSummary ? `<small>${escapeHtml(contactSummary)}</small>` : ""}
+        </span>
+      </summary>
+      <form class="stack compact-form" data-customer-id="${escapeAttribute(customer.id)}">
+        <label>
+          Customer name
+          <input name="name" required value="${escapeAttribute(customer.name)}" ${disabled}>
+        </label>
+        <label>
+          Main contact
+          <input name="contactName" value="${escapeAttribute(customer.contactName || "")}" ${disabled}>
+        </label>
+        <label>
+          Contact email
+          <input name="contactEmail" type="email" value="${escapeAttribute(customer.contactEmail || "")}" ${disabled}>
+        </label>
+        <label>
+          Contact phone
+          <input name="contactPhone" value="${escapeAttribute(customer.contactPhone || "")}" ${disabled}>
+        </label>
+        <label>
+          Contact notes
+          <textarea name="contactNotes" rows="2" ${disabled}>${escapeHtml(customer.contactNotes || "")}</textarea>
+        </label>
+        <div class="record-actions">
+          <button type="submit" class="secondary mini" ${disabled}>Save Customer</button>
+        </div>
+      </form>
+    </details>
+  `;
+}
+
 function renderLocations() {
   if (!els.locationList) return;
-  const locations = [...state.locations].sort((a, b) => {
+  const setupCustomerIds = new Set(manageableSetupCustomers().map((customer) => customer.id));
+  const locations = state.locations.filter((locationRecord) =>
+    setupCustomerIds.has(locationRecord.customerId) && canManageCustomerSetup(locationRecord.customerId)
+  ).sort((a, b) => {
     const customerA = getCustomer(a.customerId)?.name || "";
     const customerB = getCustomer(b.customerId)?.name || "";
     return `${customerA} ${a.name}`.localeCompare(`${customerB} ${b.name}`);
@@ -2036,23 +2222,52 @@ function renderLocationEditor(locationRecord) {
   const customerOptions = state.customers.map((customer) =>
     `<option value="${escapeAttribute(customer.id)}" ${locationRecord.customerId === customer.id ? "selected" : ""}>${escapeHtml(customer.name)}</option>`
   ).join("");
+  const contactSummary = [
+    locationRecord.contactName,
+    locationRecord.contactEmail,
+    locationRecord.contactPhone
+  ].filter(Boolean).join(" | ");
   return `
-    <form class="location-editor compact-form" data-location-id="${escapeAttribute(locationRecord.id)}">
-      <label>
-        Customer
-        <select name="customerId" ${disabled}>
-          ${customerOptions.replace(`value="${escapeAttribute(locationRecord.customerId)}"`, `value="${escapeAttribute(locationRecord.customerId)}" selected`)}
-        </select>
-      </label>
-      <label>
-        Location name
-        <input name="name" required value="${escapeAttribute(locationRecord.name)}" ${disabled}>
-      </label>
-      <div class="record-actions">
-        <button type="submit" class="secondary mini" ${disabled}>Save Location</button>
-        <button type="button" class="secondary mini danger-action" data-location-action="delete" data-location-id="${escapeAttribute(locationRecord.id)}" ${disabled}>Delete</button>
-      </div>
-    </form>
+    <details class="location-editor compact-form">
+      <summary>
+        <span>
+          <strong>${escapeHtml(locationRecord.name)}</strong>
+          <small>${escapeHtml(getCustomer(locationRecord.customerId)?.name || "Unknown customer")}${contactSummary ? ` | ${escapeHtml(contactSummary)}` : ""}</small>
+        </span>
+      </summary>
+      <form class="stack compact-form" data-location-id="${escapeAttribute(locationRecord.id)}">
+        <label>
+          Customer
+          <select name="customerId" ${disabled}>
+            ${customerOptions}
+          </select>
+        </label>
+        <label>
+          Location name
+          <input name="name" required value="${escapeAttribute(locationRecord.name)}" ${disabled}>
+        </label>
+        <label>
+          Site contact
+          <input name="contactName" value="${escapeAttribute(locationRecord.contactName || "")}" ${disabled}>
+        </label>
+        <label>
+          Contact email
+          <input name="contactEmail" type="email" value="${escapeAttribute(locationRecord.contactEmail || "")}" ${disabled}>
+        </label>
+        <label>
+          Contact phone
+          <input name="contactPhone" value="${escapeAttribute(locationRecord.contactPhone || "")}" ${disabled}>
+        </label>
+        <label>
+          Location notes
+          <textarea name="contactNotes" rows="2" ${disabled}>${escapeHtml(locationRecord.contactNotes || "")}</textarea>
+        </label>
+        <div class="record-actions">
+          <button type="submit" class="secondary mini" ${disabled}>Save Location</button>
+          <button type="button" class="secondary mini danger-action" data-location-action="delete" data-location-id="${escapeAttribute(locationRecord.id)}" ${disabled}>Delete</button>
+        </div>
+      </form>
+    </details>
   `;
 }
 
@@ -2152,6 +2367,11 @@ function renderDashboard() {
   const activeIssues = filteredWorkOrders().filter((item) => item.status !== "Closed");
   const activeServiceRequests = filteredServiceRequests().filter((item) => item.status !== "Completed" && item.status !== "Declined");
   const completedIssues = completedIssueRecords();
+  const currentCustomer = getCustomer(selectedCustomerId);
+  const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
+  if (els.currentViewLabel) {
+    els.currentViewLabel.textContent = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
+  }
   els.dueToday.textContent = dueInfos.filter((item) => item.daysUntil <= 0).length;
   els.overdue.textContent = dueInfos.filter((item) => item.daysUntil < 0).length;
   els.completed.textContent = completedIssues.length;
@@ -2162,6 +2382,174 @@ function renderDashboard() {
   if (els.assignedToMeIssues) els.assignedToMeIssues.textContent = activeIssues.filter((item) => item.assignedUserId === currentUser?.id).length;
   if (els.reportedIssues) els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
   if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
+  if (els.globalSearch) els.globalSearch.value = globalQuery;
+  renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues });
+  renderGlobalSearchResults();
+}
+
+function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues }) {
+  const dueNowAssets = dueInfos
+    .filter((item) => item.daysUntil <= 0)
+    .sort((a, b) => a.daysUntil - b.daysUntil)
+    .map((item) => item.asset);
+  const overdueAssets = dueInfos
+    .filter((item) => item.daysUntil < 0)
+    .sort((a, b) => a.daysUntil - b.daysUntil)
+    .map((item) => item.asset);
+  const highPriorityIssues = activeIssues.filter((item) => item.priority === "High");
+  const waitingPartsIssues = activeIssues.filter((item) => item.status === "Waiting parts");
+  const assignedIssues = activeIssues.filter((item) => item.assignedUserId === currentUser?.id);
+  const menuData = {
+    dueNow: dashboardAssetItems(dueNowAssets, "No equipment is due now."),
+    overdue: dashboardAssetItems(overdueAssets, "No equipment is overdue."),
+    completedPm: dashboardCompletedItems(completedIssues, "No completed issues for this view."),
+    workOrders: dashboardIssueItems(activeIssues, "No open issues for this view."),
+    serviceRequests: dashboardServiceRequestItems(activeServiceRequests, "No service requests for this view."),
+    highPriority: dashboardIssueItems(highPriorityIssues, "No high priority issues for this view."),
+    waitingParts: dashboardIssueItems(waitingPartsIssues, "No waiting parts issues for this view."),
+    assignedToMe: dashboardIssueItems(assignedIssues, "No issues assigned to you for this view.")
+  };
+
+  Object.entries(menuData).forEach(([filter, html]) => {
+    const menu = document.querySelector(`[data-dashboard-menu="${filter}"]`);
+    if (menu) menu.innerHTML = html;
+  });
+}
+
+function dashboardAssetItems(assets, emptyText) {
+  return assets.length
+    ? assets.slice(0, 6).map((asset) => {
+        const due = getDueInfo(asset);
+        return renderDashboardMenuItem({
+          type: "asset",
+          id: asset.id,
+          label: asset.name,
+          meta: `${getCustomer(asset.customerId)?.name || "Unknown customer"} | ${getLocation(asset.locationId)?.name || "Unknown location"} | ${due.label}`,
+          badge: "Equipment"
+        });
+      }).join("") + renderDashboardMoreCount(assets.length)
+    : renderDashboardEmpty(emptyText);
+}
+
+function dashboardIssueItems(issues, emptyText) {
+  return issues.length
+    ? issues.slice(0, 6).map((issue) => renderDashboardMenuItem({
+        type: issue.status === "Closed" ? "completed" : "issue",
+        id: issue.id,
+        label: `${formatIssueNumber(issue)} - ${issue.title || "Issue"}`,
+        meta: `${getCustomer(issue.customerId)?.name || "Unknown customer"} | ${getLocation(issue.locationId)?.name || "Unknown location"} | ${issue.status || "Open"}`,
+        badge: issue.priority || "Issue"
+      })).join("") + renderDashboardMoreCount(issues.length)
+    : renderDashboardEmpty(emptyText);
+}
+
+function dashboardServiceRequestItems(requests, emptyText) {
+  return requests.length
+    ? requests.slice(0, 6).map((request) => renderDashboardMenuItem({
+        type: "service",
+        id: request.id,
+        label: `${formatServiceRequestNumber(request)} - ${request.title || "Service request"}`,
+        meta: `${getCustomer(request.customerId)?.name || "Unknown customer"} | ${getLocation(request.locationId)?.name || "Unknown location"} | ${request.status || "New"}`,
+        badge: "Service"
+      })).join("") + renderDashboardMoreCount(requests.length)
+    : renderDashboardEmpty(emptyText);
+}
+
+function dashboardCompletedItems(records, emptyText) {
+  return records.length
+    ? records.slice(0, 6).map((record) => {
+        const isIssue = record.type === "workOrder";
+        return renderDashboardMenuItem({
+          type: "completed",
+          id: isIssue ? record.workOrder.id : record.history?.id || record.asset.id,
+          label: isIssue
+            ? `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed issue"}`
+            : `${formatPmNumber(record.history)} - ${record.asset.name}`,
+          meta: `${record.customer?.name || "Unknown customer"} | ${record.location?.name || "Unknown location"}`,
+          badge: isIssue ? "Issue" : "PM"
+        });
+      }).join("") + renderDashboardMoreCount(records.length)
+    : renderDashboardEmpty(emptyText);
+}
+
+function renderDashboardMenuItem(item) {
+  return `
+    <button type="button" class="metric-dropdown-item" data-dashboard-result-type="${escapeAttribute(item.type)}" data-dashboard-result-id="${escapeAttribute(item.id)}">
+      <span>
+        <strong>${escapeHtml(item.label)}</strong>
+        <small>${escapeHtml(item.meta)}</small>
+      </span>
+      <em>${escapeHtml(item.badge)}</em>
+    </button>
+  `;
+}
+
+function renderDashboardMoreCount(total) {
+  return total > 6 ? `<p class="metric-dropdown-more">Showing 6 of ${total}</p>` : "";
+}
+
+function renderDashboardEmpty(message) {
+  return `<p class="metric-dropdown-empty">${escapeHtml(message)}</p>`;
+}
+
+function renderGlobalSearchResults() {
+  if (!els.globalSearchResults) return;
+  if (!globalQuery) {
+    els.globalSearchResults.classList.add("hidden");
+    els.globalSearchResults.innerHTML = "";
+    return;
+  }
+
+  const results = [
+    ...filteredAssets().slice(0, 5).map((asset) => ({
+      type: "asset",
+      id: asset.id,
+      label: asset.name,
+      meta: `${getCustomer(asset.customerId)?.name || "Unknown customer"} | ${getLocation(asset.locationId)?.name || "Unknown location"}`,
+      badge: "Equipment"
+    })),
+    ...filteredWorkOrders().slice(0, 5).map((issue) => ({
+      type: issue.status === "Closed" ? "completed" : "issue",
+      id: issue.id,
+      label: `${formatIssueNumber(issue)} - ${issue.title || "Issue"}`,
+      meta: `${getCustomer(issue.customerId)?.name || "Unknown customer"} | ${getLocation(issue.locationId)?.name || "Unknown location"} | ${issue.status || "Open"}`,
+      badge: issue.status === "Closed" ? "Completed" : "Issue"
+    })),
+    ...filteredServiceRequests().slice(0, 5).map((request) => ({
+      type: "service",
+      id: request.id,
+      label: `${formatServiceRequestNumber(request)} - ${request.title || "Service request"}`,
+      meta: `${getCustomer(request.customerId)?.name || "Unknown customer"} | ${getLocation(request.locationId)?.name || "Unknown location"} | ${request.status || "New"}`,
+      badge: "Service Request"
+    })),
+    ...completedPmRecords().slice(0, 5).map((record) => ({
+      type: "completed",
+      id: record.history?.id || record.asset.id,
+      label: `${formatPmNumber(record.history)} - ${record.asset.name}`,
+      meta: `${record.customer?.name || "Unknown customer"} | ${record.location?.name || "Unknown location"} | ${record.history.result || "Completed"}`,
+      badge: "Completed PM"
+    }))
+  ].slice(0, 12);
+
+  els.globalSearchResults.classList.remove("hidden");
+  els.globalSearchResults.innerHTML = results.length
+    ? `
+      <div class="search-results-title">Search results</div>
+      ${results.map(renderGlobalSearchResult).join("")}
+    `
+    : `<p class="muted">No matches found for "${escapeHtml(globalQuery)}".</p>`;
+}
+
+function renderGlobalSearchResult(result) {
+  return `
+    <button type="button" class="global-search-result" data-search-result-type="${escapeAttribute(result.type)}" data-search-result-id="${escapeAttribute(result.id)}">
+      <span>
+        <strong>${escapeHtml(result.label)}</strong>
+        <small>${escapeHtml(result.meta)}</small>
+      </span>
+      <em>${escapeHtml(result.badge)}</em>
+    </button>
+  `;
 }
 
 function renderAssetTableControls() {
@@ -2484,6 +2872,183 @@ function renderCompletedIssueItem(record) {
   `;
 }
 
+function moveTopActionDrawers() {
+  els.newEquipmentBtn?.insertAdjacentElement("afterend", els.quickAddDrawer);
+  els.newIssueBtn?.insertAdjacentElement("afterend", els.newIssueDrawer);
+  els.newServiceRequestBtn?.insertAdjacentElement("afterend", els.serviceRequestCreateDrawer);
+}
+
+function getTopActionDrawers() {
+  return [els.quickAddDrawer, els.newIssueDrawer, els.serviceRequestCreateDrawer].filter(Boolean);
+}
+
+function closeTopActionDrawers(except = null) {
+  getTopActionDrawers().forEach((drawer) => {
+    if (drawer !== except) drawer.open = false;
+  });
+}
+
+function toggleTopActionDrawer(drawer) {
+  if (!drawer) return;
+  const shouldOpen = !drawer.open;
+  closeTopActionDrawers(drawer);
+  drawer.open = shouldOpen;
+}
+
+function closeMetricMenus(except = null) {
+  document.querySelectorAll("[data-dashboard-menu]").forEach((menu) => {
+    if (menu !== except) menu.classList.add("hidden");
+  });
+}
+
+function toggleMetricMenu(filter) {
+  const menu = document.querySelector(`[data-dashboard-menu="${filter}"]`);
+  if (!menu) return;
+  const shouldOpen = menu.classList.contains("hidden");
+  closeTopActionDrawers();
+  closeMetricMenus(menu);
+  menu.classList.toggle("hidden", !shouldOpen);
+}
+
+function runDashboardAction(filter) {
+  const issueFilters = {
+    workOrders: "active",
+    highPriority: "highPriority",
+    waitingParts: "waitingParts",
+    reportedIssues: "reported",
+    assignedToMe: "assignedToMe"
+  };
+
+  if (filter === "completedPm") {
+    const panel = document.getElementById("completedPmPanel");
+    const willOpen = panel?.classList.contains("is-collapsed");
+    togglePanel("completedPmPanel");
+    render();
+    panel?.scrollIntoView({ behavior: "smooth", block: willOpen ? "start" : "nearest" });
+    return;
+  }
+
+  if (filter === "serviceRequests") {
+    const panel = document.getElementById("serviceRequestsPanel");
+    const willOpen = panel?.classList.contains("is-collapsed");
+    togglePanel("serviceRequestsPanel");
+    render();
+    panel?.scrollIntoView({ behavior: "smooth", block: willOpen ? "start" : "nearest" });
+    return;
+  }
+
+  if (issueFilters[filter]) {
+    workOrderViewFilter = issueFilters[filter];
+    assetSort = "workOrders";
+    assetStatusFilter = "all";
+    const panel = document.getElementById("workOrdersPanel");
+    const willOpen = panel?.classList.contains("is-collapsed");
+    togglePanel("workOrdersPanel");
+    render();
+    if (willOpen) panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const openedByMetric = els.assetRegisterDrawer?.dataset.openedByMetric || "";
+  const clickedOpenRegisterMetric = els.assetRegisterDrawer?.open && openedByMetric === filter;
+  if (clickedOpenRegisterMetric) {
+    closeAssetRegisterDrawer();
+    render();
+    return;
+  }
+
+  assetStatusFilter = filter;
+  assetSort = filter === "all" ? "due" : assetSort;
+  assetPage = 1;
+  const willOpen = !els.assetRegisterDrawer?.open;
+  openAssetRegisterDrawer(filter);
+  render();
+  if (willOpen) els.assetRegisterDrawer?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function openDashboardResult(type, id) {
+  if (type === "asset") {
+    selectedId = id;
+    syncFiltersToSelectedAsset();
+    location.hash = `asset/${selectedId}`;
+    openPanel("assetPanel");
+  } else if (type === "issue") {
+    workOrderViewFilter = "active";
+    openPanel("workOrdersPanel");
+  } else if (type === "service") {
+    openPanel("serviceRequestsPanel");
+  } else if (type === "completed") {
+    openPanel("completedPmPanel");
+  }
+  render();
+  const target = type === "asset"
+    ? document.getElementById("assetPanel")
+    : type === "issue"
+      ? document.getElementById("workOrdersPanel")
+      : type === "service"
+        ? document.getElementById("serviceRequestsPanel")
+        : document.getElementById("completedPmPanel");
+  target?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderNewIssueFormOptions() {
+  if (!els.newIssueForm) return;
+  const customers = visibleCustomers();
+  const currentCustomerId = customers.some((customer) => customer.id === els.newIssueCustomer.value)
+    ? els.newIssueCustomer.value
+    : customers.some((customer) => customer.id === selectedCustomerId)
+      ? selectedCustomerId
+      : customers[0]?.id || "";
+  els.newIssueCustomer.innerHTML = customers.map((customer) =>
+    `<option value="${escapeAttribute(customer.id)}">${escapeHtml(customer.name)}</option>`
+  ).join("");
+  els.newIssueCustomer.value = currentCustomerId;
+  els.newIssueCustomer.disabled = currentRole !== "Admin";
+  els.newIssueCustomer.title = currentRole === "Admin"
+    ? "Choose the customer for this issue."
+    : "Only admin users can choose a different customer.";
+
+  const locations = locationsForCustomer(currentCustomerId);
+  const currentLocationId = locations.some((locationRecord) => locationRecord.id === els.newIssueLocation.value)
+    ? els.newIssueLocation.value
+    : locations.some((locationRecord) => locationRecord.id === selectedLocationId)
+      ? selectedLocationId
+      : locations[0]?.id || "";
+  els.newIssueLocation.innerHTML = locations.map((locationRecord) =>
+    `<option value="${escapeAttribute(locationRecord.id)}">${escapeHtml(locationRecord.name)}</option>`
+  ).join("");
+  els.newIssueLocation.value = currentLocationId;
+
+  const assets = state.assets.filter((asset) =>
+    canSeeAsset(asset) &&
+    asset.customerId === currentCustomerId &&
+    (!currentLocationId || asset.locationId === currentLocationId)
+  );
+  const selectedAsset = getSelectedAsset();
+  const currentAssetId = assets.some((asset) => asset.id === els.newIssueAsset.value)
+    ? els.newIssueAsset.value
+    : selectedAsset && assets.some((asset) => asset.id === selectedAsset.id)
+      ? selectedAsset.id
+      : assets[0]?.id || "";
+  els.newIssueAsset.innerHTML = assets.length
+    ? assets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name)}</option>`).join("")
+    : `<option value="">No equipment available</option>`;
+  els.newIssueAsset.value = currentAssetId;
+  els.newIssueAsset.disabled = !assets.length;
+  const submitButton = els.newIssueForm.querySelector("button[type='submit']");
+  if (submitButton) submitButton.disabled = !customers.length || !locations.length || !assets.length || !canManageWorkOrders();
+  syncNewIssueTitle();
+}
+
+function syncNewIssueTitle() {
+  if (!els.newIssueTitle || !els.newIssueAsset) return;
+  const asset = getAsset(els.newIssueAsset.value);
+  if (!asset) return;
+  if (!els.newIssueTitle.value.trim() || els.newIssueTitle.value.startsWith("Issue: ")) {
+    els.newIssueTitle.value = `Issue: ${asset.name}`;
+  }
+}
+
 function renderServiceRequestFormOptions() {
   if (!els.serviceRequestForm) return;
   const customers = visibleCustomers();
@@ -2700,6 +3265,15 @@ function assetTableAssets() {
 
 function matchesAssetSearch(asset) {
   if (!assetQuery) return true;
+  return assetSearchText(asset).includes(assetQuery);
+}
+
+function matchesAssetGlobalSearch(asset) {
+  if (!globalQuery) return true;
+  return assetSearchText(asset).includes(globalQuery);
+}
+
+function assetSearchText(asset) {
   const customer = getCustomer(asset.customerId);
   const locationRecord = getLocation(asset.locationId);
   const template = getTemplate(asset.templateId);
@@ -2726,14 +3300,73 @@ function matchesAssetSearch(asset) {
     asset.parts,
     asset.notes,
     customer?.name,
+    customer?.contactName,
+    customer?.contactEmail,
+    customer?.contactPhone,
+    customer?.contactNotes,
     locationRecord?.name,
+    locationRecord?.contactName,
+    locationRecord?.contactEmail,
+    locationRecord?.contactPhone,
+    locationRecord?.contactNotes,
     template?.name,
     ...relatedIssueNumbers,
     ...relatedPmNumbers,
     ...relatedServiceRequestNumbers,
     asset.id
   ].join(" ").toLowerCase();
-  return haystack.includes(assetQuery);
+  return haystack;
+}
+
+function matchesWorkOrderGlobalSearch(item) {
+  if (!globalQuery) return true;
+  const asset = getRawAsset(item.assetId);
+  return [
+    formatIssueNumber(item),
+    item.issueNumber,
+    item.title,
+    item.status,
+    item.priority,
+    item.notes,
+    item.source,
+    item.contact,
+    item.assignedUserName,
+    getUser(item.assignedUserId)?.name,
+    getUser(item.assignedUserId)?.username,
+    getCustomer(item.customerId)?.name,
+    getLocation(item.locationId)?.name,
+    asset?.name,
+    asset?.serial,
+    asset?.model,
+    asset?.manufacturer,
+    asset?.type,
+    item.id
+  ].join(" ").toLowerCase().includes(globalQuery);
+}
+
+function matchesServiceRequestGlobalSearch(item) {
+  if (!globalQuery) return true;
+  const asset = getRawAsset(item.assetId);
+  return [
+    formatServiceRequestNumber(item),
+    item.serviceRequestNumber,
+    item.title,
+    item.status,
+    item.priority,
+    item.notes,
+    item.requestedBy,
+    item.assignedUserName,
+    getUser(item.assignedUserId)?.name,
+    getUser(item.assignedUserId)?.username,
+    getCustomer(item.customerId)?.name,
+    getLocation(item.locationId)?.name,
+    asset?.name,
+    asset?.serial,
+    asset?.model,
+    asset?.manufacturer,
+    asset?.type,
+    item.id
+  ].join(" ").toLowerCase().includes(globalQuery);
 }
 
 function matchesStatusFilter(asset) {
@@ -3656,7 +4289,7 @@ function filteredAssets() {
     if (!canSeeAsset(asset)) return false;
     const matchesCustomer = asset.customerId === selectedCustomerId;
     const matchesLocation = selectedLocationId === "all" || asset.locationId === selectedLocationId;
-    return matchesCustomer && matchesLocation;
+    return matchesCustomer && matchesLocation && matchesAssetGlobalSearch(asset);
   });
 }
 
@@ -3666,7 +4299,7 @@ function filteredWorkOrders() {
     if (!canSeeCustomer(item.customerId)) return false;
     const matchesCustomer = item.customerId === selectedCustomerId;
     const matchesLocation = selectedLocationId === "all" || item.locationId === selectedLocationId;
-    return matchesCustomer && matchesLocation;
+    return matchesCustomer && matchesLocation && matchesWorkOrderGlobalSearch(item);
   });
 }
 
@@ -3676,7 +4309,7 @@ function filteredServiceRequests() {
     if (!canSeeCustomer(item.customerId)) return false;
     const matchesCustomer = item.customerId === selectedCustomerId;
     const matchesLocation = selectedLocationId === "all" || item.locationId === selectedLocationId;
-    return matchesCustomer && matchesLocation;
+    return matchesCustomer && matchesLocation && matchesServiceRequestGlobalSearch(item);
   });
 }
 
@@ -3693,7 +4326,24 @@ function completedPmRecords() {
       customer: getCustomer(asset.customerId),
       location: getLocation(asset.locationId)
     })))
+    .filter(matchesCompletedPmGlobalSearch)
     .sort((a, b) => new Date(b.history.completedAt || 0) - new Date(a.history.completedAt || 0));
+}
+
+function matchesCompletedPmGlobalSearch(record) {
+  if (!globalQuery) return true;
+  return [
+    formatPmNumber(record.history),
+    record.history.pmNumber,
+    record.history.completedBy,
+    record.history.notes,
+    record.history.completedAt,
+    record.asset?.name,
+    record.asset?.serial,
+    record.asset?.model,
+    record.customer?.name,
+    record.location?.name
+  ].join(" ").toLowerCase().includes(globalQuery);
 }
 
 function completedIssueRecords() {
@@ -3725,6 +4375,7 @@ function locationsForCustomer(customerId) {
 async function deleteLocation(locationId) {
   const locationRecord = getLocation(locationId);
   if (!locationRecord) return;
+  if (!canManageCustomerSetup(locationRecord.customerId)) return;
   const removedAssetIds = new Set(
     state.assets
       .filter((asset) => asset.locationId === locationId)
@@ -3867,6 +4518,40 @@ function createManualIssueForAsset(asset, issueData = {}) {
   openPanel("workOrdersPanel");
   render();
   document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function createIssueFromTopAction() {
+  if (!els.newIssueForm || !canManageWorkOrders()) return;
+  const asset = getAsset(els.newIssueAsset?.value);
+  if (!asset) {
+    if (els.newIssueStatus) els.newIssueStatus.textContent = "Choose equipment first.";
+    return;
+  }
+  const submitButton = els.newIssueForm.querySelector("button[type='submit']");
+  try {
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = "Creating...";
+    }
+    const photo = await readPhoto(els.newIssuePhoto?.files?.[0]);
+    const issueData = {
+      title: els.newIssueTitle?.value.trim() || `Issue: ${asset.name}`,
+      priority: els.newIssuePriority?.value || "Medium",
+      notes: els.newIssueNotes?.value.trim(),
+      photo
+    };
+    els.newIssueDrawer.open = false;
+    els.newIssueForm.reset();
+    createManualIssueForAsset(asset, issueData);
+  } catch (error) {
+    console.warn("Top action issue creation failed.", error);
+    if (els.newIssueStatus) els.newIssueStatus.textContent = "Issue was not created. Try again with no photo or a smaller photo.";
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = "Create Issue";
+    }
+  }
 }
 
 async function createServiceRequest() {
@@ -4052,7 +4737,31 @@ function formatServiceRequestNumber(item) {
 }
 
 function canManageSetup() {
+  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId));
+}
+
+function canCreateCustomers() {
   return currentRole === "Admin";
+}
+
+function canManageTemplateSetup() {
+  return currentRole === "Admin";
+}
+
+function canManageCustomerSetup(customerId) {
+  if (currentRole === "Admin") return true;
+  return currentRole === "Manager" && Boolean(currentUser?.customerId) && customerId === currentUser.customerId;
+}
+
+function manageableSetupCustomers() {
+  if (currentRole === "Admin") {
+    const selectedCustomer = getCustomer(selectedCustomerId);
+    return selectedCustomer ? [selectedCustomer] : [...state.customers];
+  }
+  if (currentRole === "Manager" && currentUser?.customerId) {
+    return state.customers.filter((customer) => customer.id === currentUser.customerId);
+  }
+  return [];
 }
 
 function canManageUsers() {
@@ -5106,6 +5815,22 @@ function normalizeState(input) {
 
   if (!normalized.customers.length && normalized.assets.length) normalized.customers.push(defaultCustomer);
   if (!normalized.locations.length && normalized.assets.length) normalized.locations.push(defaultLocation);
+
+  normalized.customers = normalized.customers.map((customer) => ({
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    contactNotes: "",
+    ...customer
+  }));
+
+  normalized.locations = normalized.locations.map((locationRecord) => ({
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    contactNotes: "",
+    ...locationRecord
+  }));
 
   normalized.assets = normalized.assets.map((asset) => ({
     customerId: asset.customerId || defaultCustomer.id,
