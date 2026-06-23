@@ -22,6 +22,7 @@ hydrateAssetFromHash();
 let selectedId = getAssetIdFromUrl() || null;
 let selectedCustomerId = state.customers[0]?.id || "";
 let selectedLocationId = "all";
+let selectedContractorCustomerId = selectedCustomerId;
 let currentUser = getInitialUser();
 let currentRole = currentUser?.role || "Customer";
 let assetQuery = "";
@@ -129,6 +130,7 @@ const els = {
   contractorEmail: document.getElementById("contractorEmail"),
   contractorTrade: document.getElementById("contractorTrade"),
   contractorCount: document.getElementById("contractorCount"),
+  contractorCustomerHint: document.getElementById("contractorCustomerHint"),
   contractorList: document.getElementById("contractorList"),
   activityLogCount: document.getElementById("activityLogCount"),
   activityLogList: document.getElementById("activityLogList"),
@@ -533,6 +535,7 @@ els.customerForm.addEventListener("submit", (event) => {
   state.customers.push(customer);
   addActivity("Customer added", customer.name);
   selectedCustomerId = customer.id;
+  selectedContractorCustomerId = customer.id;
   selectedLocationId = "all";
   selectedId = null;
   saveState();
@@ -962,7 +965,11 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
       return;
     }
     if (filter === "serviceRequests") {
-      toggleServiceRequestMetricMenu();
+      const panel = document.getElementById("serviceRequestsPanel");
+      const willOpen = panel?.classList.contains("is-collapsed");
+      togglePanel("serviceRequestsPanel");
+      render();
+      panel?.scrollIntoView({ behavior: "smooth", block: willOpen ? "start" : "nearest" });
       return;
     }
     if (issueFilters[filter]) {
@@ -1005,6 +1012,7 @@ els.nextAssetPageBtn.addEventListener("click", () => {
 
 els.customerFilter.addEventListener("change", () => {
   selectedCustomerId = els.customerFilter.value;
+  selectedContractorCustomerId = selectedCustomerId;
   selectedLocationId = "all";
   selectedId = null;
   clearSelectedAssetUrl();
@@ -1252,7 +1260,14 @@ els.contractorForm?.addEventListener("submit", (event) => {
   addActivity("Contractor added", `${name} | ${email}`);
   saveState();
   els.contractorForm.reset();
+  selectedContractorCustomerId = customerId;
   render();
+});
+
+els.contractorCustomer?.addEventListener("change", () => {
+  selectedContractorCustomerId = els.contractorCustomer.value;
+  updateContractorCustomerHint();
+  renderPreferredContractors();
 });
 
 els.exportAssetRegisterBtn.addEventListener("click", () => {
@@ -1283,14 +1298,6 @@ els.restoreBackupBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (event) => {
-  if (!event.target.closest("#serviceRequestMetricWrap")) closeServiceRequestMetricMenu();
-
-  const serviceRequestMenuButton = event.target.closest("[data-service-request-menu]");
-  if (serviceRequestMenuButton) {
-    openServiceRequestPanel(serviceRequestMenuButton.dataset.serviceRequestMenu);
-    return;
-  }
-
   const panelToggle = event.target.closest("[data-panel-toggle]");
   if (panelToggle) {
     if (panelToggle.dataset.panelToggle === "dashboardPanel") return;
@@ -1636,32 +1643,6 @@ function openPanel(panelId) {
   renderPanelToggles();
 }
 
-function toggleServiceRequestMetricMenu() {
-  const menu = document.getElementById("serviceRequestMetricMenu");
-  const button = document.querySelector("[data-dashboard-filter='serviceRequests']");
-  if (!menu) return;
-  const willOpen = menu.classList.contains("hidden");
-  menu.classList.toggle("hidden", !willOpen);
-  button?.setAttribute("aria-expanded", String(willOpen));
-}
-
-function closeServiceRequestMetricMenu() {
-  const menu = document.getElementById("serviceRequestMetricMenu");
-  const button = document.querySelector("[data-dashboard-filter='serviceRequests']");
-  menu?.classList.add("hidden");
-  button?.setAttribute("aria-expanded", "false");
-}
-
-function openServiceRequestPanel(mode = "history") {
-  closeServiceRequestMetricMenu();
-  const panel = document.getElementById("serviceRequestsPanel");
-  openPanel("serviceRequestsPanel");
-  render();
-  const drawer = document.getElementById("serviceRequestCreateDrawer");
-  if (drawer) drawer.open = mode === "new";
-  panel?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
 function renderPanelToggles() {
   document.querySelectorAll(".panel-toggle[data-panel-toggle]").forEach((button) => {
     const panel = document.getElementById(button.dataset.panelToggle);
@@ -1882,11 +1863,29 @@ function renderUsers() {
 
 function renderPreferredContractors() {
   if (!els.contractorList) return;
-  const contractors = visiblePreferredContractors();
+  const customerId = contractorListCustomerId();
+  const contractors = visiblePreferredContractors(customerId);
   els.contractorCount.textContent = contractors.length;
   els.contractorList.innerHTML = contractors.length
     ? contractors.map(renderPreferredContractorItem).join("")
     : `<p class="muted">No preferred contractors added yet.</p>`;
+}
+
+function contractorListCustomerId() {
+  if (currentRole === "Admin") return selectedContractorCustomerId || els.contractorCustomer?.value || selectedCustomerId || "";
+  return currentUser?.customerId || "";
+}
+
+function updateContractorCustomerHint() {
+  if (!els.contractorCustomerHint) return;
+  const contractorCustomerId = contractorListCustomerId();
+  if (currentRole !== "Admin" || !contractorCustomerId || contractorCustomerId === selectedCustomerId) {
+    els.contractorCustomerHint.textContent = "";
+    return;
+  }
+  const contractorCustomer = getCustomer(contractorCustomerId)?.name || "this customer";
+  const activeCustomer = getCustomer(selectedCustomerId)?.name || "the current customer";
+  els.contractorCustomerHint.textContent = `These contractors are for ${contractorCustomer}, not ${activeCustomer}.`;
 }
 
 function renderPreferredContractorItem(contractor) {
@@ -2081,9 +2080,16 @@ function renderCustomerOptions() {
   els.locationCustomer.value = selectedCustomerId;
   els.assetCustomer.value = selectedCustomerId;
   els.customerFilter.value = selectedCustomerId;
+  const contractorCustomers = currentRole === "Admin" ? state.customers : visibleCustomers();
+  if (!contractorCustomers.some((customer) => customer.id === selectedContractorCustomerId)) {
+    selectedContractorCustomerId = currentRole === "Manager" && currentUser?.customerId
+      ? currentUser.customerId
+      : selectedCustomerId;
+  }
   els.contractorCustomer.value = currentRole === "Manager" && currentUser?.customerId
     ? currentUser.customerId
-    : selectedCustomerId;
+    : selectedContractorCustomerId;
+  updateContractorCustomerHint();
   if (currentRole === "Manager" && currentUser?.customerId) {
     els.newUserCustomer.value = currentUser.customerId;
   }
@@ -3332,6 +3338,10 @@ async function sendServiceRequestPdfEmail(request, button) {
 
 function choosePreferredContractorEmail(promptTitle, customerId = "") {
   const contractors = visiblePreferredContractors(customerId);
+  const contractorCustomer = customerId ? getCustomer(customerId) : null;
+  const emptyContractorMessage = contractorCustomer
+    ? `No preferred contractors have been added for ${contractorCustomer.name} yet.`
+    : "No preferred contractors have been added yet.";
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "contractor-picker";
@@ -3349,7 +3359,7 @@ function choosePreferredContractorEmail(promptTitle, customerId = "") {
                 <span>${escapeHtml(contractor.email)}${contractor.trade ? ` | ${escapeHtml(contractor.trade)}` : ""}</span>
               </button>
             `).join("")
-            : `<p class="muted">No preferred contractors have been added yet.</p>`}
+            : `<p class="muted">${escapeHtml(emptyContractorMessage)}</p>`}
         </div>
         <form class="contractor-manual-form" data-contractor-manual-form>
           <label>

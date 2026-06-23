@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260623-0735">
+  <link rel="stylesheet" href="styles.css?v=20260623-0952">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -340,6 +340,7 @@
               Customer
               <select id="contractorCustomer"></select>
             </label>
+            <p id="contractorCustomerHint" class="muted"></p>
             <label>
               Contractor name
               <input id="contractorName" required placeholder="ABC Mechanical">
@@ -426,16 +427,10 @@
             <span id="openWorkOrders">0</span>
             <p>Open issues</p>
           </button>
-          <div id="serviceRequestMetricWrap" class="metric-menu-wrap">
-            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="serviceRequests" aria-haspopup="true" aria-expanded="false">
-              <span id="serviceRequestsMetric">0</span>
-              <p>Service requests</p>
-            </button>
-            <div id="serviceRequestMetricMenu" class="metric-dropdown hidden" role="menu">
-              <button type="button" data-service-request-menu="new">New Service Request</button>
-              <button type="button" data-service-request-menu="history">Service Request History</button>
-            </div>
-          </div>
+          <button type="button" class="metric-card metric-neutral" data-dashboard-filter="serviceRequests">
+            <span id="serviceRequestsMetric">0</span>
+            <p>Service requests</p>
+          </button>
           <button type="button" class="metric-card metric-danger" data-dashboard-filter="highPriority">
             <span id="highPriorityIssues">0</span>
             <p>High priority</p>
@@ -603,7 +598,10 @@
               <p id="serviceRequestStatus" class="inline-status"></p>
             </form>
           </details>
-          <div id="serviceRequestList" class="work-order-list"></div>
+          <details id="serviceRequestHistoryDrawer" class="service-request-create-drawer" open>
+            <summary>Service Request History</summary>
+            <div id="serviceRequestList" class="work-order-list"></div>
+          </details>
         </div>
       </section>
 
@@ -663,187 +661,189 @@
           <button id="copyLinkBtn" class="secondary">Copy Scan Link</button>
         </div>
 
-        <div class="asset-primary-grid">
-        <form id="pmForm" class="pm-form">
-          <div class="section-title">
-            <h3>Maintenance Checklist</h3>
-            <span id="selectedTemplate"></span>
-          </div>
-          <div id="checklistFields" class="checklist-fields"></div>
-          <div class="form-grid">
-            <label>
-              Technician
-              <input id="technician" required placeholder="Name">
-            </label>
-            <label>
-              Meter / reading
-              <input id="reading" placeholder="Optional">
-            </label>
-          </div>
-          <label>
-            Notes
-            <textarea id="notes" rows="4" placeholder="Findings, parts needed, or follow-up work"></textarea>
-          </label>
-          <label>
-            Photo evidence
-            <input id="photoInput" type="file" accept="image/*">
-          </label>
-          <label>
-            Result
-            <select id="result">
-              <option value="Passed">Passed</option>
-              <option value="Needs attention">Needs attention</option>
-              <option value="Failed">Failed</option>
-            </select>
-          </label>
-          <button type="submit">Complete Maintenance</button>
-        </form>
-
-        <section class="asset-details">
-          <div class="section-title">
-            <h3>Equipment Details</h3>
-          </div>
-          <div id="assetPhotoPanel" class="asset-photo-panel"></div>
-          <div id="assetManualPanel" class="asset-manual-panel"></div>
-          <div id="assetDetailsGrid" class="details-grid"></div>
-          <details class="asset-info-editor">
-            <summary>Edit Equipment</summary>
-            <form id="assetInfoForm" class="stack compact-form">
-              <label>
-                Equipment name
-                <input id="editAssetName" required placeholder="Rooftop Unit 1">
-              </label>
+        <div class="asset-drawer-row">
+          <details class="asset-sub-drawer" open>
+            <summary>
+              <h3>Maintenance Checklist</h3>
+              <span id="selectedTemplate"></span>
+            </summary>
+            <form id="pmForm" class="pm-form">
+              <div id="checklistFields" class="checklist-fields"></div>
               <div class="form-grid">
                 <label>
-                  Customer
-                  <select id="editAssetCustomer"></select>
+                  Technician
+                  <input id="technician" required placeholder="Name">
                 </label>
                 <label>
-                  Location
-                  <select id="editAssetLocation"></select>
-                </label>
-              </div>
-              <div class="form-grid">
-                <label>
-                  Maintenance template
-                  <select id="editAssetTemplate"></select>
-                </label>
-                <label>
-                  Maintenance frequency
-                  <select id="editAssetFrequency">
-                    <option value="7">Weekly</option>
-                    <option value="30">Monthly</option>
-                    <option value="90">Quarterly</option>
-                    <option value="365">Yearly</option>
-                  </select>
-                </label>
-              </div>
-              <div class="form-grid">
-                <label>
-                Equipment type
-                  <input id="editAssetType" placeholder="HVAC, pump, conveyor">
-                </label>
-                <label>
-                  Criticality
-                  <select id="editAssetCriticality">
-                    <option value="">Not set</option>
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                  </select>
-                </label>
-              </div>
-              <div class="form-grid">
-                <label>
-                  Manufacturer
-                  <input id="editAssetManufacturer" placeholder="Trane">
-                </label>
-                <label>
-                  Model
-                  <input id="editAssetModel" placeholder="XR-14">
-                </label>
-              </div>
-              <div class="form-grid">
-                <label>
-                  Serial number
-                  <input id="editAssetSerial" placeholder="SN-10492">
-                </label>
-                <label>
-                  Install date
-                  <input id="editAssetInstallDate" type="date">
-                </label>
-              </div>
-              <div class="form-grid">
-                <label>
-                  Vendor / service company
-                  <input id="editAssetVendor" placeholder="ABC Mechanical">
-                </label>
-                <label>
-                  Vendor contact
-                  <input id="editAssetVendorContact" placeholder="604-555-0100">
-                </label>
-              </div>
-              <div class="form-grid">
-                <label>
-                  Warranty expires
-                  <input id="editAssetWarrantyDate" type="date">
-                </label>
-                <label>
-                  Parts / supply notes
-                  <input id="editAssetParts" placeholder="Belt A42, filter 20x20x2">
+                  Meter / reading
+                  <input id="reading" placeholder="Optional">
                 </label>
               </div>
               <label>
-                Manual / document link
-                <input id="editAssetDocumentUrl" type="url" placeholder="https://example.com/manual.pdf">
+                Notes
+                <textarea id="notes" rows="4" placeholder="Findings, parts needed, or follow-up work"></textarea>
               </label>
               <label>
-                Upload PDF manual
-                <input id="editAssetManualFile" type="file" accept="application/pdf,.pdf">
+                Photo evidence
+                <input id="photoInput" type="file" accept="image/*">
               </label>
-              <p id="assetManualUploadStatus" class="inline-status"></p>
               <label>
-                Replace equipment photo
-                <input id="editAssetPhoto" type="file" accept="image/*">
+                Result
+                <select id="result">
+                  <option value="Passed">Passed</option>
+                  <option value="Needs attention">Needs attention</option>
+                  <option value="Failed">Failed</option>
+                </select>
               </label>
-              <div class="section-title inline-section-title">
-                <h3>More Asset Photos</h3>
-                <span id="assetGalleryCount">0</span>
-              </div>
-              <div id="assetGalleryPanel" class="asset-gallery-panel"></div>
-              <label>
-                Add more equipment photos
-                <input id="editAssetGalleryPhotos" type="file" accept="image/*" multiple>
-              </label>
-              <p id="assetGalleryUploadStatus" class="inline-status"></p>
-              <label>
-                Equipment notes
-                <textarea id="editAssetNotes" rows="3" placeholder="Warranty notes, access instructions, or service cautions"></textarea>
-              </label>
-              <button type="submit" class="secondary">Save Asset Info</button>
+              <button type="submit">Complete Maintenance</button>
             </form>
           </details>
-        </section>
-        </div>
 
-        <section>
-          <div class="section-title">
-            <h3>Maintenance History</h3>
-            <div class="history-title-actions">
+          <details class="asset-details asset-sub-drawer" open>
+            <summary>
+              <h3>Equipment Details</h3>
+            </summary>
+            <div id="assetPhotoPanel" class="asset-photo-panel"></div>
+            <div id="assetManualPanel" class="asset-manual-panel"></div>
+            <div id="assetDetailsGrid" class="details-grid"></div>
+            <details class="asset-info-editor">
+              <summary>Edit Equipment</summary>
+              <form id="assetInfoForm" class="stack compact-form">
+                <label>
+                  Equipment name
+                  <input id="editAssetName" required placeholder="Rooftop Unit 1">
+                </label>
+                <div class="form-grid">
+                  <label>
+                    Customer
+                    <select id="editAssetCustomer"></select>
+                  </label>
+                  <label>
+                    Location
+                    <select id="editAssetLocation"></select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Maintenance template
+                    <select id="editAssetTemplate"></select>
+                  </label>
+                  <label>
+                    Maintenance frequency
+                    <select id="editAssetFrequency">
+                      <option value="7">Weekly</option>
+                      <option value="30">Monthly</option>
+                      <option value="90">Quarterly</option>
+                      <option value="365">Yearly</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                  Equipment type
+                    <input id="editAssetType" placeholder="HVAC, pump, conveyor">
+                  </label>
+                  <label>
+                    Criticality
+                    <select id="editAssetCriticality">
+                      <option value="">Not set</option>
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Manufacturer
+                    <input id="editAssetManufacturer" placeholder="Trane">
+                  </label>
+                  <label>
+                    Model
+                    <input id="editAssetModel" placeholder="XR-14">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Serial number
+                    <input id="editAssetSerial" placeholder="SN-10492">
+                  </label>
+                  <label>
+                    Install date
+                    <input id="editAssetInstallDate" type="date">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Vendor / service company
+                    <input id="editAssetVendor" placeholder="ABC Mechanical">
+                  </label>
+                  <label>
+                    Vendor contact
+                    <input id="editAssetVendorContact" placeholder="604-555-0100">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Warranty expires
+                    <input id="editAssetWarrantyDate" type="date">
+                  </label>
+                  <label>
+                    Parts / supply notes
+                    <input id="editAssetParts" placeholder="Belt A42, filter 20x20x2">
+                  </label>
+                </div>
+                <label>
+                  Manual / document link
+                  <input id="editAssetDocumentUrl" type="url" placeholder="https://example.com/manual.pdf">
+                </label>
+                <label>
+                  Upload PDF manual
+                  <input id="editAssetManualFile" type="file" accept="application/pdf,.pdf">
+                </label>
+                <p id="assetManualUploadStatus" class="inline-status"></p>
+                <label>
+                  Replace equipment photo
+                  <input id="editAssetPhoto" type="file" accept="image/*">
+                </label>
+                <div class="section-title inline-section-title">
+                  <h3>More Asset Photos</h3>
+                  <span id="assetGalleryCount">0</span>
+                </div>
+                <div id="assetGalleryPanel" class="asset-gallery-panel"></div>
+                <label>
+                  Add more equipment photos
+                  <input id="editAssetGalleryPhotos" type="file" accept="image/*" multiple>
+                </label>
+                <p id="assetGalleryUploadStatus" class="inline-status"></p>
+                <label>
+                  Equipment notes
+                  <textarea id="editAssetNotes" rows="3" placeholder="Warranty notes, access instructions, or service cautions"></textarea>
+                </label>
+                <button type="submit" class="secondary">Save Asset Info</button>
+              </form>
+            </details>
+          </details>
+
+          <details class="asset-sub-drawer" open>
+            <summary>
+              <h3>Maintenance History</h3>
               <span id="historyCount">0</span>
+            </summary>
+            <div class="history-title-actions asset-history-actions">
               <button id="exportBtn" class="secondary">Export CSV</button>
             </div>
-          </div>
-          <div id="historyList" class="history-list"></div>
-        </section>
+            <div id="historyList" class="history-list"></div>
+          </details>
+        </div>
 
-        <section>
-          <div class="section-title">
+        <details class="asset-sub-drawer" open>
+          <summary>
             <h3>Equipment Issues</h3>
             <span id="assetWorkOrderCount">0</span>
-          </div>
+          </summary>
           <div id="assetWorkOrderList" class="work-order-list"></div>
-        </section>
+        </details>
         </div>
 
       </article>
@@ -857,7 +857,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260623-0735"></script>
+  <script src="app.js?v=20260623-0952"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
