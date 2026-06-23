@@ -3360,6 +3360,26 @@ function choosePreferredContractorEmail(promptTitle, customerId = "") {
         </form>
       </section>
     `;
+    Object.assign(overlay.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "9999",
+      display: "grid",
+      placeItems: "center",
+      padding: "20px",
+      background: "rgba(23, 33, 38, 0.42)"
+    });
+    const pickerCard = overlay.querySelector(".contractor-picker-card");
+    Object.assign(pickerCard.style, {
+      width: "min(560px, calc(100vw - 32px))",
+      maxHeight: "min(720px, calc(100vh - 32px))",
+      overflow: "auto",
+      padding: "18px",
+      border: "1px solid var(--line)",
+      borderRadius: "18px",
+      background: "var(--panel)",
+      boxShadow: "0 24px 70px rgba(23, 33, 38, 0.28)"
+    });
     const close = (value) => {
       document.removeEventListener("keydown", onKeyDown);
       overlay.remove();
