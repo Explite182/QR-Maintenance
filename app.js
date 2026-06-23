@@ -86,6 +86,7 @@ const els = {
   quickAddDrawer: document.getElementById("quickAddDrawer"),
   setupDrawer: document.getElementById("setupDrawer"),
   userDrawer: document.getElementById("userDrawer"),
+  contractorDrawer: document.getElementById("contractorDrawer"),
   backupDrawer: document.getElementById("backupDrawer"),
   dashboardPanel: document.querySelector(".dashboard-panel"),
   userSwitcherWrap: document.getElementById("userSwitcherWrap"),
@@ -122,6 +123,13 @@ const els = {
   userList: document.getElementById("userList"),
   accessRequestCount: document.getElementById("accessRequestCount"),
   accessRequestList: document.getElementById("accessRequestList"),
+  contractorForm: document.getElementById("contractorForm"),
+  contractorCustomer: document.getElementById("contractorCustomer"),
+  contractorName: document.getElementById("contractorName"),
+  contractorEmail: document.getElementById("contractorEmail"),
+  contractorTrade: document.getElementById("contractorTrade"),
+  contractorCount: document.getElementById("contractorCount"),
+  contractorList: document.getElementById("contractorList"),
   activityLogCount: document.getElementById("activityLogCount"),
   activityLogList: document.getElementById("activityLogList"),
   locationForm: document.getElementById("locationForm"),
@@ -551,7 +559,7 @@ els.templateForm.addEventListener("submit", (event) => {
 
 els.userForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!canManageSetup()) return;
+  if (!canManageUsers()) return;
   const username = els.newUsername.value.trim().toLowerCase();
   if (state.users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
     alert("That login name already exists.");
@@ -559,7 +567,15 @@ els.userForm.addEventListener("submit", async (event) => {
   }
 
   const newUserRole = els.newUserRole.value;
+  if (!canCreateUserRole(newUserRole)) {
+    alert("Managers can only add Customer or Technician users.");
+    return;
+  }
   const newUserCustomerId = newUserRole === "Admin" ? "" : els.newUserCustomer.value;
+  if (!canManageUserCustomer(newUserCustomerId, newUserRole)) {
+    alert("Managers can only add users for their assigned customer.");
+    return;
+  }
   const newUser = isEmailAddress(username)
     ? await signUpSupabaseUser(
       username,
@@ -595,11 +611,12 @@ els.userForm.addEventListener("submit", async (event) => {
 
 els.userList.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!canManageSetup()) return;
+  if (!canManageUsers()) return;
   const form = event.target.closest("form[data-user-id]");
   if (!form) return;
   const user = state.users.find((item) => item.id === form.dataset.userId);
   if (!user) return;
+  if (!canEditUserRecord(user)) return;
 
   const formData = new FormData(form);
   const username = String(formData.get("username") || "").trim().toLowerCase();
@@ -618,6 +635,11 @@ els.userList.addEventListener("submit", async (event) => {
 
   if (isLastAdmin(user) && role !== "Admin") {
     alert("At least one Admin user must remain.");
+    return;
+  }
+
+  if (!canCreateUserRole(role) || !canManageUserCustomer(customerId, role)) {
+    alert("Managers can only manage Customer or Technician users for their assigned customer.");
     return;
   }
 
@@ -641,9 +663,10 @@ els.userList.addEventListener("submit", async (event) => {
 
 els.userList.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-user-action]");
-  if (!button || !canManageSetup()) return;
+  if (!button || !canManageUsers()) return;
   const user = state.users.find((item) => item.id === button.dataset.userId);
   if (!user) return;
+  if (!canEditUserRecord(user)) return;
 
   if (button.dataset.userAction === "delete") {
     if (currentUser?.id === user.id) {
@@ -933,7 +956,7 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
     if (filter === "completedPm") {
       const panel = document.getElementById("completedPmPanel");
       const willOpen = panel?.classList.contains("is-collapsed");
-      openPanel("completedPmPanel");
+      togglePanel("completedPmPanel");
       render();
       panel?.scrollIntoView({ behavior: "smooth", block: willOpen ? "start" : "nearest" });
       return;
@@ -1203,6 +1226,35 @@ els.backupLocationForm.addEventListener("submit", (event) => {
   render();
 });
 
+els.contractorForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!canManageContractors()) return;
+  const name = els.contractorName.value.trim();
+  const email = els.contractorEmail.value.trim();
+  const trade = els.contractorTrade.value.trim();
+  const customerId = currentRole === "Admin" ? els.contractorCustomer.value : currentUser?.customerId || "";
+  if (!name || !isEmailAddress(email)) {
+    alert("Enter a contractor name and valid email address.");
+    return;
+  }
+  if (!canManageContractorCustomer(customerId)) {
+    alert("Managers can only add contractors for their assigned customer.");
+    return;
+  }
+  state.preferredContractors.push({
+    id: crypto.randomUUID(),
+    customerId,
+    name,
+    email,
+    trade,
+    createdAt: new Date().toISOString()
+  });
+  addActivity("Contractor added", `${name} | ${email}`);
+  saveState();
+  els.contractorForm.reset();
+  render();
+});
+
 els.exportAssetRegisterBtn.addEventListener("click", () => {
   downloadAssetRegisterCsv(assetTableAssets());
 });
@@ -1321,6 +1373,12 @@ document.addEventListener("click", (event) => {
   const workOrderConvertButton = event.target.closest("[data-work-order-convert-service]");
   if (workOrderConvertButton && canManageWorkOrders()) {
     convertOpenIssueToServiceRequest(workOrderConvertButton.dataset.workOrderConvertService);
+    return;
+  }
+
+  const contractorDeleteButton = event.target.closest("[data-delete-contractor]");
+  if (contractorDeleteButton && canManageContractors()) {
+    deletePreferredContractor(contractorDeleteButton.dataset.deleteContractor);
     return;
   }
 
@@ -1464,6 +1522,7 @@ function render() {
   syncPublicReportsFromSupabase();
   ensureSelection();
   renderUsers();
+  renderPreferredContractors();
   renderAccessRequests();
   renderActivityLog();
   renderLocations();
@@ -1763,6 +1822,8 @@ function assignQrCustomerAccessUser() {
 
 function renderRole() {
   const setupDisabled = !canManageSetup();
+  const userManagementAllowed = canManageUsers();
+  const contractorManagementAllowed = canManageContractors();
   const isAdmin = currentRole === "Admin";
   const canAddAssets = canAddEquipment();
   const isCustomer = currentRole === "Customer";
@@ -1773,19 +1834,30 @@ function renderRole() {
   if (!canAddAssets && !isAdmin) els.adminToolsDrawer.open = false;
   els.quickAddDrawer.classList.toggle("hidden", !canAddAssets);
   if (!canAddAssets) els.quickAddDrawer.open = false;
-  [els.setupDrawer, els.userDrawer, els.backupDrawer].forEach((drawer) => {
+  [els.setupDrawer, els.backupDrawer].forEach((drawer) => {
     drawer.classList.toggle("hidden", !isAdmin);
     if (!isAdmin) drawer.open = false;
   });
+  els.contractorDrawer.classList.toggle("hidden", !contractorManagementAllowed);
+  if (!contractorManagementAllowed) els.contractorDrawer.open = false;
+  els.userDrawer.classList.toggle("hidden", !userManagementAllowed);
+  if (!userManagementAllowed) els.userDrawer.open = false;
   els.backupLocationBlock.classList.toggle("hidden", currentRole !== "Admin");
   els.backupLocationForm.querySelectorAll("input, button").forEach((control) => {
     control.disabled = currentRole !== "Admin";
   });
-  [els.customerForm, els.templateForm, els.locationForm, els.assetForm, els.userForm].forEach((form) => {
+  [els.customerForm, els.templateForm, els.locationForm, els.assetForm, els.userForm, els.contractorForm].forEach((form) => {
     form.querySelectorAll("input, select, textarea, button").forEach((control) => {
       control.disabled = setupDisabled;
     });
   });
+  els.userForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !userManagementAllowed;
+  });
+  els.contractorForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !contractorManagementAllowed;
+  });
+  if (els.contractorCustomer) els.contractorCustomer.disabled = currentRole !== "Admin";
   els.assetForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canAddAssets;
   });
@@ -1801,19 +1873,61 @@ function renderRole() {
 }
 
 function renderUsers() {
-  els.userCount.textContent = state.users.length;
-  els.userList.innerHTML = state.users.map(renderUserItem).join("");
+  const users = visibleManagedUsers();
+  els.userCount.textContent = users.length;
+  els.userList.innerHTML = users.length
+    ? users.map(renderUserItem).join("")
+    : `<p class="muted">No users available for this customer.</p>`;
+}
+
+function renderPreferredContractors() {
+  if (!els.contractorList) return;
+  const contractors = visiblePreferredContractors();
+  els.contractorCount.textContent = contractors.length;
+  els.contractorList.innerHTML = contractors.length
+    ? contractors.map(renderPreferredContractorItem).join("")
+    : `<p class="muted">No preferred contractors added yet.</p>`;
+}
+
+function renderPreferredContractorItem(contractor) {
+  const customer = getCustomer(contractor.customerId);
+  const customerLabel = currentRole === "Admin" ? `${customer?.name || "No customer"} | ` : "";
+  const disabled = canManageContractorRecord(contractor) ? "" : "disabled";
+  return `
+    <article class="user-list-item">
+      <div>
+        <strong>${escapeHtml(contractor.name)}</strong>
+        <small>${escapeHtml(customerLabel)}${escapeHtml(contractor.email)}${contractor.trade ? ` | ${escapeHtml(contractor.trade)}` : ""}</small>
+      </div>
+      <button type="button" class="secondary mini" data-delete-contractor="${escapeAttribute(contractor.id)}" ${disabled}>Delete</button>
+    </article>
+  `;
+}
+
+function deletePreferredContractor(contractorId) {
+  const contractor = state.preferredContractors.find((item) => item.id === contractorId);
+  if (!contractor) return;
+  if (!canManageContractorRecord(contractor)) {
+    alert("Managers can only delete contractors for their assigned customer.");
+    return;
+  }
+  if (!confirm(`Delete ${contractor.name} from preferred contractors?`)) return;
+  state.preferredContractors = state.preferredContractors.filter((item) => item.id !== contractorId);
+  addActivity("Contractor deleted", contractor.name);
+  saveState();
+  render();
 }
 
 function renderUserItem(user) {
-  const disabled = canManageSetup() ? "" : "disabled";
+  const canEdit = canEditUserRecord(user);
+  const disabled = canEdit ? "" : "disabled";
   const passwordDisabled = user.localOnly || !isEmailAddress(user.username) ? disabled : "disabled";
   const passwordHelp = user.localOnly || !isEmailAddress(user.username)
     ? "Leave blank to keep current password"
     : "Use Supabase password reset";
   const currentLabel = currentUser?.id === user.id ? `<span class="current-user-label">Current user</span>` : "";
   const customer = getCustomer(user.customerId);
-  const customerOptions = state.customers.map((customerRecord) =>
+  const customerOptions = manageableUserCustomers().map((customerRecord) =>
     `<option value="${customerRecord.id}" ${user.customerId === customerRecord.id ? "selected" : ""}>${escapeHtml(customerRecord.name)}</option>`
   ).join("");
   const customerAssignment = user.role !== "Admin"
@@ -1844,7 +1958,7 @@ function renderUserItem(user) {
         <label>
           Role
           <select name="role" ${disabled}>
-            ${["Customer", "Technician", "Manager", "Admin"].map((role) =>
+            ${userRoleOptionsForEditor(user.role).map((role) =>
               `<option value="${role}" ${user.role === role ? "selected" : ""}>${role}</option>`
             ).join("")}
           </select>
@@ -1857,7 +1971,7 @@ function renderUserItem(user) {
         </label>
         <div class="user-actions">
           <button type="submit" class="secondary mini" ${disabled}>Save User</button>
-          <button type="button" class="secondary mini danger-action" data-user-action="delete" data-user-id="${escapeAttribute(user.id)}" ${currentUser?.id === user.id || !canManageSetup() ? "disabled" : ""}>Delete</button>
+          <button type="button" class="secondary mini danger-action" data-user-action="delete" data-user-id="${escapeAttribute(user.id)}" ${currentUser?.id === user.id || !canEdit ? "disabled" : ""}>Delete</button>
         </div>
       </form>
     </details>
@@ -1951,17 +2065,30 @@ function renderCustomerOptions() {
   const allCustomerOptions = state.customers.map((customer) =>
     `<option value="${customer.id}">${escapeHtml(customer.name)}</option>`
   ).join("");
+  const managedCustomerOptions = manageableUserCustomers().map((customer) =>
+    `<option value="${customer.id}">${escapeHtml(customer.name)}</option>`
+  ).join("");
 
   els.locationCustomer.innerHTML = options;
   els.assetCustomer.innerHTML = options;
   els.customerFilter.innerHTML = options;
-  els.newUserCustomer.innerHTML = allCustomerOptions;
+  els.contractorCustomer.innerHTML = currentRole === "Admin" ? allCustomerOptions : options;
+  els.newUserCustomer.innerHTML = currentRole === "Admin" ? allCustomerOptions : managedCustomerOptions;
+  els.newUserRole.innerHTML = userRoleOptionsForEditor().map((role) =>
+    `<option value="${role}">${role}</option>`
+  ).join("");
 
   els.locationCustomer.value = selectedCustomerId;
   els.assetCustomer.value = selectedCustomerId;
   els.customerFilter.value = selectedCustomerId;
-  if (!els.newUserCustomer.value && state.customers[0]) {
-    els.newUserCustomer.value = state.customers[0].id;
+  els.contractorCustomer.value = currentRole === "Manager" && currentUser?.customerId
+    ? currentUser.customerId
+    : selectedCustomerId;
+  if (currentRole === "Manager" && currentUser?.customerId) {
+    els.newUserCustomer.value = currentUser.customerId;
+  }
+  if (!els.newUserCustomer.value && manageableUserCustomers()[0]) {
+    els.newUserCustomer.value = manageableUserCustomers()[0].id;
   }
   els.customerFilter.disabled = !canSeeAllCustomers();
 
@@ -2953,6 +3080,7 @@ function getIssueReportDetails(item) {
   const assignedLabel = item.assignedUserName || getUser(item.assignedUserId)?.name || getUser(item.assignedUserId)?.username || "Unassigned";
   return {
     id: item.id,
+    customerId: item.customerId || "",
     issueNumber: formatIssueNumber(item),
     reportTitle: "Issue Report",
     numberLabel: "Issue Number",
@@ -2993,8 +3121,14 @@ function openIssuePdfForm(item) {
   }, 500);
 }
 
-function emailIssueReport(item) {
+async function emailIssueReport(item) {
   const details = getIssueReportDetails(item);
+  const recipient = await choosePreferredContractorEmail("Email this issue request to:", details.customerId);
+  if (recipient === null) return;
+  openIssueEmailDraft(details, recipient);
+}
+
+function openIssueEmailDraft(details, recipient) {
   const subject = `SiteWorks Issue: ${details.priority} - ${details.equipment}`;
   const body = [
     "SiteWorks Issue Report",
@@ -3016,17 +3150,13 @@ function emailIssueReport(item) {
     "",
     "If a PDF copy is needed, use the PDF Form button in SiteWorks and attach the saved PDF to this email."
   ].join("\n");
-  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 async function sendIssuePdfEmail(item, button) {
   const details = getIssueReportDetails(item);
-  const recipient = window.prompt("Email this issue PDF to:", "");
+  const recipient = await choosePreferredContractorEmail("Email this issue PDF to:", details.customerId);
   if (!recipient) return;
-  if (!isEmailAddress(recipient)) {
-    alert("Please enter a valid email address.");
-    return;
-  }
 
   const originalText = button.textContent;
   button.disabled = true;
@@ -3034,14 +3164,10 @@ async function sendIssuePdfEmail(item, button) {
   try {
     const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
       method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        "Content-Type": "application/json"
-      },
+      headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient.trim(),
-        issue: details
+        issue: getEmailFunctionReportDetails(details)
       })
     });
     const result = await response.json().catch(() => ({}));
@@ -3053,11 +3179,32 @@ async function sendIssuePdfEmail(item, button) {
     alert("Issue PDF email sent.");
   } catch (error) {
     console.warn("Issue PDF email failed.", error);
-    alert(`${error.message || "Issue PDF email failed."}\n\nMake sure the Supabase Edge Function is deployed and the Resend API key is saved in Supabase secrets.`);
+    const useDraft = confirm([
+      "The automatic PDF email could not be sent.",
+      "",
+      "This usually means the Supabase email function is not deployed yet, or the Resend API key is not saved in Supabase secrets.",
+      "",
+      "Open a regular email draft to this contractor instead?"
+    ].join("\n"));
+    if (useDraft) openIssueEmailDraft(details, recipient.trim());
   } finally {
     button.disabled = false;
     button.textContent = originalText;
   }
+}
+
+function supabaseFunctionHeaders() {
+  return {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    "Content-Type": "application/json"
+  };
+}
+
+function getEmailFunctionReportDetails(details) {
+  const report = { ...details };
+  delete report.photoDataUrl;
+  return report;
 }
 
 function getServiceRequestReportDetails(request) {
@@ -3067,6 +3214,7 @@ function getServiceRequestReportDetails(request) {
   const assignedLabel = request.assignedUserName || getUser(request.assignedUserId)?.name || getUser(request.assignedUserId)?.username || "Unassigned";
   return {
     id: request.id,
+    customerId: request.customerId || "",
     issueNumber: formatServiceRequestNumber(request),
     reportTitle: "Service Request",
     numberLabel: "Service Request Number",
@@ -3110,8 +3258,14 @@ function openServiceRequestPdfForm(request) {
   }, 500);
 }
 
-function emailServiceRequest(request) {
+async function emailServiceRequest(request) {
   const details = getServiceRequestReportDetails(request);
+  const recipient = await choosePreferredContractorEmail("Email this service request to:", details.customerId);
+  if (recipient === null) return;
+  openServiceRequestEmailDraft(details, recipient);
+}
+
+function openServiceRequestEmailDraft(details, recipient) {
   const subject = `SiteWorks Service Request: ${details.priority} - ${details.equipment}`;
   const body = [
     "SiteWorks Service Request",
@@ -3133,17 +3287,13 @@ function emailServiceRequest(request) {
     "",
     "If a PDF copy is needed, use the PDF Form button in SiteWorks and attach the saved PDF to this email."
   ].join("\n");
-  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 async function sendServiceRequestPdfEmail(request, button) {
   const details = getServiceRequestReportDetails(request);
-  const recipient = window.prompt("Email this service request PDF to:", "");
+  const recipient = await choosePreferredContractorEmail("Email this service request PDF to:", details.customerId);
   if (!recipient) return;
-  if (!isEmailAddress(recipient)) {
-    alert("Please enter a valid email address.");
-    return;
-  }
 
   const originalText = button.textContent;
   button.disabled = true;
@@ -3151,14 +3301,10 @@ async function sendServiceRequestPdfEmail(request, button) {
   try {
     const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
       method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        "Content-Type": "application/json"
-      },
+      headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient.trim(),
-        issue: details
+        issue: getEmailFunctionReportDetails(details)
       })
     });
     const result = await response.json().catch(() => ({}));
@@ -3170,11 +3316,79 @@ async function sendServiceRequestPdfEmail(request, button) {
     alert("Service request PDF email sent.");
   } catch (error) {
     console.warn("Service request PDF email failed.", error);
-    alert(`${error.message || "Service request PDF email failed."}\n\nMake sure the Supabase Edge Function is deployed and the Resend API key is saved in Supabase secrets.`);
+    const useDraft = confirm([
+      "The automatic PDF email could not be sent.",
+      "",
+      "This usually means the Supabase email function is not deployed yet, or the Resend API key is not saved in Supabase secrets.",
+      "",
+      "Open a regular email draft to this contractor instead?"
+    ].join("\n"));
+    if (useDraft) openServiceRequestEmailDraft(details, recipient.trim());
   } finally {
     button.disabled = false;
     button.textContent = originalText;
   }
+}
+
+function choosePreferredContractorEmail(promptTitle, customerId = "") {
+  const contractors = visiblePreferredContractors(customerId);
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "contractor-picker";
+    overlay.innerHTML = `
+      <section class="contractor-picker-card" role="dialog" aria-modal="true" aria-label="${escapeAttribute(promptTitle)}">
+        <div class="section-title">
+          <h2>${escapeHtml(promptTitle)}</h2>
+          <button type="button" class="secondary mini" data-contractor-cancel>Cancel</button>
+        </div>
+        <div class="contractor-picker-list">
+          ${contractors.length
+            ? contractors.map((contractor) => `
+              <button type="button" class="contractor-choice" data-contractor-email="${escapeAttribute(contractor.email)}">
+                <strong>${escapeHtml(contractor.name)}</strong>
+                <span>${escapeHtml(contractor.email)}${contractor.trade ? ` | ${escapeHtml(contractor.trade)}` : ""}</span>
+              </button>
+            `).join("")
+            : `<p class="muted">No preferred contractors have been added yet.</p>`}
+        </div>
+        <form class="contractor-manual-form" data-contractor-manual-form>
+          <label>
+            Other email
+            <input name="email" type="email" placeholder="service@example.com">
+          </label>
+          <button type="submit" class="primary">Use Email</button>
+        </form>
+      </section>
+    `;
+    const close = (value) => {
+      document.removeEventListener("keydown", onKeyDown);
+      overlay.remove();
+      resolve(value);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") close(null);
+    };
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay || event.target.closest("[data-contractor-cancel]")) {
+        close(null);
+        return;
+      }
+      const choice = event.target.closest("[data-contractor-email]");
+      if (choice) close(choice.dataset.contractorEmail);
+    });
+    overlay.querySelector("[data-contractor-manual-form]").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const email = String(new FormData(event.currentTarget).get("email") || "").trim();
+      if (!isEmailAddress(email)) {
+        alert("Please enter a valid email address.");
+        return;
+      }
+      close(email);
+    });
+    document.addEventListener("keydown", onKeyDown);
+    document.body.appendChild(overlay);
+    overlay.querySelector("button[data-contractor-email], input[name='email'], [data-contractor-cancel]")?.focus();
+  });
 }
 
 function buildIssuePdfHtml(details) {
@@ -3809,6 +4023,77 @@ function formatServiceRequestNumber(item) {
 
 function canManageSetup() {
   return currentRole === "Admin";
+}
+
+function canManageUsers() {
+  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId));
+}
+
+function canManageContractors() {
+  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId));
+}
+
+function canManageContractorCustomer(customerId) {
+  if (currentRole === "Admin") return true;
+  return currentRole === "Manager" && Boolean(currentUser?.customerId) && customerId === currentUser.customerId;
+}
+
+function canManageContractorRecord(contractor) {
+  return canManageContractorCustomer(contractor.customerId);
+}
+
+function visiblePreferredContractors(customerId = "") {
+  if (currentRole === "Admin") {
+    return state.preferredContractors.filter((contractor) => !customerId || contractor.customerId === customerId);
+  }
+  if (currentRole === "Manager" && currentUser?.customerId) {
+    return state.preferredContractors.filter((contractor) => contractor.customerId === currentUser.customerId);
+  }
+  if (customerId) return state.preferredContractors.filter((contractor) => contractor.customerId === customerId);
+  return [];
+}
+
+function manageableUserCustomers() {
+  if (currentRole === "Admin") return state.customers;
+  if (currentRole === "Manager" && currentUser?.customerId) {
+    return state.customers.filter((customer) => customer.id === currentUser.customerId);
+  }
+  return [];
+}
+
+function userRoleOptionsForEditor(existingRole = "") {
+  if (currentRole === "Admin") return ["Customer", "Technician", "Manager", "Admin"];
+  const roles = ["Customer", "Technician"];
+  return roles.includes(existingRole) || !existingRole ? roles : [existingRole];
+}
+
+function canCreateUserRole(role) {
+  if (currentRole === "Admin") return true;
+  return currentRole === "Manager" && ["Customer", "Technician"].includes(role);
+}
+
+function canManageUserCustomer(customerId, role) {
+  if (currentRole === "Admin") return true;
+  if (currentRole !== "Manager") return false;
+  if (role === "Admin" || role === "Manager") return false;
+  return Boolean(currentUser?.customerId && customerId === currentUser.customerId);
+}
+
+function canViewUserRecord(user) {
+  if (currentRole === "Admin") return true;
+  if (currentRole !== "Manager") return false;
+  return user.customerId === currentUser?.customerId && user.role !== "Admin";
+}
+
+function canEditUserRecord(user) {
+  if (currentRole === "Admin") return true;
+  if (currentRole !== "Manager") return false;
+  if (currentUser?.id === user.id) return false;
+  return user.customerId === currentUser?.customerId && ["Customer", "Technician"].includes(user.role);
+}
+
+function visibleManagedUsers() {
+  return state.users.filter(canViewUserRecord);
 }
 
 function canAddEquipment() {
@@ -4456,6 +4741,7 @@ function buildSharedStatePayload(uploadedAt) {
     assets: state.assets || [],
     workOrders: state.workOrders || [],
     serviceRequests: state.serviceRequests || [],
+    preferredContractors: state.preferredContractors || [],
     activityLog: state.activityLog || [],
     backupLocation: state.backupLocation || defaultBackupLocation(),
     qrBaseUrl: state.qrBaseUrl || guessNetworkQrUrl(),
@@ -4469,7 +4755,8 @@ function hasSharedMaintenanceData(candidate) {
     candidate?.locations?.length ||
     candidate?.assets?.length ||
     candidate?.workOrders?.length ||
-    candidate?.serviceRequests?.length
+    candidate?.serviceRequests?.length ||
+    candidate?.preferredContractors?.length
   );
 }
 
@@ -4774,6 +5061,7 @@ function normalizeState(input) {
     assets: input.assets || [],
     workOrders: input.workOrders || [],
     serviceRequests: input.serviceRequests || [],
+    preferredContractors: input.preferredContractors || [],
     users: input.users || [],
     accessRequests: input.accessRequests || [],
     activityLog: input.activityLog || [],
@@ -4890,6 +5178,16 @@ function normalizeState(input) {
       : user.customerId || ""
   }));
 
+  normalized.preferredContractors = normalized.preferredContractors.map((contractor) => ({
+    id: contractor.id || crypto.randomUUID(),
+    customerId: contractor.customerId || normalized.customers[0]?.id || "",
+    name: contractor.name || "",
+    email: contractor.email || "",
+    trade: contractor.trade || "",
+    createdAt: contractor.createdAt || new Date().toISOString(),
+    ...contractor
+  })).filter((contractor) => contractor.name && isEmailAddress(contractor.email));
+
   return normalized;
 }
 
@@ -4900,6 +5198,7 @@ function emptyState() {
     templates: seedTemplates(),
     assets: [],
     workOrders: [],
+    preferredContractors: [],
     users: [],
     accessRequests: [],
     activityLog: [],
@@ -5045,6 +5344,7 @@ function buildBackupManifest() {
     locations: state.locations.length,
     assets: state.assets.length,
     users: state.users.length,
+    preferredContractors: state.preferredContractors.length,
     activityLogEntries: state.activityLog?.length || 0,
     pmTemplates: state.templates.length,
     workOrders: state.workOrders.length,

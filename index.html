@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260622-1755">
+  <link rel="stylesheet" href="styles.css?v=20260622-1915">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -325,6 +325,36 @@
             <span id="accessRequestCount">0</span>
           </div>
           <div id="accessRequestList" class="user-list"></div>
+        </section>
+      </details>
+
+      <details id="contractorDrawer" class="sidebar-section setup-drawer">
+        <summary>Preferred Contractors</summary>
+        <section>
+          <div class="section-title">
+            <h2>Contractors</h2>
+            <span id="contractorCount">0</span>
+          </div>
+          <form id="contractorForm" class="stack compact-form">
+            <label>
+              Customer
+              <select id="contractorCustomer"></select>
+            </label>
+            <label>
+              Contractor name
+              <input id="contractorName" required placeholder="ABC Mechanical">
+            </label>
+            <label>
+              Email
+              <input id="contractorEmail" required type="email" placeholder="service@example.com">
+            </label>
+            <label>
+              Trade / notes
+              <input id="contractorTrade" placeholder="HVAC, electrical, plumbing">
+            </label>
+            <button type="submit">Add Contractor</button>
+          </form>
+          <div id="contractorList" class="user-list"></div>
         </section>
       </details>
 
@@ -827,7 +857,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260622-1755"></script>
+  <script src="app.js?v=20260622-1915"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
