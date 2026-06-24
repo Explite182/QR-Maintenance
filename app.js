@@ -184,6 +184,12 @@ const els = {
   assetManualFile: document.getElementById("assetManualFile"),
   assetPhoto: document.getElementById("assetPhoto"),
   assetNotes: document.getElementById("assetNotes"),
+  assetImportDrawer: document.getElementById("assetImportDrawer"),
+  assetImportFile: document.getElementById("assetImportFile"),
+  assetImportCreateLocations: document.getElementById("assetImportCreateLocations"),
+  assetImportBtn: document.getElementById("assetImportBtn"),
+  assetImportStatus: document.getElementById("assetImportStatus"),
+  assetImportPreview: document.getElementById("assetImportPreview"),
   assetCount: document.getElementById("assetCount"),
   assetSearch: document.getElementById("assetSearch"),
   statusFilter: document.getElementById("statusFilter"),
@@ -1191,6 +1197,15 @@ els.assetForm.addEventListener("submit", async (event) => {
   render();
 });
 
+els.assetImportBtn?.addEventListener("click", async () => {
+  await importEquipmentCsv();
+});
+
+els.assetImportFile?.addEventListener("change", () => {
+  if (els.assetImportStatus) els.assetImportStatus.textContent = "";
+  if (els.assetImportPreview) els.assetImportPreview.innerHTML = "";
+});
+
 els.pmForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const asset = getSelectedAsset();
@@ -2030,6 +2045,9 @@ function renderRole() {
   els.assetForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canAddAssets;
   });
+  els.assetImportDrawer?.querySelectorAll("input, button").forEach((control) => {
+    control.disabled = !canAddAssets;
+  });
   els.pmForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canCompletePm();
   });
@@ -2374,6 +2392,7 @@ function renderCustomerOptions() {
   const addEquipmentAllowed = canAddEquipment();
   els.locationForm.querySelector("button").disabled = !setupAllowed || !state.customers.length;
   els.assetForm.querySelector("button").disabled = !addEquipmentAllowed || !customers.length || !state.locations.length || !state.templates.length;
+  if (els.assetImportBtn) els.assetImportBtn.disabled = !addEquipmentAllowed || !customers.length || !state.templates.length;
 }
 
 function renderTemplateOptions() {
@@ -2404,6 +2423,308 @@ function renderAssetLocationOptions() {
   ).join("");
   els.assetLocation.disabled = locations.length === 0 || !canAddEquipment();
   els.assetForm.querySelector("button").disabled = locations.length === 0 || !state.templates.length || !canAddEquipment();
+}
+
+async function importEquipmentCsv() {
+  if (!canAddEquipment()) return;
+  const file = els.assetImportFile?.files?.[0];
+  if (!file) {
+    setAssetImportStatus("Choose a CSV file first.");
+    return;
+  }
+
+  setAssetImportStatus("Reading CSV...");
+  const text = await file.text();
+  const rows = parseCsvRows(text);
+  if (!rows.length) {
+    setAssetImportStatus("No equipment rows were found in that CSV.");
+    return;
+  }
+
+  const createdAt = new Date().toISOString();
+  const stats = {
+    imported: 0,
+    skipped: 0,
+    duplicates: 0,
+    locationsCreated: 0,
+    customersCreated: 0,
+    errors: []
+  };
+  const importedAssets = [];
+
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2;
+    const customerName = findCsvValue(row, ["customer", "customer name", "client", "company", "account"]);
+    const locationName = findCsvValue(row, ["location", "location name", "site", "building", "facility"]);
+    const equipmentName = findCsvValue(row, ["equipment name", "asset name", "equipment", "asset", "name"]);
+
+    if (!equipmentName) {
+      skipImportRow(stats, rowNumber, "missing equipment name");
+      return;
+    }
+
+    const customer = findOrCreateImportCustomer(customerName, stats);
+    if (!customer) {
+      skipImportRow(stats, rowNumber, "customer is missing or not assigned to this user");
+      return;
+    }
+
+    const locationRecord = findOrCreateImportLocation(locationName, customer.id, stats);
+    if (!locationRecord) {
+      skipImportRow(stats, rowNumber, "location is missing");
+      return;
+    }
+
+    const serial = findCsvValue(row, ["serial", "serial number", "serial no", "serial #", "asset tag", "tag"]);
+    if (isDuplicateImportAsset(customer.id, locationRecord.id, equipmentName, serial)) {
+      stats.duplicates += 1;
+      stats.skipped += 1;
+      return;
+    }
+
+    const templateName = findCsvValue(row, ["template", "maintenance template", "pm template"]);
+    const template = findTemplateByName(templateName) || state.templates[0];
+    const asset = {
+      id: crypto.randomUUID(),
+      customerId: customer.id,
+      locationId: locationRecord.id,
+      templateId: template?.id || "",
+      name: equipmentName,
+      nextPmDate: normalizeCsvDate(findCsvValue(row, ["next pm date", "next pm", "next maintenance", "next maintenance date", "next service date"])),
+      manufacturer: findCsvValue(row, ["manufacturer", "make", "mfg"]),
+      model: findCsvValue(row, ["model", "model number", "model no"]),
+      serial,
+      installDate: normalizeCsvDate(findCsvValue(row, ["install date", "installed", "installation date"])),
+      type: findCsvValue(row, ["equipment type", "asset type", "type", "category"]),
+      criticality: normalizeCriticality(findCsvValue(row, ["criticality", "priority", "risk"])),
+      documentUrl: findCsvValue(row, ["manual link", "document link", "manual url", "url"]),
+      manualFile: null,
+      notes: findCsvValue(row, ["notes", "description", "comments", "details"]),
+      photo: null,
+      frequencyDays: normalizeFrequencyDays(findCsvValue(row, ["pm frequency days", "frequency days", "maintenance frequency days", "pm frequency", "frequency"])),
+      createdAt,
+      history: []
+    };
+
+    state.assets.unshift(asset);
+    importedAssets.push(asset);
+    stats.imported += 1;
+  });
+
+  if (!stats.imported) {
+    setAssetImportStatus(`No equipment imported. ${stats.skipped} row(s) skipped.`);
+    renderAssetImportPreview(stats);
+    return;
+  }
+
+  const firstAsset = importedAssets[0];
+  selectedId = firstAsset.id;
+  selectedCustomerId = firstAsset.customerId;
+  selectedLocationId = "all";
+  addActivity(
+    "Equipment imported",
+    `${stats.imported} equipment record(s) from ${file.name}`
+  );
+  saveState();
+  if (els.assetImportFile) els.assetImportFile.value = "";
+  setAssetImportStatus(
+    `Imported ${stats.imported} equipment record(s). ${stats.skipped} skipped. ${stats.locationsCreated} location(s) created.`
+  );
+  renderAssetImportPreview(stats);
+  location.hash = `asset/${firstAsset.id}`;
+  render();
+}
+
+function setAssetImportStatus(message) {
+  if (els.assetImportStatus) els.assetImportStatus.textContent = message;
+}
+
+function renderAssetImportPreview(stats) {
+  if (!els.assetImportPreview) return;
+  const messages = stats.errors.slice(0, 8);
+  els.assetImportPreview.innerHTML = messages.length
+    ? messages.map((message) => `<div>${escapeHtml(message)}</div>`).join("")
+    : "";
+}
+
+function skipImportRow(stats, rowNumber, reason) {
+  stats.skipped += 1;
+  stats.errors.push(`Row ${rowNumber}: ${reason}.`);
+}
+
+function parseCsvRows(text) {
+  const records = parseCsvRecords(text);
+  if (records.length < 2) return [];
+  const headers = records[0].map(normalizeCsvHeader);
+  return records.slice(1)
+    .filter((record) => record.some((cell) => String(cell || "").trim()))
+    .map((record) => {
+      const row = {};
+      headers.forEach((header, index) => {
+        if (!header) return;
+        row[header] = String(record[index] || "").trim();
+      });
+      return row;
+    });
+}
+
+function parseCsvRecords(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+  const value = String(text || "").replace(/^\uFEFF/, "");
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    const next = value[index + 1];
+    if (character === '"' && inQuotes && next === '"') {
+      cell += '"';
+      index += 1;
+      continue;
+    }
+    if (character === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (character === "," && !inQuotes) {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if ((character === "\n" || character === "\r") && !inQuotes) {
+      if (character === "\r" && next === "\n") index += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += character;
+  }
+
+  row.push(cell);
+  rows.push(row);
+  return rows.filter((record) => record.some((entry) => String(entry || "").trim()));
+}
+
+function normalizeCsvHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function findCsvValue(row, aliases) {
+  for (const alias of aliases) {
+    const value = row[normalizeCsvHeader(alias)];
+    if (value) return value.trim();
+  }
+  return "";
+}
+
+function findOrCreateImportCustomer(name, stats) {
+  if (!canSeeAllCustomers()) {
+    return currentUser?.customerId ? getCustomer(currentUser.customerId) : null;
+  }
+
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return getCustomer(selectedCustomerId) || state.customers[0] || null;
+  const existing = state.customers.find((customer) => sameText(customer.name, cleanName));
+  if (existing) return existing;
+
+  const customer = {
+    id: crypto.randomUUID(),
+    name: cleanName,
+    createdAt: new Date().toISOString(),
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    contactNotes: ""
+  };
+  state.customers.push(customer);
+  stats.customersCreated += 1;
+  return customer;
+}
+
+function findOrCreateImportLocation(name, customerId, stats) {
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return null;
+  const existing = state.locations.find((locationRecord) =>
+    locationRecord.customerId === customerId && sameText(locationRecord.name, cleanName)
+  );
+  if (existing) return existing;
+  if (!els.assetImportCreateLocations?.checked) return null;
+
+  const locationRecord = {
+    id: crypto.randomUUID(),
+    customerId,
+    name: cleanName,
+    createdAt: new Date().toISOString(),
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    contactNotes: ""
+  };
+  state.locations.push(locationRecord);
+  stats.locationsCreated += 1;
+  return locationRecord;
+}
+
+function isDuplicateImportAsset(customerId, locationId, name, serial) {
+  return state.assets.some((asset) => {
+    const sameCustomerLocation = asset.customerId === customerId && asset.locationId === locationId;
+    const sameSerial = serial && sameText(asset.serial, serial);
+    return sameCustomerLocation && (sameText(asset.name, name) || sameSerial);
+  });
+}
+
+function findTemplateByName(name) {
+  if (!name) return null;
+  return state.templates.find((template) => sameText(template.name, name)) || null;
+}
+
+function normalizeCsvDate(value) {
+  const cleanValue = String(value || "").trim();
+  if (!cleanValue) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleanValue)) return cleanValue;
+  const slashMatch = cleanValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (slashMatch) {
+    const month = slashMatch[1].padStart(2, "0");
+    const day = slashMatch[2].padStart(2, "0");
+    const year = slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const parsed = new Date(cleanValue);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeFrequencyDays(value) {
+  const cleanValue = String(value || "").trim().toLowerCase();
+  if (!cleanValue) return 365;
+  if (cleanValue.includes("week")) return 7;
+  if (cleanValue.includes("month")) return 30;
+  if (cleanValue.includes("quarter")) return 90;
+  if (cleanValue.includes("year") || cleanValue.includes("annual")) return 365;
+  const number = Number.parseInt(cleanValue.replace(/[^\d]/g, ""), 10);
+  return Number.isFinite(number) && number > 0 ? number : 365;
+}
+
+function normalizeCriticality(value) {
+  const cleanValue = String(value || "").trim().toLowerCase();
+  if (cleanValue === "high") return "High";
+  if (cleanValue === "medium" || cleanValue === "med") return "Medium";
+  if (cleanValue === "low") return "Low";
+  return "";
+}
+
+function sameText(first, second) {
+  return String(first || "").trim().toLowerCase() === String(second || "").trim().toLowerCase();
 }
 
 function renderEditAssetLocationOptions(selectedLocationId = "") {

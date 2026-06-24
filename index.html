@@ -459,6 +459,23 @@
           </label>
           <button type="submit">Add Equipment</button>
         </form>
+        <details id="assetImportDrawer" class="asset-import-drawer">
+          <summary>Import Equipment CSV</summary>
+          <div class="asset-import-body">
+            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment Name, Equipment Type, Manufacturer, Model, Serial, PM Frequency Days, Next PM Date, Criticality, and Notes.</p>
+            <label>
+              CSV file
+              <input id="assetImportFile" type="file" accept=".csv,text/csv">
+            </label>
+            <label class="inline-check">
+              <input id="assetImportCreateLocations" type="checkbox" checked>
+              Create missing locations
+            </label>
+            <button id="assetImportBtn" type="button" class="secondary">Import Equipment</button>
+            <p id="assetImportStatus" class="inline-status"></p>
+            <div id="assetImportPreview" class="asset-import-preview"></div>
+          </div>
+        </details>
       </details>
 
       <details id="newIssueDrawer" class="quick-add setup-drawer work-create-drawer">
