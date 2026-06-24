@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260623-1648">
+  <link rel="stylesheet" href="styles.css?v=20260623-1732">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -476,7 +476,22 @@
           </label>
           <label>
             Equipment
-            <select id="newIssueAsset" required></select>
+            <select id="newIssueAsset"></select>
+          </label>
+          <fieldset class="choice-field">
+            <legend>Issue applies to</legend>
+            <label>
+              <input id="newIssueTargetEquipment" type="radio" name="newIssueTarget" value="equipment" checked>
+              Equipment
+            </label>
+            <label>
+              <input id="newIssueTargetArea" type="radio" name="newIssueTarget" value="area">
+              Area
+            </label>
+          </fieldset>
+          <label>
+            Area
+            <input id="newIssueArea" placeholder="Area in this location">
           </label>
           <div class="form-grid">
             <label>
@@ -999,7 +1014,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260623-1648"></script>
+  <script src="app.js?v=20260623-1732"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

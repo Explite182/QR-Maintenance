@@ -97,6 +97,9 @@ const els = {
   newIssueCustomer: document.getElementById("newIssueCustomer"),
   newIssueLocation: document.getElementById("newIssueLocation"),
   newIssueAsset: document.getElementById("newIssueAsset"),
+  newIssueTargetEquipment: document.getElementById("newIssueTargetEquipment"),
+  newIssueTargetArea: document.getElementById("newIssueTargetArea"),
+  newIssueArea: document.getElementById("newIssueArea"),
   newIssueTitle: document.getElementById("newIssueTitle"),
   newIssuePriority: document.getElementById("newIssuePriority"),
   newIssueNotes: document.getElementById("newIssueNotes"),
@@ -1119,6 +1122,19 @@ els.newIssueAsset?.addEventListener("change", () => {
   syncNewIssueTitle();
 });
 
+els.newIssueTargetEquipment?.addEventListener("change", () => {
+  renderNewIssueFormOptions();
+});
+
+els.newIssueTargetArea?.addEventListener("change", () => {
+  renderNewIssueFormOptions();
+});
+
+els.newIssueArea?.addEventListener("input", () => {
+  syncNewIssueTitle();
+  updateNewIssueSubmitState();
+});
+
 els.newIssueForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   await createIssueFromTopAction();
@@ -1518,9 +1534,11 @@ document.addEventListener("change", (event) => {
   if (!request) return;
   const users = getAssignableUsersForWorkOrder(request);
   const user = users.find((item) => item.id === select.value);
+  const previousAssignee = request.assignedUserName || "Unassigned";
   request.assignedUserId = user?.id || "";
   request.assignedUserName = user?.name || user?.username || "";
   request.updatedAt = new Date().toISOString();
+  addServiceRequestHistory(request, "Assigned", `${previousAssignee} -> ${request.assignedUserName || "Unassigned"}`);
   addActivity("Service request assigned", `${formatServiceRequestNumber(request)} - ${request.assignedUserName || "Unassigned"}`);
   saveState();
   render();
@@ -1562,6 +1580,15 @@ document.addEventListener("submit", async (event) => {
   if (!request) return;
   const formData = new FormData(form);
   const photo = await readPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+  const before = {
+    title: request.title || "",
+    priority: request.priority || "Medium",
+    status: request.status || "New",
+    preferredDate: request.preferredDate || "",
+    requestedBy: request.requestedBy || "",
+    notes: request.notes || "",
+    photoName: request.photo?.name || ""
+  };
   request.title = String(formData.get("title") || "").trim() || request.title;
   request.priority = normalizePriority(formData.get("priority"));
   request.status = String(formData.get("status") || request.status);
@@ -1570,6 +1597,15 @@ document.addEventListener("submit", async (event) => {
   request.notes = String(formData.get("notes") || "").trim();
   if (photo) request.photo = photo;
   request.updatedAt = new Date().toISOString();
+  const changes = [];
+  if (before.title !== request.title) changes.push("request");
+  if (before.priority !== request.priority) changes.push(`priority ${before.priority} -> ${request.priority}`);
+  if (before.status !== request.status) changes.push(`status ${before.status} -> ${request.status}`);
+  if (before.preferredDate !== request.preferredDate) changes.push("preferred date");
+  if (before.requestedBy !== request.requestedBy) changes.push("requested by");
+  if (before.notes !== request.notes) changes.push("details");
+  if (photo && before.photoName !== request.photo?.name) changes.push("photo");
+  addServiceRequestHistory(request, "Edited", changes.length ? changes.join(", ") : "Saved with no visible changes.");
   addActivity("Service request edited", `${formatServiceRequestNumber(request)} - ${request.title}`);
   saveState();
   render();
@@ -3034,18 +3070,38 @@ function renderNewIssueFormOptions() {
     ? assets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name)}</option>`).join("")
     : `<option value="">No equipment available</option>`;
   els.newIssueAsset.value = currentAssetId;
-  els.newIssueAsset.disabled = !assets.length;
-  const submitButton = els.newIssueForm.querySelector("button[type='submit']");
-  if (submitButton) submitButton.disabled = !customers.length || !locations.length || !assets.length || !canManageWorkOrders();
+  const isAreaIssue = Boolean(els.newIssueTargetArea?.checked);
+  els.newIssueAsset.disabled = isAreaIssue || !assets.length;
+  els.newIssueArea.disabled = !isAreaIssue || !locations.length;
+  if (!isAreaIssue) els.newIssueArea.value = "";
   syncNewIssueTitle();
+  updateNewIssueSubmitState();
+}
+
+function updateNewIssueSubmitState() {
+  if (!els.newIssueForm) return;
+  const submitButton = els.newIssueForm.querySelector("button[type='submit']");
+  if (!submitButton) return;
+  const isAreaIssue = Boolean(els.newIssueTargetArea?.checked);
+  const hasCustomer = Boolean(els.newIssueCustomer?.value);
+  const hasLocation = Boolean(els.newIssueLocation?.value);
+  const hasValidTarget = isAreaIssue
+    ? Boolean(els.newIssueArea?.value.trim())
+    : Boolean(els.newIssueAsset?.value);
+  submitButton.disabled = !hasCustomer || !hasLocation || !hasValidTarget || !canManageWorkOrders();
 }
 
 function syncNewIssueTitle() {
   if (!els.newIssueTitle || !els.newIssueAsset) return;
+  const isAreaIssue = Boolean(els.newIssueTargetArea?.checked);
   const asset = getAsset(els.newIssueAsset.value);
-  if (!asset) return;
+  const areaName = String(els.newIssueArea?.value || "").trim();
+  const label = isAreaIssue
+    ? areaName || "Area"
+    : asset?.name || "";
+  if (!label) return;
   if (!els.newIssueTitle.value.trim() || els.newIssueTitle.value.startsWith("Issue: ")) {
-    els.newIssueTitle.value = `Issue: ${asset.name}`;
+    els.newIssueTitle.value = `Issue: ${label}`;
   }
 }
 
@@ -3131,6 +3187,7 @@ function renderServiceRequestItem(request) {
         <img class="history-photo" alt="Service request photo" src="${escapeAttribute(request.photo.dataUrl)}">
       </button>`
     : "";
+  const requestHistory = renderServiceRequestHistory(request);
   return `
     <article class="work-order-item service-request-item">
       <header>
@@ -3160,8 +3217,57 @@ function renderServiceRequestItem(request) {
           ${!request.convertedWorkOrderId ? `<button class="primary" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Issue</button>` : `<span class="status-badge badge-ok">Converted</span>`}
         </div>
       ` : ""}
+      ${requestHistory}
     </article>
   `;
+}
+
+function renderServiceRequestHistory(request) {
+  const entries = serviceRequestHistoryEntries(request);
+  return `
+    <details class="service-request-audit">
+      <summary>
+        <span>History</span>
+        <span>${entries.length}</span>
+      </summary>
+      <div class="service-request-audit-list">
+        ${entries.map((entry) => `
+          <article class="service-request-audit-entry">
+            <strong>${escapeHtml(entry.action || "Updated")}</strong>
+            <span>${escapeHtml(formatDateTime(new Date(entry.createdAt || request.createdAt || new Date().toISOString())))} | ${escapeHtml(entry.userName || "System")}${entry.userRole ? ` | ${escapeHtml(entry.userRole)}` : ""}</span>
+            ${entry.details ? `<p>${escapeHtml(entry.details)}</p>` : ""}
+          </article>
+        `).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function serviceRequestHistoryEntries(request) {
+  const entries = Array.isArray(request.history) ? request.history.filter(Boolean) : [];
+  if (entries.length) return [...entries].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  return [{
+    id: "created",
+    action: "Created",
+    details: `${formatServiceRequestNumber(request)} - ${request.title || "Service request"}`,
+    userName: request.requestedBy || "System",
+    userRole: "",
+    createdAt: request.createdAt || request.updatedAt || new Date().toISOString()
+  }];
+}
+
+function addServiceRequestHistory(request, action, details = "") {
+  if (!request) return;
+  if (!Array.isArray(request.history)) request.history = [];
+  request.history.unshift({
+    id: crypto.randomUUID(),
+    action,
+    details,
+    userId: currentUser?.id || "",
+    userName: currentUser?.name || currentUser?.username || "System",
+    userRole: currentRole || "System",
+    createdAt: new Date().toISOString()
+  });
 }
 
 function renderServiceRequestEditForm(request) {
@@ -3841,9 +3947,7 @@ function supabaseFunctionHeaders() {
 }
 
 function getEmailFunctionReportDetails(details) {
-  const report = { ...details };
-  delete report.photoDataUrl;
-  return report;
+  return { ...details };
 }
 
 function getServiceRequestReportDetails(request) {
@@ -3895,12 +3999,18 @@ function openServiceRequestPdfForm(request) {
       console.warn("Service request print skipped.", error);
     }
   }, 500);
+  addServiceRequestHistory(request, "PDF opened", "Service request PDF form opened for printing.");
+  addActivity("Service request PDF opened", `${formatServiceRequestNumber(request)} - ${request.title || "Service request"}`);
+  saveState();
 }
 
 async function emailServiceRequest(request) {
   const details = getServiceRequestReportDetails(request);
   const recipient = await choosePreferredContractorEmail("Email this service request to:", details.customerId);
   if (recipient === null) return;
+  addServiceRequestHistory(request, "Email draft opened", `Draft to ${recipient.trim()}`);
+  addActivity("Service request email draft", `${details.title} to ${recipient.trim()}`);
+  saveState();
   openServiceRequestEmailDraft(details, recipient);
 }
 
@@ -3950,11 +4060,15 @@ async function sendServiceRequestPdfEmail(request, button) {
     if (!response.ok) {
       throw new Error(result.error || "The service request email could not be sent.");
     }
+    addServiceRequestHistory(request, "PDF email sent", `Sent to ${recipient.trim()}`);
     addActivity("Service request PDF emailed", `${details.title} to ${recipient.trim()}`);
     saveState();
     alert("Service request PDF email sent.");
   } catch (error) {
     console.warn("Service request PDF email failed.", error);
+    addServiceRequestHistory(request, "PDF email failed", error.message || "Automatic PDF email could not be sent.");
+    addActivity("Service request PDF email failed", `${details.title} to ${recipient.trim()}`);
+    saveState();
     const useDraft = confirm([
       "The automatic PDF email could not be sent.",
       "",
@@ -3962,7 +4076,12 @@ async function sendServiceRequestPdfEmail(request, button) {
       "",
       "Open a regular email draft to this contractor instead?"
     ].join("\n"));
-    if (useDraft) openServiceRequestEmailDraft(details, recipient.trim());
+    if (useDraft) {
+      addServiceRequestHistory(request, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
+      addActivity("Service request fallback email draft", `${details.title} to ${recipient.trim()}`);
+      saveState();
+      openServiceRequestEmailDraft(details, recipient.trim());
+    }
   } finally {
     button.disabled = false;
     button.textContent = originalText;
@@ -4520,11 +4639,55 @@ function createManualIssueForAsset(asset, issueData = {}) {
   document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function createManualIssueForArea(customerId, locationId, areaName, issueData = {}) {
+  if (!canManageWorkOrders() || !canSeeCustomer(customerId)) return;
+  const locationRecord = getLocation(locationId);
+  if (!locationRecord || locationRecord.customerId !== customerId) return;
+  const title = issueData.title || `Issue: ${areaName || locationRecord.name}`;
+  if (!title.trim()) return;
+  const priority = normalizePriority(issueData.priority);
+  const issue = {
+    id: crypto.randomUUID(),
+    issueNumber: nextIssueNumber(),
+    assetId: "",
+    customerId,
+    locationId,
+    areaName: areaName || locationRecord.name,
+    source: "Manual area issue",
+    title: title.trim(),
+    priority,
+    status: "Open",
+    assignedUserId: "",
+    assignedUserName: "",
+    dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
+    notes: issueData.notes || "No notes entered.",
+    photo: issueData.photo || null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  state.workOrders.unshift(issue);
+  workOrderViewFilter = "active";
+  addActivity("Area issue created", `${formatIssueNumber(issue)} - ${issue.title}`);
+  saveState();
+  openPanel("workOrdersPanel");
+  render();
+  document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 async function createIssueFromTopAction() {
   if (!els.newIssueForm || !canManageWorkOrders()) return;
+  const isAreaIssue = Boolean(els.newIssueTargetArea?.checked);
   const asset = getAsset(els.newIssueAsset?.value);
-  if (!asset) {
-    if (els.newIssueStatus) els.newIssueStatus.textContent = "Choose equipment first.";
+  const customerId = els.newIssueCustomer?.value || "";
+  const locationId = els.newIssueLocation?.value || "";
+  const areaName = String(els.newIssueArea?.value || "").trim();
+  const locationRecord = getLocation(locationId);
+  if (!isAreaIssue && !asset) {
+    if (els.newIssueStatus) els.newIssueStatus.textContent = "Choose equipment or select Area first.";
+    return;
+  }
+  if (isAreaIssue && (!customerId || !locationRecord || !areaName)) {
+    if (els.newIssueStatus) els.newIssueStatus.textContent = "Choose a location and enter the area first.";
     return;
   }
   const submitButton = els.newIssueForm.querySelector("button[type='submit']");
@@ -4535,14 +4698,18 @@ async function createIssueFromTopAction() {
     }
     const photo = await readPhoto(els.newIssuePhoto?.files?.[0]);
     const issueData = {
-      title: els.newIssueTitle?.value.trim() || `Issue: ${asset.name}`,
+      title: els.newIssueTitle?.value.trim() || `Issue: ${isAreaIssue ? areaName : asset.name}`,
       priority: els.newIssuePriority?.value || "Medium",
       notes: els.newIssueNotes?.value.trim(),
       photo
     };
     els.newIssueDrawer.open = false;
     els.newIssueForm.reset();
-    createManualIssueForAsset(asset, issueData);
+    if (isAreaIssue) {
+      createManualIssueForArea(customerId, locationId, areaName, issueData);
+    } else {
+      createManualIssueForAsset(asset, issueData);
+    }
   } catch (error) {
     console.warn("Top action issue creation failed.", error);
     if (els.newIssueStatus) els.newIssueStatus.textContent = "Issue was not created. Try again with no photo or a smaller photo.";
@@ -4577,6 +4744,7 @@ async function createServiceRequest() {
     notes: els.serviceRequestNotes.value.trim(),
     photo,
     convertedWorkOrderId: "",
+    history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -4588,6 +4756,7 @@ async function createServiceRequest() {
     setServiceRequestStatus("Enter a short service request.");
     return;
   }
+  addServiceRequestHistory(request, "Created", `${formatServiceRequestNumber(request)} - ${request.title}`);
   state.serviceRequests.unshift(request);
   addActivity("Service request created", `${formatServiceRequestNumber(request)} - ${request.title}`);
   saveState();
@@ -4607,8 +4776,10 @@ function setServiceRequestStatus(message) {
 function updateServiceRequestStatus(requestId, status) {
   const request = getServiceRequest(requestId);
   if (!request) return;
+  const previousStatus = request.status || "New";
   request.status = status;
   request.updatedAt = new Date().toISOString();
+  addServiceRequestHistory(request, "Status changed", `${previousStatus} -> ${status}`);
   addActivity("Service request updated", `${formatServiceRequestNumber(request)} - ${status}`);
   saveState();
   render();
@@ -4640,6 +4811,7 @@ function convertServiceRequestToIssue(requestId) {
   request.convertedWorkOrderId = issue.id;
   request.status = "Reviewed";
   request.updatedAt = new Date().toISOString();
+  addServiceRequestHistory(request, "Converted to issue", `${formatServiceRequestNumber(request)} -> ${formatIssueNumber(issue)}`);
   workOrderViewFilter = "active";
   addActivity("Service request converted", `${formatServiceRequestNumber(request)} to ${formatIssueNumber(issue)}`);
   saveState();
@@ -4669,9 +4841,11 @@ function convertOpenIssueToServiceRequest(workOrderId) {
     ].join("\n"),
     photo: workOrder.photo || null,
     convertedWorkOrderId: workOrder.id,
+    history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  addServiceRequestHistory(serviceRequest, "Created from issue", `${formatIssueNumber(workOrder)} -> ${formatServiceRequestNumber(serviceRequest)}`);
   state.serviceRequests.unshift(serviceRequest);
   workOrder.status = "Closed";
   workOrder.resolvedAt = new Date().toISOString();
@@ -5913,8 +6087,10 @@ function normalizeState(input) {
       assignedUserName: "",
       convertedWorkOrderId: "",
       photo: null,
+      history: [],
       ...item,
       photo: item.photo || null,
+      history: Array.isArray(item.history) ? item.history : [],
       serviceRequestNumber
     };
   });
