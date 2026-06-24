@@ -445,6 +445,7 @@ els.publicReportForm.addEventListener("submit", async (event) => {
       return;
     }
     issue.remoteReportId = remoteId;
+    addWorkOrderHistory(issue, "Created", `${formatIssueNumber(issue)} - ${issue.title}`);
     state.workOrders.unshift(issue);
     addActivity("Public issue reported", issue.title);
     saveState();
@@ -1499,6 +1500,7 @@ document.addEventListener("click", (event) => {
   const workOrder = getWorkOrder(button.dataset.workOrderId);
   if (!workOrder) return;
 
+  const previousStatus = workOrder.status || "Open";
   workOrder.status = button.dataset.workOrderAction;
   if (workOrder.status === "Resolved" || workOrder.status === "Closed") {
     workOrder.resolvedAt = new Date().toISOString();
@@ -1507,6 +1509,7 @@ document.addEventListener("click", (event) => {
     workOrder.resolvedAt = workOrder.status === "Resolved" ? workOrder.resolvedAt : "";
   }
   workOrder.updatedAt = new Date().toISOString();
+  addWorkOrderHistory(workOrder, "Status changed", `${previousStatus} -> ${workOrder.status}`);
   addActivity("Work order updated", `${workOrder.title} - ${workOrder.status}`);
   saveState();
   render();
@@ -1519,9 +1522,11 @@ document.addEventListener("change", (event) => {
   if (!workOrder) return;
   const users = getAssignableUsersForWorkOrder(workOrder);
   const user = users.find((item) => item.id === select.value) || null;
+  const previousAssignee = workOrder.assignedUserName || "Unassigned";
   workOrder.assignedUserId = user?.id || "";
   workOrder.assignedUserName = user ? user.name || user.username : "";
   workOrder.updatedAt = new Date().toISOString();
+  addWorkOrderHistory(workOrder, "Assigned", `${previousAssignee} -> ${workOrder.assignedUserName || "Unassigned"}`);
   addActivity("Issue assigned", `${workOrder.title} - ${workOrder.assignedUserName || "Unassigned"}`);
   saveState();
   render();
@@ -1553,6 +1558,14 @@ document.addEventListener("submit", async (event) => {
   if (!workOrder) return;
   const formData = new FormData(form);
   const photo = await readPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+  const before = {
+    title: workOrder.title || "",
+    priority: workOrder.priority || "Medium",
+    status: workOrder.status || "Open",
+    dueAt: workOrder.dueAt || "",
+    notes: workOrder.notes || "",
+    photoName: workOrder.photo?.name || ""
+  };
   workOrder.title = String(formData.get("title") || "").trim() || workOrder.title;
   workOrder.priority = normalizePriority(formData.get("priority"));
   workOrder.status = String(formData.get("status") || workOrder.status);
@@ -1566,6 +1579,14 @@ document.addEventListener("submit", async (event) => {
     workOrder.resolvedAt = "";
   }
   workOrder.updatedAt = new Date().toISOString();
+  const changes = [];
+  if (before.title !== workOrder.title) changes.push(`Title: ${before.title || "Not entered"} -> ${workOrder.title}`);
+  if (before.priority !== workOrder.priority) changes.push(`Priority: ${before.priority} -> ${workOrder.priority}`);
+  if (before.status !== workOrder.status) changes.push(`Status: ${before.status} -> ${workOrder.status}`);
+  if (before.dueAt !== workOrder.dueAt) changes.push(`Due date updated`);
+  if (before.notes !== workOrder.notes) changes.push("Notes updated");
+  if (photo) changes.push("Photo updated");
+  addWorkOrderHistory(workOrder, "Edited", changes.join(" | ") || "No visible changes");
   addActivity("Issue edited", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
   saveState();
   render();
@@ -3270,6 +3291,54 @@ function addServiceRequestHistory(request, action, details = "") {
   });
 }
 
+function renderWorkOrderHistory(item) {
+  const entries = workOrderHistoryEntries(item);
+  return `
+    <details class="service-request-audit">
+      <summary>
+        <span>History</span>
+        <span>${entries.length}</span>
+      </summary>
+      <div class="service-request-audit-list">
+        ${entries.map((entry) => `
+          <article class="service-request-audit-entry">
+            <strong>${escapeHtml(entry.action || "Updated")}</strong>
+            <span>${escapeHtml(formatDateTime(new Date(entry.createdAt || item.createdAt || new Date().toISOString())))} | ${escapeHtml(entry.userName || "System")}${entry.userRole ? ` | ${escapeHtml(entry.userRole)}` : ""}</span>
+            ${entry.details ? `<p>${escapeHtml(entry.details)}</p>` : ""}
+          </article>
+        `).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function workOrderHistoryEntries(item) {
+  const entries = Array.isArray(item.history) ? item.history.filter(Boolean) : [];
+  if (entries.length) return [...entries].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  return [{
+    id: "created",
+    action: "Created",
+    details: `${formatIssueNumber(item)} - ${item.title || "Open issue"}`,
+    userName: item.source || "System",
+    userRole: "",
+    createdAt: item.createdAt || item.updatedAt || new Date().toISOString()
+  }];
+}
+
+function addWorkOrderHistory(item, action, details = "") {
+  if (!item) return;
+  if (!Array.isArray(item.history)) item.history = [];
+  item.history.unshift({
+    id: crypto.randomUUID(),
+    action,
+    details,
+    userId: currentUser?.id || "",
+    userName: currentUser?.name || currentUser?.username || "System",
+    userRole: currentRole || "System",
+    createdAt: new Date().toISOString()
+  });
+}
+
 function renderServiceRequestEditForm(request) {
   const priorities = ["Low", "Medium", "High"];
   const statuses = ["New", "Reviewed", "Scheduled", "Completed", "Declined"];
@@ -3747,6 +3816,7 @@ function renderWorkOrderItem(item) {
       <p>${escapeHtml(item.notes)}</p>
       ${item.photo ? `<img class="history-photo" alt="Issue report photo" src="${item.photo.dataUrl}">` : ""}
       ${actions}
+      ${renderWorkOrderHistory(item)}
     </article>
   `;
 }
@@ -3864,12 +3934,20 @@ function openIssuePdfForm(item) {
       console.warn("Issue report print skipped.", error);
     }
   }, 500);
+  addWorkOrderHistory(item, "PDF opened", `${details.issueNumber} PDF form opened`);
+  addActivity("Issue PDF opened", `${details.issueNumber} - ${details.title}`);
+  saveState();
+  render();
 }
 
 async function emailIssueReport(item) {
   const details = getIssueReportDetails(item);
   const recipient = await choosePreferredContractorEmail("Email this issue request to:", details.customerId);
   if (recipient === null) return;
+  addWorkOrderHistory(item, "Email draft opened", `Draft to ${recipient.trim()}`);
+  addActivity("Issue email draft opened", `${details.title} to ${recipient.trim()}`);
+  saveState();
+  render();
   openIssueEmailDraft(details, recipient);
 }
 
@@ -3919,11 +3997,17 @@ async function sendIssuePdfEmail(item, button) {
     if (!response.ok) {
       throw new Error(result.error || "The issue email could not be sent.");
     }
+    addWorkOrderHistory(item, "PDF email sent", `Sent to ${recipient.trim()}`);
     addActivity("Issue PDF emailed", `${details.title} to ${recipient.trim()}`);
     saveState();
+    render();
     alert("Issue PDF email sent.");
   } catch (error) {
     console.warn("Issue PDF email failed.", error);
+    addWorkOrderHistory(item, "PDF email failed", error.message || "Automatic PDF email could not be sent.");
+    addActivity("Issue PDF email failed", `${details.title} to ${recipient.trim()}`);
+    saveState();
+    render();
     const useDraft = confirm([
       "The automatic PDF email could not be sent.",
       "",
@@ -3931,7 +4015,13 @@ async function sendIssuePdfEmail(item, button) {
       "",
       "Open a regular email draft to this contractor instead?"
     ].join("\n"));
-    if (useDraft) openIssueEmailDraft(details, recipient.trim());
+    if (useDraft) {
+      addWorkOrderHistory(item, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
+      addActivity("Issue fallback email draft", `${details.title} to ${recipient.trim()}`);
+      saveState();
+      render();
+      openIssueEmailDraft(details, recipient.trim());
+    }
   } finally {
     button.disabled = false;
     button.textContent = originalText;
@@ -4063,12 +4153,14 @@ async function sendServiceRequestPdfEmail(request, button) {
     addServiceRequestHistory(request, "PDF email sent", `Sent to ${recipient.trim()}`);
     addActivity("Service request PDF emailed", `${details.title} to ${recipient.trim()}`);
     saveState();
+    render();
     alert("Service request PDF email sent.");
   } catch (error) {
     console.warn("Service request PDF email failed.", error);
     addServiceRequestHistory(request, "PDF email failed", error.message || "Automatic PDF email could not be sent.");
     addActivity("Service request PDF email failed", `${details.title} to ${recipient.trim()}`);
     saveState();
+    render();
     const useDraft = confirm([
       "The automatic PDF email could not be sent.",
       "",
@@ -4080,6 +4172,7 @@ async function sendServiceRequestPdfEmail(request, button) {
       addServiceRequestHistory(request, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
       addActivity("Service request fallback email draft", `${details.title} to ${recipient.trim()}`);
       saveState();
+      render();
       openServiceRequestEmailDraft(details, recipient.trim());
     }
   } finally {
@@ -4588,7 +4681,7 @@ function getDueInfo(asset) {
 
 function createWorkOrderFromPm(asset, historyItem) {
   const priority = historyItem.result === "Failed" ? "High" : "Medium";
-  return {
+  const issue = {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
     assetId: asset.id,
@@ -4602,9 +4695,12 @@ function createWorkOrderFromPm(asset, historyItem) {
     assignedUserName: "",
     dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
     notes: historyItem.notes || "Created automatically from PM result.",
+    history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  addWorkOrderHistory(issue, "Created from PM", `${formatIssueNumber(issue)} - ${issue.title}`);
+  return issue;
 }
 
 function createManualIssueForAsset(asset, issueData = {}) {
@@ -4627,9 +4723,11 @@ function createManualIssueForAsset(asset, issueData = {}) {
     dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
     notes: issueData.notes || "No notes entered.",
     photo: issueData.photo || null,
+    history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  addWorkOrderHistory(issue, "Created", `${formatIssueNumber(issue)} - ${issue.title}`);
   state.workOrders.unshift(issue);
   workOrderViewFilter = "active";
   addActivity("Issue created", `${formatIssueNumber(issue)} - ${issue.title}`);
@@ -4662,9 +4760,11 @@ function createManualIssueForArea(customerId, locationId, areaName, issueData = 
     dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
     notes: issueData.notes || "No notes entered.",
     photo: issueData.photo || null,
+    history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  addWorkOrderHistory(issue, "Created", `${formatIssueNumber(issue)} - ${issue.title}`);
   state.workOrders.unshift(issue);
   workOrderViewFilter = "active";
   addActivity("Area issue created", `${formatIssueNumber(issue)} - ${issue.title}`);
@@ -4804,9 +4904,11 @@ function convertServiceRequestToIssue(requestId) {
     dueAt: addDays(new Date(), request.priority === "High" ? 2 : 7).toISOString(),
     notes: `${formatServiceRequestNumber(request)}\nRequested by: ${request.requestedBy || "Not entered"}\n${request.notes || "No details entered."}`,
     photo: request.photo || null,
+    history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  addWorkOrderHistory(issue, "Created from service request", `${formatServiceRequestNumber(request)} -> ${formatIssueNumber(issue)}`);
   state.workOrders.unshift(issue);
   request.convertedWorkOrderId = issue.id;
   request.status = "Reviewed";
@@ -4854,6 +4956,7 @@ function convertOpenIssueToServiceRequest(workOrderId) {
     workOrder.notes || "",
     `Converted to service request ${formatServiceRequestNumber(serviceRequest)}.`
   ].filter(Boolean).join("\n");
+  addWorkOrderHistory(workOrder, "Converted to service request", `${formatIssueNumber(workOrder)} -> ${formatServiceRequestNumber(serviceRequest)}`);
   addActivity("Open issue converted", `${formatIssueNumber(workOrder)} to ${formatServiceRequestNumber(serviceRequest)}`);
   saveState();
   openPanel("serviceRequestsPanel");
@@ -6061,7 +6164,9 @@ function normalizeState(input) {
     return {
       assignedUserId: "",
       assignedUserName: "",
+      history: [],
       ...item,
+      history: Array.isArray(item.history) ? item.history : [],
       issueNumber
     };
   });
