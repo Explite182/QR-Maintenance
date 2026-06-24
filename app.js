@@ -151,6 +151,7 @@ const els = {
   newUserPassword: document.getElementById("newUserPassword"),
   newUserRole: document.getElementById("newUserRole"),
   newUserCustomer: document.getElementById("newUserCustomer"),
+  newUserLocation: document.getElementById("newUserLocation"),
   userCount: document.getElementById("userCount"),
   userList: document.getElementById("userList"),
   accessRequestCount: document.getElementById("accessRequestCount"),
@@ -649,8 +650,13 @@ els.userForm.addEventListener("submit", async (event) => {
     return;
   }
   const newUserCustomerId = newUserRole === "Admin" ? "" : els.newUserCustomer.value;
+  const newUserLocationId = newUserRole === "Admin" ? "" : els.newUserLocation?.value || "";
   if (!canManageUserCustomer(newUserCustomerId, newUserRole)) {
     alert("Managers can only add users for their assigned customer.");
+    return;
+  }
+  if (!canManageUserLocation(newUserCustomerId, newUserLocationId)) {
+    alert("Choose a location this user is allowed to access.");
     return;
   }
   const newUser = isEmailAddress(username)
@@ -659,14 +665,16 @@ els.userForm.addEventListener("submit", async (event) => {
       els.newUserPassword.value,
       els.newUserName.value.trim(),
       newUserRole,
-      newUserCustomerId
+      newUserCustomerId,
+      newUserLocationId
     )
     : createLocalUser(
       username,
       els.newUserPassword.value,
       els.newUserName.value.trim(),
       newUserRole,
-      newUserCustomerId
+      newUserCustomerId,
+      newUserLocationId
     );
   if (!newUser) {
     alert("Could not create that user. For shared cloud login, use an email address. For local testing, use a simple login name.");
@@ -701,6 +709,7 @@ els.userList.addEventListener("submit", async (event) => {
   const password = String(formData.get("password") || "").trim();
   const role = String(formData.get("role") || "Customer");
   const customerId = role === "Admin" ? "" : String(formData.get("customerId") || "");
+  const locationId = role === "Admin" ? "" : String(formData.get("locationId") || "");
   const duplicateUsername = state.users.some((item) =>
     item.id !== user.id && item.username.toLowerCase() === username.toLowerCase()
   );
@@ -719,11 +728,16 @@ els.userList.addEventListener("submit", async (event) => {
     alert("Managers can only manage Customer or Technician users for their assigned customer.");
     return;
   }
+  if (!canManageUserLocation(customerId, locationId)) {
+    alert("Choose a location this user is allowed to access.");
+    return;
+  }
 
   user.username = username;
   user.name = name;
   user.role = role;
   user.customerId = customerId;
+  user.locationId = locationId;
   user.localOnly = user.localOnly || !isEmailAddress(username);
   if (user.localOnly && password) user.password = password;
   if (!user.localOnly && isEmailAddress(username)) user.password = "";
@@ -795,6 +809,10 @@ els.locationForm.addEventListener("submit", (event) => {
   if (!canManageSetup()) return;
   const customerId = els.locationCustomer.value;
   if (!canManageCustomerSetup(customerId)) return;
+  if (!canCreateLocations()) {
+    alert("This manager can only work inside their assigned location.");
+    return;
+  }
   const locationRecord = {
     id: crypto.randomUUID(),
     customerId,
@@ -829,6 +847,8 @@ els.locationList.addEventListener("submit", (event) => {
   const nextName = String(formData.get("name") || "").trim();
   if (!nextCustomerId || !nextName) return;
   if (!canManageCustomerSetup(oldCustomerId) || !canManageCustomerSetup(nextCustomerId)) return;
+  if (!canManageLocationSetup(locationRecord.id, oldCustomerId)) return;
+  if (currentUser?.locationId && nextCustomerId !== oldCustomerId) return;
 
   locationRecord.customerId = nextCustomerId;
   locationRecord.name = nextName;
@@ -871,7 +891,7 @@ els.locationList.addEventListener("click", async (event) => {
   if (!button || !canManageSetup()) return;
   const locationRecord = getLocation(button.dataset.locationId);
   if (!locationRecord) return;
-  if (!canManageCustomerSetup(locationRecord.customerId)) return;
+  if (!canManageLocationSetup(locationRecord.id, locationRecord.customerId)) return;
 
   const locationAssets = state.assets.filter((asset) => asset.locationId === locationRecord.id);
   const locationWorkOrders = state.workOrders.filter((item) => item.locationId === locationRecord.id);
@@ -1107,6 +1127,14 @@ els.customerFilter.addEventListener("change", () => {
   render();
 });
 
+els.newUserRole?.addEventListener("change", () => {
+  renderNewUserLocationOptions();
+});
+
+els.newUserCustomer?.addEventListener("change", () => {
+  renderNewUserLocationOptions();
+});
+
 els.locationFilter.addEventListener("change", () => {
   selectedLocationId = els.locationFilter.value;
   selectedId = null;
@@ -1189,12 +1217,12 @@ els.assetForm.addEventListener("submit", async (event) => {
     history: []
   };
 
-  if (!canSeeCustomer(asset.customerId)) return;
+  if (!canSeeLocation(asset.locationId, asset.customerId)) return;
   state.assets.unshift(asset);
   addActivity("Asset added", asset.name);
   selectedId = asset.id;
   selectedCustomerId = asset.customerId;
-  selectedLocationId = "all";
+  selectedLocationId = currentUser?.locationId || "all";
   saveState();
   els.assetForm.reset();
   els.assetFrequency.value = "30";
@@ -1264,7 +1292,7 @@ els.assetInfoForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const asset = getSelectedAsset();
   if (!asset || !canCompletePm()) return;
-  if (!canSeeCustomer(els.editAssetCustomer.value)) return;
+  if (!canSeeLocation(els.editAssetLocation.value, els.editAssetCustomer.value)) return;
 
   const replacementPhoto = await readPhoto(els.editAssetPhoto.files[0]);
   asset.name = els.editAssetName.value.trim();
@@ -1558,6 +1586,7 @@ document.addEventListener("change", (event) => {
   if (!workOrder) return;
   const users = getAssignableUsersForWorkOrder(workOrder);
   const user = users.find((item) => item.id === select.value) || null;
+  const previousAssigneeId = workOrder.assignedUserId || "";
   const previousAssignee = workOrder.assignedUserName || "Unassigned";
   workOrder.assignedUserId = user?.id || "";
   workOrder.assignedUserName = user ? user.name || user.username : "";
@@ -1566,6 +1595,9 @@ document.addEventListener("change", (event) => {
   addActivity("Issue assigned", `${workOrder.title} - ${workOrder.assignedUserName || "Unassigned"}`);
   saveState();
   render();
+  if (user && user.id !== previousAssigneeId && workOrder.status !== "Closed") {
+    sendIssueAssignmentEmail(workOrder, user);
+  }
 });
 
 document.addEventListener("change", (event) => {
@@ -1575,6 +1607,7 @@ document.addEventListener("change", (event) => {
   if (!request) return;
   const users = getAssignableUsersForWorkOrder(request);
   const user = users.find((item) => item.id === select.value);
+  const previousAssigneeId = request.assignedUserId || "";
   const previousAssignee = request.assignedUserName || "Unassigned";
   request.assignedUserId = user?.id || "";
   request.assignedUserName = user?.name || user?.username || "";
@@ -1583,6 +1616,9 @@ document.addEventListener("change", (event) => {
   addActivity("Service request assigned", `${formatServiceRequestNumber(request)} - ${request.assignedUserName || "Unassigned"}`);
   saveState();
   render();
+  if (user && user.id !== previousAssigneeId && request.status !== "Completed" && request.status !== "Declined") {
+    sendServiceRequestAssignmentEmail(request, user);
+  }
 });
 
 document.addEventListener("submit", async (event) => {
@@ -1593,7 +1629,7 @@ document.addEventListener("submit", async (event) => {
   const workOrder = getWorkOrder(form.dataset.workOrderEditForm);
   if (!workOrder) return;
   const formData = new FormData(form);
-  const photo = await readPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+  const photo = await readIssuePhoto(form.querySelector("input[name='photo']")?.files?.[0]);
   const before = {
     title: workOrder.title || "",
     priority: workOrder.priority || "Medium",
@@ -1636,7 +1672,7 @@ document.addEventListener("submit", async (event) => {
   const request = getServiceRequest(form.dataset.serviceRequestEditForm);
   if (!request) return;
   const formData = new FormData(form);
-  const photo = await readPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+  const photo = await readServiceRequestPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
   const before = {
     title: request.title || "",
     priority: request.priority || "Medium",
@@ -1681,7 +1717,7 @@ document.addEventListener("submit", async (event) => {
       submitButton.textContent = "Creating...";
     }
     const formData = new FormData(form);
-    const photo = await readPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+    const photo = await readIssuePhoto(form.querySelector("input[name='photo']")?.files?.[0]);
     createManualIssueForAsset(asset, {
       title: String(formData.get("title") || "").trim(),
       priority: String(formData.get("priority") || "Medium"),
@@ -1953,7 +1989,7 @@ function findUserForLogin(username, password) {
   );
 }
 
-function createLocalUser(username, password, name, role, customerId) {
+function createLocalUser(username, password, name, role, customerId, locationId = "") {
   const cleanUsername = username.trim().toLowerCase();
   const cleanPassword = password.trim();
   if (!cleanUsername || !cleanPassword) return null;
@@ -1964,6 +2000,7 @@ function createLocalUser(username, password, name, role, customerId) {
     password: cleanPassword,
     role: role || "Customer",
     customerId: role === "Admin" ? "" : customerId || "",
+    locationId: role === "Admin" ? "" : locationId || "",
     createdAt: new Date().toISOString(),
     localOnly: true
   };
@@ -2054,7 +2091,7 @@ function renderRole() {
     control.disabled = !canManageTemplates;
   });
   els.locationForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
-    control.disabled = !canManageSetup();
+    control.disabled = !canCreateLocations();
   });
   els.userForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !userManagementAllowed;
@@ -2069,6 +2106,8 @@ function renderRole() {
   els.assetImportDrawer?.querySelectorAll("input, button").forEach((control) => {
     control.disabled = !canAddAssets;
   });
+  if (els.assetImportCreateLocations) els.assetImportCreateLocations.disabled = !canAddAssets || !canCreateLocations();
+  if (els.issueImportCreateLocations) els.issueImportCreateLocations.disabled = !canManageWorkOrders() || !canCreateLocations();
   els.pmForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canCompletePm();
   });
@@ -2156,15 +2195,22 @@ function renderUserItem(user) {
   const customerOptions = manageableUserCustomers().map((customerRecord) =>
     `<option value="${customerRecord.id}" ${user.customerId === customerRecord.id ? "selected" : ""}>${escapeHtml(customerRecord.name)}</option>`
   ).join("");
+  const locationOptions = userLocationOptions(user.customerId, user.locationId);
+  const location = getLocation(user.locationId);
   const customerAssignment = user.role !== "Admin"
     ? ` | ${escapeHtml(customer?.name || "No customer assigned")}`
     : "";
+  const locationAssignment = user.role !== "Admin" && user.locationId
+    ? ` | ${escapeHtml(location?.name || "Unknown location")}`
+    : user.role !== "Admin"
+      ? " | All locations"
+      : "";
   return `
     <details class="user-list-item user-editor">
       <summary>
         <span>
           <strong>${escapeHtml(user.name || user.username)}</strong>
-          <small>${escapeHtml(user.username)} | ${escapeHtml(user.role)}${customerAssignment}</small>
+          <small>${escapeHtml(user.username)} | ${escapeHtml(user.role)}${customerAssignment}${locationAssignment}</small>
         </span>
         ${currentLabel}
       </summary>
@@ -2193,6 +2239,12 @@ function renderUserItem(user) {
           Assigned customer
           <select name="customerId" ${disabled}>
             ${customerOptions}
+          </select>
+        </label>
+        <label>
+          Assigned location
+          <select name="locationId" ${disabled}>
+            ${locationOptions}
           </select>
         </label>
         <div class="user-actions">
@@ -2302,7 +2354,7 @@ function renderLocations() {
   if (!els.locationList) return;
   const setupCustomerIds = new Set(manageableSetupCustomers().map((customer) => customer.id));
   const locations = state.locations.filter((locationRecord) =>
-    setupCustomerIds.has(locationRecord.customerId) && canManageCustomerSetup(locationRecord.customerId)
+    setupCustomerIds.has(locationRecord.customerId) && canManageLocationSetup(locationRecord.id, locationRecord.customerId)
   ).sort((a, b) => {
     const customerA = getCustomer(a.customerId)?.name || "";
     const customerB = getCustomer(b.customerId)?.name || "";
@@ -2314,8 +2366,8 @@ function renderLocations() {
 }
 
 function renderLocationEditor(locationRecord) {
-  const disabled = canManageSetup() ? "" : "disabled";
-  const customerOptions = state.customers.map((customer) =>
+  const disabled = canManageLocationSetup(locationRecord.id, locationRecord.customerId) ? "" : "disabled";
+  const customerOptions = manageableSetupCustomers().map((customer) =>
     `<option value="${escapeAttribute(customer.id)}" ${locationRecord.customerId === customer.id ? "selected" : ""}>${escapeHtml(customer.name)}</option>`
   ).join("");
   const contactSummary = [
@@ -2407,14 +2459,35 @@ function renderCustomerOptions() {
   if (!els.newUserCustomer.value && manageableUserCustomers()[0]) {
     els.newUserCustomer.value = manageableUserCustomers()[0].id;
   }
+  renderNewUserLocationOptions();
   els.customerFilter.disabled = !canSeeAllCustomers();
 
   const setupAllowed = canManageSetup();
   const addEquipmentAllowed = canAddEquipment();
-  els.locationForm.querySelector("button").disabled = !setupAllowed || !state.customers.length;
+  els.locationForm.querySelector("button").disabled = !canCreateLocations() || !state.customers.length;
   els.assetForm.querySelector("button").disabled = !addEquipmentAllowed || !customers.length || !state.locations.length || !state.templates.length;
   if (els.assetImportBtn) els.assetImportBtn.disabled = !addEquipmentAllowed || !customers.length || !state.templates.length;
   if (els.issueImportBtn) els.issueImportBtn.disabled = !canManageWorkOrders() || !customers.length;
+}
+
+function renderNewUserLocationOptions() {
+  if (!els.newUserLocation) return;
+  const role = els.newUserRole?.value || "Customer";
+  const customerId = role === "Admin" ? "" : els.newUserCustomer?.value || "";
+  els.newUserLocation.innerHTML = userLocationOptions(customerId, "");
+  els.newUserLocation.disabled = role === "Admin" || !customerId;
+}
+
+function userLocationOptions(customerId, selectedLocationId = "") {
+  const locations = manageableUserLocations(customerId);
+  const canAssignAllLocations = currentRole === "Admin" || !currentUser?.locationId;
+  const allOption = canAssignAllLocations
+    ? `<option value="" ${!selectedLocationId ? "selected" : ""}>All locations</option>`
+    : "";
+  const locationOptions = locations.map((locationRecord) =>
+    `<option value="${escapeAttribute(locationRecord.id)}" ${selectedLocationId === locationRecord.id ? "selected" : ""}>${escapeHtml(locationRecord.name)}</option>`
+  ).join("");
+  return `${allOption}${locationOptions}`;
 }
 
 function renderTemplateOptions() {
@@ -2428,13 +2501,16 @@ function renderTemplateOptions() {
 
 function renderLocationOptions() {
   const locations = locationsForCustomer(selectedCustomerId);
+  const canUseAllLocations = canSeeAllCustomers() || !currentUser?.locationId;
   els.locationFilter.innerHTML = [
-    `<option value="all">All locations</option>`,
+    ...(canUseAllLocations ? [`<option value="all">All locations</option>`] : []),
     ...locations.map((locationRecord) => `<option value="${locationRecord.id}">${escapeHtml(locationRecord.name)}</option>`)
   ].join("");
   els.locationFilter.value = locations.some((locationRecord) => locationRecord.id === selectedLocationId)
     ? selectedLocationId
-    : "all";
+    : canUseAllLocations
+      ? "all"
+      : locations[0]?.id || "";
 }
 
 function renderAssetLocationOptions() {
@@ -2553,7 +2629,7 @@ async function importEquipmentCsv() {
     const firstAsset = importedAssets[0];
     selectedId = firstAsset.id;
     selectedCustomerId = firstAsset.customerId;
-    selectedLocationId = "all";
+    selectedLocationId = currentUser?.locationId || "all";
     addActivity(
       "Equipment imported",
       `${stats.imported} equipment record(s) from ${file.name}`
@@ -2692,7 +2768,7 @@ async function importIssuesCsv() {
 
     const firstIssue = importedIssues[0];
     selectedCustomerId = firstIssue.customerId;
-    selectedLocationId = "all";
+    selectedLocationId = currentUser?.locationId || "all";
     selectedId = firstIssue.assetId || selectedId;
     workOrderViewFilter = "active";
     addActivity("Issues imported", `${stats.imported} issue record(s) from ${file.name}`);
@@ -2847,8 +2923,8 @@ function findOrCreateImportLocation(name, customerId, stats) {
   const existing = state.locations.find((locationRecord) =>
     locationRecord.customerId === customerId && sameText(locationRecord.name, cleanName)
   );
-  if (existing) return existing;
-  if (!els.assetImportCreateLocations?.checked) return null;
+  if (existing) return canSeeLocation(existing.id, existing.customerId) ? existing : null;
+  if (!els.assetImportCreateLocations?.checked || !canCreateLocations()) return null;
 
   const locationRecord = {
     id: crypto.randomUUID(),
@@ -2871,8 +2947,8 @@ function findOrCreateIssueImportLocation(name, customerId, stats) {
   const existing = state.locations.find((locationRecord) =>
     locationRecord.customerId === customerId && sameText(locationRecord.name, cleanName)
   );
-  if (existing) return existing;
-  if (!els.issueImportCreateLocations?.checked) return null;
+  if (existing) return canSeeLocation(existing.id, existing.customerId) ? existing : null;
+  if (!els.issueImportCreateLocations?.checked || !canCreateLocations()) return null;
 
   const locationRecord = {
     id: crypto.randomUUID(),
@@ -2895,9 +2971,11 @@ function findImportAsset(customerId, locationId, equipmentName) {
   return state.assets.find((asset) =>
     asset.customerId === customerId &&
     asset.locationId === locationId &&
+    canSeeAsset(asset) &&
     sameText(asset.name, cleanName)
   ) || state.assets.find((asset) =>
     asset.customerId === customerId &&
+    canSeeAsset(asset) &&
     sameText(asset.name, cleanName)
   ) || null;
 }
@@ -2906,9 +2984,12 @@ function findImportUser(name, customerId) {
   const cleanName = String(name || "").trim();
   if (!cleanName || sameText(cleanName, "unassigned")) return null;
   return state.users.find((user) =>
-    sameText(user.name, cleanName) || sameText(user.username, cleanName)
+    canViewUserRecord(user) &&
+    (sameText(user.name, cleanName) || sameText(user.username, cleanName))
   ) || state.users.find((user) =>
-    user.customerId === customerId && cleanName.toLowerCase().includes(String(user.name || "").toLowerCase())
+    canViewUserRecord(user) &&
+    user.customerId === customerId &&
+    cleanName.toLowerCase().includes(String(user.name || "").toLowerCase())
   ) || null;
 }
 
@@ -4624,6 +4705,99 @@ function getEmailFunctionReportDetails(details) {
   return { ...details };
 }
 
+function getUserNotificationEmail(user) {
+  const candidates = [
+    user?.email,
+    user?.contactEmail,
+    user?.username
+  ];
+  return candidates
+    .map((value) => String(value || "").trim())
+    .find((value) => isEmailAddress(value)) || "";
+}
+
+async function sendIssueAssignmentEmail(item, user) {
+  const recipient = getUserNotificationEmail(user);
+  const details = getIssueReportDetails(item);
+  const assigneeName = user?.name || user?.username || "Assigned technician";
+  if (!recipient) {
+    addWorkOrderHistory(item, "Assignment email skipped", `${assigneeName} does not have an email login saved.`);
+    addActivity("Assignment email skipped", `${details.issueNumber} - no email for ${assigneeName}`);
+    saveState();
+    render();
+    return;
+  }
+
+  try {
+    const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
+      method: "POST",
+      headers: supabaseFunctionHeaders(),
+      body: JSON.stringify({
+        to: recipient,
+        issue: getEmailFunctionReportDetails({
+          ...details,
+          reportTitle: "Issue Assignment",
+          footerLabel: "Assigned Maintenance Issue",
+          notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
+        })
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || "The assignment email could not be sent.");
+    }
+    addWorkOrderHistory(item, "Assignment email sent", `Sent to ${recipient}`);
+    addActivity("Assignment email sent", `${details.issueNumber} to ${assigneeName}`);
+  } catch (error) {
+    console.warn("Issue assignment email failed.", error);
+    addWorkOrderHistory(item, "Assignment email failed", error.message || "Automatic assignment email could not be sent.");
+    addActivity("Assignment email failed", `${details.issueNumber} to ${recipient}`);
+  }
+  saveState();
+  render();
+}
+
+async function sendServiceRequestAssignmentEmail(request, user) {
+  const recipient = getUserNotificationEmail(user);
+  const details = getServiceRequestReportDetails(request);
+  const assigneeName = user?.name || user?.username || "Assigned technician";
+  if (!recipient) {
+    addServiceRequestHistory(request, "Assignment email skipped", `${assigneeName} does not have an email login saved.`);
+    addActivity("Service assignment email skipped", `${details.issueNumber} - no email for ${assigneeName}`);
+    saveState();
+    render();
+    return;
+  }
+
+  try {
+    const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
+      method: "POST",
+      headers: supabaseFunctionHeaders(),
+      body: JSON.stringify({
+        to: recipient,
+        issue: getEmailFunctionReportDetails({
+          ...details,
+          reportTitle: "Service Request Assignment",
+          footerLabel: "Assigned Service Request",
+          notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
+        })
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || "The assignment email could not be sent.");
+    }
+    addServiceRequestHistory(request, "Assignment email sent", `Sent to ${recipient}`);
+    addActivity("Service assignment email sent", `${details.issueNumber} to ${assigneeName}`);
+  } catch (error) {
+    console.warn("Service request assignment email failed.", error);
+    addServiceRequestHistory(request, "Assignment email failed", error.message || "Automatic assignment email could not be sent.");
+    addActivity("Service assignment email failed", `${details.issueNumber} to ${recipient}`);
+  }
+  saveState();
+  render();
+}
+
 function getServiceRequestReportDetails(request) {
   const asset = getAsset(request.assetId) || getRawAsset(request.assetId);
   const customer = getCustomer(request.customerId);
@@ -5034,7 +5208,10 @@ function renderReportLabels(assets = filteredAssets()) {
 
 function visibleLocationsForReportLabels() {
   const visibleCustomerIds = new Set(visibleCustomers().map((customer) => customer.id));
-  return state.locations.filter((locationRecord) => visibleCustomerIds.has(locationRecord.customerId));
+  return state.locations.filter((locationRecord) =>
+    visibleCustomerIds.has(locationRecord.customerId) &&
+    canSeeLocation(locationRecord.id, locationRecord.customerId)
+  );
 }
 
 function ensureSelection() {
@@ -5048,6 +5225,14 @@ function ensureSelection() {
 
   if (!customers.some((customer) => customer.id === selectedCustomerId)) {
     selectedCustomerId = customers[0].id;
+  }
+
+  const visibleLocations = locationsForCustomer(selectedCustomerId);
+  if (selectedLocationId !== "all" && !visibleLocations.some((locationRecord) => locationRecord.id === selectedLocationId)) {
+    selectedLocationId = "all";
+  }
+  if (currentUser?.locationId && visibleLocations.some((locationRecord) => locationRecord.id === currentUser.locationId)) {
+    selectedLocationId = currentUser.locationId;
   }
 
   if (selectedId && !filteredAssets().some((asset) => asset.id === selectedId)) {
@@ -5064,9 +5249,9 @@ function ensureSelection() {
 function syncFiltersToSelectedAsset() {
   const asset = getSelectedAsset();
   if (!asset) return;
-  if (!canSeeCustomer(asset.customerId)) return;
+  if (!canSeeAsset(asset)) return;
   selectedCustomerId = asset.customerId;
-  selectedLocationId = "all";
+  selectedLocationId = currentUser?.locationId || "all";
 }
 
 function restoreScannedAssetSelection() {
@@ -5074,10 +5259,10 @@ function restoreScannedAssetSelection() {
   if (!scannedAssetId) return;
   hydrateAssetFromHash();
   const asset = getRawAsset(scannedAssetId);
-  if (!asset || !canSeeCustomer(asset.customerId)) return;
+  if (!asset || !canSeeAsset(asset)) return;
   selectedId = asset.id;
   selectedCustomerId = asset.customerId;
-  selectedLocationId = "all";
+  selectedLocationId = currentUser?.locationId || "all";
 }
 
 function filteredAssets() {
@@ -5165,13 +5350,15 @@ function getMostRecentAssetWithCompletedPm() {
 }
 
 function locationsForCustomer(customerId) {
-  return state.locations.filter((locationRecord) => locationRecord.customerId === customerId);
+  return state.locations.filter((locationRecord) =>
+    locationRecord.customerId === customerId && canSeeLocation(locationRecord.id, locationRecord.customerId)
+  );
 }
 
 async function deleteLocation(locationId) {
   const locationRecord = getLocation(locationId);
   if (!locationRecord) return;
-  if (!canManageCustomerSetup(locationRecord.customerId)) return;
+  if (!canManageLocationSetup(locationRecord.id, locationRecord.customerId)) return;
   const removedAssetIds = new Set(
     state.assets
       .filter((asset) => asset.locationId === locationId)
@@ -5322,7 +5509,7 @@ function createManualIssueForAsset(asset, issueData = {}) {
 }
 
 function createManualIssueForArea(customerId, locationId, areaName, issueData = {}) {
-  if (!canManageWorkOrders() || !canSeeCustomer(customerId)) return;
+  if (!canManageWorkOrders() || !canSeeLocation(locationId, customerId)) return;
   const locationRecord = getLocation(locationId);
   if (!locationRecord || locationRecord.customerId !== customerId) return;
   const title = issueData.title || `Issue: ${areaName || locationRecord.name}`;
@@ -5380,7 +5567,7 @@ async function createIssueFromTopAction() {
       submitButton.disabled = true;
       submitButton.textContent = "Creating...";
     }
-    const photo = await readPhoto(els.newIssuePhoto?.files?.[0]);
+    const photo = await readIssuePhoto(els.newIssuePhoto?.files?.[0]);
     const issueData = {
       title: els.newIssueTitle?.value.trim() || `Issue: ${isAreaIssue ? areaName : asset.name}`,
       priority: els.newIssuePriority?.value || "Medium",
@@ -5411,7 +5598,14 @@ async function createServiceRequest() {
     setServiceRequestStatus("This login cannot create service requests.");
     return;
   }
-  const photo = await readPhoto(els.serviceRequestPhoto?.files?.[0]);
+  let photo = null;
+  try {
+    photo = await readServiceRequestPhoto(els.serviceRequestPhoto?.files?.[0]);
+  } catch (error) {
+    console.warn("Service request photo could not be read.", error);
+    setServiceRequestStatus("That photo could not be attached. Try one smaller photo, or create the request with no photo first.");
+    return;
+  }
   const request = {
     id: crypto.randomUUID(),
     serviceRequestNumber: nextServiceRequestNumber(),
@@ -5436,14 +5630,29 @@ async function createServiceRequest() {
     setServiceRequestStatus("Choose a customer and location first.");
     return;
   }
+  if (!canSeeLocation(request.locationId, request.customerId)) {
+    setServiceRequestStatus("Choose a location this login can access.");
+    return;
+  }
   if (!request.title) {
     setServiceRequestStatus("Enter a short service request.");
     return;
   }
   addServiceRequestHistory(request, "Created", `${formatServiceRequestNumber(request)} - ${request.title}`);
   state.serviceRequests.unshift(request);
-  addActivity("Service request created", `${formatServiceRequestNumber(request)} - ${request.title}`);
-  saveState();
+  const activityDetails = `${formatServiceRequestNumber(request)} - ${request.title}`;
+  addActivity("Service request created", activityDetails);
+  try {
+    saveState();
+  } catch (error) {
+    state.serviceRequests = state.serviceRequests.filter((item) => item.id !== request.id);
+    state.activityLog = state.activityLog.filter((item) =>
+      !(item.action === "Service request created" && item.details === activityDetails)
+    );
+    setServiceRequestStatus("The request was not saved. Try again with a smaller photo or no photo.");
+    render();
+    return;
+  }
   els.serviceRequestForm.reset();
   const successMessage = `${formatServiceRequestNumber(request)} created.`;
   document.getElementById("serviceRequestCreateDrawer")?.removeAttribute("open");
@@ -5605,6 +5814,10 @@ function canCreateCustomers() {
   return currentRole === "Admin";
 }
 
+function canCreateLocations() {
+  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId);
+}
+
 function canManageTemplateSetup() {
   return currentRole === "Admin";
 }
@@ -5612,6 +5825,12 @@ function canManageTemplateSetup() {
 function canManageCustomerSetup(customerId) {
   if (currentRole === "Admin") return true;
   return currentRole === "Manager" && Boolean(currentUser?.customerId) && customerId === currentUser.customerId;
+}
+
+function canManageLocationSetup(locationId, customerId = "") {
+  if (currentRole === "Admin") return true;
+  if (!canManageCustomerSetup(customerId || getLocation(locationId)?.customerId || "")) return false;
+  return canSeeLocation(locationId, customerId);
 }
 
 function manageableSetupCustomers() {
@@ -5661,6 +5880,21 @@ function manageableUserCustomers() {
   return [];
 }
 
+function manageableUserLocations(customerId) {
+  if (!customerId) return [];
+  if (currentRole === "Admin") {
+    return state.locations.filter((locationRecord) => locationRecord.customerId === customerId);
+  }
+  if (currentRole === "Manager" && currentUser?.customerId === customerId) {
+    const managerLocationId = currentUser.locationId || "";
+    return state.locations.filter((locationRecord) =>
+      locationRecord.customerId === customerId &&
+      (!managerLocationId || locationRecord.id === managerLocationId)
+    );
+  }
+  return [];
+}
+
 function userRoleOptionsForEditor(existingRole = "") {
   if (currentRole === "Admin") return ["Customer", "Technician", "Manager", "Admin"];
   const roles = ["Customer", "Technician"];
@@ -5679,17 +5913,28 @@ function canManageUserCustomer(customerId, role) {
   return Boolean(currentUser?.customerId && customerId === currentUser.customerId);
 }
 
+function canManageUserLocation(customerId, locationId) {
+  if (!locationId) return currentRole === "Admin" || !currentUser?.locationId;
+  return manageableUserLocations(customerId).some((locationRecord) => locationRecord.id === locationId);
+}
+
 function canViewUserRecord(user) {
   if (currentRole === "Admin") return true;
   if (currentRole !== "Manager") return false;
-  return user.customerId === currentUser?.customerId && user.role !== "Admin";
+  if (user.customerId !== currentUser?.customerId || user.role === "Admin") return false;
+  const managerLocationId = currentUser.locationId || "";
+  if (!managerLocationId) return true;
+  return user.locationId === managerLocationId;
 }
 
 function canEditUserRecord(user) {
   if (currentRole === "Admin") return true;
   if (currentRole !== "Manager") return false;
   if (currentUser?.id === user.id) return false;
-  return user.customerId === currentUser?.customerId && ["Customer", "Technician"].includes(user.role);
+  if (user.customerId !== currentUser?.customerId || !["Customer", "Technician"].includes(user.role)) return false;
+  const managerLocationId = currentUser.locationId || "";
+  if (!managerLocationId) return true;
+  return user.locationId === managerLocationId;
 }
 
 function visibleManagedUsers() {
@@ -5713,6 +5958,7 @@ function canCreateServiceRequests() {
 }
 
 function canSeeWorkOrder(item) {
+  if (!canSeeLocation(item.locationId, item.customerId)) return false;
   if (currentRole === "Admin" || currentRole === "Manager") return canSeeCustomer(item.customerId);
   if (currentRole === "Technician") {
     return canSeeCustomer(item.customerId) && item.assignedUserId === currentUser?.id;
@@ -5721,6 +5967,7 @@ function canSeeWorkOrder(item) {
 }
 
 function canSeeServiceRequest(item) {
+  if (!canSeeLocation(item.locationId, item.customerId)) return false;
   if (currentRole === "Admin" || currentRole === "Manager") return canSeeCustomer(item.customerId);
   if (currentRole === "Technician") {
     return canSeeCustomer(item.customerId) && item.assignedUserId === currentUser?.id;
@@ -5730,6 +5977,7 @@ function canSeeServiceRequest(item) {
 
 function canSeeAsset(asset) {
   if (!asset || !canSeeCustomer(asset.customerId)) return false;
+  if (!canSeeLocation(asset.locationId, asset.customerId)) return false;
   if (currentRole !== "Technician") return true;
   return state.workOrders.some((item) =>
     item.assetId === asset.id &&
@@ -5754,13 +6002,22 @@ function activeLocationCountForAssets(assets = filteredAssets()) {
 
 function activeAssetLocationCountForCurrentCustomer() {
   const customerAssets = state.assets.filter((asset) =>
-    canSeeCustomer(asset.customerId) && asset.customerId === selectedCustomerId
+    canSeeAsset(asset) && asset.customerId === selectedCustomerId
   );
   return activeLocationCountForAssets(customerAssets);
 }
 
 function canSeeCustomer(customerId) {
   return canSeeAllCustomers() || currentUser?.customerId === customerId;
+}
+
+function canSeeLocation(locationId, customerId = "") {
+  if (canSeeAllCustomers()) return true;
+  if (!currentUser) return false;
+  if (customerId && !canSeeCustomer(customerId)) return false;
+  const assignedLocationId = currentUser.locationId || "";
+  if (!assignedLocationId) return true;
+  return locationId === assignedLocationId;
 }
 
 function canSeeAllCustomers() {
@@ -6071,7 +6328,7 @@ function readableSupabaseError(errorText) {
   }
 }
 
-async function signUpSupabaseUser(email, password, name, role, customerId) {
+async function signUpSupabaseUser(email, password, name, role, customerId, locationId = "") {
   lastAuthError = "";
   try {
     const response = await supabaseAuthFetch("signup", {
@@ -6101,6 +6358,7 @@ async function signUpSupabaseUser(email, password, name, role, customerId) {
       name: name || authUser.email || email,
       role,
       customerId,
+      locationId: role === "Admin" ? "" : locationId || "",
       createdAt: new Date().toISOString(),
       session
     };
@@ -6153,6 +6411,7 @@ async function saveSupabaseProfile(profile) {
     name: profile.name || profile.username,
     role: profile.role || "Customer",
     customer_id: profile.role === "Admin" ? "" : profile.customerId || "",
+    location_id: profile.role === "Admin" ? "" : profile.locationId || "",
     updated_at: new Date().toISOString()
   };
   const response = await supabaseFetch("profiles?on_conflict=id", {
@@ -6160,7 +6419,21 @@ async function saveSupabaseProfile(profile) {
     headers: { Prefer: "resolution=merge-duplicates" },
     body: JSON.stringify(payload)
   });
-  if (!response.ok) console.warn("Supabase profile save skipped.", await response.text());
+  if (!response.ok) {
+    const errorText = await response.text();
+    if (errorText.includes("location_id") || errorText.includes("PGRST204")) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.location_id;
+      const fallbackResponse = await supabaseFetch("profiles?on_conflict=id", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify(fallbackPayload)
+      });
+      if (!fallbackResponse.ok) console.warn("Supabase profile save skipped.", await fallbackResponse.text());
+      return;
+    }
+    console.warn("Supabase profile save skipped.", errorText);
+  }
 }
 
 async function deleteSupabaseProfile(userId) {
@@ -6189,6 +6462,7 @@ function profileFromSupabase(profile) {
     password: "",
     role: profile.role || "Customer",
     customerId: profile.customer_id || "",
+    locationId: profile.location_id || "",
     createdAt: profile.created_at || new Date().toISOString(),
     updatedAt: profile.updated_at || ""
   };
@@ -6199,7 +6473,8 @@ function upsertLocalUser(user) {
     ...user,
     password: "",
     username: user.username || user.email || "",
-    customerId: user.role === "Admin" ? "" : user.customerId || ""
+    customerId: user.role === "Admin" ? "" : user.customerId || "",
+    locationId: user.role === "Admin" ? "" : user.locationId || ""
   };
   const index = state.users.findIndex((item) => item.id === cleanUser.id || item.username.toLowerCase() === cleanUser.username.toLowerCase());
   if (index >= 0) {
@@ -6791,12 +7066,22 @@ function normalizeState(input) {
     usedServiceRequestNumbers.add(serviceRequestNumberCursor);
   });
 
-  normalized.users = normalized.users.map((user) => ({
-    ...user,
-    customerId: user.role !== "Admin" && user.username !== "scan-customer"
+  normalized.users = normalized.users.map((user) => {
+    const customerId = user.role !== "Admin" && user.username !== "scan-customer"
       ? user.customerId || normalized.customers[0]?.id || ""
-      : user.customerId || ""
-  }));
+      : user.customerId || "";
+    const locationRecord = normalized.locations.find((location) => location.id === user.locationId);
+    const locationId = user.role !== "Admin" &&
+      user.username !== "scan-customer" &&
+      locationRecord?.customerId === customerId
+      ? user.locationId || ""
+      : "";
+    return {
+      ...user,
+      customerId,
+      locationId
+    };
+  });
 
   normalized.preferredContractors = normalized.preferredContractors.map((contractor) => ({
     id: contractor.id || crypto.randomUUID(),
@@ -7152,6 +7437,20 @@ async function readPhoto(file) {
   if (!file) return null;
   const rawDataUrl = await fileToDataUrl(file);
   const dataUrl = await resizePhotoDataUrl(rawDataUrl, 1000, 0.72);
+  return { name: file.name, dataUrl };
+}
+
+async function readIssuePhoto(file) {
+  if (!file) return null;
+  const rawDataUrl = await fileToDataUrl(file);
+  const dataUrl = await resizePhotoDataUrl(rawDataUrl, 720, 0.58);
+  return { name: file.name, dataUrl };
+}
+
+async function readServiceRequestPhoto(file) {
+  if (!file) return null;
+  const rawDataUrl = await fileToDataUrl(file);
+  const dataUrl = await resizePhotoDataUrl(rawDataUrl, 680, 0.54);
   return { name: file.name, dataUrl };
 }
 
