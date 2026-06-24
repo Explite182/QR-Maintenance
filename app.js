@@ -1202,7 +1202,10 @@ els.assetImportBtn?.addEventListener("click", async () => {
 });
 
 els.assetImportFile?.addEventListener("change", () => {
-  if (els.assetImportStatus) els.assetImportStatus.textContent = "";
+  const file = els.assetImportFile?.files?.[0];
+  if (els.assetImportStatus) {
+    els.assetImportStatus.textContent = file ? `Ready to import ${file.name}.` : "";
+  }
   if (els.assetImportPreview) els.assetImportPreview.innerHTML = "";
 });
 
@@ -2430,109 +2433,130 @@ async function importEquipmentCsv() {
   const file = els.assetImportFile?.files?.[0];
   if (!file) {
     setAssetImportStatus("Choose a CSV file first.");
+    alert("Choose a CSV file first.");
     return;
   }
 
-  setAssetImportStatus("Reading CSV...");
-  const text = await file.text();
-  const rows = parseCsvRows(text);
-  if (!rows.length) {
-    setAssetImportStatus("No equipment rows were found in that CSV.");
-    return;
+  const importButton = els.assetImportBtn;
+  if (importButton) {
+    importButton.disabled = true;
+    importButton.textContent = "Importing...";
   }
 
-  const createdAt = new Date().toISOString();
-  const stats = {
-    imported: 0,
-    skipped: 0,
-    duplicates: 0,
-    locationsCreated: 0,
-    customersCreated: 0,
-    errors: []
-  };
-  const importedAssets = [];
-
-  rows.forEach((row, index) => {
-    const rowNumber = index + 2;
-    const customerName = findCsvValue(row, ["customer", "customer name", "client", "company", "account"]);
-    const locationName = findCsvValue(row, ["location", "location name", "site", "building", "facility"]);
-    const equipmentName = findCsvValue(row, ["equipment name", "asset name", "equipment", "asset", "name"]);
-
-    if (!equipmentName) {
-      skipImportRow(stats, rowNumber, "missing equipment name");
+  try {
+    setAssetImportStatus("Reading CSV...");
+    const text = await file.text();
+    const rows = parseCsvRows(text);
+    if (!rows.length) {
+      setAssetImportStatus("No equipment rows were found in that CSV.");
+      alert("No equipment rows were found in that CSV.");
       return;
     }
 
-    const customer = findOrCreateImportCustomer(customerName, stats);
-    if (!customer) {
-      skipImportRow(stats, rowNumber, "customer is missing or not assigned to this user");
-      return;
-    }
-
-    const locationRecord = findOrCreateImportLocation(locationName, customer.id, stats);
-    if (!locationRecord) {
-      skipImportRow(stats, rowNumber, "location is missing");
-      return;
-    }
-
-    const serial = findCsvValue(row, ["serial", "serial number", "serial no", "serial #", "asset tag", "tag"]);
-    if (isDuplicateImportAsset(customer.id, locationRecord.id, equipmentName, serial)) {
-      stats.duplicates += 1;
-      stats.skipped += 1;
-      return;
-    }
-
-    const templateName = findCsvValue(row, ["template", "maintenance template", "pm template"]);
-    const template = findTemplateByName(templateName) || state.templates[0];
-    const asset = {
-      id: crypto.randomUUID(),
-      customerId: customer.id,
-      locationId: locationRecord.id,
-      templateId: template?.id || "",
-      name: equipmentName,
-      nextPmDate: normalizeCsvDate(findCsvValue(row, ["next pm date", "next pm", "next maintenance", "next maintenance date", "next service date"])),
-      manufacturer: findCsvValue(row, ["manufacturer", "make", "mfg"]),
-      model: findCsvValue(row, ["model", "model number", "model no"]),
-      serial,
-      installDate: normalizeCsvDate(findCsvValue(row, ["install date", "installed", "installation date"])),
-      type: findCsvValue(row, ["equipment type", "asset type", "type", "category"]),
-      criticality: normalizeCriticality(findCsvValue(row, ["criticality", "priority", "risk"])),
-      documentUrl: findCsvValue(row, ["manual link", "document link", "manual url", "url"]),
-      manualFile: null,
-      notes: findCsvValue(row, ["notes", "description", "comments", "details"]),
-      photo: null,
-      frequencyDays: normalizeFrequencyDays(findCsvValue(row, ["pm frequency days", "frequency days", "maintenance frequency days", "pm frequency", "frequency"])),
-      createdAt,
-      history: []
+    const createdAt = new Date().toISOString();
+    const stats = {
+      imported: 0,
+      skipped: 0,
+      duplicates: 0,
+      locationsCreated: 0,
+      customersCreated: 0,
+      errors: []
     };
+    const importedAssets = [];
 
-    state.assets.unshift(asset);
-    importedAssets.push(asset);
-    stats.imported += 1;
-  });
+    rows.forEach((row, index) => {
+      const rowNumber = index + 2;
+      const customerName = findCsvValue(row, ["customer", "customer name", "client", "company", "account"]);
+      const locationName = findCsvValue(row, ["location", "location name", "site", "building", "facility"]);
+      const equipmentName = findCsvValue(row, ["equipment name", "asset name", "equipment", "asset", "name"]);
 
-  if (!stats.imported) {
-    setAssetImportStatus(`No equipment imported. ${stats.skipped} row(s) skipped.`);
+      if (!equipmentName) {
+        skipImportRow(stats, rowNumber, "missing equipment name");
+        return;
+      }
+
+      const customer = findOrCreateImportCustomer(customerName, stats);
+      if (!customer) {
+        skipImportRow(stats, rowNumber, "customer is missing or not assigned to this user");
+        return;
+      }
+
+      const locationRecord = findOrCreateImportLocation(locationName, customer.id, stats);
+      if (!locationRecord) {
+        skipImportRow(stats, rowNumber, "location is missing");
+        return;
+      }
+
+      const serial = findCsvValue(row, ["serial", "serial number", "serial no", "serial #", "asset tag", "tag"]);
+      if (isDuplicateImportAsset(customer.id, locationRecord.id, equipmentName, serial)) {
+        stats.duplicates += 1;
+        stats.skipped += 1;
+        return;
+      }
+
+      const templateName = findCsvValue(row, ["template", "maintenance template", "pm template"]);
+      const template = findTemplateByName(templateName) || state.templates[0];
+      const asset = {
+        id: crypto.randomUUID(),
+        customerId: customer.id,
+        locationId: locationRecord.id,
+        templateId: template?.id || "",
+        name: equipmentName,
+        nextPmDate: normalizeCsvDate(findCsvValue(row, ["next pm date", "next pm", "next maintenance", "next maintenance date", "next service date"])),
+        manufacturer: findCsvValue(row, ["manufacturer", "make", "mfg"]),
+        model: findCsvValue(row, ["model", "model number", "model no"]),
+        serial,
+        installDate: normalizeCsvDate(findCsvValue(row, ["install date", "installed", "installation date"])),
+        type: findCsvValue(row, ["equipment type", "asset type", "type", "category"]),
+        criticality: normalizeCriticality(findCsvValue(row, ["criticality", "priority", "risk"])),
+        documentUrl: findCsvValue(row, ["manual link", "document link", "manual url", "url"]),
+        manualFile: null,
+        notes: findCsvValue(row, ["notes", "description", "comments", "details"]),
+        photo: null,
+        frequencyDays: normalizeFrequencyDays(findCsvValue(row, ["pm frequency days", "frequency days", "maintenance frequency days", "pm frequency", "frequency"])),
+        createdAt,
+        history: []
+      };
+
+      state.assets.unshift(asset);
+      importedAssets.push(asset);
+      stats.imported += 1;
+    });
+
+    if (!stats.imported) {
+      const message = `No equipment imported. ${stats.skipped} row(s) skipped.`;
+      setAssetImportStatus(message);
+      renderAssetImportPreview(stats);
+      alert(message);
+      return;
+    }
+
+    const firstAsset = importedAssets[0];
+    selectedId = firstAsset.id;
+    selectedCustomerId = firstAsset.customerId;
+    selectedLocationId = "all";
+    addActivity(
+      "Equipment imported",
+      `${stats.imported} equipment record(s) from ${file.name}`
+    );
+    saveState();
+    if (els.assetImportFile) els.assetImportFile.value = "";
+    const message = `Imported ${stats.imported} equipment record(s). ${stats.skipped} skipped. ${stats.locationsCreated} location(s) created.`;
+    setAssetImportStatus(message);
     renderAssetImportPreview(stats);
-    return;
+    alert(message);
+    location.hash = `asset/${firstAsset.id}`;
+    render();
+  } catch (error) {
+    console.warn("Equipment import failed.", error);
+    setAssetImportStatus("Import failed. Check that this is a valid CSV file.");
+    alert("Import failed. Check that this is a valid CSV file.");
+  } finally {
+    if (importButton) {
+      importButton.disabled = !canAddEquipment();
+      importButton.textContent = "Import Equipment";
+    }
   }
-
-  const firstAsset = importedAssets[0];
-  selectedId = firstAsset.id;
-  selectedCustomerId = firstAsset.customerId;
-  selectedLocationId = "all";
-  addActivity(
-    "Equipment imported",
-    `${stats.imported} equipment record(s) from ${file.name}`
-  );
-  saveState();
-  if (els.assetImportFile) els.assetImportFile.value = "";
-  setAssetImportStatus(
-    `Imported ${stats.imported} equipment record(s). ${stats.skipped} skipped. ${stats.locationsCreated} location(s) created.`
-  );
-  renderAssetImportPreview(stats);
-  location.hash = `asset/${firstAsset.id}`;
-  render();
 }
 
 function setAssetImportStatus(message) {
