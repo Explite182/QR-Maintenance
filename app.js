@@ -105,6 +105,12 @@ const els = {
   newIssueNotes: document.getElementById("newIssueNotes"),
   newIssuePhoto: document.getElementById("newIssuePhoto"),
   newIssueStatus: document.getElementById("newIssueStatus"),
+  issueImportDrawer: document.getElementById("issueImportDrawer"),
+  issueImportFile: document.getElementById("issueImportFile"),
+  issueImportCreateLocations: document.getElementById("issueImportCreateLocations"),
+  issueImportBtn: document.getElementById("issueImportBtn"),
+  issueImportStatus: document.getElementById("issueImportStatus"),
+  issueImportPreview: document.getElementById("issueImportPreview"),
   setupDrawer: document.getElementById("setupDrawer"),
   userDrawer: document.getElementById("userDrawer"),
   contractorDrawer: document.getElementById("contractorDrawer"),
@@ -1207,6 +1213,18 @@ els.assetImportFile?.addEventListener("change", () => {
     els.assetImportStatus.textContent = file ? `Ready to import ${file.name}.` : "";
   }
   if (els.assetImportPreview) els.assetImportPreview.innerHTML = "";
+});
+
+els.issueImportBtn?.addEventListener("click", async () => {
+  await importIssuesCsv();
+});
+
+els.issueImportFile?.addEventListener("change", () => {
+  const file = els.issueImportFile?.files?.[0];
+  if (els.issueImportStatus) {
+    els.issueImportStatus.textContent = file ? `Ready to import ${file.name}.` : "";
+  }
+  if (els.issueImportPreview) els.issueImportPreview.innerHTML = "";
 });
 
 els.pmForm.addEventListener("submit", async (event) => {
@@ -2396,6 +2414,7 @@ function renderCustomerOptions() {
   els.locationForm.querySelector("button").disabled = !setupAllowed || !state.customers.length;
   els.assetForm.querySelector("button").disabled = !addEquipmentAllowed || !customers.length || !state.locations.length || !state.templates.length;
   if (els.assetImportBtn) els.assetImportBtn.disabled = !addEquipmentAllowed || !customers.length || !state.templates.length;
+  if (els.issueImportBtn) els.issueImportBtn.disabled = !canManageWorkOrders() || !customers.length;
 }
 
 function renderTemplateOptions() {
@@ -2559,14 +2578,164 @@ async function importEquipmentCsv() {
   }
 }
 
+async function importIssuesCsv() {
+  if (!canManageWorkOrders()) return;
+  const file = els.issueImportFile?.files?.[0];
+  if (!file) {
+    setIssueImportStatus("Choose a CSV file first.");
+    alert("Choose a CSV file first.");
+    return;
+  }
+
+  const importButton = els.issueImportBtn;
+  if (importButton) {
+    importButton.disabled = true;
+    importButton.textContent = "Importing...";
+  }
+
+  try {
+    setIssueImportStatus("Reading CSV...");
+    const text = await file.text();
+    const rows = parseCsvRows(text);
+    if (!rows.length) {
+      setIssueImportStatus("No issue rows were found in that CSV.");
+      alert("No issue rows were found in that CSV.");
+      return;
+    }
+
+    const stats = {
+      imported: 0,
+      skipped: 0,
+      locationsCreated: 0,
+      areaIssues: 0,
+      equipmentIssues: 0,
+      closed: 0,
+      errors: []
+    };
+    const importedIssues = [];
+
+    rows.forEach((row, index) => {
+      const rowNumber = index + 2;
+      const customerName = findCsvValue(row, ["customer", "customer name", "client", "company", "account"]);
+      const locationName = findCsvValue(row, ["location", "location name", "site", "building", "facility"]);
+      const equipmentName = findCsvValue(row, ["equipment name", "asset name", "equipment", "asset"]);
+      const areaName = findCsvValue(row, ["area", "area name", "room", "zone"]);
+      const appliesTo = findCsvValue(row, ["applies to", "type", "issue applies to"]);
+      const title = findCsvValue(row, ["issue title", "title", "problem", "summary", "request"]);
+
+      if (!title) {
+        skipImportRow(stats, rowNumber, "missing issue title");
+        return;
+      }
+
+      const customer = findOrCreateImportCustomer(customerName, stats);
+      if (!customer) {
+        skipImportRow(stats, rowNumber, "customer is missing or not assigned to this user");
+        return;
+      }
+
+      const locationRecord = findOrCreateIssueImportLocation(locationName, customer.id, stats);
+      if (!locationRecord) {
+        skipImportRow(stats, rowNumber, "location is missing");
+        return;
+      }
+
+      const isAreaIssue = sameText(appliesTo, "area") || (!equipmentName && Boolean(areaName));
+      const asset = isAreaIssue ? null : findImportAsset(customer.id, locationRecord.id, equipmentName);
+      if (!isAreaIssue && !asset) {
+        skipImportRow(stats, rowNumber, "equipment was not found");
+        return;
+      }
+
+      const status = normalizeIssueStatus(findCsvValue(row, ["status", "issue status", "state"]));
+      const assignedUser = findImportUser(findCsvValue(row, ["assigned to", "assignee", "technician", "manager"]), customer.id);
+      const createdAt = new Date().toISOString();
+      const resolvedAt = status === "Closed" ? createdAt : "";
+      const issue = {
+        id: crypto.randomUUID(),
+        issueNumber: nextImportedIssueNumber(findCsvValue(row, ["sw number", "issue number", "ticket number", "work order number"])),
+        assetId: asset?.id || "",
+        customerId: customer.id,
+        locationId: locationRecord.id,
+        areaName: isAreaIssue ? (areaName || locationRecord.name) : "",
+        source: isAreaIssue ? "Imported area issue" : "Imported issue",
+        title: title.trim(),
+        priority: normalizePriority(findCsvValue(row, ["priority", "criticality", "risk"])),
+        status,
+        assignedUserId: assignedUser?.id || "",
+        assignedUserName: assignedUser?.name || findCsvValue(row, ["assigned to", "assignee", "technician", "manager"]),
+        dueAt: normalizeImportedIssueDueDate(findCsvValue(row, ["due date", "due", "required by", "target date"]), status),
+        notes: findCsvValue(row, ["notes", "description", "comments", "details"]) || "Imported from issue CSV.",
+        photo: null,
+        history: [],
+        createdAt,
+        updatedAt: createdAt,
+        resolvedAt
+      };
+
+      addWorkOrderHistory(issue, "Imported", `${formatIssueNumber(issue)} - ${issue.title}`);
+      state.workOrders.unshift(issue);
+      importedIssues.push(issue);
+      stats.imported += 1;
+      if (isAreaIssue) stats.areaIssues += 1;
+      else stats.equipmentIssues += 1;
+      if (status === "Closed") stats.closed += 1;
+    });
+
+    if (!stats.imported) {
+      const message = `No issues imported. ${stats.skipped} row(s) skipped.`;
+      setIssueImportStatus(message);
+      renderIssueImportPreview(stats);
+      alert(message);
+      return;
+    }
+
+    const firstIssue = importedIssues[0];
+    selectedCustomerId = firstIssue.customerId;
+    selectedLocationId = "all";
+    selectedId = firstIssue.assetId || selectedId;
+    workOrderViewFilter = "active";
+    addActivity("Issues imported", `${stats.imported} issue record(s) from ${file.name}`);
+    saveState();
+    if (els.issueImportFile) els.issueImportFile.value = "";
+    const message = `Imported ${stats.imported} issue record(s). ${stats.skipped} skipped. ${stats.equipmentIssues} equipment issue(s), ${stats.areaIssues} area issue(s), ${stats.closed} closed.`;
+    setIssueImportStatus(message);
+    renderIssueImportPreview(stats);
+    alert(message);
+    openPanel("workOrdersPanel");
+    render();
+  } catch (error) {
+    console.warn("Issue import failed.", error);
+    setIssueImportStatus("Import failed. Check that this is a valid CSV file.");
+    alert("Import failed. Check that this is a valid CSV file.");
+  } finally {
+    if (importButton) {
+      importButton.disabled = !canManageWorkOrders();
+      importButton.textContent = "Import Issues";
+    }
+  }
+}
+
 function setAssetImportStatus(message) {
   if (els.assetImportStatus) els.assetImportStatus.textContent = message;
+}
+
+function setIssueImportStatus(message) {
+  if (els.issueImportStatus) els.issueImportStatus.textContent = message;
 }
 
 function renderAssetImportPreview(stats) {
   if (!els.assetImportPreview) return;
   const messages = stats.errors.slice(0, 8);
   els.assetImportPreview.innerHTML = messages.length
+    ? messages.map((message) => `<div>${escapeHtml(message)}</div>`).join("")
+    : "";
+}
+
+function renderIssueImportPreview(stats) {
+  if (!els.issueImportPreview) return;
+  const messages = stats.errors.slice(0, 8);
+  els.issueImportPreview.innerHTML = messages.length
     ? messages.map((message) => `<div>${escapeHtml(message)}</div>`).join("")
     : "";
 }
@@ -2694,6 +2863,76 @@ function findOrCreateImportLocation(name, customerId, stats) {
   state.locations.push(locationRecord);
   stats.locationsCreated += 1;
   return locationRecord;
+}
+
+function findOrCreateIssueImportLocation(name, customerId, stats) {
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return null;
+  const existing = state.locations.find((locationRecord) =>
+    locationRecord.customerId === customerId && sameText(locationRecord.name, cleanName)
+  );
+  if (existing) return existing;
+  if (!els.issueImportCreateLocations?.checked) return null;
+
+  const locationRecord = {
+    id: crypto.randomUUID(),
+    customerId,
+    name: cleanName,
+    createdAt: new Date().toISOString(),
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    contactNotes: ""
+  };
+  state.locations.push(locationRecord);
+  stats.locationsCreated += 1;
+  return locationRecord;
+}
+
+function findImportAsset(customerId, locationId, equipmentName) {
+  const cleanName = String(equipmentName || "").trim();
+  if (!cleanName) return null;
+  return state.assets.find((asset) =>
+    asset.customerId === customerId &&
+    asset.locationId === locationId &&
+    sameText(asset.name, cleanName)
+  ) || state.assets.find((asset) =>
+    asset.customerId === customerId &&
+    sameText(asset.name, cleanName)
+  ) || null;
+}
+
+function findImportUser(name, customerId) {
+  const cleanName = String(name || "").trim();
+  if (!cleanName || sameText(cleanName, "unassigned")) return null;
+  return state.users.find((user) =>
+    sameText(user.name, cleanName) || sameText(user.username, cleanName)
+  ) || state.users.find((user) =>
+    user.customerId === customerId && cleanName.toLowerCase().includes(String(user.name || "").toLowerCase())
+  ) || null;
+}
+
+function normalizeIssueStatus(value) {
+  const clean = String(value || "").trim().toLowerCase();
+  if (["closed", "complete", "completed", "done"].includes(clean)) return "Closed";
+  if (["resolved"].includes(clean)) return "Resolved";
+  if (["in progress", "started", "working"].includes(clean)) return "In progress";
+  if (["waiting parts", "waiting for parts", "parts waiting", "awaiting parts"].includes(clean)) return "Waiting parts";
+  return "Open";
+}
+
+function normalizeImportedIssueDueDate(value, status = "Open") {
+  const cleanDate = normalizeCsvDate(value);
+  if (cleanDate) return parseLocalDate(cleanDate).toISOString();
+  return addDays(new Date(), status === "Waiting parts" ? 14 : 7).toISOString();
+}
+
+function nextImportedIssueNumber(value) {
+  const numeric = Number(String(value || "").replace(/\D/g, ""));
+  if (Number.isFinite(numeric) && numeric > 0 && !state.workOrders.some((item) => Number(item.issueNumber) === numeric)) {
+    return numeric;
+  }
+  return nextIssueNumber();
 }
 
 function isDuplicateImportAsset(customerId, locationId, name, serial) {

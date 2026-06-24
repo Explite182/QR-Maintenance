@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260624-0809">
+  <link rel="stylesheet" href="styles.css?v=20260624-0836">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -535,6 +535,23 @@
           <button type="submit" class="primary">Create Issue</button>
           <p id="newIssueStatus" class="inline-status"></p>
         </form>
+        <details id="issueImportDrawer" class="asset-import-drawer">
+          <summary>Import Issues CSV</summary>
+          <div class="asset-import-body">
+            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment Name, Area, Applies To, Issue Title, Status, Priority, Assigned To, Due Date, and Notes.</p>
+            <label>
+              CSV file
+              <input id="issueImportFile" type="file" accept=".csv,text/csv">
+            </label>
+            <label class="inline-check">
+              <input id="issueImportCreateLocations" type="checkbox" checked>
+              Create missing locations
+            </label>
+            <button id="issueImportBtn" type="button" class="secondary">Import Issues</button>
+            <p id="issueImportStatus" class="inline-status"></p>
+            <div id="issueImportPreview" class="asset-import-preview"></div>
+          </div>
+        </details>
       </details>
 
       <section id="dashboardPanel" class="dashboard-panel" aria-label="Maintenance summary">
@@ -1031,7 +1048,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260624-0809"></script>
+  <script src="app.js?v=20260624-0836"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
