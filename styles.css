@@ -2099,6 +2099,57 @@ textarea {
   font-weight: 800;
 }
 
+.work-order-drawer {
+  display: block;
+}
+
+.work-order-drawer > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 900;
+}
+
+.work-order-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.work-order-drawer > summary strong {
+  display: block;
+}
+
+.work-order-drawer > summary span:not(.history-open-label) {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.work-order-drawer > summary .assigned-label {
+  color: var(--accent);
+  font-weight: 850;
+}
+
+.work-order-drawer[open] > summary {
+  margin-bottom: 8px;
+}
+
+.work-order-drawer[open] > summary .history-open-label {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: #b7d8d1;
+}
+
+.work-order-header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 8px 0;
+}
+
 .work-order-assignment {
   display: grid;
   gap: 5px;
@@ -2328,19 +2379,77 @@ textarea {
 }
 
 @media (max-width: 840px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    font-size: 14px;
+  }
+
   .app-header,
   .header-actions {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .app-header {
+    position: static;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .app-header h1 {
+    font-size: 24px;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+  }
+
+  .header-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .user-switcher,
+  .role-picker,
+  .user-chip {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .user-chip {
+    border-radius: 14px;
+  }
+
+  #logoutBtn {
+    width: 100%;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
+    min-height: auto;
   }
 
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    padding: 10px 12px;
+  }
+
+  .sidebar-section {
+    margin-top: 8px;
+  }
+
+  .quick-add,
+  .setup-drawer {
+    padding: 10px;
+    border-radius: 12px;
   }
 
   .asset-heading,
@@ -2357,12 +2466,59 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .workspace {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .filters {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  label {
+    font-size: 12px;
+  }
+
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    padding: 9px 10px;
+    font-size: 14px;
+  }
+
+  button,
+  a.secondary {
+    min-height: 38px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+
+  .global-search-results {
+    position: fixed;
+    z-index: 60;
+    top: 96px;
+    right: 12px;
+    left: 12px;
+    max-height: min(70vh, 520px);
+  }
+
   .work-header {
     align-items: stretch;
     flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .work-header h2 {
+    font-size: 20px;
   }
 
   .new-action-bar {
+    display: grid;
+    grid-template-columns: 1fr;
     justify-content: stretch;
   }
 
@@ -2371,9 +2527,69 @@ textarea {
   }
 
   .work-create-drawer {
+    position: fixed;
+    top: 12px;
     right: 0;
     left: 0;
-    width: auto;
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    margin: 0 auto;
+  }
+
+  .dashboard-panel {
+    gap: 12px;
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .dashboard-panel h2 {
+    font-size: 20px;
+  }
+
+  .dashboard {
+    gap: 8px;
+  }
+
+  .metric-card {
+    min-height: 72px;
+    padding: 12px;
+  }
+
+  .metric-card span {
+    font-size: 24px;
+  }
+
+  .panel-heading,
+  .panel-title-actions {
+    align-items: flex-start;
+  }
+
+  .asset-table-panel,
+  .work-orders-panel,
+  .asset-panel,
+  .empty-state {
+    border-radius: 14px;
+  }
+
+  .work-order-item,
+  .history-item {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .work-order-drawer > summary {
+    align-items: flex-start;
+  }
+
+  .work-order-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-actions button,
+  .work-order-actions .secondary,
+  .work-order-actions .primary {
+    width: 100%;
   }
 
   .asset-photo-card {

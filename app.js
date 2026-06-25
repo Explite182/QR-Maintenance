@@ -1095,13 +1095,13 @@ document.addEventListener("click", (event) => {
 });
 
 els.newIssueBtn?.addEventListener("click", () => {
-  if (!canManageWorkOrders()) return;
+  if (!canCreateWorkOrders()) return;
   renderNewIssueFormOptions();
   toggleTopActionDrawer(els.newIssueDrawer);
 });
 
 els.newServiceRequestBtn?.addEventListener("click", () => {
-  if (!canCreateServiceRequests() || !canManageWorkOrders()) return;
+  if (!canCreateServiceRequests()) return;
   renderServiceRequestFormOptions();
   toggleTopActionDrawer(els.serviceRequestCreateDrawer);
 });
@@ -2042,7 +2042,8 @@ function renderRole() {
   const canCreateCustomerRecords = canCreateCustomers();
   const canManageTemplates = canManageTemplateSetup();
   const canAddAssets = canAddEquipment();
-  const canUseNewActions = currentRole === "Admin" || currentRole === "Manager";
+  const canCreateIssues = canCreateWorkOrders();
+  const canUseNewActions = canAddAssets || canCreateIssues || canCreateServiceRequests();
   const isCustomer = currentRole === "Customer";
   const hasSidebarAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed;
   els.appShell?.classList.toggle("no-sidebar", !hasSidebarAccess);
@@ -2052,19 +2053,19 @@ function renderRole() {
   els.workHeader?.classList.toggle("hidden", !currentUser || isCustomer);
   els.newActionBar?.classList.toggle("hidden", !canUseNewActions);
   els.newEquipmentBtn?.classList.toggle("hidden", !canAddAssets);
-  els.newIssueBtn?.classList.toggle("hidden", !canManageWorkOrders());
-  els.newServiceRequestBtn?.classList.toggle("hidden", !canUseNewActions || !canCreateServiceRequests());
+  els.newIssueBtn?.classList.toggle("hidden", !canCreateIssues);
+  els.newServiceRequestBtn?.classList.toggle("hidden", !canCreateServiceRequests());
   if (els.newEquipmentBtn) els.newEquipmentBtn.disabled = !canAddAssets;
-  if (els.newIssueBtn) els.newIssueBtn.disabled = !canManageWorkOrders();
-  if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canUseNewActions || !canCreateServiceRequests();
+  if (els.newIssueBtn) els.newIssueBtn.disabled = !canCreateIssues;
+  if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canCreateServiceRequests();
   els.adminToolsDrawer.classList.toggle("hidden", !hasSidebarAccess);
   if (!hasSidebarAccess) els.adminToolsDrawer.open = false;
   els.quickAddDrawer.classList.toggle("hidden", !canAddAssets);
   if (!canAddAssets) els.quickAddDrawer.open = false;
-  els.newIssueDrawer?.classList.toggle("hidden", !canManageWorkOrders());
-  if (!canManageWorkOrders() && els.newIssueDrawer) els.newIssueDrawer.open = false;
-  els.serviceRequestCreateDrawer?.classList.toggle("hidden", !canUseNewActions || !canCreateServiceRequests());
-  if ((!canUseNewActions || !canCreateServiceRequests()) && els.serviceRequestCreateDrawer) els.serviceRequestCreateDrawer.open = false;
+  els.newIssueDrawer?.classList.toggle("hidden", !canCreateIssues);
+  if (!canCreateIssues && els.newIssueDrawer) els.newIssueDrawer.open = false;
+  els.serviceRequestCreateDrawer?.classList.toggle("hidden", !canCreateServiceRequests());
+  if (!canCreateServiceRequests() && els.serviceRequestCreateDrawer) els.serviceRequestCreateDrawer.open = false;
   els.setupDrawer.classList.toggle("hidden", setupDisabled);
   if (setupDisabled) els.setupDrawer.open = false;
   els.backupDrawer.classList.toggle("hidden", !isAdmin);
@@ -3417,7 +3418,7 @@ function renderScanActionPanel(asset) {
       <button type="button" class="secondary" data-scroll-target="pmForm">Checklist</button>
       <button type="button" class="secondary" data-scroll-target="assetGalleryPanel">Photos</button>
     </div>
-    ${canManageWorkOrders() ? renderManualIssueForm(asset) : ""}
+    ${canCreateWorkOrders() ? renderManualIssueForm(asset) : ""}
   `;
 }
 
@@ -3565,32 +3566,34 @@ function renderCompletedPms() {
 function renderCompletedIssueItem(record) {
   if (record.type === "workOrder") {
     return `
-      <article class="work-order-item completed-pm-item">
-        <header>
+      <details class="work-order-item work-order-drawer completed-pm-item">
+        <summary>
           <div>
             <strong>${escapeHtml(formatIssueNumber(record.workOrder))} - ${escapeHtml(record.workOrder.title || "Completed issue")}</strong>
             <span>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</span>
           </div>
-          ${record.asset ? `<button type="button" class="secondary mini" data-completed-pm-asset="${escapeAttribute(record.asset.id)}">View Equipment</button>` : ""}
-        </header>
+          <span class="history-open-label">Open</span>
+        </summary>
         <p><strong>${escapeHtml(record.workOrder.status || "Closed")}</strong> ${escapeHtml(record.workOrder.priority || "Medium")} priority | Completed ${escapeHtml(formatDateTime(new Date(record.completedAt)))}</p>
         <p>${escapeHtml(record.workOrder.notes || "No notes entered.")}</p>
-      </article>
+        ${record.asset ? `<button type="button" class="secondary mini" data-completed-pm-asset="${escapeAttribute(record.asset.id)}">View Equipment</button>` : ""}
+      </details>
     `;
   }
 
   return `
-    <article class="work-order-item completed-pm-item">
-      <header>
+    <details class="work-order-item work-order-drawer completed-pm-item">
+      <summary>
         <div>
           <strong>${escapeHtml(formatPmNumber(record.history))} - ${escapeHtml(record.asset.name)}</strong>
           <span>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</span>
         </div>
-        <button type="button" class="secondary mini" data-completed-pm-asset="${escapeAttribute(record.asset.id)}">View Equipment</button>
-      </header>
+        <span class="history-open-label">Open</span>
+      </summary>
       <p><strong>${escapeHtml(record.history.result || "Completed")}</strong> by ${escapeHtml(record.history.technician || "No technician entered")} on ${escapeHtml(formatDateTime(new Date(record.history.completedAt)))}</p>
       <p>${escapeHtml(record.history.notes || "No notes entered.")}</p>
-    </article>
+      <button type="button" class="secondary mini" data-completed-pm-asset="${escapeAttribute(record.asset.id)}">View Equipment</button>
+    </details>
   `;
 }
 
@@ -3774,7 +3777,7 @@ function updateNewIssueSubmitState() {
   const hasValidTarget = isAreaIssue
     ? Boolean(els.newIssueArea?.value.trim())
     : Boolean(els.newIssueAsset?.value);
-  submitButton.disabled = !hasCustomer || !hasLocation || !hasValidTarget || !canManageWorkOrders();
+  submitButton.disabled = !hasCustomer || !hasLocation || !hasValidTarget || !canCreateWorkOrders();
 }
 
 function syncNewIssueTitle() {
@@ -3875,14 +3878,15 @@ function renderServiceRequestItem(request) {
     : "";
   const requestHistory = renderServiceRequestHistory(request);
   return `
-    <article class="work-order-item service-request-item">
-      <header>
+    <details class="work-order-item work-order-drawer service-request-item">
+      <summary>
         <div>
           <strong>${escapeHtml(formatServiceRequestNumber(request))} - ${escapeHtml(request.title || "Service request")}</strong>
           <span><span class="status-badge ${statusClass}">${escapeHtml(request.status || "New")}</span> ${escapeHtml(request.priority || "Medium")} priority | Preferred ${request.preferredDate ? escapeHtml(formatDate(parseLocalDate(request.preferredDate))) : "Not set"}</span>
           <span class="assigned-label">Assigned to ${escapeHtml(assignedLabel)}</span>
         </div>
-      </header>
+        <span class="history-open-label">Open</span>
+      </summary>
       ${canEdit ? `<label class="work-order-assignment">Assign to<select data-service-request-assignee="${escapeAttribute(request.id)}">${assigneeOptions}</select></label>` : ""}
       <p>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")} | ${escapeHtml(asset?.name || "No equipment selected")}</p>
       <p>Requested by ${escapeHtml(request.requestedBy || "Not entered")}. ${escapeHtml(request.notes || "No details entered.")}</p>
@@ -3904,7 +3908,7 @@ function renderServiceRequestItem(request) {
         </div>
       ` : ""}
       ${requestHistory}
-    </article>
+    </details>
   `;
 }
 
@@ -4429,11 +4433,12 @@ function renderWorkOrderItem(item) {
   const customer = getCustomer(item.customerId);
   const locationRecord = getLocation(item.locationId);
   const assignedLabel = item.assignedUserName || getUser(item.assignedUserId)?.name || getUser(item.assignedUserId)?.username || "Unassigned";
+  const canEdit = canManageWorkOrders();
   const assignmentControl = renderWorkOrderAssignmentControl(item);
   const assetAction = asset
     ? `<button class="secondary mini" type="button" data-asset-link="${item.assetId}">View Equipment</button>`
     : "";
-  const reportActions = `
+  const reportActions = canEdit ? `
     <details class="inline-edit-drawer">
       <summary>Edit</summary>
       ${renderWorkOrderEditForm(item)}
@@ -4441,8 +4446,8 @@ function renderWorkOrderItem(item) {
     <button class="secondary mini" type="button" data-work-order-pdf="${escapeAttribute(item.id)}">PDF Form</button>
     <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Issue</button>
     <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
-  `;
-  const actions = item.status === "Closed" ? `
+  ` : "";
+  const actions = !canEdit ? "" : item.status === "Closed" ? `
     <div class="work-order-actions">
       ${reportActions}
       <button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>
@@ -4467,22 +4472,23 @@ function renderWorkOrderItem(item) {
           ? "badge-danger"
           : "badge-warn";
   return `
-    <article class="work-order-item">
-      <header>
+    <details class="work-order-item work-order-drawer">
+      <summary>
         <div>
           <strong>${escapeHtml(formatIssueNumber(item))} - ${escapeHtml(item.title)}</strong>
           <span><span class="status-badge ${statusClass}">${escapeHtml(item.status)}</span> ${escapeHtml(item.priority)} priority | Due ${formatDate(new Date(item.dueAt))}</span>
           <span class="assigned-label">Assigned to ${escapeHtml(assignedLabel)}</span>
         </div>
-        ${assetAction}
-      </header>
+        <span class="history-open-label">Open</span>
+      </summary>
+      ${assetAction ? `<div class="work-order-header-actions">${assetAction}</div>` : ""}
       ${assignmentControl}
       <p>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")} | ${escapeHtml(asset?.name || item.areaName || "Area report")}</p>
       <p>${escapeHtml(item.notes)}</p>
       ${item.photo ? `<img class="history-photo" alt="Issue report photo" src="${item.photo.dataUrl}">` : ""}
       ${actions}
       ${renderWorkOrderHistory(item)}
-    </article>
+    </details>
   `;
 }
 
@@ -5475,7 +5481,7 @@ function createWorkOrderFromPm(asset, historyItem) {
 }
 
 function createManualIssueForAsset(asset, issueData = {}) {
-  if (!canManageWorkOrders() || !canSeeAsset(asset)) return;
+  if (!canCreateWorkOrders() || !canSeeAsset(asset)) return;
   const title = issueData.title || `Issue: ${asset.name}`;
   if (!title.trim()) return;
   const priority = normalizePriority(issueData.priority);
@@ -5509,7 +5515,7 @@ function createManualIssueForAsset(asset, issueData = {}) {
 }
 
 function createManualIssueForArea(customerId, locationId, areaName, issueData = {}) {
-  if (!canManageWorkOrders() || !canSeeLocation(locationId, customerId)) return;
+  if (!canCreateWorkOrders() || !canSeeLocation(locationId, customerId)) return;
   const locationRecord = getLocation(locationId);
   if (!locationRecord || locationRecord.customerId !== customerId) return;
   const title = issueData.title || `Issue: ${areaName || locationRecord.name}`;
@@ -5546,7 +5552,7 @@ function createManualIssueForArea(customerId, locationId, areaName, issueData = 
 }
 
 async function createIssueFromTopAction() {
-  if (!els.newIssueForm || !canManageWorkOrders()) return;
+  if (!els.newIssueForm || !canCreateWorkOrders()) return;
   const isAreaIssue = Boolean(els.newIssueTargetArea?.checked);
   const asset = getAsset(els.newIssueAsset?.value);
   const customerId = els.newIssueCustomer?.value || "";
@@ -5807,7 +5813,7 @@ function formatServiceRequestNumber(item) {
 }
 
 function canManageSetup() {
-  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId));
+  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId);
 }
 
 function canCreateCustomers() {
@@ -5824,7 +5830,7 @@ function canManageTemplateSetup() {
 
 function canManageCustomerSetup(customerId) {
   if (currentRole === "Admin") return true;
-  return currentRole === "Manager" && Boolean(currentUser?.customerId) && customerId === currentUser.customerId;
+  return currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
 }
 
 function canManageLocationSetup(locationId, customerId = "") {
@@ -5845,16 +5851,16 @@ function manageableSetupCustomers() {
 }
 
 function canManageUsers() {
-  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId));
+  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId);
 }
 
 function canManageContractors() {
-  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId));
+  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId);
 }
 
 function canManageContractorCustomer(customerId) {
   if (currentRole === "Admin") return true;
-  return currentRole === "Manager" && Boolean(currentUser?.customerId) && customerId === currentUser.customerId;
+  return currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
 }
 
 function canManageContractorRecord(contractor) {
@@ -5942,19 +5948,28 @@ function visibleManagedUsers() {
 }
 
 function canAddEquipment() {
-  return currentRole === "Admin" || currentRole === "Manager";
+  return currentRole === "Admin" || (currentRole === "Manager" && !currentUser?.locationId);
 }
 
 function canCompletePm() {
-  return currentRole === "Admin" || currentRole === "Manager" || currentRole === "Technician" || currentRole === "Customer";
+  return currentRole === "Admin" ||
+    (currentRole === "Manager" && !currentUser?.locationId) ||
+    currentRole === "Technician" ||
+    currentRole === "Customer";
 }
 
 function canManageWorkOrders() {
+  return currentRole === "Admin" || (currentRole === "Manager" && !currentUser?.locationId);
+}
+
+function canCreateWorkOrders() {
   return currentRole === "Admin" || currentRole === "Manager";
 }
 
 function canCreateServiceRequests() {
-  return Boolean(currentUser && visibleCustomers().length);
+  if (!currentUser || !visibleCustomers().length) return false;
+  if (currentRole === "Manager" && currentUser.locationId) return false;
+  return currentRole === "Admin" || currentRole === "Manager";
 }
 
 function canSeeWorkOrder(item) {
