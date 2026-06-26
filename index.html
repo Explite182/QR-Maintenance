@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260625-1140">
+  <link rel="stylesheet" href="styles.css?v=20260625-1815">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -53,11 +53,11 @@
         <p id="loginError" class="login-error"></p>
       </form>
       <div id="loginQrReportPrompt" class="login-qr-report">
-        <strong>Reporting an issue?</strong>
+        <strong>Opening a ticket?</strong>
         <p id="loginQrReportMessage">Send a photo and quick note without logging in.</p>
         <div class="login-qr-actions">
-          <a id="loginQrReportBtn" class="secondary primary-action" href="javascript:(()=>{const p=new URLSearchParams(location.search);p.set('report','1');p.delete('qr');location.href=location.href.split(/[?#]/)[0]+'?'+p.toString();setTimeout(()=>location.reload(),50);})()">Report Equipment Issue</a>
-          <a id="loginQrAreaReportBtn" class="secondary" href="javascript:(()=>{const s=new URLSearchParams(location.search);const p=new URLSearchParams();p.set('report','1');if(s.get('c')&&s.get('l')){p.set('c',s.get('c'));p.set('l',s.get('l'));}else{p.set('a',s.get('a')||'');if(s.get('n'))p.set('n',s.get('n'));if(s.get('c'))p.set('c',s.get('c'));if(s.get('l'))p.set('l',s.get('l'));}location.href=location.href.split(/[?#]/)[0]+'?'+p.toString();setTimeout(()=>location.reload(),50);})()">Report Area Issue</a>
+          <a id="loginQrReportBtn" class="secondary primary-action" href="javascript:(()=>{const p=new URLSearchParams(location.search);p.set('report','1');p.delete('qr');location.href=location.href.split(/[?#]/)[0]+'?'+p.toString();setTimeout(()=>location.reload(),50);})()">Report Equipment Ticket</a>
+          <a id="loginQrAreaReportBtn" class="secondary" href="javascript:(()=>{const s=new URLSearchParams(location.search);const p=new URLSearchParams();p.set('report','1');if(s.get('c')&&s.get('l')){p.set('c',s.get('c'));p.set('l',s.get('l'));}else{p.set('a',s.get('a')||'');if(s.get('n'))p.set('n',s.get('n'));if(s.get('c'))p.set('c',s.get('c'));if(s.get('l'))p.set('l',s.get('l'));}location.href=location.href.split(/[?#]/)[0]+'?'+p.toString();setTimeout(()=>location.reload(),50);})()">Report Area Ticket</a>
         </div>
       </div>
       <form id="firstAdminForm" class="stack hidden">
@@ -98,6 +98,7 @@
               <option value="Customer">Customer</option>
               <option value="Technician">Technician</option>
               <option value="Manager">Manager</option>
+              <option value="Facility Manager">Facility Manager</option>
             </select>
           </label>
           <label>
@@ -244,7 +245,6 @@
         <section>
           <div class="section-title">
             <h2>Users</h2>
-            <span id="userCount">0</span>
           </div>
           <form id="userForm" class="stack compact-form">
             <label>
@@ -265,6 +265,7 @@
                 <option value="Customer">Customer</option>
                 <option value="Technician">Technician</option>
                 <option value="Manager">Manager</option>
+                <option value="Facility Manager">Facility Manager</option>
                 <option value="Admin">Admin</option>
               </select>
             </label>
@@ -278,7 +279,13 @@
             </label>
             <button type="submit">Add User</button>
           </form>
-          <div id="userList" class="user-list"></div>
+          <details class="sidebar-sub-drawer">
+            <summary>
+              <span>Current Users</span>
+              <span id="userCount">0</span>
+            </summary>
+            <div id="userList" class="user-list"></div>
+          </details>
           <div class="section-title access-request-title">
             <h3>Access Requests</h3>
             <span id="accessRequestCount">0</span>
@@ -374,7 +381,7 @@
         </div>
         <div id="newActionBar" class="new-action-bar">
           <button id="newEquipmentBtn" type="button">New Equipment</button>
-          <button id="newIssueBtn" type="button" class="secondary">New Issue</button>
+          <button id="newIssueBtn" type="button" class="secondary">New Ticket</button>
           <button id="newServiceRequestBtn" type="button" class="secondary">New Service Request</button>
         </div>
       </section>
@@ -484,7 +491,7 @@
 
       <details id="newIssueDrawer" class="quick-add setup-drawer work-create-drawer">
         <summary>
-          <span>New Issue</span>
+          <span>New Ticket</span>
         </summary>
         <form id="newIssueForm" class="stack compact-form">
           <label>
@@ -500,7 +507,7 @@
             <select id="newIssueAsset"></select>
           </label>
           <fieldset class="choice-field">
-            <legend>Issue applies to</legend>
+            <legend>Ticket applies to</legend>
             <label>
               <input id="newIssueTargetEquipment" type="radio" name="newIssueTarget" value="equipment" checked>
               Equipment
@@ -516,7 +523,7 @@
           </label>
           <div class="form-grid">
             <label>
-              Issue title
+              Ticket title
               <input id="newIssueTitle" required placeholder="What needs attention?">
             </label>
             <label>
@@ -536,13 +543,13 @@
             Photo
             <input id="newIssuePhoto" type="file" accept="image/*">
           </label>
-          <button type="submit" class="primary">Create Issue</button>
+          <button type="submit" class="primary">Create Ticket</button>
           <p id="newIssueStatus" class="inline-status"></p>
         </form>
         <details id="issueImportDrawer" class="asset-import-drawer">
-          <summary>Import Issues CSV</summary>
+          <summary>Import Tickets CSV</summary>
           <div class="asset-import-body">
-            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment Name, Area, Applies To, Issue Title, Status, Priority, Assigned To, Due Date, and Notes.</p>
+            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment Name, Area, Applies To, Ticket Title, Status, Priority, Assigned To, Due Date, and Notes.</p>
             <label>
               CSV file
               <input id="issueImportFile" type="file" accept=".csv,text/csv">
@@ -551,7 +558,7 @@
               <input id="issueImportCreateLocations" type="checkbox" checked>
               Create missing locations
             </label>
-            <button id="issueImportBtn" type="button" class="secondary">Import Issues</button>
+            <button id="issueImportBtn" type="button" class="secondary">Import Tickets</button>
             <p id="issueImportStatus" class="inline-status"></p>
             <div id="issueImportPreview" class="asset-import-preview"></div>
           </div>
@@ -585,21 +592,30 @@
             </div>
           </div>
           <div class="metric-menu-wrap">
-            <button type="button" class="metric-card metric-ok" data-dashboard-filter="completedPm">
-              <span id="completed">0</span>
-              <p>Completed</p>
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
+              <span id="openWorkOrders">0</span>
+              <p>Open tickets</p>
             </button>
-            <div class="metric-dropdown hidden" data-dashboard-menu="completedPm">
-              <p class="metric-dropdown-empty">No completed issues for this view.</p>
+            <div class="metric-dropdown hidden" data-dashboard-menu="workOrders">
+              <p class="metric-dropdown-empty">No open tickets for this view.</p>
             </div>
           </div>
           <div class="metric-menu-wrap">
-            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
-              <span id="openWorkOrders">0</span>
-              <p>Open issues</p>
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="reportedIssues">
+              <span id="reportedIssues">0</span>
+              <p>Customer reports</p>
             </button>
-            <div class="metric-dropdown hidden" data-dashboard-menu="workOrders">
-              <p class="metric-dropdown-empty">No open issues for this view.</p>
+            <div class="metric-dropdown hidden" data-dashboard-menu="reportedIssues">
+              <p class="metric-dropdown-empty">No customer reports for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-danger" data-dashboard-filter="failedPmIssues">
+              <span id="failedPmIssues">0</span>
+              <p>Failed PMs</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="failedPmIssues">
+              <p class="metric-dropdown-empty">No failed PM follow-ups for this view.</p>
             </div>
           </div>
           <div class="metric-menu-wrap">
@@ -617,7 +633,7 @@
               <p>High priority</p>
             </button>
             <div class="metric-dropdown hidden" data-dashboard-menu="highPriority">
-              <p class="metric-dropdown-empty">No high priority issues for this view.</p>
+              <p class="metric-dropdown-empty">No high priority tickets for this view.</p>
             </div>
           </div>
           <div class="metric-menu-wrap">
@@ -626,7 +642,7 @@
               <p>Waiting parts</p>
             </button>
             <div class="metric-dropdown hidden" data-dashboard-menu="waitingParts">
-              <p class="metric-dropdown-empty">No waiting parts issues for this view.</p>
+              <p class="metric-dropdown-empty">No waiting parts tickets for this view.</p>
             </div>
           </div>
           <div class="metric-menu-wrap">
@@ -635,9 +651,41 @@
               <p>Assigned to me</p>
             </button>
             <div class="metric-dropdown hidden" data-dashboard-menu="assignedToMe">
-              <p class="metric-dropdown-empty">No issues assigned to you for this view.</p>
+              <p class="metric-dropdown-empty">No tickets assigned to you for this view.</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="pmCalendarPanel" class="work-orders-panel collapsible-panel is-collapsed">
+        <div class="section-title clickable-panel-title" data-panel-toggle="pmCalendarPanel">
+          <h2>PM Calendar</h2>
+          <span class="panel-title-actions">
+            <span id="pmCalendarCount">0</span>
+          </span>
+        </div>
+        <div class="pm-calendar-body" data-panel-body>
+          <div class="pm-calendar-toolbar">
+            <label>
+              View
+              <select id="pmCalendarRange">
+                <option value="week">Week</option>
+                <option value="month" selected>Month</option>
+                <option value="year">Year</option>
+              </select>
+            </label>
+            <label>
+              Starting
+              <input id="pmCalendarDate" type="date">
+            </label>
+            <div class="pm-calendar-actions">
+              <button id="printPmCalendarBtn" type="button" class="secondary mini">Print PM List</button>
+              <button id="emailPmCalendarBtn" type="button" class="secondary mini">Email List</button>
+              <button id="exportPmCalendarBtn" type="button" class="secondary mini">Export CSV</button>
+            </div>
+          </div>
+          <div id="pmCalendarSummary" class="pm-calendar-summary"></div>
+          <div id="pmCalendarList" class="pm-calendar-list"></div>
         </div>
       </section>
 
@@ -676,7 +724,7 @@
               <option value="name">Equipment name</option>
               <option value="location">Location</option>
               <option value="status">Status</option>
-              <option value="workOrders">Open issues</option>
+              <option value="workOrders">Open tickets</option>
             </select>
           </label>
           <label>
@@ -704,7 +752,7 @@
                 <th>Location</th>
                 <th>Status</th>
                 <th>Next maintenance</th>
-                <th>Open issues</th>
+                <th>Open tickets</th>
                 <th>Template</th>
                 <th>Serial</th>
                 <th>Action</th>
@@ -724,10 +772,18 @@
 
       <section id="workOrdersPanel" class="work-orders-panel collapsible-panel">
         <div class="section-title clickable-panel-title" data-panel-toggle="workOrdersPanel">
-          <h2>Open Issues</h2>
+          <h2>Open Tickets</h2>
           <div class="panel-title-actions">
             <span id="workOrderCount">0</span>
           </div>
+        </div>
+        <div class="ticket-filter-bar" data-panel-body>
+          <label>
+            SW number type
+            <select id="workOrderNumberFilter">
+              <option value="all">All SW records</option>
+            </select>
+          </label>
         </div>
         <div id="workOrderList" class="work-order-list" data-panel-body></div>
       </section>
@@ -793,16 +849,13 @@
               <p id="serviceRequestStatus" class="inline-status"></p>
             </form>
           </details>
-          <details id="serviceRequestHistoryDrawer" class="service-request-create-drawer" open>
-            <summary>Service Request History</summary>
-            <div id="serviceRequestList" class="work-order-list"></div>
-          </details>
+          <div id="serviceRequestList" class="work-order-list"></div>
         </div>
       </section>
 
       <section id="completedPmPanel" class="work-orders-panel collapsible-panel is-collapsed">
         <div class="section-title clickable-panel-title" data-panel-toggle="completedPmPanel">
-          <h2>Completed Issues</h2>
+          <h2>Completed Tickets</h2>
           <div class="panel-title-actions">
             <span id="completedPmCount">0</span>
           </div>
@@ -1034,7 +1087,7 @@
 
         <details class="asset-sub-drawer">
           <summary>
-            <h3>Equipment Issues</h3>
+            <h3>Equipment Tickets</h3>
             <span id="assetWorkOrderCount">0</span>
           </summary>
           <div id="assetWorkOrderList" class="work-order-list"></div>
@@ -1052,7 +1105,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260625-1140"></script>
+  <script src="app.js?v=20260625-1815"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
@@ -1071,7 +1124,7 @@
       document.querySelectorAll(".app-only").forEach((node) => node.classList.add("hidden"));
       const title = document.getElementById("reportTitle");
       const context = document.getElementById("reportContext");
-      if (title) title.textContent = params.get("a") ? "Report equipment issue" : "Report area issue";
+      if (title) title.textContent = params.get("a") ? "Report equipment ticket" : "Report area ticket";
       if (context) {
         const pieces = [params.get("c"), params.get("l"), params.get("n")].filter(Boolean);
         context.textContent = pieces.join(" | ");

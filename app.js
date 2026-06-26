@@ -9,6 +9,7 @@ const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
+const MANAGER_ROLES = ["Manager", "Facility Manager"];
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
   "Visual inspection complete",
@@ -26,6 +27,12 @@ let selectedContractorCustomerId = selectedCustomerId;
 let currentUser = getInitialUser();
 let currentRole = currentUser?.role || "Customer";
 let globalQuery = "";
+let focusedWorkOrderId = "";
+let focusedServiceRequestId = "";
+let focusedCompletedRecordId = "";
+let workOrderNumberFilter = "all";
+let pmCalendarRange = "month";
+let pmCalendarDate = toDateInputValue(today);
 let assetQuery = "";
 let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
@@ -277,9 +284,19 @@ const els = {
   highPriorityIssues: document.getElementById("highPriorityIssues"),
   waitingPartsIssues: document.getElementById("waitingPartsIssues"),
   reportedIssues: document.getElementById("reportedIssues"),
+  failedPmIssues: document.getElementById("failedPmIssues"),
   activeLocations: document.getElementById("activeLocations"),
   assignedToMeIssues: document.getElementById("assignedToMeIssues"),
+  pmCalendarCount: document.getElementById("pmCalendarCount"),
+  pmCalendarRange: document.getElementById("pmCalendarRange"),
+  pmCalendarDate: document.getElementById("pmCalendarDate"),
+  pmCalendarSummary: document.getElementById("pmCalendarSummary"),
+  pmCalendarList: document.getElementById("pmCalendarList"),
+  printPmCalendarBtn: document.getElementById("printPmCalendarBtn"),
+  emailPmCalendarBtn: document.getElementById("emailPmCalendarBtn"),
+  exportPmCalendarBtn: document.getElementById("exportPmCalendarBtn"),
   workOrderCount: document.getElementById("workOrderCount"),
+  workOrderNumberFilter: document.getElementById("workOrderNumberFilter"),
   workOrderList: document.getElementById("workOrderList"),
   completedPmCount: document.getElementById("completedPmCount"),
   completedPmList: document.getElementById("completedPmList"),
@@ -451,16 +468,16 @@ els.publicReportForm.addEventListener("submit", async (event) => {
     }
     const note = els.publicReportNote.value.trim();
     const contact = els.publicReportContact.value.trim();
-    const issue = createIssueFromPublicReport(report, note, contact, photo);
+    const ticket = createIssueFromPublicReport(report, note, contact, photo);
     const remoteId = await savePublicReportToSupabase(report, note, contact, photo);
     if (!remoteId) {
       els.publicReportMessage.textContent = lastPublicReportError || "Report was not sent. Please try again with a smaller photo or no photo.";
       return;
     }
-    issue.remoteReportId = remoteId;
-    addWorkOrderHistory(issue, "Created", `${formatIssueNumber(issue)} - ${issue.title}`);
-    state.workOrders.unshift(issue);
-    addActivity("Public issue reported", issue.title);
+    ticket.remoteReportId = remoteId;
+    addWorkOrderHistory(ticket, "Created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
+    state.workOrders.unshift(ticket);
+    addActivity("Public ticket reported", ticket.title);
     saveState();
     els.publicReportForm.reset();
     els.publicReportMessage.textContent = "Report sent to SiteWorks. Thank you.";
@@ -646,7 +663,7 @@ els.userForm.addEventListener("submit", async (event) => {
 
   const newUserRole = els.newUserRole.value;
   if (!canCreateUserRole(newUserRole)) {
-    alert("Managers can only add Customer or Technician users.");
+    alert(userRolePermissionMessage());
     return;
   }
   const newUserCustomerId = newUserRole === "Admin" ? "" : els.newUserCustomer.value;
@@ -725,7 +742,7 @@ els.userList.addEventListener("submit", async (event) => {
   }
 
   if (!canCreateUserRole(role) || !canManageUserCustomer(customerId, role)) {
-    alert("Managers can only manage Customer or Technician users for their assigned customer.");
+    alert(userRolePermissionMessage());
     return;
   }
   if (!canManageUserLocation(customerId, locationId)) {
@@ -899,7 +916,7 @@ els.locationList.addEventListener("click", async (event) => {
   const customerName = getCustomer(locationRecord.customerId)?.name || "customer";
   const confirmed = window.confirm(
     `Delete ${locationRecord.name} for ${customerName}?\n\n` +
-    `This will also delete ${locationAssets.length} equipment record(s), ${locationWorkOrders.length} issue(s), and ${locationServiceRequests.length} service request(s) tied to this location.`
+    `This will also delete ${locationAssets.length} equipment record(s), ${locationWorkOrders.length} ticket(s), and ${locationServiceRequests.length} service request(s) tied to this location.`
   );
   if (!confirmed) return;
 
@@ -1050,6 +1067,14 @@ document.addEventListener("click", (event) => {
   event.stopPropagation();
   openDashboardResult(result.dataset.dashboardResultType, result.dataset.dashboardResultId);
   closeMetricMenus();
+});
+
+els.workOrderNumberFilter?.addEventListener("change", () => {
+  workOrderNumberFilter = els.workOrderNumberFilter.value || "all";
+  focusedWorkOrderId = "";
+  focusedServiceRequestId = "";
+  focusedCompletedRecordId = "";
+  render();
 });
 
 els.statusFilter.addEventListener("change", () => {
@@ -1213,6 +1238,7 @@ els.assetForm.addEventListener("submit", async (event) => {
     notes: els.assetNotes.value.trim(),
     photo,
     frequencyDays: Number(els.assetFrequency.value),
+    extraChecklistItems: [],
     createdAt: new Date().toISOString(),
     history: []
   };
@@ -1222,7 +1248,7 @@ els.assetForm.addEventListener("submit", async (event) => {
   addActivity("Asset added", asset.name);
   selectedId = asset.id;
   selectedCustomerId = asset.customerId;
-  selectedLocationId = currentUser?.locationId || "all";
+  selectedLocationId = defaultLocationSelection();
   saveState();
   els.assetForm.reset();
   els.assetFrequency.value = "30";
@@ -1244,7 +1270,7 @@ els.assetImportFile?.addEventListener("change", () => {
 });
 
 els.issueImportBtn?.addEventListener("click", async () => {
-  await importIssuesCsv();
+  await importTicketsCsv();
 });
 
 els.issueImportFile?.addEventListener("change", () => {
@@ -1253,6 +1279,25 @@ els.issueImportFile?.addEventListener("change", () => {
     els.issueImportStatus.textContent = file ? `Ready to import ${file.name}.` : "";
   }
   if (els.issueImportPreview) els.issueImportPreview.innerHTML = "";
+});
+
+els.pmForm.addEventListener("click", (event) => {
+  const addButton = event.target.closest("[data-checklist-add]");
+  if (addButton) {
+    addCustomChecklistItem();
+    return;
+  }
+
+  const removeButton = event.target.closest("[data-checklist-remove]");
+  if (removeButton) {
+    removeCustomChecklistItem(Number(removeButton.dataset.checklistRemove));
+  }
+});
+
+els.pmForm.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || !event.target.closest("[data-checklist-new-item]")) return;
+  event.preventDefault();
+  addCustomChecklistItem();
 });
 
 els.pmForm.addEventListener("submit", async (event) => {
@@ -1440,6 +1485,28 @@ els.contractorCustomer?.addEventListener("change", () => {
   renderPreferredContractors();
 });
 
+els.pmCalendarRange?.addEventListener("change", () => {
+  pmCalendarRange = els.pmCalendarRange.value || "month";
+  renderPmCalendar();
+});
+
+els.pmCalendarDate?.addEventListener("change", () => {
+  pmCalendarDate = els.pmCalendarDate.value || toDateInputValue(today);
+  renderPmCalendar();
+});
+
+els.printPmCalendarBtn?.addEventListener("click", () => {
+  printPmCalendar();
+});
+
+els.emailPmCalendarBtn?.addEventListener("click", () => {
+  emailPmCalendarList();
+});
+
+els.exportPmCalendarBtn?.addEventListener("click", () => {
+  exportPmCalendarCsv();
+});
+
 els.exportAssetRegisterBtn.addEventListener("click", () => {
   downloadAssetRegisterCsv(assetTableAssets());
 });
@@ -1535,6 +1602,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const pmCalendarAssetButton = event.target.closest("[data-pm-calendar-asset]");
+  if (pmCalendarAssetButton) {
+    const asset = getAsset(pmCalendarAssetButton.dataset.pmCalendarAsset);
+    if (!asset) return;
+    selectedId = asset.id;
+    syncFiltersToSelectedAsset();
+    location.hash = `asset/${selectedId}`;
+    render();
+    document.getElementById("assetPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
   const serviceActionButton = event.target.closest("[data-service-request-action]");
   if (serviceActionButton && canManageWorkOrders()) {
     updateServiceRequestStatus(serviceActionButton.dataset.serviceRequestId, serviceActionButton.dataset.serviceRequestAction);
@@ -1592,7 +1671,7 @@ document.addEventListener("change", (event) => {
   workOrder.assignedUserName = user ? user.name || user.username : "";
   workOrder.updatedAt = new Date().toISOString();
   addWorkOrderHistory(workOrder, "Assigned", `${previousAssignee} -> ${workOrder.assignedUserName || "Unassigned"}`);
-  addActivity("Issue assigned", `${workOrder.title} - ${workOrder.assignedUserName || "Unassigned"}`);
+  addActivity("Ticket assigned", `${workOrder.title} - ${workOrder.assignedUserName || "Unassigned"}`);
   saveState();
   render();
   if (user && user.id !== previousAssigneeId && workOrder.status !== "Closed") {
@@ -1659,7 +1738,7 @@ document.addEventListener("submit", async (event) => {
   if (before.notes !== workOrder.notes) changes.push("Notes updated");
   if (photo) changes.push("Photo updated");
   addWorkOrderHistory(workOrder, "Edited", changes.join(" | ") || "No visible changes");
-  addActivity("Issue edited", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
+  addActivity("Ticket edited", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
   saveState();
   render();
 });
@@ -1725,12 +1804,12 @@ document.addEventListener("submit", async (event) => {
       photo
     });
   } catch (error) {
-    console.warn("Manual issue creation failed.", error);
-    alert("Issue was not created. Try again with no photo or a smaller photo.");
+    console.warn("Manual ticket creation failed.", error);
+    alert("Ticket was not created. Try again with no photo or a smaller photo.");
   } finally {
     if (submitButton) {
       submitButton.disabled = false;
-      submitButton.textContent = "Create Issue";
+      submitButton.textContent = "Create Ticket";
     }
   }
 });
@@ -1757,6 +1836,7 @@ function render() {
   renderLocationOptions();
   renderAssetLocationOptions();
   renderDashboard();
+  renderPmCalendar();
   renderBackupStatus();
   renderQrSettings();
   renderAssetTableControls();
@@ -1804,7 +1884,7 @@ function render() {
   els.assetManualPanel.innerHTML = renderAssetManual(asset);
   els.assetDetailsGrid.innerHTML = renderAssetDetails(asset);
   renderAssetInfoForm(asset);
-  renderChecklist(template);
+  renderChecklist(template, asset);
   renderAssetWorkOrders(asset);
   renderAssetGallery(asset);
   renderRole();
@@ -2034,6 +2114,10 @@ function assignQrCustomerAccessUser() {
   selectedCustomerId = currentUser.customerId || selectedCustomerId;
 }
 
+function isManagerRole(role = currentRole) {
+  return MANAGER_ROLES.includes(role);
+}
+
 function renderRole() {
   const setupDisabled = !canManageSetup();
   const userManagementAllowed = canManageUsers();
@@ -2042,8 +2126,8 @@ function renderRole() {
   const canCreateCustomerRecords = canCreateCustomers();
   const canManageTemplates = canManageTemplateSetup();
   const canAddAssets = canAddEquipment();
-  const canCreateIssues = canCreateWorkOrders();
-  const canUseNewActions = canAddAssets || canCreateIssues || canCreateServiceRequests();
+  const canCreateTickets = canCreateWorkOrders();
+  const canUseNewActions = canAddAssets || canCreateTickets || canCreateServiceRequests();
   const isCustomer = currentRole === "Customer";
   const hasSidebarAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed;
   els.appShell?.classList.toggle("no-sidebar", !hasSidebarAccess);
@@ -2053,17 +2137,17 @@ function renderRole() {
   els.workHeader?.classList.toggle("hidden", !currentUser || isCustomer);
   els.newActionBar?.classList.toggle("hidden", !canUseNewActions);
   els.newEquipmentBtn?.classList.toggle("hidden", !canAddAssets);
-  els.newIssueBtn?.classList.toggle("hidden", !canCreateIssues);
+  els.newIssueBtn?.classList.toggle("hidden", !canCreateTickets);
   els.newServiceRequestBtn?.classList.toggle("hidden", !canCreateServiceRequests());
   if (els.newEquipmentBtn) els.newEquipmentBtn.disabled = !canAddAssets;
-  if (els.newIssueBtn) els.newIssueBtn.disabled = !canCreateIssues;
+  if (els.newIssueBtn) els.newIssueBtn.disabled = !canCreateTickets;
   if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canCreateServiceRequests();
   els.adminToolsDrawer.classList.toggle("hidden", !hasSidebarAccess);
   if (!hasSidebarAccess) els.adminToolsDrawer.open = false;
   els.quickAddDrawer.classList.toggle("hidden", !canAddAssets);
   if (!canAddAssets) els.quickAddDrawer.open = false;
-  els.newIssueDrawer?.classList.toggle("hidden", !canCreateIssues);
-  if (!canCreateIssues && els.newIssueDrawer) els.newIssueDrawer.open = false;
+  els.newIssueDrawer?.classList.toggle("hidden", !canCreateTickets);
+  if (!canCreateTickets && els.newIssueDrawer) els.newIssueDrawer.open = false;
   els.serviceRequestCreateDrawer?.classList.toggle("hidden", !canCreateServiceRequests());
   if (!canCreateServiceRequests() && els.serviceRequestCreateDrawer) els.serviceRequestCreateDrawer.open = false;
   els.setupDrawer.classList.toggle("hidden", setupDisabled);
@@ -2446,15 +2530,15 @@ function renderCustomerOptions() {
   els.customerFilter.value = selectedCustomerId;
   const contractorCustomers = currentRole === "Admin" ? state.customers : visibleCustomers();
   if (!contractorCustomers.some((customer) => customer.id === selectedContractorCustomerId)) {
-    selectedContractorCustomerId = currentRole === "Manager" && currentUser?.customerId
+    selectedContractorCustomerId = isManagerRole() && currentUser?.customerId
       ? currentUser.customerId
       : selectedCustomerId;
   }
-  els.contractorCustomer.value = currentRole === "Manager" && currentUser?.customerId
+  els.contractorCustomer.value = isManagerRole() && currentUser?.customerId
     ? currentUser.customerId
     : selectedContractorCustomerId;
   updateContractorCustomerHint();
-  if (currentRole === "Manager" && currentUser?.customerId) {
+  if (isManagerRole() && currentUser?.customerId) {
     els.newUserCustomer.value = currentUser.customerId;
   }
   if (!els.newUserCustomer.value && manageableUserCustomers()[0]) {
@@ -2502,7 +2586,7 @@ function renderTemplateOptions() {
 
 function renderLocationOptions() {
   const locations = locationsForCustomer(selectedCustomerId);
-  const canUseAllLocations = canSeeAllCustomers() || !currentUser?.locationId;
+  const canUseAllLocations = !isLocationScopedUser();
   els.locationFilter.innerHTML = [
     ...(canUseAllLocations ? [`<option value="all">All locations</option>`] : []),
     ...locations.map((locationRecord) => `<option value="${locationRecord.id}">${escapeHtml(locationRecord.name)}</option>`)
@@ -2630,7 +2714,7 @@ async function importEquipmentCsv() {
     const firstAsset = importedAssets[0];
     selectedId = firstAsset.id;
     selectedCustomerId = firstAsset.customerId;
-    selectedLocationId = currentUser?.locationId || "all";
+    selectedLocationId = defaultLocationSelection();
     addActivity(
       "Equipment imported",
       `${stats.imported} equipment record(s) from ${file.name}`
@@ -2655,7 +2739,7 @@ async function importEquipmentCsv() {
   }
 }
 
-async function importIssuesCsv() {
+async function importTicketsCsv() {
   if (!canManageWorkOrders()) return;
   const file = els.issueImportFile?.files?.[0];
   if (!file) {
@@ -2675,8 +2759,8 @@ async function importIssuesCsv() {
     const text = await file.text();
     const rows = parseCsvRows(text);
     if (!rows.length) {
-      setIssueImportStatus("No issue rows were found in that CSV.");
-      alert("No issue rows were found in that CSV.");
+      setIssueImportStatus("No ticket rows were found in that CSV.");
+      alert("No ticket rows were found in that CSV.");
       return;
     }
 
@@ -2684,12 +2768,12 @@ async function importIssuesCsv() {
       imported: 0,
       skipped: 0,
       locationsCreated: 0,
-      areaIssues: 0,
-      equipmentIssues: 0,
+      areaTickets: 0,
+      equipmentTickets: 0,
       closed: 0,
       errors: []
     };
-    const importedIssues = [];
+    const importedTickets = [];
 
     rows.forEach((row, index) => {
       const rowNumber = index + 2;
@@ -2697,11 +2781,11 @@ async function importIssuesCsv() {
       const locationName = findCsvValue(row, ["location", "location name", "site", "building", "facility"]);
       const equipmentName = findCsvValue(row, ["equipment name", "asset name", "equipment", "asset"]);
       const areaName = findCsvValue(row, ["area", "area name", "room", "zone"]);
-      const appliesTo = findCsvValue(row, ["applies to", "type", "issue applies to"]);
-      const title = findCsvValue(row, ["issue title", "title", "problem", "summary", "request"]);
+      const appliesTo = findCsvValue(row, ["applies to", "type", "ticket applies to"]);
+      const title = findCsvValue(row, ["ticket title", "title", "problem", "summary", "request"]);
 
       if (!title) {
-        skipImportRow(stats, rowNumber, "missing issue title");
+        skipImportRow(stats, rowNumber, "missing ticket title");
         return;
       }
 
@@ -2717,32 +2801,32 @@ async function importIssuesCsv() {
         return;
       }
 
-      const isAreaIssue = sameText(appliesTo, "area") || (!equipmentName && Boolean(areaName));
-      const asset = isAreaIssue ? null : findImportAsset(customer.id, locationRecord.id, equipmentName);
-      if (!isAreaIssue && !asset) {
+      const isAreaTicket = sameText(appliesTo, "area") || (!equipmentName && Boolean(areaName));
+      const asset = isAreaTicket ? null : findImportAsset(customer.id, locationRecord.id, equipmentName);
+      if (!isAreaTicket && !asset) {
         skipImportRow(stats, rowNumber, "equipment was not found");
         return;
       }
 
-      const status = normalizeIssueStatus(findCsvValue(row, ["status", "issue status", "state"]));
+      const status = normalizeIssueStatus(findCsvValue(row, ["status", "ticket status", "state"]));
       const assignedUser = findImportUser(findCsvValue(row, ["assigned to", "assignee", "technician", "manager"]), customer.id);
       const createdAt = new Date().toISOString();
       const resolvedAt = status === "Closed" ? createdAt : "";
-      const issue = {
+      const ticket = {
         id: crypto.randomUUID(),
-        issueNumber: nextImportedIssueNumber(findCsvValue(row, ["sw number", "issue number", "ticket number", "work order number"])),
+        issueNumber: nextImportedIssueNumber(findCsvValue(row, ["sw number", "ticket number", "ticket number", "work order number"])),
         assetId: asset?.id || "",
         customerId: customer.id,
         locationId: locationRecord.id,
-        areaName: isAreaIssue ? (areaName || locationRecord.name) : "",
-        source: isAreaIssue ? "Imported area issue" : "Imported issue",
+        areaName: isAreaTicket ? (areaName || locationRecord.name) : "",
+        source: isAreaTicket ? "Imported area ticket" : "Imported ticket",
         title: title.trim(),
         priority: normalizePriority(findCsvValue(row, ["priority", "criticality", "risk"])),
         status,
         assignedUserId: assignedUser?.id || "",
         assignedUserName: assignedUser?.name || findCsvValue(row, ["assigned to", "assignee", "technician", "manager"]),
-        dueAt: normalizeImportedIssueDueDate(findCsvValue(row, ["due date", "due", "required by", "target date"]), status),
-        notes: findCsvValue(row, ["notes", "description", "comments", "details"]) || "Imported from issue CSV.",
+        dueAt: normalizeImportedTicketDueDate(findCsvValue(row, ["due date", "due", "required by", "target date"]), status),
+        notes: findCsvValue(row, ["notes", "description", "comments", "details"]) || "Imported from ticket CSV.",
         photo: null,
         history: [],
         createdAt,
@@ -2750,45 +2834,45 @@ async function importIssuesCsv() {
         resolvedAt
       };
 
-      addWorkOrderHistory(issue, "Imported", `${formatIssueNumber(issue)} - ${issue.title}`);
-      state.workOrders.unshift(issue);
-      importedIssues.push(issue);
+      addWorkOrderHistory(ticket, "Imported", `${formatIssueNumber(ticket)} - ${ticket.title}`);
+      state.workOrders.unshift(ticket);
+      importedTickets.push(ticket);
       stats.imported += 1;
-      if (isAreaIssue) stats.areaIssues += 1;
-      else stats.equipmentIssues += 1;
+      if (isAreaTicket) stats.areaTickets += 1;
+      else stats.equipmentTickets += 1;
       if (status === "Closed") stats.closed += 1;
     });
 
     if (!stats.imported) {
-      const message = `No issues imported. ${stats.skipped} row(s) skipped.`;
+      const message = `No tickets imported. ${stats.skipped} row(s) skipped.`;
       setIssueImportStatus(message);
       renderIssueImportPreview(stats);
       alert(message);
       return;
     }
 
-    const firstIssue = importedIssues[0];
-    selectedCustomerId = firstIssue.customerId;
-    selectedLocationId = currentUser?.locationId || "all";
-    selectedId = firstIssue.assetId || selectedId;
+    const firstTicket = importedTickets[0];
+    selectedCustomerId = firstTicket.customerId;
+    selectedLocationId = defaultLocationSelection();
+    selectedId = firstTicket.assetId || selectedId;
     workOrderViewFilter = "active";
-    addActivity("Issues imported", `${stats.imported} issue record(s) from ${file.name}`);
+    addActivity("Tickets imported", `${stats.imported} ticket record(s) from ${file.name}`);
     saveState();
     if (els.issueImportFile) els.issueImportFile.value = "";
-    const message = `Imported ${stats.imported} issue record(s). ${stats.skipped} skipped. ${stats.equipmentIssues} equipment issue(s), ${stats.areaIssues} area issue(s), ${stats.closed} closed.`;
+    const message = `Imported ${stats.imported} ticket record(s). ${stats.skipped} skipped. ${stats.equipmentTickets} equipment ticket(s), ${stats.areaTickets} area ticket(s), ${stats.closed} closed.`;
     setIssueImportStatus(message);
     renderIssueImportPreview(stats);
     alert(message);
     openPanel("workOrdersPanel");
     render();
   } catch (error) {
-    console.warn("Issue import failed.", error);
+    console.warn("Ticket import failed.", error);
     setIssueImportStatus("Import failed. Check that this is a valid CSV file.");
     alert("Import failed. Check that this is a valid CSV file.");
   } finally {
     if (importButton) {
       importButton.disabled = !canManageWorkOrders();
-      importButton.textContent = "Import Issues";
+      importButton.textContent = "Import Tickets";
     }
   }
 }
@@ -3003,7 +3087,7 @@ function normalizeIssueStatus(value) {
   return "Open";
 }
 
-function normalizeImportedIssueDueDate(value, status = "Open") {
+function normalizeImportedTicketDueDate(value, status = "Open") {
   const cleanDate = normalizeCsvDate(value);
   if (cleanDate) return parseLocalDate(cleanDate).toISOString();
   return addDays(new Date(), status === "Waiting parts" ? 14 : 7).toISOString();
@@ -3085,11 +3169,11 @@ function renderEditAssetLocationOptions(selectedLocationId = "") {
 }
 
 function renderDashboard() {
-  const assets = filteredAssets();
+  const assets = dashboardAssets();
   const dueInfos = assets.map(getDueInfo);
   const activeIssues = filteredWorkOrders().filter((item) => item.status !== "Closed");
   const activeServiceRequests = filteredServiceRequests().filter((item) => item.status !== "Completed" && item.status !== "Declined");
-  const completedIssues = completedIssueRecords();
+  const completedIssues = completedTicketRecords();
   const currentCustomer = getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
   if (els.currentViewLabel) {
@@ -3097,17 +3181,249 @@ function renderDashboard() {
   }
   els.dueToday.textContent = dueInfos.filter((item) => item.daysUntil <= 0).length;
   els.overdue.textContent = dueInfos.filter((item) => item.daysUntil < 0).length;
-  els.completed.textContent = completedIssues.length;
+  if (els.completed) els.completed.textContent = completedIssues.length;
   els.openWorkOrders.textContent = activeIssues.length;
   if (els.serviceRequestsMetric) els.serviceRequestsMetric.textContent = activeServiceRequests.length;
   els.highPriorityIssues.textContent = activeIssues.filter((item) => item.priority === "High").length;
   els.waitingPartsIssues.textContent = activeIssues.filter((item) => item.status === "Waiting parts").length;
   if (els.assignedToMeIssues) els.assignedToMeIssues.textContent = activeIssues.filter((item) => item.assignedUserId === currentUser?.id).length;
   if (els.reportedIssues) els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
+  if (els.failedPmIssues) els.failedPmIssues.textContent = activeIssues.filter(isFailedPmIssue).length;
   if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
   if (els.globalSearch) els.globalSearch.value = globalQuery;
   renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues });
   renderGlobalSearchResults();
+}
+
+function renderPmCalendar() {
+  if (!els.pmCalendarList) return;
+  const windowInfo = pmCalendarWindow();
+  const records = pmCalendarRecords(windowInfo);
+  if (els.pmCalendarRange) els.pmCalendarRange.value = pmCalendarRange;
+  if (els.pmCalendarDate) els.pmCalendarDate.value = pmCalendarDate;
+  if (els.pmCalendarCount) els.pmCalendarCount.textContent = records.length;
+  const currentCustomer = getCustomer(selectedCustomerId);
+  const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
+  if (els.pmCalendarSummary) {
+    els.pmCalendarSummary.innerHTML = `
+      <strong>${escapeHtml(windowInfo.label)}</strong>
+      <span>${escapeHtml(currentCustomer?.name || "No customer selected")} | ${escapeHtml(currentLocation?.name || "All locations")}</span>
+      <span>${records.length} upcoming PM${records.length === 1 ? "" : "s"}</span>
+    `;
+  }
+  els.pmCalendarList.innerHTML = records.length
+    ? renderPmCalendarGroups(records)
+    : `<p class="muted">No PMs are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
+}
+
+function pmCalendarWindow() {
+  const baseDate = parseLocalDate(pmCalendarDate) || today;
+  let start;
+  let end;
+  let label;
+
+  if (pmCalendarRange === "week") {
+    start = startOfWeek(baseDate);
+    end = addDays(start, 6);
+    label = `Week of ${formatDate(start)}`;
+  } else if (pmCalendarRange === "year") {
+    start = new Date(baseDate.getFullYear(), 0, 1);
+    end = new Date(baseDate.getFullYear(), 11, 31);
+    label = `${baseDate.getFullYear()} PM schedule`;
+  } else {
+    start = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+    end = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
+    label = `${baseDate.toLocaleString(undefined, { month: "long", year: "numeric" })} PM schedule`;
+  }
+
+  return { start: startOfDay(start), end: startOfDay(end), label };
+}
+
+function startOfWeek(date) {
+  const value = startOfDay(date);
+  const mondayOffset = (value.getDay() + 6) % 7;
+  return addDays(value, -mondayOffset);
+}
+
+function pmCalendarRecords(windowInfo = pmCalendarWindow()) {
+  return filteredAssets()
+    .map((asset) => {
+      const due = getDueInfo(asset);
+      return {
+        asset,
+        due,
+        dueDate: startOfDay(due.nextDate),
+        customer: getCustomer(asset.customerId),
+        location: getLocation(asset.locationId),
+        template: getTemplate(asset.templateId)
+      };
+    })
+    .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end)
+    .sort((a, b) => a.dueDate - b.dueDate || a.asset.name.localeCompare(b.asset.name));
+}
+
+function renderPmCalendarGroups(records) {
+  const groups = records.reduce((map, record) => {
+    const key = toDateInputValue(record.dueDate);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(record);
+    return map;
+  }, new Map());
+
+  return [...groups.entries()].map(([dateKey, items]) => {
+    const date = parseLocalDate(dateKey);
+    return `
+      <article class="pm-calendar-day">
+        <div class="pm-calendar-day-heading">
+          <h3>${escapeHtml(formatDate(date))}</h3>
+          <span>${items.length} PM${items.length === 1 ? "" : "s"}</span>
+        </div>
+        <div class="pm-calendar-items">
+          ${items.map(renderPmCalendarItem).join("")}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderPmCalendarItem(record) {
+  const openTickets = openWorkOrdersForAsset(record.asset.id).length;
+  const lastPm = record.asset.history?.[0]?.completedAt ? formatDate(new Date(record.asset.history[0].completedAt)) : "No completed PM";
+  return `
+    <button type="button" class="pm-calendar-item" data-pm-calendar-asset="${escapeAttribute(record.asset.id)}">
+      <span>
+        <strong>${escapeHtml(record.asset.name)}</strong>
+        <small>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</small>
+      </span>
+      <span>
+        <small>${escapeHtml(record.template?.name || "PM template")}</small>
+        <small>${escapeHtml(record.asset.criticality || "Low")} criticality | Last PM: ${escapeHtml(lastPm)}</small>
+      </span>
+      <em>${openTickets ? `${openTickets} open ticket${openTickets === 1 ? "" : "s"}` : "No open tickets"}</em>
+    </button>
+  `;
+}
+
+function printPmCalendar() {
+  const windowInfo = pmCalendarWindow();
+  const records = pmCalendarRecords(windowInfo);
+  if (!records.length) {
+    alert("No PMs are scheduled for this view.");
+    return;
+  }
+  const currentCustomer = getCustomer(selectedCustomerId);
+  const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("The print window was blocked. Allow pop-ups for SiteWorks and try again.");
+    return;
+  }
+  const rows = records.map((record) => `
+    <tr>
+      <td>${escapeHtml(formatDate(record.dueDate))}</td>
+      <td>${escapeHtml(record.asset.name)}</td>
+      <td>${escapeHtml(record.customer?.name || "")}</td>
+      <td>${escapeHtml(record.location?.name || "")}</td>
+      <td>${escapeHtml(record.template?.name || "")}</td>
+      <td>${escapeHtml(record.asset.criticality || "Low")}</td>
+      <td>${escapeHtml(openWorkOrdersForAsset(record.asset.id).length ? "Open ticket" : "Clear")}</td>
+    </tr>
+  `).join("");
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>SiteWorks PM Calendar</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #142023; padding: 32px; }
+          h1 { margin: 0 0 8px; font-size: 28px; }
+          .meta { color: #5c6c70; margin-bottom: 24px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #d8e4e1; padding: 8px; text-align: left; vertical-align: top; }
+          th { background: #eef7f4; }
+        </style>
+      </head>
+      <body>
+        <h1>SiteWorks PM Calendar</h1>
+        <div class="meta">
+          ${escapeHtml(windowInfo.label)}<br>
+          ${escapeHtml(currentCustomer?.name || "No customer selected")} | ${escapeHtml(currentLocation?.name || "All locations")}<br>
+          Generated ${escapeHtml(formatDateTime(new Date()))}
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>PM Date</th>
+              <th>Equipment</th>
+              <th>Customer</th>
+              <th>Location</th>
+              <th>Template</th>
+              <th>Criticality</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+}
+
+function emailPmCalendarList() {
+  const windowInfo = pmCalendarWindow();
+  const records = pmCalendarRecords(windowInfo);
+  if (!records.length) {
+    alert("No PMs are scheduled for this view.");
+    return;
+  }
+  const currentCustomer = getCustomer(selectedCustomerId);
+  const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
+  const subject = `SiteWorks PM Calendar - ${windowInfo.label}`;
+  const lines = [
+    "SiteWorks PM Calendar",
+    windowInfo.label,
+    `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`,
+    `${records.length} upcoming PM${records.length === 1 ? "" : "s"}`,
+    "",
+    ...records.map((record) => {
+      const openTicketCount = openWorkOrdersForAsset(record.asset.id).length;
+      const ticketText = openTicketCount ? ` | ${openTicketCount} open ticket${openTicketCount === 1 ? "" : "s"}` : "";
+      return `${toDateInputValue(record.dueDate)} - ${record.asset.name} - ${record.location?.name || "No location"} - ${record.template?.name || "No template"} - ${record.asset.criticality || "Low"} criticality${ticketText}`;
+    })
+  ];
+  addActivity("PM calendar email draft opened", `${windowInfo.label} | ${records.length} PMs`);
+  saveState();
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+function exportPmCalendarCsv() {
+  const windowInfo = pmCalendarWindow();
+  const records = pmCalendarRecords(windowInfo);
+  const rows = [
+    ["PM Date", "Customer", "Location", "Equipment", "Template", "Criticality", "Frequency Days", "Last Completed PM", "Open Tickets"],
+    ...records.map((record) => [
+      toDateInputValue(record.dueDate),
+      record.customer?.name || "",
+      record.location?.name || "",
+      record.asset.name,
+      record.template?.name || "",
+      record.asset.criticality || "",
+      record.asset.frequencyDays,
+      record.asset.history?.[0]?.completedAt || "",
+      openWorkOrdersForAsset(record.asset.id).length
+    ])
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `pm-calendar-${pmCalendarRange}-${timestampForFile()}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues }) {
@@ -3121,16 +3437,19 @@ function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceReq
     .map((item) => item.asset);
   const highPriorityIssues = activeIssues.filter((item) => item.priority === "High");
   const waitingPartsIssues = activeIssues.filter((item) => item.status === "Waiting parts");
-  const assignedIssues = activeIssues.filter((item) => item.assignedUserId === currentUser?.id);
+  const customerReports = activeIssues.filter(isCustomerReportedIssue);
+  const failedPmIssues = activeIssues.filter(isFailedPmIssue);
+  const assignedTickets = activeIssues.filter((item) => item.assignedUserId === currentUser?.id);
   const menuData = {
     dueNow: dashboardAssetItems(dueNowAssets, "No equipment is due now."),
     overdue: dashboardAssetItems(overdueAssets, "No equipment is overdue."),
-    completedPm: dashboardCompletedItems(completedIssues, "No completed issues for this view."),
-    workOrders: dashboardIssueItems(activeIssues, "No open issues for this view."),
+    workOrders: dashboardIssueItems(activeIssues, "No open tickets for this view."),
+    reportedIssues: dashboardIssueItems(customerReports, "No customer reports for this view."),
+    failedPmIssues: dashboardIssueItems(failedPmIssues, "No failed PM follow-ups for this view."),
     serviceRequests: dashboardServiceRequestItems(activeServiceRequests, "No service requests for this view."),
-    highPriority: dashboardIssueItems(highPriorityIssues, "No high priority issues for this view."),
-    waitingParts: dashboardIssueItems(waitingPartsIssues, "No waiting parts issues for this view."),
-    assignedToMe: dashboardIssueItems(assignedIssues, "No issues assigned to you for this view.")
+    highPriority: dashboardIssueItems(highPriorityIssues, "No high priority tickets for this view."),
+    waitingParts: dashboardIssueItems(waitingPartsIssues, "No waiting parts tickets for this view."),
+    assignedToMe: dashboardIssueItems(assignedTickets, "No tickets assigned to you for this view.")
   };
 
   Object.entries(menuData).forEach(([filter, html]) => {
@@ -3154,15 +3473,15 @@ function dashboardAssetItems(assets, emptyText) {
     : renderDashboardEmpty(emptyText);
 }
 
-function dashboardIssueItems(issues, emptyText) {
-  return issues.length
-    ? issues.slice(0, 6).map((issue) => renderDashboardMenuItem({
-        type: issue.status === "Closed" ? "completed" : "issue",
-        id: issue.id,
-        label: `${formatIssueNumber(issue)} - ${issue.title || "Issue"}`,
-        meta: `${getCustomer(issue.customerId)?.name || "Unknown customer"} | ${getLocation(issue.locationId)?.name || "Unknown location"} | ${issue.status || "Open"}`,
-        badge: issue.priority || "Issue"
-      })).join("") + renderDashboardMoreCount(issues.length)
+function dashboardIssueItems(tickets, emptyText) {
+  return tickets.length
+    ? tickets.slice(0, 6).map((ticket) => renderDashboardMenuItem({
+        type: ticket.status === "Closed" ? "completed" : "ticket",
+        id: ticket.id,
+        label: `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}`,
+        meta: `${getCustomer(ticket.customerId)?.name || "Unknown customer"} | ${getLocation(ticket.locationId)?.name || "Unknown location"} | ${ticket.status || "Open"}`,
+        badge: ticket.priority || "Ticket"
+      })).join("") + renderDashboardMoreCount(tickets.length)
     : renderDashboardEmpty(emptyText);
 }
 
@@ -3181,15 +3500,15 @@ function dashboardServiceRequestItems(requests, emptyText) {
 function dashboardCompletedItems(records, emptyText) {
   return records.length
     ? records.slice(0, 6).map((record) => {
-        const isIssue = record.type === "workOrder";
+        const isTicket = record.type === "workOrder";
         return renderDashboardMenuItem({
           type: "completed",
-          id: isIssue ? record.workOrder.id : record.history?.id || record.asset.id,
-          label: isIssue
-            ? `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed issue"}`
+          id: isTicket ? record.workOrder.id : record.history?.id || record.asset.id,
+          label: isTicket
+            ? `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed ticket"}`
             : `${formatPmNumber(record.history)} - ${record.asset.name}`,
           meta: `${record.customer?.name || "Unknown customer"} | ${record.location?.name || "Unknown location"}`,
-          badge: isIssue ? "Issue" : "PM"
+          badge: isTicket ? "Ticket" : "PM"
         });
       }).join("") + renderDashboardMoreCount(records.length)
     : renderDashboardEmpty(emptyText);
@@ -3231,12 +3550,12 @@ function renderGlobalSearchResults() {
       meta: `${getCustomer(asset.customerId)?.name || "Unknown customer"} | ${getLocation(asset.locationId)?.name || "Unknown location"}`,
       badge: "Equipment"
     })),
-    ...filteredWorkOrders().slice(0, 5).map((issue) => ({
-      type: issue.status === "Closed" ? "completed" : "issue",
-      id: issue.id,
-      label: `${formatIssueNumber(issue)} - ${issue.title || "Issue"}`,
-      meta: `${getCustomer(issue.customerId)?.name || "Unknown customer"} | ${getLocation(issue.locationId)?.name || "Unknown location"} | ${issue.status || "Open"}`,
-      badge: issue.status === "Closed" ? "Completed" : "Issue"
+    ...filteredWorkOrders().slice(0, 5).map((ticket) => ({
+      type: ticket.status === "Closed" ? "completed" : "ticket",
+      id: ticket.id,
+      label: `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}`,
+      meta: `${getCustomer(ticket.customerId)?.name || "Unknown customer"} | ${getLocation(ticket.locationId)?.name || "Unknown location"} | ${ticket.status || "Open"}`,
+      badge: ticket.status === "Closed" ? "Completed" : "Ticket"
     })),
     ...filteredServiceRequests().slice(0, 5).map((request) => ({
       type: "service",
@@ -3388,7 +3707,9 @@ function renderAssetBadges(asset, due = getDueInfo(asset)) {
     renderStatusBadge(due.label, due.className)
   ];
   const openCount = openWorkOrdersForAsset(asset.id).length;
-  if (openCount) badges.push(`<span class="status-badge badge-warn">${openCount} open issue${openCount === 1 ? "" : "s"}</span>`);
+  const failedPmCount = openFailedPmTicketsForAsset(asset.id).length;
+  if (failedPmCount) badges.push(`<span class="status-badge badge-danger">Failed PM open</span>`);
+  if (openCount) badges.push(`<span class="status-badge badge-warn">${openCount} open ticket${openCount === 1 ? "" : "s"}</span>`);
   if (asset.criticality) badges.push(`<span class="status-badge ${criticalityBadgeClass(asset.criticality)}">${escapeHtml(asset.criticality)} criticality</span>`);
   if (asset.manualFile?.dataUrl || asset.documentUrl) badges.push(`<span class="status-badge badge-muted">Manual ready</span>`);
   return badges.join("");
@@ -3399,7 +3720,7 @@ function renderScanActionPanel(asset) {
   const locationRecord = getLocation(asset.locationId);
   const customerScanCopy = currentRole === "Customer"
     ? {
-        title: "Need to report an issue?",
+        title: "Need to open a ticket?",
         note: "Send a photo and note for this equipment or the surrounding area."
       }
     : {
@@ -3412,8 +3733,8 @@ function renderScanActionPanel(asset) {
       <span>${customerScanCopy.note}</span>
     </div>
     <div class="scan-action-buttons">
-      <a class="secondary primary-action" href="${escapeAttribute(getReportAssetUrl(asset.id))}">Report Equipment Issue</a>
-      ${locationRecord ? `<a class="secondary" href="${escapeAttribute(getReportLocationUrl(locationRecord.id))}">Report Area Issue</a>` : ""}
+      <a class="secondary primary-action" href="${escapeAttribute(getReportAssetUrl(asset.id))}">Report Equipment Ticket</a>
+      ${locationRecord ? `<a class="secondary" href="${escapeAttribute(getReportLocationUrl(locationRecord.id))}">Report Area Ticket</a>` : ""}
       ${manualUrl ? `<a class="secondary" href="${escapeAttribute(manualUrl)}" target="_blank" rel="noopener">Open Manual</a>` : ""}
       <button type="button" class="secondary" data-scroll-target="pmForm">Checklist</button>
       <button type="button" class="secondary" data-scroll-target="assetGalleryPanel">Photos</button>
@@ -3425,12 +3746,12 @@ function renderScanActionPanel(asset) {
 function renderManualIssueForm(asset) {
   return `
     <details class="manual-issue-form">
-      <summary>Create Open Issue</summary>
+      <summary>Create Open Ticket</summary>
       <form class="stack compact-form" data-manual-issue-form="${escapeAttribute(asset.id)}">
         <div class="form-grid">
           <label>
-            Issue title
-            <input name="title" required value="Issue: ${escapeAttribute(asset.name)}">
+            Ticket title
+            <input name="title" required value="Ticket: ${escapeAttribute(asset.name)}">
           </label>
           <label>
             Priority
@@ -3446,10 +3767,10 @@ function renderManualIssueForm(asset) {
           <textarea name="notes" rows="3" placeholder="What needs attention?"></textarea>
         </label>
         <label>
-          Issue photo
+          Ticket photo
           <input name="photo" type="file" accept="image/*">
         </label>
-        <button type="submit" class="secondary primary-action">Create Issue</button>
+        <button type="submit" class="secondary primary-action">Create Ticket</button>
       </form>
     </details>
   `;
@@ -3532,7 +3853,7 @@ function renderPublicReport() {
     return;
   }
   els.publicReportForm.classList.remove("hidden");
-  els.reportTitle.textContent = `Report ${report.asset ? "equipment" : "area"} issue`;
+  els.reportTitle.textContent = `Report ${report.asset ? "equipment" : "area"} ticket`;
   els.reportContext.textContent = [
     report.customer?.name,
     report.location?.name,
@@ -3541,35 +3862,112 @@ function renderPublicReport() {
 }
 
 function renderWorkOrders() {
-  const workOrders = filterWorkOrdersForView(filteredWorkOrders());
-  els.workOrderCount.textContent = workOrders.length;
-  els.workOrderList.innerHTML = workOrders.length
-    ? workOrders.map(renderWorkOrderItem).join("")
-    : `<p class="muted">${currentRole === "Technician" ? "No open issues assigned to you for this view." : "No open issues for this view."}</p>`;
+  const visibleWorkOrders = filterWorkOrdersForView(filteredWorkOrders());
+  const visibleServiceRequests = filteredServiceRequests()
+    .filter((item) => item.status !== "Completed" && item.status !== "Declined");
+  const visiblePmRecords = completedPmRecords();
+  const standardTickets = visibleWorkOrders.filter((item) => !isCustomerReportedIssue(item));
+  const customerTickets = visibleWorkOrders.filter(isCustomerReportedIssue);
+  const groups = {
+    all: [
+      ...visibleWorkOrders.map((item) => ({ type: "ticket", item })),
+      ...visibleServiceRequests.map((item) => ({ type: "service", item })),
+      ...visiblePmRecords.map((item) => ({ type: "pm", item }))
+    ],
+    sw: standardTickets.map((item) => ({ type: "ticket", item })),
+    "sw-cu": customerTickets.map((item) => ({ type: "ticket", item })),
+    "sw-pm": visiblePmRecords.map((item) => ({ type: "pm", item })),
+    "sw-sr": visibleServiceRequests.map((item) => ({ type: "service", item }))
+  };
+  if (!groups[workOrderNumberFilter]) workOrderNumberFilter = "all";
+  const focusedWorkOrder = focusedWorkOrderId
+    ? visibleWorkOrders.find((item) => item.id === focusedWorkOrderId)
+    : null;
+  if (focusedWorkOrderId && !focusedWorkOrder) {
+    focusedWorkOrderId = "";
+  }
+  const records = focusedWorkOrder
+    ? [{ type: "ticket", item: focusedWorkOrder }]
+    : groups[workOrderNumberFilter];
+  els.workOrderCount.textContent = records.length;
+  renderWorkOrderNumberFilter({
+    all: groups.all.length,
+    sw: groups.sw.length,
+    swCu: groups["sw-cu"].length,
+    swPm: groups["sw-pm"].length,
+    swSr: groups["sw-sr"].length
+  });
+  els.workOrderList.innerHTML = records.length
+    ? records.map(renderSwNumberRecord).join("")
+    : `<p class="muted">${emptySwNumberFilterMessage()}</p>`;
+}
+
+function renderSwNumberRecord(record) {
+  if (record.type === "service") return renderServiceRequestItem(record.item);
+  if (record.type === "pm") return renderCompletedTicketItem(record.item);
+  return renderWorkOrderItem(record.item);
+}
+
+function emptySwNumberFilterMessage() {
+  if (workOrderNumberFilter === "sw") return "No SW tickets for this view.";
+  if (workOrderNumberFilter === "sw-cu") return "No SW-CU customer tickets for this view.";
+  if (workOrderNumberFilter === "sw-pm") return "No SW-PM maintenance records for this view.";
+  if (workOrderNumberFilter === "sw-sr") return "No SW-SR service requests for this view.";
+  return currentRole === "Technician"
+    ? "No SW records assigned to you for this view."
+    : "No SW records for this view.";
+}
+
+function renderWorkOrderNumberFilter(counts) {
+  if (!els.workOrderNumberFilter) return;
+  const currentValue = ["all", "sw", "sw-cu", "sw-pm", "sw-sr"].includes(workOrderNumberFilter)
+    ? workOrderNumberFilter
+    : "all";
+  workOrderNumberFilter = currentValue;
+  els.workOrderNumberFilter.innerHTML = [
+    `<option value="all">All SW records (${counts.all})</option>`,
+    `<option value="sw">SW tickets (${counts.sw})</option>`,
+    `<option value="sw-cu">SW-CU customer tickets (${counts.swCu})</option>`,
+    `<option value="sw-pm">SW-PM maintenance records (${counts.swPm})</option>`,
+    `<option value="sw-sr">SW-SR service requests (${counts.swSr})</option>`
+  ].join("");
+  els.workOrderNumberFilter.value = currentValue;
 }
 
 function renderCompletedPms() {
-  const records = completedIssueRecords();
-  if (els.completedPmCount) els.completedPmCount.textContent = records.length;
+  const visibleRecords = completedTicketRecords();
+  const focusedRecord = focusedCompletedRecordId
+    ? visibleRecords.find((record) => completedRecordMatchesId(record, focusedCompletedRecordId))
+    : null;
+  if (focusedCompletedRecordId && !focusedRecord) focusedCompletedRecordId = "";
+  const records = focusedRecord ? [focusedRecord] : visibleRecords;
+  if (els.completedPmCount) els.completedPmCount.textContent = visibleRecords.length;
   if (!els.completedPmList) return;
   els.completedPmList.innerHTML = records.length
     ? records.map((record) => {
         try {
-          return renderCompletedIssueItem(record);
+          return renderCompletedTicketItem(record);
         } catch {
           return `<article class="work-order-item"><p class="muted">A completed record could not be displayed.</p></article>`;
         }
       }).join("")
-    : `<p class="muted">No completed issues for this view.</p>`;
+    : `<p class="muted">No completed tickets for this view.</p>`;
 }
 
-function renderCompletedIssueItem(record) {
+function completedRecordMatchesId(record, id) {
+  if (!record || !id) return false;
+  if (record.type === "workOrder") return record.workOrder?.id === id;
+  return record.history?.id === id || record.asset?.id === id;
+}
+
+function renderCompletedTicketItem(record) {
   if (record.type === "workOrder") {
+    const isFocused = completedRecordMatchesId(record, focusedCompletedRecordId);
     return `
-      <details class="work-order-item work-order-drawer completed-pm-item">
+      <details class="work-order-item work-order-drawer completed-pm-item" ${isFocused ? "open" : ""}>
         <summary>
           <div>
-            <strong>${escapeHtml(formatIssueNumber(record.workOrder))} - ${escapeHtml(record.workOrder.title || "Completed issue")}</strong>
+            <strong>${escapeHtml(formatIssueNumber(record.workOrder))} - ${escapeHtml(record.workOrder.title || "Completed ticket")}</strong>
             <span>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</span>
           </div>
           <span class="history-open-label">Open</span>
@@ -3581,8 +3979,9 @@ function renderCompletedIssueItem(record) {
     `;
   }
 
+  const isFocused = completedRecordMatchesId(record, focusedCompletedRecordId);
   return `
-    <details class="work-order-item work-order-drawer completed-pm-item">
+    <details class="work-order-item work-order-drawer completed-pm-item" ${isFocused ? "open" : ""}>
       <summary>
         <div>
           <strong>${escapeHtml(formatPmNumber(record.history))} - ${escapeHtml(record.asset.name)}</strong>
@@ -3636,15 +4035,20 @@ function toggleMetricMenu(filter) {
 }
 
 function runDashboardAction(filter) {
-  const issueFilters = {
+  const ticketFilters = {
     workOrders: "active",
     highPriority: "highPriority",
     waitingParts: "waitingParts",
     reportedIssues: "reported",
+    failedPmIssues: "failedPm",
     assignedToMe: "assignedToMe"
   };
 
   if (filter === "completedPm") {
+    focusedWorkOrderId = "";
+    focusedServiceRequestId = "";
+    focusedCompletedRecordId = "";
+    workOrderNumberFilter = "all";
     const panel = document.getElementById("completedPmPanel");
     const willOpen = panel?.classList.contains("is-collapsed");
     togglePanel("completedPmPanel");
@@ -3654,6 +4058,10 @@ function runDashboardAction(filter) {
   }
 
   if (filter === "serviceRequests") {
+    focusedWorkOrderId = "";
+    focusedServiceRequestId = "";
+    focusedCompletedRecordId = "";
+    workOrderNumberFilter = "all";
     const panel = document.getElementById("serviceRequestsPanel");
     const willOpen = panel?.classList.contains("is-collapsed");
     togglePanel("serviceRequestsPanel");
@@ -3662,8 +4070,12 @@ function runDashboardAction(filter) {
     return;
   }
 
-  if (issueFilters[filter]) {
-    workOrderViewFilter = issueFilters[filter];
+  if (ticketFilters[filter]) {
+    focusedWorkOrderId = "";
+    focusedServiceRequestId = "";
+    focusedCompletedRecordId = "";
+    workOrderNumberFilter = "all";
+    workOrderViewFilter = ticketFilters[filter];
     assetSort = "workOrders";
     assetStatusFilter = "all";
     const panel = document.getElementById("workOrdersPanel");
@@ -3693,27 +4105,49 @@ function runDashboardAction(filter) {
 
 function openDashboardResult(type, id) {
   if (type === "asset") {
+    focusedWorkOrderId = "";
+    focusedServiceRequestId = "";
+    focusedCompletedRecordId = "";
+    workOrderNumberFilter = "all";
     selectedId = id;
     syncFiltersToSelectedAsset();
     location.hash = `asset/${selectedId}`;
     openPanel("assetPanel");
-  } else if (type === "issue") {
+  } else if (type === "ticket") {
+    const ticket = state.workOrders.find((item) => item.id === id);
+    focusedWorkOrderId = id;
+    workOrderNumberFilter = getWorkOrderNumberFilterForTicket(ticket);
+    focusedServiceRequestId = "";
+    focusedCompletedRecordId = "";
     workOrderViewFilter = "active";
     openPanel("workOrdersPanel");
   } else if (type === "service") {
+    focusedWorkOrderId = "";
+    workOrderNumberFilter = "all";
+    focusedServiceRequestId = id;
+    focusedCompletedRecordId = "";
     openPanel("serviceRequestsPanel");
   } else if (type === "completed") {
+    focusedWorkOrderId = "";
+    focusedServiceRequestId = "";
+    focusedCompletedRecordId = id;
+    workOrderNumberFilter = "all";
     openPanel("completedPmPanel");
   }
   render();
   const target = type === "asset"
     ? document.getElementById("assetPanel")
-    : type === "issue"
+    : type === "ticket"
       ? document.getElementById("workOrdersPanel")
       : type === "service"
         ? document.getElementById("serviceRequestsPanel")
         : document.getElementById("completedPmPanel");
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function getWorkOrderNumberFilterForTicket(ticket) {
+  if (isCustomerReportedIssue(ticket)) return "sw-cu";
+  return "sw";
 }
 
 function renderNewIssueFormOptions() {
@@ -3730,7 +4164,7 @@ function renderNewIssueFormOptions() {
   els.newIssueCustomer.value = currentCustomerId;
   els.newIssueCustomer.disabled = currentRole !== "Admin";
   els.newIssueCustomer.title = currentRole === "Admin"
-    ? "Choose the customer for this issue."
+    ? "Choose the customer for this ticket."
     : "Only admin users can choose a different customer.";
 
   const locations = locationsForCustomer(currentCustomerId);
@@ -3759,10 +4193,10 @@ function renderNewIssueFormOptions() {
     ? assets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name)}</option>`).join("")
     : `<option value="">No equipment available</option>`;
   els.newIssueAsset.value = currentAssetId;
-  const isAreaIssue = Boolean(els.newIssueTargetArea?.checked);
-  els.newIssueAsset.disabled = isAreaIssue || !assets.length;
-  els.newIssueArea.disabled = !isAreaIssue || !locations.length;
-  if (!isAreaIssue) els.newIssueArea.value = "";
+  const isAreaTicket = Boolean(els.newIssueTargetArea?.checked);
+  els.newIssueAsset.disabled = isAreaTicket || !assets.length;
+  els.newIssueArea.disabled = !isAreaTicket || !locations.length;
+  if (!isAreaTicket) els.newIssueArea.value = "";
   syncNewIssueTitle();
   updateNewIssueSubmitState();
 }
@@ -3771,10 +4205,10 @@ function updateNewIssueSubmitState() {
   if (!els.newIssueForm) return;
   const submitButton = els.newIssueForm.querySelector("button[type='submit']");
   if (!submitButton) return;
-  const isAreaIssue = Boolean(els.newIssueTargetArea?.checked);
+  const isAreaTicket = Boolean(els.newIssueTargetArea?.checked);
   const hasCustomer = Boolean(els.newIssueCustomer?.value);
   const hasLocation = Boolean(els.newIssueLocation?.value);
-  const hasValidTarget = isAreaIssue
+  const hasValidTarget = isAreaTicket
     ? Boolean(els.newIssueArea?.value.trim())
     : Boolean(els.newIssueAsset?.value);
   submitButton.disabled = !hasCustomer || !hasLocation || !hasValidTarget || !canCreateWorkOrders();
@@ -3782,15 +4216,15 @@ function updateNewIssueSubmitState() {
 
 function syncNewIssueTitle() {
   if (!els.newIssueTitle || !els.newIssueAsset) return;
-  const isAreaIssue = Boolean(els.newIssueTargetArea?.checked);
+  const isAreaTicket = Boolean(els.newIssueTargetArea?.checked);
   const asset = getAsset(els.newIssueAsset.value);
   const areaName = String(els.newIssueArea?.value || "").trim();
-  const label = isAreaIssue
+  const label = isAreaTicket
     ? areaName || "Area"
     : asset?.name || "";
   if (!label) return;
-  if (!els.newIssueTitle.value.trim() || els.newIssueTitle.value.startsWith("Issue: ")) {
-    els.newIssueTitle.value = `Issue: ${label}`;
+  if (!els.newIssueTitle.value.trim() || els.newIssueTitle.value.startsWith("Ticket: ")) {
+    els.newIssueTitle.value = `Ticket: ${label}`;
   }
 }
 
@@ -3839,8 +4273,13 @@ function renderServiceRequestFormOptions() {
 }
 
 function renderServiceRequests() {
-  const requests = filteredServiceRequests();
-  if (els.serviceRequestCount) els.serviceRequestCount.textContent = requests.filter((item) => item.status !== "Completed" && item.status !== "Declined").length;
+  const visibleRequests = filteredServiceRequests();
+  const focusedRequest = focusedServiceRequestId
+    ? visibleRequests.find((item) => item.id === focusedServiceRequestId)
+    : null;
+  if (focusedServiceRequestId && !focusedRequest) focusedServiceRequestId = "";
+  const requests = focusedRequest ? [focusedRequest] : visibleRequests;
+  if (els.serviceRequestCount) els.serviceRequestCount.textContent = visibleRequests.filter((item) => item.status !== "Completed" && item.status !== "Declined").length;
   if (!els.serviceRequestList) return;
   els.serviceRequestList.innerHTML = requests.length
     ? requests.map((request) => {
@@ -3878,7 +4317,7 @@ function renderServiceRequestItem(request) {
     : "";
   const requestHistory = renderServiceRequestHistory(request);
   return `
-    <details class="work-order-item work-order-drawer service-request-item">
+    <details class="work-order-item work-order-drawer service-request-item" ${request.id === focusedServiceRequestId ? "open" : ""}>
       <summary>
         <div>
           <strong>${escapeHtml(formatServiceRequestNumber(request))} - ${escapeHtml(request.title || "Service request")}</strong>
@@ -3904,7 +4343,7 @@ function renderServiceRequestItem(request) {
           ${request.status !== "Scheduled" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Scheduled">Schedule</button>` : ""}
           ${request.status !== "Completed" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Completed">Complete</button>` : ""}
           ${request.status !== "Declined" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Declined">Decline</button>` : ""}
-          ${!request.convertedWorkOrderId ? `<button class="primary" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Issue</button>` : `<span class="status-badge badge-ok">Converted</span>`}
+          ${!request.convertedWorkOrderId ? `<button class="primary" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Ticket</button>` : `<span class="status-badge badge-ok">Converted</span>`}
         </div>
       ` : ""}
       ${requestHistory}
@@ -3987,7 +4426,7 @@ function workOrderHistoryEntries(item) {
   return [{
     id: "created",
     action: "Created",
-    details: `${formatIssueNumber(item)} - ${item.title || "Open issue"}`,
+    details: `${formatIssueNumber(item)} - ${item.title || "Open ticket"}`,
     userName: item.source || "System",
     userRole: "",
     createdAt: item.createdAt || item.updatedAt || new Date().toISOString()
@@ -4061,16 +4500,28 @@ function renderAssetWorkOrders(asset) {
   els.assetWorkOrderCount.textContent = workOrders.length;
   els.assetWorkOrderList.innerHTML = workOrders.length
     ? workOrders.map(renderWorkOrderItem).join("")
-    : `<p class="muted">${currentRole === "Technician" ? "No issues assigned to you for this equipment." : "No issues for this equipment."}</p>`;
+    : `<p class="muted">${currentRole === "Technician" ? "No tickets assigned to you for this equipment." : "No tickets for this equipment."}</p>`;
 }
 
 function filterWorkOrdersForView(workOrders) {
   const active = workOrders.filter((item) => item.status !== "Closed");
   if (workOrderViewFilter === "highPriority") return active.filter((item) => item.priority === "High");
   if (workOrderViewFilter === "waitingParts") return active.filter((item) => item.status === "Waiting parts");
-  if (workOrderViewFilter === "reported") return active.filter((item) => item.source === "Public QR report");
+  if (workOrderViewFilter === "reported") return active.filter(isCustomerReportedIssue);
+  if (workOrderViewFilter === "failedPm") return active.filter(isFailedPmIssue);
   if (workOrderViewFilter === "assignedToMe") return active.filter((item) => item.assignedUserId === currentUser?.id);
   return active;
+}
+
+function isCustomerReportedIssue(item) {
+  return item?.source === "Public QR report";
+}
+
+function isFailedPmIssue(item) {
+  if (!item) return false;
+  if (item.source === "Failed PM") return true;
+  if (item.source === "PM result" && item.priority === "High" && /failed/i.test(item.title || "")) return true;
+  return Boolean(item.sourceHistoryId) && item.priority === "High" && /failed/i.test(item.title || "");
 }
 
 function renderEmptyStateContent(asset) {
@@ -4089,8 +4540,8 @@ function renderEmptyStateContent(asset) {
   }
   if (currentRole === "Technician") {
     return `
-      <h2>No assigned equipment issues</h2>
-      <p>Equipment will appear here when an open issue is assigned to you.</p>
+      <h2>No assigned equipment tickets</h2>
+      <p>Equipment will appear here when an open ticket is assigned to you.</p>
     `;
   }
   return `
@@ -4237,14 +4688,60 @@ function sortAssetsForTable(a, b) {
   return getDueInfo(a).nextDate - getDueInfo(b).nextDate;
 }
 
-function renderChecklist(template) {
-  const items = template?.items?.length ? template.items : DEFAULT_TEMPLATE_ITEMS;
-  els.checklistFields.innerHTML = items.map((item) => `
+function renderChecklist(template, asset = getSelectedAsset()) {
+  const templateItems = template?.items?.length ? template.items : DEFAULT_TEMPLATE_ITEMS;
+  const customItems = Array.isArray(asset?.extraChecklistItems) ? asset.extraChecklistItems : [];
+  const customStart = templateItems.length;
+  const items = [...templateItems, ...customItems];
+  const checklistRows = items.map((item, index) => `
     <label class="check-row">
       <input type="checkbox" name="checklist" value="${escapeHtml(item)}">
       <span>${escapeHtml(item)}</span>
+      ${index >= customStart ? `<button class="secondary mini danger-action" type="button" data-checklist-remove="${index - customStart}">Remove</button>` : ""}
     </label>
   `).join("");
+
+  els.checklistFields.innerHTML = `
+    ${checklistRows}
+    <div class="checklist-add-row">
+      <input type="text" data-checklist-new-item placeholder="Add checklist item">
+      <button class="secondary mini" type="button" data-checklist-add>Add Item</button>
+    </div>
+  `;
+}
+
+function addCustomChecklistItem() {
+  const asset = getSelectedAsset();
+  const input = els.pmForm.querySelector("[data-checklist-new-item]");
+  const item = input?.value.trim();
+  if (!asset || !item) return;
+
+  const template = getTemplate(asset.templateId);
+  const existingItems = [
+    ...(template?.items?.length ? template.items : DEFAULT_TEMPLATE_ITEMS),
+    ...(Array.isArray(asset.extraChecklistItems) ? asset.extraChecklistItems : [])
+  ];
+  if (existingItems.some((existing) => sameText(existing, item))) {
+    input.value = "";
+    return;
+  }
+
+  asset.extraChecklistItems = [...(Array.isArray(asset.extraChecklistItems) ? asset.extraChecklistItems : []), item];
+  asset.updatedAt = new Date().toISOString();
+  addActivity("Checklist item added", `${asset.name} - ${item}`);
+  saveState();
+  renderChecklist(template, asset);
+}
+
+function removeCustomChecklistItem(index) {
+  const asset = getSelectedAsset();
+  if (!asset || !Array.isArray(asset.extraChecklistItems) || !Number.isInteger(index)) return;
+  const removed = asset.extraChecklistItems[index];
+  asset.extraChecklistItems.splice(index, 1);
+  asset.updatedAt = new Date().toISOString();
+  if (removed) addActivity("Checklist item removed", `${asset.name} - ${removed}`);
+  saveState();
+  renderChecklist(getTemplate(asset.templateId), asset);
 }
 
 function renderAssetDetails(asset) {
@@ -4444,7 +4941,7 @@ function renderWorkOrderItem(item) {
       ${renderWorkOrderEditForm(item)}
     </details>
     <button class="secondary mini" type="button" data-work-order-pdf="${escapeAttribute(item.id)}">PDF Form</button>
-    <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Issue</button>
+    <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Ticket</button>
     <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
   ` : "";
   const actions = !canEdit ? "" : item.status === "Closed" ? `
@@ -4472,7 +4969,7 @@ function renderWorkOrderItem(item) {
           ? "badge-danger"
           : "badge-warn";
   return `
-    <details class="work-order-item work-order-drawer">
+    <details class="work-order-item work-order-drawer" ${item.id === focusedWorkOrderId ? "open" : ""}>
       <summary>
         <div>
           <strong>${escapeHtml(formatIssueNumber(item))} - ${escapeHtml(item.title)}</strong>
@@ -4485,7 +4982,7 @@ function renderWorkOrderItem(item) {
       ${assignmentControl}
       <p>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")} | ${escapeHtml(asset?.name || item.areaName || "Area report")}</p>
       <p>${escapeHtml(item.notes)}</p>
-      ${item.photo ? `<img class="history-photo" alt="Issue report photo" src="${item.photo.dataUrl}">` : ""}
+      ${item.photo ? `<img class="history-photo" alt="Ticket report photo" src="${item.photo.dataUrl}">` : ""}
       ${actions}
       ${renderWorkOrderHistory(item)}
     </details>
@@ -4500,7 +4997,7 @@ function renderWorkOrderEditForm(item) {
     <form class="inline-edit-form compact-form" data-work-order-edit-form="${escapeAttribute(item.id)}">
       <div class="form-grid">
         <label>
-          Issue
+          Ticket
           <input name="title" value="${escapeAttribute(item.title || "")}" required>
         </label>
         <label>
@@ -4568,10 +5065,10 @@ function getIssueReportDetails(item) {
     id: item.id,
     customerId: item.customerId || "",
     issueNumber: formatIssueNumber(item),
-    reportTitle: "Issue Report",
-    numberLabel: "Issue Number",
-    footerLabel: "Preventative Maintenance Issue Form",
-    title: item.title || "Open issue",
+    reportTitle: "Ticket Report",
+    numberLabel: "Ticket Number",
+    footerLabel: "Preventative Maintenance Ticket Form",
+    title: item.title || "Open ticket",
     customer: customer?.name || "Unknown customer",
     location: locationRecord?.name || "Unknown location",
     equipment: asset?.name || item.areaName || "Area report",
@@ -4602,33 +5099,33 @@ function openIssuePdfForm(item) {
     try {
       reportWindow.print();
     } catch (error) {
-      console.warn("Issue report print skipped.", error);
+      console.warn("Ticket report print skipped.", error);
     }
   }, 500);
   addWorkOrderHistory(item, "PDF opened", `${details.issueNumber} PDF form opened`);
-  addActivity("Issue PDF opened", `${details.issueNumber} - ${details.title}`);
+  addActivity("Ticket PDF opened", `${details.issueNumber} - ${details.title}`);
   saveState();
   render();
 }
 
 async function emailIssueReport(item) {
   const details = getIssueReportDetails(item);
-  const recipient = await choosePreferredContractorEmail("Email this issue request to:", details.customerId);
+  const recipient = await choosePreferredContractorEmail("Email this ticket request to:", details.customerId);
   if (recipient === null) return;
   addWorkOrderHistory(item, "Email draft opened", `Draft to ${recipient.trim()}`);
-  addActivity("Issue email draft opened", `${details.title} to ${recipient.trim()}`);
+  addActivity("Ticket email draft opened", `${details.title} to ${recipient.trim()}`);
   saveState();
   render();
   openIssueEmailDraft(details, recipient);
 }
 
 function openIssueEmailDraft(details, recipient) {
-  const subject = `SiteWorks Issue: ${details.priority} - ${details.equipment}`;
+  const subject = `SiteWorks Ticket: ${details.priority} - ${details.equipment}`;
   const body = [
-    "SiteWorks Issue Report",
+    "SiteWorks Ticket Report",
     "",
-    `Issue Number: ${details.issueNumber}`,
-    `Issue: ${details.title}`,
+    `Ticket Number: ${details.issueNumber}`,
+    `Ticket: ${details.title}`,
     `Status: ${details.status}`,
     `Priority: ${details.priority}`,
     `Assigned to: ${details.assignedTo}`,
@@ -4637,7 +5134,7 @@ function openIssueEmailDraft(details, recipient) {
     `Equipment / Area: ${details.equipment}`,
     `Due: ${details.dueAt}`,
     `Created: ${details.createdAt}`,
-    `Issue ID: ${details.id}`,
+    `Ticket ID: ${details.id}`,
     "",
     "Notes:",
     details.notes,
@@ -4649,7 +5146,7 @@ function openIssueEmailDraft(details, recipient) {
 
 async function sendIssuePdfEmail(item, button) {
   const details = getIssueReportDetails(item);
-  const recipient = await choosePreferredContractorEmail("Email this issue PDF to:", details.customerId);
+  const recipient = await choosePreferredContractorEmail("Email this ticket PDF to:", details.customerId);
   if (!recipient) return;
 
   const originalText = button.textContent;
@@ -4661,22 +5158,22 @@ async function sendIssuePdfEmail(item, button) {
       headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient.trim(),
-        issue: getEmailFunctionReportDetails(details)
+        ticket: getEmailFunctionReportDetails(details)
       })
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(result.error || "The issue email could not be sent.");
+      throw new Error(result.error || "The ticket email could not be sent.");
     }
     addWorkOrderHistory(item, "PDF email sent", `Sent to ${recipient.trim()}`);
-    addActivity("Issue PDF emailed", `${details.title} to ${recipient.trim()}`);
+    addActivity("Ticket PDF emailed", `${details.title} to ${recipient.trim()}`);
     saveState();
     render();
-    alert("Issue PDF email sent.");
+    alert("Ticket PDF email sent.");
   } catch (error) {
-    console.warn("Issue PDF email failed.", error);
+    console.warn("Ticket PDF email failed.", error);
     addWorkOrderHistory(item, "PDF email failed", error.message || "Automatic PDF email could not be sent.");
-    addActivity("Issue PDF email failed", `${details.title} to ${recipient.trim()}`);
+    addActivity("Ticket PDF email failed", `${details.title} to ${recipient.trim()}`);
     saveState();
     render();
     const useDraft = confirm([
@@ -4688,7 +5185,7 @@ async function sendIssuePdfEmail(item, button) {
     ].join("\n"));
     if (useDraft) {
       addWorkOrderHistory(item, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
-      addActivity("Issue fallback email draft", `${details.title} to ${recipient.trim()}`);
+      addActivity("Ticket fallback email draft", `${details.title} to ${recipient.trim()}`);
       saveState();
       render();
       openIssueEmailDraft(details, recipient.trim());
@@ -4740,10 +5237,10 @@ async function sendIssueAssignmentEmail(item, user) {
       headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient,
-        issue: getEmailFunctionReportDetails({
+        ticket: getEmailFunctionReportDetails({
           ...details,
-          reportTitle: "Issue Assignment",
-          footerLabel: "Assigned Maintenance Issue",
+          reportTitle: "Ticket Assignment",
+          footerLabel: "Assigned Maintenance Ticket",
           notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
         })
       })
@@ -4755,7 +5252,7 @@ async function sendIssueAssignmentEmail(item, user) {
     addWorkOrderHistory(item, "Assignment email sent", `Sent to ${recipient}`);
     addActivity("Assignment email sent", `${details.issueNumber} to ${assigneeName}`);
   } catch (error) {
-    console.warn("Issue assignment email failed.", error);
+    console.warn("Ticket assignment email failed.", error);
     addWorkOrderHistory(item, "Assignment email failed", error.message || "Automatic assignment email could not be sent.");
     addActivity("Assignment email failed", `${details.issueNumber} to ${recipient}`);
   }
@@ -4781,7 +5278,7 @@ async function sendServiceRequestAssignmentEmail(request, user) {
       headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient,
-        issue: getEmailFunctionReportDetails({
+        ticket: getEmailFunctionReportDetails({
           ...details,
           reportTitle: "Service Request Assignment",
           footerLabel: "Assigned Service Request",
@@ -4907,7 +5404,7 @@ async function sendServiceRequestPdfEmail(request, button) {
       headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient.trim(),
-        issue: getEmailFunctionReportDetails(details)
+        ticket: getEmailFunctionReportDetails(details)
       })
     });
     const result = await response.json().catch(() => ({}));
@@ -5043,14 +5540,14 @@ function buildIssuePdfHtml(details) {
     ["Created", details.createdAt],
     ["Last updated", details.updatedAt],
     ...(details.resolvedAt ? [["Resolved", details.resolvedAt]] : []),
-    [details.numberLabel || "Issue Number", details.issueNumber],
+    [details.numberLabel || "Ticket Number", details.issueNumber],
     ["Record ID", details.id]
   ];
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>SiteWorks Issue Report</title>
+  <title>SiteWorks Ticket Report</title>
   <style>
     @page { size: letter; margin: 0.5in; }
     * { box-sizing: border-box; }
@@ -5080,13 +5577,13 @@ function buildIssuePdfHtml(details) {
     <section class="top">
       <div>
         <div class="brand">SiteWorks</div>
-        <h1>${escapeHtml(details.reportTitle || "Issue Report")}</h1>
+        <h1>${escapeHtml(details.reportTitle || "Ticket Report")}</h1>
         <div class="status">${escapeHtml(details.status)} | ${escapeHtml(details.priority)} Priority</div>
       </div>
       <div class="meta">
         <strong>Generated</strong><br>
         ${escapeHtml(formatDateTime(new Date()))}<br><br>
-        <strong>${escapeHtml(details.numberLabel || "Issue Number")}</strong><br>
+        <strong>${escapeHtml(details.numberLabel || "Ticket Number")}</strong><br>
         ${escapeHtml(details.issueNumber)}<br><br>
         <strong>Record ID</strong><br>
         ${escapeHtml(details.id)}
@@ -5108,7 +5605,7 @@ function buildIssuePdfHtml(details) {
     ${details.photoDataUrl ? `
       <section class="photo">
         <strong>Submitted Photo</strong>
-        <img alt="Issue photo" src="${escapeAttribute(details.photoDataUrl)}">
+        <img alt="Ticket photo" src="${escapeAttribute(details.photoDataUrl)}">
       </section>
     ` : ""}
     <section class="signoff">
@@ -5122,7 +5619,7 @@ function buildIssuePdfHtml(details) {
       </div>
     </section>
     <footer class="footer">
-      <span>${escapeHtml(details.footerLabel || "Preventative Maintenance Issue Form")}</span>
+      <span>${escapeHtml(details.footerLabel || "Preventative Maintenance Ticket Form")}</span>
       <span>SiteWorks</span>
     </footer>
   </main>
@@ -5189,7 +5686,7 @@ function renderReportLabels(assets = filteredAssets()) {
           <strong>${escapeHtml(asset.name)}</strong>
           <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
           <span>${escapeHtml(locationRecord?.name || "Unknown location")}</span>
-          <span>Scan to report an equipment issue</span>
+          <span>Scan to report an equipment ticket</span>
         </div>
       </div>
     `;
@@ -5204,7 +5701,7 @@ function renderReportLabels(assets = filteredAssets()) {
           <strong>${escapeHtml(locationRecord.name)}</strong>
           <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
           <span>Area report QR</span>
-          <span>Scan to report an area issue</span>
+          <span>Scan to report an area ticket</span>
         </div>
       </div>
     `;
@@ -5218,6 +5715,17 @@ function visibleLocationsForReportLabels() {
     visibleCustomerIds.has(locationRecord.customerId) &&
     canSeeLocation(locationRecord.id, locationRecord.customerId)
   );
+}
+
+function isLocationScopedUser() {
+  return Boolean(
+    currentUser?.locationId &&
+    (isManagerRole() || currentRole === "Customer")
+  );
+}
+
+function defaultLocationSelection() {
+  return isLocationScopedUser() ? currentUser.locationId : "all";
 }
 
 function ensureSelection() {
@@ -5237,7 +5745,7 @@ function ensureSelection() {
   if (selectedLocationId !== "all" && !visibleLocations.some((locationRecord) => locationRecord.id === selectedLocationId)) {
     selectedLocationId = "all";
   }
-  if (currentUser?.locationId && visibleLocations.some((locationRecord) => locationRecord.id === currentUser.locationId)) {
+  if (isLocationScopedUser() && visibleLocations.some((locationRecord) => locationRecord.id === currentUser.locationId)) {
     selectedLocationId = currentUser.locationId;
   }
 
@@ -5257,7 +5765,7 @@ function syncFiltersToSelectedAsset() {
   if (!asset) return;
   if (!canSeeAsset(asset)) return;
   selectedCustomerId = asset.customerId;
-  selectedLocationId = currentUser?.locationId || "all";
+  selectedLocationId = defaultLocationSelection();
 }
 
 function restoreScannedAssetSelection() {
@@ -5268,7 +5776,7 @@ function restoreScannedAssetSelection() {
   if (!asset || !canSeeAsset(asset)) return;
   selectedId = asset.id;
   selectedCustomerId = asset.customerId;
-  selectedLocationId = currentUser?.locationId || "all";
+  selectedLocationId = defaultLocationSelection();
 }
 
 function filteredAssets() {
@@ -5300,8 +5808,21 @@ function filteredServiceRequests() {
   });
 }
 
+function dashboardAssets() {
+  if (currentRole !== "Technician") return filteredAssets();
+  const assignedAssetIds = new Set([
+    ...filteredWorkOrders().map((item) => item.assetId).filter(Boolean),
+    ...filteredServiceRequests().map((item) => item.assetId).filter(Boolean)
+  ]);
+  return filteredAssets().filter((asset) => assignedAssetIds.has(asset.id));
+}
+
 function openWorkOrdersForAsset(assetId) {
   return state.workOrders.filter((item) => item.assetId === assetId && item.status !== "Closed" && canSeeWorkOrder(item));
+}
+
+function openFailedPmTicketsForAsset(assetId) {
+  return openWorkOrdersForAsset(assetId).filter(isFailedPmIssue);
 }
 
 function completedPmRecords() {
@@ -5333,7 +5854,7 @@ function matchesCompletedPmGlobalSearch(record) {
   ].join(" ").toLowerCase().includes(globalQuery);
 }
 
-function completedIssueRecords() {
+function completedTicketRecords() {
   const closedWorkOrders = filteredWorkOrders()
     .filter((item) => item.status === "Closed")
     .map((workOrder) => ({
@@ -5356,9 +5877,11 @@ function getMostRecentAssetWithCompletedPm() {
 }
 
 function locationsForCustomer(customerId) {
-  return state.locations.filter((locationRecord) =>
-    locationRecord.customerId === customerId && canSeeLocation(locationRecord.id, locationRecord.customerId)
-  );
+  return state.locations.filter((locationRecord) => {
+    if (locationRecord.customerId !== customerId) return false;
+    if (currentRole === "Technician") return canSeeCustomer(locationRecord.customerId);
+    return canSeeLocation(locationRecord.id, locationRecord.customerId);
+  });
 }
 
 async function deleteLocation(locationId) {
@@ -5392,7 +5915,7 @@ async function deleteLocation(locationId) {
 
   addActivity(
     "Location deleted",
-    `${locationRecord.name}: ${removedAssetCount} equipment record(s), ${removedWorkOrderCount} issue(s)`
+    `${locationRecord.name}: ${removedAssetCount} equipment record(s), ${removedWorkOrderCount} ticket(s)`
   );
   saveState();
   await deleteStructuredRows("locations", "id", [locationId]);
@@ -5457,94 +5980,98 @@ function getDueInfo(asset) {
 }
 
 function createWorkOrderFromPm(asset, historyItem) {
-  const priority = historyItem.result === "Failed" ? "High" : "Medium";
-  const issue = {
+  const failedPm = historyItem.result === "Failed";
+  const priority = failedPm ? "High" : "Medium";
+  const ticket = {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
     assetId: asset.id,
     customerId: asset.customerId,
     locationId: asset.locationId,
+    source: failedPm ? "Failed PM" : "PM result",
     sourceHistoryId: historyItem.id,
-    title: `${historyItem.result}: ${asset.name}`,
+    title: failedPm ? `Failed PM follow-up: ${asset.name}` : `${historyItem.result}: ${asset.name}`,
     priority,
     status: "Open",
     assignedUserId: "",
     assignedUserName: "",
-    dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
-    notes: historyItem.notes || "Created automatically from PM result.",
+    dueAt: addDays(new Date(), failedPm ? 2 : 7).toISOString(),
+    notes: historyItem.notes || (failedPm
+      ? "Failed PM needs follow-up before it gets lost."
+      : "Created automatically from PM result."),
     history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  addWorkOrderHistory(issue, "Created from PM", `${formatIssueNumber(issue)} - ${issue.title}`);
-  return issue;
+  addWorkOrderHistory(ticket, failedPm ? "Failed PM follow-up created" : "Created from PM", `${formatIssueNumber(ticket)} - ${ticket.title}`);
+  return ticket;
 }
 
-function createManualIssueForAsset(asset, issueData = {}) {
+function createManualIssueForAsset(asset, ticketData = {}) {
   if (!canCreateWorkOrders() || !canSeeAsset(asset)) return;
-  const title = issueData.title || `Issue: ${asset.name}`;
+  const title = ticketData.title || `Ticket: ${asset.name}`;
   if (!title.trim()) return;
-  const priority = normalizePriority(issueData.priority);
-  const issue = {
+  const priority = normalizePriority(ticketData.priority);
+  const ticket = {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
     assetId: asset.id,
     customerId: asset.customerId,
     locationId: asset.locationId,
-    source: "Manual issue",
+    source: "Manual ticket",
     title: title.trim(),
     priority,
     status: "Open",
     assignedUserId: "",
     assignedUserName: "",
     dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
-    notes: issueData.notes || "No notes entered.",
-    photo: issueData.photo || null,
+    notes: ticketData.notes || "No notes entered.",
+    photo: ticketData.photo || null,
     history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  addWorkOrderHistory(issue, "Created", `${formatIssueNumber(issue)} - ${issue.title}`);
-  state.workOrders.unshift(issue);
+  addWorkOrderHistory(ticket, "Created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
+  state.workOrders.unshift(ticket);
   workOrderViewFilter = "active";
-  addActivity("Issue created", `${formatIssueNumber(issue)} - ${issue.title}`);
+  addActivity("Ticket created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
   saveState();
   openPanel("workOrdersPanel");
   render();
   document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function createManualIssueForArea(customerId, locationId, areaName, issueData = {}) {
+function createManualIssueForArea(customerId, locationId, areaName, ticketData = {}) {
   if (!canCreateWorkOrders() || !canSeeLocation(locationId, customerId)) return;
   const locationRecord = getLocation(locationId);
   if (!locationRecord || locationRecord.customerId !== customerId) return;
-  const title = issueData.title || `Issue: ${areaName || locationRecord.name}`;
+  const title = ticketData.title || `Ticket: ${areaName || locationRecord.name}`;
   if (!title.trim()) return;
-  const priority = normalizePriority(issueData.priority);
-  const issue = {
+  const priority = normalizePriority(ticketData.priority);
+  const ticket = {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
     assetId: "",
     customerId,
     locationId,
     areaName: areaName || locationRecord.name,
-    source: "Manual area issue",
+    source: "Manual area ticket",
     title: title.trim(),
     priority,
     status: "Open",
     assignedUserId: "",
     assignedUserName: "",
     dueAt: addDays(new Date(), priority === "High" ? 2 : 7).toISOString(),
-    notes: issueData.notes || "No notes entered.",
-    photo: issueData.photo || null,
+    notes: ticketData.notes || "No notes entered.",
+    photo: ticketData.photo || null,
     history: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  addWorkOrderHistory(issue, "Created", `${formatIssueNumber(issue)} - ${issue.title}`);
-  state.workOrders.unshift(issue);
+  addWorkOrderHistory(ticket, "Created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
+  state.workOrders.unshift(ticket);
   workOrderViewFilter = "active";
-  addActivity("Area issue created", `${formatIssueNumber(issue)} - ${issue.title}`);
+  addActivity("Area ticket created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
   saveState();
   openPanel("workOrdersPanel");
   render();
@@ -5553,17 +6080,17 @@ function createManualIssueForArea(customerId, locationId, areaName, issueData = 
 
 async function createIssueFromTopAction() {
   if (!els.newIssueForm || !canCreateWorkOrders()) return;
-  const isAreaIssue = Boolean(els.newIssueTargetArea?.checked);
+  const isAreaTicket = Boolean(els.newIssueTargetArea?.checked);
   const asset = getAsset(els.newIssueAsset?.value);
   const customerId = els.newIssueCustomer?.value || "";
   const locationId = els.newIssueLocation?.value || "";
   const areaName = String(els.newIssueArea?.value || "").trim();
   const locationRecord = getLocation(locationId);
-  if (!isAreaIssue && !asset) {
+  if (!isAreaTicket && !asset) {
     if (els.newIssueStatus) els.newIssueStatus.textContent = "Choose equipment or select Area first.";
     return;
   }
-  if (isAreaIssue && (!customerId || !locationRecord || !areaName)) {
+  if (isAreaTicket && (!customerId || !locationRecord || !areaName)) {
     if (els.newIssueStatus) els.newIssueStatus.textContent = "Choose a location and enter the area first.";
     return;
   }
@@ -5574,26 +6101,26 @@ async function createIssueFromTopAction() {
       submitButton.textContent = "Creating...";
     }
     const photo = await readIssuePhoto(els.newIssuePhoto?.files?.[0]);
-    const issueData = {
-      title: els.newIssueTitle?.value.trim() || `Issue: ${isAreaIssue ? areaName : asset.name}`,
+    const ticketData = {
+      title: els.newIssueTitle?.value.trim() || `Ticket: ${isAreaTicket ? areaName : asset.name}`,
       priority: els.newIssuePriority?.value || "Medium",
       notes: els.newIssueNotes?.value.trim(),
       photo
     };
     els.newIssueDrawer.open = false;
     els.newIssueForm.reset();
-    if (isAreaIssue) {
-      createManualIssueForArea(customerId, locationId, areaName, issueData);
+    if (isAreaTicket) {
+      createManualIssueForArea(customerId, locationId, areaName, ticketData);
     } else {
-      createManualIssueForAsset(asset, issueData);
+      createManualIssueForAsset(asset, ticketData);
     }
   } catch (error) {
-    console.warn("Top action issue creation failed.", error);
-    if (els.newIssueStatus) els.newIssueStatus.textContent = "Issue was not created. Try again with no photo or a smaller photo.";
+    console.warn("Top action ticket creation failed.", error);
+    if (els.newIssueStatus) els.newIssueStatus.textContent = "Ticket was not created. Try again with no photo or a smaller photo.";
   } finally {
     if (submitButton) {
       submitButton.disabled = false;
-      submitButton.textContent = "Create Issue";
+      submitButton.textContent = "Create Ticket";
     }
   }
 }
@@ -5687,7 +6214,7 @@ function updateServiceRequestStatus(requestId, status) {
 function convertServiceRequestToIssue(requestId) {
   const request = getServiceRequest(requestId);
   if (!request || request.convertedWorkOrderId) return;
-  const issue = {
+  const ticket = {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
     assetId: request.assetId || "",
@@ -5707,14 +6234,14 @@ function convertServiceRequestToIssue(requestId) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  addWorkOrderHistory(issue, "Created from service request", `${formatServiceRequestNumber(request)} -> ${formatIssueNumber(issue)}`);
-  state.workOrders.unshift(issue);
-  request.convertedWorkOrderId = issue.id;
+  addWorkOrderHistory(ticket, "Created from service request", `${formatServiceRequestNumber(request)} -> ${formatIssueNumber(ticket)}`);
+  state.workOrders.unshift(ticket);
+  request.convertedWorkOrderId = ticket.id;
   request.status = "Reviewed";
   request.updatedAt = new Date().toISOString();
-  addServiceRequestHistory(request, "Converted to issue", `${formatServiceRequestNumber(request)} -> ${formatIssueNumber(issue)}`);
+  addServiceRequestHistory(request, "Converted to ticket", `${formatServiceRequestNumber(request)} -> ${formatIssueNumber(ticket)}`);
   workOrderViewFilter = "active";
-  addActivity("Service request converted", `${formatServiceRequestNumber(request)} to ${formatIssueNumber(issue)}`);
+  addActivity("Service request converted", `${formatServiceRequestNumber(request)} to ${formatIssueNumber(ticket)}`);
   saveState();
   openPanel("workOrdersPanel");
   render();
@@ -5732,12 +6259,12 @@ function convertOpenIssueToServiceRequest(workOrderId) {
     title: workOrder.title || `Service request from ${formatIssueNumber(workOrder)}`,
     priority: workOrder.priority || "Medium",
     status: "New",
-    requestedBy: workOrder.source || "Converted from open issue",
+    requestedBy: workOrder.source || "Converted from open ticket",
     preferredDate: "",
     assignedUserId: workOrder.assignedUserId || "",
     assignedUserName: workOrder.assignedUserName || "",
     notes: [
-      `Converted from open issue ${formatIssueNumber(workOrder)}.`,
+      `Converted from open ticket ${formatIssueNumber(workOrder)}.`,
       workOrder.notes || "No details entered."
     ].join("\n"),
     photo: workOrder.photo || null,
@@ -5746,7 +6273,7 @@ function convertOpenIssueToServiceRequest(workOrderId) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  addServiceRequestHistory(serviceRequest, "Created from issue", `${formatIssueNumber(workOrder)} -> ${formatServiceRequestNumber(serviceRequest)}`);
+  addServiceRequestHistory(serviceRequest, "Created from ticket", `${formatIssueNumber(workOrder)} -> ${formatServiceRequestNumber(serviceRequest)}`);
   state.serviceRequests.unshift(serviceRequest);
   workOrder.status = "Closed";
   workOrder.resolvedAt = new Date().toISOString();
@@ -5756,7 +6283,7 @@ function convertOpenIssueToServiceRequest(workOrderId) {
     `Converted to service request ${formatServiceRequestNumber(serviceRequest)}.`
   ].filter(Boolean).join("\n");
   addWorkOrderHistory(workOrder, "Converted to service request", `${formatIssueNumber(workOrder)} -> ${formatServiceRequestNumber(serviceRequest)}`);
-  addActivity("Open issue converted", `${formatIssueNumber(workOrder)} to ${formatServiceRequestNumber(serviceRequest)}`);
+  addActivity("Open ticket converted", `${formatIssueNumber(workOrder)} to ${formatServiceRequestNumber(serviceRequest)}`);
   saveState();
   openPanel("serviceRequestsPanel");
   render();
@@ -5780,7 +6307,8 @@ function nextIssueNumber() {
 
 function formatIssueNumber(item) {
   const numeric = Number(item?.issueNumber || 0);
-  return numeric ? `SW-${String(numeric).padStart(4, "0")}` : "SW-0000";
+  const prefix = isCustomerReportedIssue(item) ? "SW-CU" : "SW";
+  return numeric ? `${prefix}-${String(numeric).padStart(4, "0")}` : `${prefix}-0000`;
 }
 
 function nextPmNumber() {
@@ -5813,7 +6341,7 @@ function formatServiceRequestNumber(item) {
 }
 
 function canManageSetup() {
-  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
 }
 
 function canCreateCustomers() {
@@ -5821,7 +6349,7 @@ function canCreateCustomers() {
 }
 
 function canCreateLocations() {
-  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
 }
 
 function canManageTemplateSetup() {
@@ -5830,7 +6358,7 @@ function canManageTemplateSetup() {
 
 function canManageCustomerSetup(customerId) {
   if (currentRole === "Admin") return true;
-  return currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
+  return isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
 }
 
 function canManageLocationSetup(locationId, customerId = "") {
@@ -5844,23 +6372,23 @@ function manageableSetupCustomers() {
     const selectedCustomer = getCustomer(selectedCustomerId);
     return selectedCustomer ? [selectedCustomer] : [...state.customers];
   }
-  if (currentRole === "Manager" && currentUser?.customerId) {
+  if (isManagerRole() && currentUser?.customerId) {
     return state.customers.filter((customer) => customer.id === currentUser.customerId);
   }
   return [];
 }
 
 function canManageUsers() {
-  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
 }
 
 function canManageContractors() {
-  return currentRole === "Admin" || (currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
 }
 
 function canManageContractorCustomer(customerId) {
   if (currentRole === "Admin") return true;
-  return currentRole === "Manager" && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
+  return isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
 }
 
 function canManageContractorRecord(contractor) {
@@ -5871,7 +6399,7 @@ function visiblePreferredContractors(customerId = "") {
   if (currentRole === "Admin") {
     return state.preferredContractors.filter((contractor) => !customerId || contractor.customerId === customerId);
   }
-  if (currentRole === "Manager" && currentUser?.customerId) {
+  if (isManagerRole() && currentUser?.customerId) {
     return state.preferredContractors.filter((contractor) => contractor.customerId === currentUser.customerId);
   }
   if (customerId) return state.preferredContractors.filter((contractor) => contractor.customerId === customerId);
@@ -5880,7 +6408,7 @@ function visiblePreferredContractors(customerId = "") {
 
 function manageableUserCustomers() {
   if (currentRole === "Admin") return state.customers;
-  if (currentRole === "Manager" && currentUser?.customerId) {
+  if (isManagerRole() && currentUser?.customerId) {
     return state.customers.filter((customer) => customer.id === currentUser.customerId);
   }
   return [];
@@ -5891,7 +6419,7 @@ function manageableUserLocations(customerId) {
   if (currentRole === "Admin") {
     return state.locations.filter((locationRecord) => locationRecord.customerId === customerId);
   }
-  if (currentRole === "Manager" && currentUser?.customerId === customerId) {
+  if (isManagerRole() && currentUser?.customerId === customerId) {
     const managerLocationId = currentUser.locationId || "";
     return state.locations.filter((locationRecord) =>
       locationRecord.customerId === customerId &&
@@ -5902,20 +6430,30 @@ function manageableUserLocations(customerId) {
 }
 
 function userRoleOptionsForEditor(existingRole = "") {
-  if (currentRole === "Admin") return ["Customer", "Technician", "Manager", "Admin"];
-  const roles = ["Customer", "Technician"];
+  if (currentRole === "Admin") return ["Customer", "Technician", "Manager", "Facility Manager", "Admin"];
+  const roles = currentRole === "Facility Manager"
+    ? ["Customer", "Technician", "Manager"]
+    : ["Customer", "Technician"];
   return roles.includes(existingRole) || !existingRole ? roles : [existingRole];
 }
 
 function canCreateUserRole(role) {
   if (currentRole === "Admin") return true;
+  if (currentRole === "Facility Manager") return ["Customer", "Technician", "Manager"].includes(role);
   return currentRole === "Manager" && ["Customer", "Technician"].includes(role);
+}
+
+function userRolePermissionMessage() {
+  return currentRole === "Facility Manager"
+    ? "Facility Managers can add Customer, Technician, or Manager users for their assigned customer."
+    : "Managers can only add Customer or Technician users for their assigned customer.";
 }
 
 function canManageUserCustomer(customerId, role) {
   if (currentRole === "Admin") return true;
-  if (currentRole !== "Manager") return false;
-  if (role === "Admin" || role === "Manager") return false;
+  if (!isManagerRole()) return false;
+  if (role === "Admin" || role === "Facility Manager") return false;
+  if (role === "Manager" && currentRole !== "Facility Manager") return false;
   return Boolean(currentUser?.customerId && customerId === currentUser.customerId);
 }
 
@@ -5926,7 +6464,7 @@ function canManageUserLocation(customerId, locationId) {
 
 function canViewUserRecord(user) {
   if (currentRole === "Admin") return true;
-  if (currentRole !== "Manager") return false;
+  if (!isManagerRole()) return false;
   if (user.customerId !== currentUser?.customerId || user.role === "Admin") return false;
   const managerLocationId = currentUser.locationId || "";
   if (!managerLocationId) return true;
@@ -5935,9 +6473,12 @@ function canViewUserRecord(user) {
 
 function canEditUserRecord(user) {
   if (currentRole === "Admin") return true;
-  if (currentRole !== "Manager") return false;
+  if (!isManagerRole()) return false;
   if (currentUser?.id === user.id) return false;
-  if (user.customerId !== currentUser?.customerId || !["Customer", "Technician"].includes(user.role)) return false;
+  const manageableRoles = currentRole === "Facility Manager"
+    ? ["Customer", "Technician", "Manager"]
+    : ["Customer", "Technician"];
+  if (user.customerId !== currentUser?.customerId || !manageableRoles.includes(user.role)) return false;
   const managerLocationId = currentUser.locationId || "";
   if (!managerLocationId) return true;
   return user.locationId === managerLocationId;
@@ -5948,57 +6489,53 @@ function visibleManagedUsers() {
 }
 
 function canAddEquipment() {
-  return currentRole === "Admin" || (currentRole === "Manager" && !currentUser?.locationId);
+  return currentRole === "Admin" || (isManagerRole() && !currentUser?.locationId);
 }
 
 function canCompletePm() {
   return currentRole === "Admin" ||
-    (currentRole === "Manager" && !currentUser?.locationId) ||
+    (isManagerRole() && !currentUser?.locationId) ||
     currentRole === "Technician" ||
     currentRole === "Customer";
 }
 
 function canManageWorkOrders() {
-  return currentRole === "Admin" || (currentRole === "Manager" && !currentUser?.locationId);
+  return currentRole === "Admin" || (isManagerRole() && !currentUser?.locationId);
 }
 
 function canCreateWorkOrders() {
-  return currentRole === "Admin" || currentRole === "Manager";
+  return currentRole === "Admin" || isManagerRole();
 }
 
 function canCreateServiceRequests() {
   if (!currentUser || !visibleCustomers().length) return false;
-  if (currentRole === "Manager" && currentUser.locationId) return false;
-  return currentRole === "Admin" || currentRole === "Manager";
+  if (isManagerRole() && currentUser.locationId) return false;
+  return currentRole === "Admin" || isManagerRole();
 }
 
 function canSeeWorkOrder(item) {
-  if (!canSeeLocation(item.locationId, item.customerId)) return false;
-  if (currentRole === "Admin" || currentRole === "Manager") return canSeeCustomer(item.customerId);
   if (currentRole === "Technician") {
     return canSeeCustomer(item.customerId) && item.assignedUserId === currentUser?.id;
   }
+  if (!canSeeLocation(item.locationId, item.customerId)) return false;
+  if (currentRole === "Admin" || isManagerRole()) return canSeeCustomer(item.customerId);
   return canSeeCustomer(item.customerId);
 }
 
 function canSeeServiceRequest(item) {
-  if (!canSeeLocation(item.locationId, item.customerId)) return false;
-  if (currentRole === "Admin" || currentRole === "Manager") return canSeeCustomer(item.customerId);
   if (currentRole === "Technician") {
     return canSeeCustomer(item.customerId) && item.assignedUserId === currentUser?.id;
   }
+  if (!canSeeLocation(item.locationId, item.customerId)) return false;
+  if (currentRole === "Admin" || isManagerRole()) return canSeeCustomer(item.customerId);
   return canSeeCustomer(item.customerId);
 }
 
 function canSeeAsset(asset) {
   if (!asset || !canSeeCustomer(asset.customerId)) return false;
+  if (currentRole === "Technician") return true;
   if (!canSeeLocation(asset.locationId, asset.customerId)) return false;
-  if (currentRole !== "Technician") return true;
-  return state.workOrders.some((item) =>
-    item.assetId === asset.id &&
-    item.status !== "Closed" &&
-    canSeeWorkOrder(item)
-  );
+  return true;
 }
 
 function hasSetupUsers() {
@@ -6709,7 +7246,7 @@ async function syncStructuredDataToSupabase() {
 
     await upsertStructuredRows("work_orders", state.workOrders.map((item) => ({
       id: item.id,
-      issue_number: item.issueNumber || null,
+      ticket_number: item.issueNumber || null,
       asset_id: item.assetId || null,
       customer_id: item.customerId || null,
       location_id: item.locationId || null,
@@ -7006,6 +7543,9 @@ function normalizeState(input) {
     history: (asset.history || []).map((item) => ({ photo: null, ...item })),
     ...asset
   }));
+  normalized.assets.forEach((asset) => {
+    asset.extraChecklistItems = Array.isArray(asset.extraChecklistItems) ? asset.extraChecklistItems : [];
+  });
 
   const usedPmNumbers = new Set();
   normalized.assets.forEach((asset) => {
@@ -7358,7 +7898,7 @@ function seedDemo() {
     model: "2200 Series",
     serial: "CNV-7791",
     installDate: "2022-09-01",
-    notes: "Belt tracking issue appears every few weeks."
+    notes: "Belt tracking ticket appears every few weeks."
   });
   const freezer = demoAsset("Freezer Door Seal", northstar.id, coldStorage.id, templates[0].id, 30, -42, "Passed", {
     manufacturer: "Chase",
@@ -7575,7 +8115,7 @@ function downloadCsv(asset) {
 
 function downloadAssetRegisterCsv(assets) {
   const rows = [
-    ["Customer", "Location", "Equipment", "Status", "Next Maintenance", "Open Issues", "Template", "Equipment Type", "Criticality", "Manufacturer", "Model", "Serial", "Install Date", "Vendor", "Vendor Contact", "Warranty Expires", "Parts / Supply Notes", "Manual / Document Link", "Uploaded Manual File", "Photo File", "Notes"],
+    ["Customer", "Location", "Equipment", "Status", "Next Maintenance", "Open Tickets", "Template", "Equipment Type", "Criticality", "Manufacturer", "Model", "Serial", "Install Date", "Vendor", "Vendor Contact", "Warranty Expires", "Parts / Supply Notes", "Manual / Document Link", "Uploaded Manual File", "Photo File", "Notes"],
     ...assets.map((asset) => {
       const customer = getCustomer(asset.customerId);
       const locationRecord = getLocation(asset.locationId);
