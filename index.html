@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260625-1815">
+  <link rel="stylesheet" href="styles.css?v=20260626-0820">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -295,10 +295,10 @@
       </details>
 
       <details id="contractorDrawer" class="sidebar-section setup-drawer">
-        <summary>Preferred Contractors</summary>
+        <summary>Preferred Contacts</summary>
         <section>
           <div class="section-title">
-            <h2>Contractors</h2>
+            <h2>Contacts</h2>
             <span id="contractorCount">0</span>
           </div>
           <form id="contractorForm" class="stack compact-form">
@@ -308,7 +308,7 @@
             </label>
             <p id="contractorCustomerHint" class="muted"></p>
             <label>
-              Contractor name
+              Contact name
               <input id="contractorName" required placeholder="ABC Mechanical">
             </label>
             <label>
@@ -316,10 +316,10 @@
               <input id="contractorEmail" required type="email" placeholder="service@example.com">
             </label>
             <label>
-              Trade / notes
-              <input id="contractorTrade" placeholder="HVAC, electrical, plumbing">
+              Role / notes
+              <input id="contractorTrade" placeholder="Facility manager, HVAC, electrical, plumbing">
             </label>
-            <button type="submit">Add Contractor</button>
+            <button type="submit">Add Contact</button>
           </form>
           <div id="contractorList" class="user-list"></div>
         </section>
@@ -887,8 +887,6 @@
           </div>
           <div id="selectedQr" class="qr-box" aria-label="Asset QR code"></div>
         </div>
-        <div id="scanActionPanel" class="scan-action-panel"></div>
-
         <div class="status-row">
           <div class="status-tile">
             <span class="label">Next maintenance</span>
@@ -951,6 +949,9 @@
             <summary>
               <h3>Equipment Details</h3>
             </summary>
+            <div class="asset-detail-actions">
+              <button id="exportSelectedAssetBtn" class="secondary mini" type="button">Export Equipment CSV</button>
+            </div>
             <div id="assetPhotoPanel" class="asset-photo-panel"></div>
             <div id="assetManualPanel" class="asset-manual-panel"></div>
             <div id="assetDetailsGrid" class="details-grid"></div>
@@ -1105,7 +1106,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260625-1815"></script>
+  <script src="app.js?v=20260626-0820"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

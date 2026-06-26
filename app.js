@@ -233,11 +233,11 @@ const els = {
   selectedMeta: document.getElementById("selectedMeta"),
   selectedBadges: document.getElementById("selectedBadges"),
   selectedQr: document.getElementById("selectedQr"),
-  scanActionPanel: document.getElementById("scanActionPanel"),
   selectedTemplate: document.getElementById("selectedTemplate"),
   assetPhotoPanel: document.getElementById("assetPhotoPanel"),
   assetManualPanel: document.getElementById("assetManualPanel"),
   assetDetailsGrid: document.getElementById("assetDetailsGrid"),
+  exportSelectedAssetBtn: document.getElementById("exportSelectedAssetBtn"),
   assetInfoForm: document.getElementById("assetInfoForm"),
   editAssetName: document.getElementById("editAssetName"),
   editAssetCustomer: document.getElementById("editAssetCustomer"),
@@ -1021,6 +1021,18 @@ els.serviceRequestList?.addEventListener("click", (event) => {
   openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "Service request photo");
 });
 
+els.workOrderList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-view-photo]");
+  if (!button) return;
+  openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "Ticket photo");
+});
+
+els.assetWorkOrderList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-view-photo]");
+  if (!button) return;
+  openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "Ticket photo");
+});
+
 els.selectedAssetThumb.addEventListener("click", () => {
   const asset = getSelectedAsset();
   if (asset?.photo?.dataUrl) openPhotoViewer(asset.photo.dataUrl, asset.photo.name || "Equipment photo");
@@ -1457,11 +1469,11 @@ els.contractorForm?.addEventListener("submit", (event) => {
   const trade = els.contractorTrade.value.trim();
   const customerId = currentRole === "Admin" ? els.contractorCustomer.value : currentUser?.customerId || "";
   if (!name || !isEmailAddress(email)) {
-    alert("Enter a contractor name and valid email address.");
+    alert("Enter a contact name and valid email address.");
     return;
   }
   if (!canManageContractorCustomer(customerId)) {
-    alert("Managers can only add contractors for their assigned customer.");
+    alert("Managers can only add contacts for their assigned customer.");
     return;
   }
   state.preferredContractors.push({
@@ -1509,6 +1521,13 @@ els.exportPmCalendarBtn?.addEventListener("click", () => {
 
 els.exportAssetRegisterBtn.addEventListener("click", () => {
   downloadAssetRegisterCsv(assetTableAssets());
+});
+
+els.exportSelectedAssetBtn.addEventListener("click", () => {
+  const asset = getSelectedAsset();
+  if (!asset) return;
+  const filename = `${asset.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-equipment-${timestampForFile()}.csv`;
+  downloadAssetRegisterCsv([asset], filename);
 });
 
 els.exportDataBtn.addEventListener("click", () => {
@@ -1639,12 +1658,15 @@ document.addEventListener("click", (event) => {
   }
 
   const button = event.target.closest("[data-work-order-action]");
-  if (!button || !canManageWorkOrders()) return;
+  if (!button) return;
   const workOrder = getWorkOrder(button.dataset.workOrderId);
   if (!workOrder) return;
+  const nextStatus = button.dataset.workOrderAction;
+  const managerOnlyStatus = nextStatus === "Open" || nextStatus === "Closed";
+  if (!canWorkOnTicket(workOrder) || (managerOnlyStatus && !canManageWorkOrders())) return;
 
   const previousStatus = workOrder.status || "Open";
-  workOrder.status = button.dataset.workOrderAction;
+  workOrder.status = nextStatus;
   if (workOrder.status === "Resolved" || workOrder.status === "Closed") {
     workOrder.resolvedAt = new Date().toISOString();
   }
@@ -1704,9 +1726,9 @@ document.addEventListener("submit", async (event) => {
   const form = event.target.closest("[data-work-order-edit-form]");
   if (!form) return;
   event.preventDefault();
-  if (!canManageWorkOrders()) return;
   const workOrder = getWorkOrder(form.dataset.workOrderEditForm);
   if (!workOrder) return;
+  if (!canWorkOnTicket(workOrder)) return;
   const formData = new FormData(form);
   const photo = await readIssuePhoto(form.querySelector("input[name='photo']")?.files?.[0]);
   const before = {
@@ -1715,15 +1737,24 @@ document.addEventListener("submit", async (event) => {
     status: workOrder.status || "Open",
     dueAt: workOrder.dueAt || "",
     notes: workOrder.notes || "",
-    photoName: workOrder.photo?.name || ""
+    photoCount: Array.isArray(workOrder.photos) ? workOrder.photos.length : 0
   };
-  workOrder.title = String(formData.get("title") || "").trim() || workOrder.title;
-  workOrder.priority = normalizePriority(formData.get("priority"));
-  workOrder.status = String(formData.get("status") || workOrder.status);
-  const dueDate = String(formData.get("dueDate") || "");
-  workOrder.dueAt = dueDate ? parseLocalDate(dueDate).toISOString() : workOrder.dueAt;
+  if (form.elements.title) workOrder.title = String(formData.get("title") || "").trim() || workOrder.title;
+  if (form.elements.priority) workOrder.priority = normalizePriority(formData.get("priority"));
+  if (form.elements.status) workOrder.status = String(formData.get("status") || workOrder.status);
+  if (form.elements.dueDate) {
+    const dueDate = String(formData.get("dueDate") || "");
+    workOrder.dueAt = dueDate ? parseLocalDate(dueDate).toISOString() : workOrder.dueAt;
+  }
   workOrder.notes = String(formData.get("notes") || "").trim();
-  if (photo) workOrder.photo = photo;
+  if (photo) {
+    workOrder.photos = Array.isArray(workOrder.photos) ? workOrder.photos : [];
+    workOrder.photos.push({
+      ...photo,
+      addedAt: new Date().toISOString(),
+      addedBy: currentUser?.name || currentUser?.username || "Unknown user"
+    });
+  }
   if (workOrder.status === "Resolved" || workOrder.status === "Closed") {
     workOrder.resolvedAt = workOrder.resolvedAt || new Date().toISOString();
   } else {
@@ -1736,7 +1767,7 @@ document.addEventListener("submit", async (event) => {
   if (before.status !== workOrder.status) changes.push(`Status: ${before.status} -> ${workOrder.status}`);
   if (before.dueAt !== workOrder.dueAt) changes.push(`Due date updated`);
   if (before.notes !== workOrder.notes) changes.push("Notes updated");
-  if (photo) changes.push("Photo updated");
+  if (photo) changes.push("Work photo added");
   addWorkOrderHistory(workOrder, "Edited", changes.join(" | ") || "No visible changes");
   addActivity("Ticket edited", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
   saveState();
@@ -1781,37 +1812,6 @@ document.addEventListener("submit", async (event) => {
   addActivity("Service request edited", `${formatServiceRequestNumber(request)} - ${request.title}`);
   saveState();
   render();
-});
-
-document.addEventListener("submit", async (event) => {
-  const form = event.target.closest("[data-manual-issue-form]");
-  if (!form) return;
-  event.preventDefault();
-  const asset = getAsset(form.dataset.manualIssueForm);
-  if (!asset || !canManageWorkOrders()) return;
-  const submitButton = form.querySelector("button[type='submit']");
-  try {
-    if (submitButton) {
-      submitButton.disabled = true;
-      submitButton.textContent = "Creating...";
-    }
-    const formData = new FormData(form);
-    const photo = await readIssuePhoto(form.querySelector("input[name='photo']")?.files?.[0]);
-    createManualIssueForAsset(asset, {
-      title: String(formData.get("title") || "").trim(),
-      priority: String(formData.get("priority") || "Medium"),
-      notes: String(formData.get("notes") || "").trim(),
-      photo
-    });
-  } catch (error) {
-    console.warn("Manual ticket creation failed.", error);
-    alert("Ticket was not created. Try again with no photo or a smaller photo.");
-  } finally {
-    if (submitButton) {
-      submitButton.disabled = false;
-      submitButton.textContent = "Create Ticket";
-    }
-  }
 });
 
 function render() {
@@ -1874,7 +1874,6 @@ function render() {
   els.selectedAssetThumb.innerHTML = renderAssetThumbnail(asset);
   els.selectedTemplate.textContent = template?.name || "Template missing";
   els.selectedQr.innerHTML = `<img alt="QR code for ${escapeHtml(asset.name)}" src="${qrUrl(getAssetUrl(asset.id))}">`;
-  els.scanActionPanel.innerHTML = renderScanActionPanel(asset);
   els.nextPm.textContent = formatDate(due.nextDate);
   els.nextPmInput.value = asset.nextPmDate || toDateInputValue(due.nextDate);
   els.clearNextPmBtn.disabled = !asset.nextPmDate || !canManageWorkOrders();
@@ -2219,7 +2218,7 @@ function renderPreferredContractors() {
   els.contractorCount.textContent = contractors.length;
   els.contractorList.innerHTML = contractors.length
     ? contractors.map(renderPreferredContractorItem).join("")
-    : `<p class="muted">No preferred contractors added yet.</p>`;
+    : `<p class="muted">No preferred contacts added yet.</p>`;
 }
 
 function contractorListCustomerId() {
@@ -2236,7 +2235,7 @@ function updateContractorCustomerHint() {
   }
   const contractorCustomer = getCustomer(contractorCustomerId)?.name || "this customer";
   const activeCustomer = getCustomer(selectedCustomerId)?.name || "the current customer";
-  els.contractorCustomerHint.textContent = `These contractors are for ${contractorCustomer}, not ${activeCustomer}.`;
+  els.contractorCustomerHint.textContent = `These contacts are for ${contractorCustomer}, not ${activeCustomer}.`;
 }
 
 function renderPreferredContractorItem(contractor) {
@@ -2258,12 +2257,12 @@ function deletePreferredContractor(contractorId) {
   const contractor = state.preferredContractors.find((item) => item.id === contractorId);
   if (!contractor) return;
   if (!canManageContractorRecord(contractor)) {
-    alert("Managers can only delete contractors for their assigned customer.");
+    alert("Managers can only delete contacts for their assigned customer.");
     return;
   }
-  if (!confirm(`Delete ${contractor.name} from preferred contractors?`)) return;
+  if (!confirm(`Delete ${contractor.name} from preferred contacts?`)) return;
   state.preferredContractors = state.preferredContractors.filter((item) => item.id !== contractorId);
-  addActivity("Contractor deleted", contractor.name);
+  addActivity("Preferred contact deleted", contractor.name);
   saveState();
   render();
 }
@@ -3475,13 +3474,21 @@ function dashboardAssetItems(assets, emptyText) {
 
 function dashboardIssueItems(tickets, emptyText) {
   return tickets.length
-    ? tickets.slice(0, 6).map((ticket) => renderDashboardMenuItem({
-        type: ticket.status === "Closed" ? "completed" : "ticket",
-        id: ticket.id,
-        label: `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}`,
-        meta: `${getCustomer(ticket.customerId)?.name || "Unknown customer"} | ${getLocation(ticket.locationId)?.name || "Unknown location"} | ${ticket.status || "Open"}`,
-        badge: ticket.priority || "Ticket"
-      })).join("") + renderDashboardMoreCount(tickets.length)
+    ? tickets.slice(0, 6).map((ticket) => {
+        const ageLabel = formatOpenTicketAge(ticket);
+        return renderDashboardMenuItem({
+          type: ticket.status === "Closed" ? "completed" : "ticket",
+          id: ticket.id,
+          label: `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}`,
+          meta: [
+            getCustomer(ticket.customerId)?.name || "Unknown customer",
+            getLocation(ticket.locationId)?.name || "Unknown location",
+            ticket.status || "Open",
+            ageLabel
+          ].filter(Boolean).join(" | "),
+          badge: ticket.priority || "Ticket"
+        });
+      }).join("") + renderDashboardMoreCount(tickets.length)
     : renderDashboardEmpty(emptyText);
 }
 
@@ -3713,67 +3720,6 @@ function renderAssetBadges(asset, due = getDueInfo(asset)) {
   if (asset.criticality) badges.push(`<span class="status-badge ${criticalityBadgeClass(asset.criticality)}">${escapeHtml(asset.criticality)} criticality</span>`);
   if (asset.manualFile?.dataUrl || asset.documentUrl) badges.push(`<span class="status-badge badge-muted">Manual ready</span>`);
   return badges.join("");
-}
-
-function renderScanActionPanel(asset) {
-  const manualUrl = asset.manualFile?.dataUrl || safeDocumentLink(asset.documentUrl);
-  const locationRecord = getLocation(asset.locationId);
-  const customerScanCopy = currentRole === "Customer"
-    ? {
-        title: "Need to open a ticket?",
-        note: "Send a photo and note for this equipment or the surrounding area."
-      }
-    : {
-        title: "Scan actions",
-        note: "Fast access for staff, technicians, and customers."
-      };
-  return `
-    <div class="scan-action-copy">
-      <strong>${customerScanCopy.title}</strong>
-      <span>${customerScanCopy.note}</span>
-    </div>
-    <div class="scan-action-buttons">
-      <a class="secondary primary-action" href="${escapeAttribute(getReportAssetUrl(asset.id))}">Report Equipment Ticket</a>
-      ${locationRecord ? `<a class="secondary" href="${escapeAttribute(getReportLocationUrl(locationRecord.id))}">Report Area Ticket</a>` : ""}
-      ${manualUrl ? `<a class="secondary" href="${escapeAttribute(manualUrl)}" target="_blank" rel="noopener">Open Manual</a>` : ""}
-      <button type="button" class="secondary" data-scroll-target="pmForm">Checklist</button>
-      <button type="button" class="secondary" data-scroll-target="assetGalleryPanel">Photos</button>
-    </div>
-    ${canCreateWorkOrders() ? renderManualIssueForm(asset) : ""}
-  `;
-}
-
-function renderManualIssueForm(asset) {
-  return `
-    <details class="manual-issue-form">
-      <summary>Create Open Ticket</summary>
-      <form class="stack compact-form" data-manual-issue-form="${escapeAttribute(asset.id)}">
-        <div class="form-grid">
-          <label>
-            Ticket title
-            <input name="title" required value="Ticket: ${escapeAttribute(asset.name)}">
-          </label>
-          <label>
-            Priority
-            <select name="priority">
-              <option value="Medium">Medium</option>
-              <option value="High">High</option>
-              <option value="Low">Low</option>
-            </select>
-          </label>
-        </div>
-        <label>
-          Notes
-          <textarea name="notes" rows="3" placeholder="What needs attention?"></textarea>
-        </label>
-        <label>
-          Ticket photo
-          <input name="photo" type="file" accept="image/*">
-        </label>
-        <button type="submit" class="secondary primary-action">Create Ticket</button>
-      </form>
-    </details>
-  `;
 }
 
 function renderStatusBadge(label, className) {
@@ -4021,8 +3967,19 @@ function toggleTopActionDrawer(drawer) {
 
 function closeMetricMenus(except = null) {
   document.querySelectorAll("[data-dashboard-menu]").forEach((menu) => {
-    if (menu !== except) menu.classList.add("hidden");
+    if (menu !== except) {
+      menu.classList.add("hidden");
+      menu.classList.remove("is-right-aligned");
+    }
   });
+}
+
+function positionMetricMenu(menu) {
+  menu.classList.remove("is-right-aligned");
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth - 12) {
+    menu.classList.add("is-right-aligned");
+  }
 }
 
 function toggleMetricMenu(filter) {
@@ -4032,6 +3989,7 @@ function toggleMetricMenu(filter) {
   closeTopActionDrawers();
   closeMetricMenus(menu);
   menu.classList.toggle("hidden", !shouldOpen);
+  if (shouldOpen) requestAnimationFrame(() => positionMetricMenu(menu));
 }
 
 function runDashboardAction(filter) {
@@ -4297,6 +4255,8 @@ function renderServiceRequestItem(request) {
   const locationRecord = getLocation(request.locationId);
   const asset = getAsset(request.assetId);
   const assignedLabel = request.assignedUserName || "Unassigned";
+  const createdLabel = request.createdAt ? formatDate(new Date(request.createdAt)) : "Not recorded";
+  const ageLabel = formatOpenServiceRequestAge(request);
   const canEdit = canManageWorkOrders();
   const statusClass = request.status === "Completed"
     ? "badge-ok"
@@ -4321,10 +4281,10 @@ function renderServiceRequestItem(request) {
       <summary>
         <div>
           <strong>${escapeHtml(formatServiceRequestNumber(request))} - ${escapeHtml(request.title || "Service request")}</strong>
-          <span><span class="status-badge ${statusClass}">${escapeHtml(request.status || "New")}</span> ${escapeHtml(request.priority || "Medium")} priority | Preferred ${request.preferredDate ? escapeHtml(formatDate(parseLocalDate(request.preferredDate))) : "Not set"}</span>
+          <span><span class="status-badge ${statusClass}">${escapeHtml(request.status || "New")}</span> ${escapeHtml(request.priority || "Medium")} priority | Created ${escapeHtml(createdLabel)} | Preferred ${request.preferredDate ? escapeHtml(formatDate(parseLocalDate(request.preferredDate))) : "Not set"}</span>
           <span class="assigned-label">Assigned to ${escapeHtml(assignedLabel)}</span>
         </div>
-        <span class="history-open-label">Open</span>
+        ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
       </summary>
       ${canEdit ? `<label class="work-order-assignment">Assign to<select data-service-request-assignee="${escapeAttribute(request.id)}">${assigneeOptions}</select></label>` : ""}
       <p>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")} | ${escapeHtml(asset?.name || "No equipment selected")}</p>
@@ -4930,12 +4890,15 @@ function renderWorkOrderItem(item) {
   const customer = getCustomer(item.customerId);
   const locationRecord = getLocation(item.locationId);
   const assignedLabel = item.assignedUserName || getUser(item.assignedUserId)?.name || getUser(item.assignedUserId)?.username || "Unassigned";
-  const canEdit = canManageWorkOrders();
+  const ageLabel = formatOpenTicketAge(item);
+  const createdLabel = item.createdAt ? formatDate(new Date(item.createdAt)) : "Not recorded";
+  const canManage = canManageWorkOrders();
+  const canWork = canWorkOnTicket(item);
   const assignmentControl = renderWorkOrderAssignmentControl(item);
   const assetAction = asset
     ? `<button class="secondary mini" type="button" data-asset-link="${item.assetId}">View Equipment</button>`
     : "";
-  const reportActions = canEdit ? `
+  const reportActions = canWork ? `
     <details class="inline-edit-drawer">
       <summary>Edit</summary>
       ${renderWorkOrderEditForm(item)}
@@ -4944,21 +4907,21 @@ function renderWorkOrderItem(item) {
     <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Ticket</button>
     <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
   ` : "";
-  const actions = !canEdit ? "" : item.status === "Closed" ? `
-    <div class="work-order-actions">
-      ${reportActions}
-      <button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>
-    </div>
+  const actionButtons = item.status === "Closed" ? `
+    ${canManage ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
   ` : `
+    ${canWork && item.status === "Open" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
+    ${canWork && item.status !== "Waiting parts" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
+    ${canWork && item.status !== "Resolved" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
+    ${canManage ? `<button class="secondary" data-work-order-convert-service="${escapeAttribute(item.id)}">Convert to Service Request</button>` : ""}
+    ${canManage ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>` : ""}
+  `;
+  const actions = reportActions.trim() || actionButtons.trim() ? `
     <div class="work-order-actions">
       ${reportActions}
-      ${item.status === "Open" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
-      ${item.status !== "Waiting parts" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
-      ${item.status !== "Resolved" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
-      <button class="secondary" data-work-order-convert-service="${escapeAttribute(item.id)}">Convert to Service Request</button>
-      <button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>
+      ${actionButtons}
     </div>
-  `;
+  ` : "";
   const statusClass = item.status === "Closed"
     ? "badge-muted"
     : item.status === "Waiting parts"
@@ -4973,62 +4936,73 @@ function renderWorkOrderItem(item) {
       <summary>
         <div>
           <strong>${escapeHtml(formatIssueNumber(item))} - ${escapeHtml(item.title)}</strong>
-          <span><span class="status-badge ${statusClass}">${escapeHtml(item.status)}</span> ${escapeHtml(item.priority)} priority | Due ${formatDate(new Date(item.dueAt))}</span>
+          <span><span class="status-badge ${statusClass}">${escapeHtml(item.status)}</span> ${escapeHtml(item.priority)} priority | Created ${escapeHtml(createdLabel)} | Due ${formatDate(new Date(item.dueAt))}</span>
           <span class="assigned-label">Assigned to ${escapeHtml(assignedLabel)}</span>
         </div>
-        <span class="history-open-label">Open</span>
+        ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
       </summary>
       ${assetAction ? `<div class="work-order-header-actions">${assetAction}</div>` : ""}
       ${assignmentControl}
       <p>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")} | ${escapeHtml(asset?.name || item.areaName || "Area report")}</p>
       <p>${escapeHtml(item.notes)}</p>
-      ${item.photo ? `<img class="history-photo" alt="Ticket report photo" src="${item.photo.dataUrl}">` : ""}
+      ${renderWorkOrderPhotos(item)}
       ${actions}
       ${renderWorkOrderHistory(item)}
     </details>
   `;
 }
 
+function getWorkOrderPhotos(item) {
+  const photos = [];
+  if (item.photo?.dataUrl) {
+    photos.push({
+      ...item.photo,
+      label: "Submitted photo",
+      caption: item.photo.name || "Submitted ticket photo"
+    });
+  }
+  if (Array.isArray(item.photos)) {
+    item.photos.forEach((photo, index) => {
+      if (!photo?.dataUrl) return;
+      const addedLabel = photo.addedAt ? ` - ${formatDateTime(new Date(photo.addedAt))}` : "";
+      photos.push({
+        ...photo,
+        label: `Work photo ${index + 1}`,
+        caption: `${photo.name || `Work photo ${index + 1}`}${addedLabel}`
+      });
+    });
+  }
+  return photos;
+}
+
+function renderWorkOrderPhotos(item) {
+  const photos = getWorkOrderPhotos(item);
+  if (!photos.length) return "";
+  return `
+    <div class="ticket-photo-gallery" aria-label="Ticket photos">
+      ${photos.map((photo) => `
+        <button type="button" class="history-photo-button ticket-photo-card" data-view-photo data-photo-src="${escapeAttribute(photo.dataUrl)}" data-photo-caption="${escapeAttribute(photo.caption)}">
+          <img class="history-photo" alt="${escapeAttribute(photo.label)}" src="${escapeAttribute(photo.dataUrl)}">
+          <span>${escapeHtml(photo.label)}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderWorkOrderEditForm(item) {
-  const priorities = ["Low", "Medium", "High"];
-  const statuses = ["Open", "In progress", "Waiting parts", "Resolved", "Closed"];
-  const dueValue = item.dueAt ? toDateInputValue(new Date(item.dueAt)) : "";
   return `
     <form class="inline-edit-form compact-form" data-work-order-edit-form="${escapeAttribute(item.id)}">
-      <div class="form-grid">
-        <label>
-          Ticket
-          <input name="title" value="${escapeAttribute(item.title || "")}" required>
-        </label>
-        <label>
-          Priority
-          <select name="priority">
-            ${priorities.map((priority) => `<option ${item.priority === priority ? "selected" : ""}>${priority}</option>`).join("")}
-          </select>
-        </label>
-      </div>
-      <div class="form-grid">
-        <label>
-          Status
-          <select name="status">
-            ${statuses.map((status) => `<option ${item.status === status ? "selected" : ""}>${status}</option>`).join("")}
-          </select>
-        </label>
-        <label>
-          Due date
-          <input name="dueDate" type="date" value="${escapeAttribute(dueValue)}">
-        </label>
-      </div>
       <label>
-        Notes
+        Work notes
         <textarea name="notes" rows="3">${escapeHtml(item.notes || "")}</textarea>
       </label>
       <label>
-        Replace photo
+        Add work photo
         <input name="photo" type="file" accept="image/*">
       </label>
       <div class="work-order-actions">
-        <button class="primary" type="submit">Save Changes</button>
+        <button class="primary" type="submit">Save Note / Photo</button>
       </div>
     </form>
   `;
@@ -5081,7 +5055,8 @@ function getIssueReportDetails(item) {
     updatedAt: item.updatedAt ? formatDateTime(new Date(item.updatedAt)) : "Not recorded",
     resolvedAt: item.resolvedAt ? formatDateTime(new Date(item.resolvedAt)) : "",
     notes: item.notes || "No notes provided.",
-    photoDataUrl: item.photo?.dataUrl || ""
+    photoDataUrl: item.photo?.dataUrl || "",
+    photos: getWorkOrderPhotos(item)
   };
 }
 
@@ -5110,7 +5085,7 @@ function openIssuePdfForm(item) {
 
 async function emailIssueReport(item) {
   const details = getIssueReportDetails(item);
-  const recipient = await choosePreferredContractorEmail("Email this ticket request to:", details.customerId);
+  const recipient = await choosePreferredContractorEmail("Email this ticket to a preferred contact:", details.customerId);
   if (recipient === null) return;
   addWorkOrderHistory(item, "Email draft opened", `Draft to ${recipient.trim()}`);
   addActivity("Ticket email draft opened", `${details.title} to ${recipient.trim()}`);
@@ -5146,8 +5121,9 @@ function openIssueEmailDraft(details, recipient) {
 
 async function sendIssuePdfEmail(item, button) {
   const details = getIssueReportDetails(item);
-  const recipient = await choosePreferredContractorEmail("Email this ticket PDF to:", details.customerId);
+  const recipient = await choosePreferredContractorEmail("Email this ticket PDF to a preferred contact:", details.customerId);
   if (!recipient) return;
+  const reportDetails = getEmailFunctionReportDetails(details);
 
   const originalText = button.textContent;
   button.disabled = true;
@@ -5158,7 +5134,9 @@ async function sendIssuePdfEmail(item, button) {
       headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient.trim(),
-        ticket: getEmailFunctionReportDetails(details)
+        ticket: reportDetails,
+        issue: reportDetails,
+        serviceRequest: reportDetails
       })
     });
     const result = await response.json().catch(() => ({}));
@@ -5181,7 +5159,7 @@ async function sendIssuePdfEmail(item, button) {
       "",
       "This usually means the Supabase email function is not deployed yet, or the Resend API key is not saved in Supabase secrets.",
       "",
-      "Open a regular email draft to this contractor instead?"
+      "Open a regular email draft to this contact instead?"
     ].join("\n"));
     if (useDraft) {
       addWorkOrderHistory(item, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
@@ -5205,7 +5183,33 @@ function supabaseFunctionHeaders() {
 }
 
 function getEmailFunctionReportDetails(details) {
-  return { ...details };
+  const issueNumber = details.issueNumber || details.ticketNumber || details.serviceRequestNumber || details.id || "not-recorded";
+  return {
+    ...details,
+    id: details.id || issueNumber,
+    issueNumber,
+    ticketNumber: issueNumber,
+    serviceRequestNumber: issueNumber,
+    reportTitle: details.reportTitle || "Issue Report",
+    numberLabel: details.numberLabel || "Issue Number",
+    footerLabel: details.footerLabel || "SiteWorks Form",
+    title: details.title || "Open issue",
+    customer: details.customer || "Unknown customer",
+    location: details.location || "Unknown location",
+    equipment: details.equipment || details.area || "Area report",
+    area: details.area || details.equipment || "Area report",
+    status: details.status || "Open",
+    priority: details.priority || "Medium",
+    assignedTo: details.assignedTo || "Unassigned",
+    source: details.source || "SiteWorks",
+    dueAt: details.dueAt || "Not set",
+    createdAt: details.createdAt || "Not recorded",
+    updatedAt: details.updatedAt || "Not recorded",
+    resolvedAt: details.resolvedAt || "",
+    notes: details.notes || "No notes provided.",
+    photoDataUrl: details.photoDataUrl || "",
+    photos: Array.isArray(details.photos) ? details.photos : []
+  };
 }
 
 function getUserNotificationEmail(user) {
@@ -5232,17 +5236,20 @@ async function sendIssueAssignmentEmail(item, user) {
   }
 
   try {
+    const reportDetails = getEmailFunctionReportDetails({
+      ...details,
+      reportTitle: "Ticket Assignment",
+      footerLabel: "Assigned Maintenance Ticket",
+      notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
+    });
     const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
       method: "POST",
       headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient,
-        ticket: getEmailFunctionReportDetails({
-          ...details,
-          reportTitle: "Ticket Assignment",
-          footerLabel: "Assigned Maintenance Ticket",
-          notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
-        })
+        ticket: reportDetails,
+        issue: reportDetails,
+        serviceRequest: reportDetails
       })
     });
     const result = await response.json().catch(() => ({}));
@@ -5273,17 +5280,20 @@ async function sendServiceRequestAssignmentEmail(request, user) {
   }
 
   try {
+    const reportDetails = getEmailFunctionReportDetails({
+      ...details,
+      reportTitle: "Service Request Assignment",
+      footerLabel: "Assigned Service Request",
+      notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
+    });
     const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
       method: "POST",
       headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient,
-        ticket: getEmailFunctionReportDetails({
-          ...details,
-          reportTitle: "Service Request Assignment",
-          footerLabel: "Assigned Service Request",
-          notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
-        })
+        ticket: reportDetails,
+        issue: reportDetails,
+        serviceRequest: reportDetails
       })
     });
     const result = await response.json().catch(() => ({}));
@@ -5357,7 +5367,7 @@ function openServiceRequestPdfForm(request) {
 
 async function emailServiceRequest(request) {
   const details = getServiceRequestReportDetails(request);
-  const recipient = await choosePreferredContractorEmail("Email this service request to:", details.customerId);
+  const recipient = await choosePreferredContractorEmail("Email this service request to a preferred contact:", details.customerId);
   if (recipient === null) return;
   addServiceRequestHistory(request, "Email draft opened", `Draft to ${recipient.trim()}`);
   addActivity("Service request email draft", `${details.title} to ${recipient.trim()}`);
@@ -5392,8 +5402,9 @@ function openServiceRequestEmailDraft(details, recipient) {
 
 async function sendServiceRequestPdfEmail(request, button) {
   const details = getServiceRequestReportDetails(request);
-  const recipient = await choosePreferredContractorEmail("Email this service request PDF to:", details.customerId);
+  const recipient = await choosePreferredContractorEmail("Email this service request PDF to a preferred contact:", details.customerId);
   if (!recipient) return;
+  const reportDetails = getEmailFunctionReportDetails(details);
 
   const originalText = button.textContent;
   button.disabled = true;
@@ -5404,7 +5415,9 @@ async function sendServiceRequestPdfEmail(request, button) {
       headers: supabaseFunctionHeaders(),
       body: JSON.stringify({
         to: recipient.trim(),
-        ticket: getEmailFunctionReportDetails(details)
+        ticket: reportDetails,
+        issue: reportDetails,
+        serviceRequest: reportDetails
       })
     });
     const result = await response.json().catch(() => ({}));
@@ -5427,7 +5440,7 @@ async function sendServiceRequestPdfEmail(request, button) {
       "",
       "This usually means the Supabase email function is not deployed yet, or the Resend API key is not saved in Supabase secrets.",
       "",
-      "Open a regular email draft to this contractor instead?"
+      "Open a regular email draft to this contact instead?"
     ].join("\n"));
     if (useDraft) {
       addServiceRequestHistory(request, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
@@ -5443,11 +5456,11 @@ async function sendServiceRequestPdfEmail(request, button) {
 }
 
 function choosePreferredContractorEmail(promptTitle, customerId = "") {
-  const contractors = visiblePreferredContractors(customerId);
-  const contractorCustomer = customerId ? getCustomer(customerId) : null;
-  const emptyContractorMessage = contractorCustomer
-    ? `No preferred contractors have been added for ${contractorCustomer.name} yet.`
-    : "No preferred contractors have been added yet.";
+  const contacts = visiblePreferredContractors();
+  const currentCustomer = customerId ? getCustomer(customerId) : null;
+  const emptyContactMessage = currentCustomer
+    ? `No preferred contacts are available for ${currentCustomer.name} yet.`
+    : "No preferred contacts have been added yet.";
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "contractor-picker";
@@ -5458,14 +5471,14 @@ function choosePreferredContractorEmail(promptTitle, customerId = "") {
           <button type="button" class="secondary mini" data-contractor-cancel>Cancel</button>
         </div>
         <div class="contractor-picker-list">
-          ${contractors.length
-            ? contractors.map((contractor) => `
+          ${contacts.length
+            ? contacts.map((contractor) => `
               <button type="button" class="contractor-choice" data-contractor-email="${escapeAttribute(contractor.email)}">
                 <strong>${escapeHtml(contractor.name)}</strong>
                 <span>${escapeHtml(contractor.email)}${contractor.trade ? ` | ${escapeHtml(contractor.trade)}` : ""}</span>
               </button>
             `).join("")
-            : `<p class="muted">${escapeHtml(emptyContractorMessage)}</p>`}
+            : `<p class="muted">${escapeHtml(emptyContactMessage)}</p>`}
         </div>
         <form class="contractor-manual-form" data-contractor-manual-form>
           <label>
@@ -5528,6 +5541,11 @@ function choosePreferredContractorEmail(promptTitle, customerId = "") {
 }
 
 function buildIssuePdfHtml(details) {
+  const reportPhotos = Array.isArray(details.photos) && details.photos.length
+    ? details.photos
+    : details.photoDataUrl
+      ? [{ label: "Submitted photo", dataUrl: details.photoDataUrl }]
+      : [];
   const rows = [
     ["Customer", details.customer],
     ["Location", details.location],
@@ -5564,7 +5582,10 @@ function buildIssuePdfHtml(details) {
     .notes { margin-top: 0.2in; border: 1px solid #dbe4e1; padding: 0.16in; min-height: 1.4in; white-space: pre-wrap; }
     .notes strong, .photo strong, .signoff strong { display: block; color: #627179; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.05in; }
     .photo { margin-top: 0.2in; }
-    .photo img { max-width: 100%; max-height: 3.2in; border: 1px solid #dbe4e1; object-fit: contain; }
+    .photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.12in; }
+    .photo-card { break-inside: avoid; }
+    .photo-card span { display: block; color: #627179; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.04in; }
+    .photo img { width: 100%; max-height: 2.5in; border: 1px solid #dbe4e1; object-fit: contain; }
     .signoff { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2in; margin-top: 0.3in; }
     .line { border-bottom: 1px solid #8b989e; height: 0.35in; }
     .footer { margin-top: 0.25in; color: #627179; font-size: 10px; display: flex; justify-content: space-between; }
@@ -5602,10 +5623,17 @@ function buildIssuePdfHtml(details) {
       <strong>Notes</strong>
       ${escapeHtml(details.notes)}
     </section>
-    ${details.photoDataUrl ? `
+    ${reportPhotos.length ? `
       <section class="photo">
-        <strong>Submitted Photo</strong>
-        <img alt="Ticket photo" src="${escapeAttribute(details.photoDataUrl)}">
+        <strong>Photos</strong>
+        <div class="photo-grid">
+          ${reportPhotos.map((photo) => `
+            <div class="photo-card">
+              <span>${escapeHtml(photo.label || "Ticket photo")}</span>
+              <img alt="${escapeAttribute(photo.label || "Ticket photo")}" src="${escapeAttribute(photo.dataUrl)}">
+            </div>
+          `).join("")}
+        </div>
       </section>
     ` : ""}
     <section class="signoff">
@@ -6501,6 +6529,20 @@ function canCompletePm() {
 
 function canManageWorkOrders() {
   return currentRole === "Admin" || (isManagerRole() && !currentUser?.locationId);
+}
+
+function canWorkOnTicket(item = null) {
+  if (canManageWorkOrders()) return true;
+  if (currentRole !== "Technician" || !currentUser) return false;
+  if (!item) return true;
+  const assignedUserId = String(item.assignedUserId || "");
+  const assignedName = String(item.assignedUserName || "").trim().toLowerCase();
+  const currentNames = [
+    currentUser.name,
+    currentUser.username
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  if (!assignedUserId && !assignedName) return true;
+  return assignedUserId === currentUser.id || currentNames.includes(assignedName);
 }
 
 function canCreateWorkOrders() {
@@ -7579,8 +7621,10 @@ function normalizeState(input) {
       assignedUserId: "",
       assignedUserName: "",
       history: [],
+      photos: [],
       ...item,
       history: Array.isArray(item.history) ? item.history : [],
+      photos: Array.isArray(item.photos) ? item.photos : [],
       issueNumber
     };
   });
@@ -8113,7 +8157,7 @@ function downloadCsv(asset) {
   URL.revokeObjectURL(url);
 }
 
-function downloadAssetRegisterCsv(assets) {
+function downloadAssetRegisterCsv(assets, filename = `asset-register-${timestampForFile()}.csv`) {
   const rows = [
     ["Customer", "Location", "Equipment", "Status", "Next Maintenance", "Open Tickets", "Template", "Equipment Type", "Criticality", "Manufacturer", "Model", "Serial", "Install Date", "Vendor", "Vendor Contact", "Warranty Expires", "Parts / Supply Notes", "Manual / Document Link", "Uploaded Manual File", "Photo File", "Notes"],
     ...assets.map((asset) => {
@@ -8151,7 +8195,7 @@ function downloadAssetRegisterCsv(assets) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `asset-register-${timestampForFile()}.csv`;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -8246,6 +8290,26 @@ function formatDateTime(date) {
     hour: "numeric",
     minute: "2-digit"
   }).format(date);
+}
+
+function formatOpenTicketAge(item) {
+  if (!item || ["Resolved", "Closed"].includes(item.status)) return "";
+  const created = new Date(item.createdAt || item.updatedAt || Date.now());
+  if (Number.isNaN(created.getTime())) return "";
+  const ageDays = Math.max(0, Math.floor((startOfDay(new Date()) - startOfDay(created)) / 86400000));
+  if (ageDays === 0) return "Open today";
+  if (ageDays === 1) return "Open for 1 day";
+  return `Open for ${ageDays} days`;
+}
+
+function formatOpenServiceRequestAge(item) {
+  if (!item || ["Completed", "Declined"].includes(item.status)) return "";
+  const created = new Date(item.createdAt || item.updatedAt || Date.now());
+  if (Number.isNaN(created.getTime())) return "";
+  const ageDays = Math.max(0, Math.floor((startOfDay(new Date()) - startOfDay(created)) / 86400000));
+  if (ageDays === 0) return "Open today";
+  if (ageDays === 1) return "Open for 1 day";
+  return `Open for ${ageDays} days`;
 }
 
 function timestampForFile() {
