@@ -2107,6 +2107,52 @@ textarea {
   color: var(--muted);
 }
 
+.work-order-content {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.ticket-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+  max-width: 980px;
+}
+
+.ticket-meta-card,
+.ticket-note-block {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 10px 12px;
+}
+
+.ticket-meta-card span,
+.ticket-note-block > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ticket-meta-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ticket-note-block {
+  max-width: 980px;
+}
+
+.ticket-note-block p {
+  color: var(--ink);
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .pm-history-record {
   display: block;
 }
@@ -2523,11 +2569,11 @@ textarea {
 
 @media (max-width: 1380px) {
   .app-shell {
-    grid-template-columns: 180px minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
   }
 
   .sidebar {
-    padding: 10px;
+    padding: 14px;
   }
 
   .quick-add,
@@ -2538,7 +2584,7 @@ textarea {
 
   .setup-drawer > summary,
   .setup-subdrawer > summary {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .setup-drawer > summary {
@@ -2602,6 +2648,28 @@ textarea {
   .pm-calendar-actions {
     grid-column: 1 / -1;
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1120px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .admin-tools-drawer {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .admin-tools-drawer > .setup-drawer {
+    margin-top: 0;
   }
 }
 
@@ -2677,6 +2745,10 @@ textarea {
   .setup-drawer {
     padding: 10px;
     border-radius: 12px;
+  }
+
+  .ticket-meta-grid {
+    grid-template-columns: 1fr;
   }
 
   .asset-heading,

@@ -4898,6 +4898,8 @@ function renderWorkOrderItem(item) {
   const canManage = canManageWorkOrders();
   const canWork = canWorkOnTicket(item);
   const assignmentControl = renderWorkOrderAssignmentControl(item);
+  const targetLabel = asset?.name || item.areaName || "Area report";
+  const targetKind = asset ? "Equipment" : "Area";
   const assetAction = asset
     ? `<button class="secondary mini" type="button" data-asset-link="${item.assetId}">View Equipment</button>`
     : "";
@@ -4946,9 +4948,27 @@ function renderWorkOrderItem(item) {
       </summary>
       ${assetAction ? `<div class="work-order-header-actions">${assetAction}</div>` : ""}
       ${assignmentControl}
-      <p>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")} | ${escapeHtml(asset?.name || item.areaName || "Area report")}</p>
-      <p>${escapeHtml(item.notes)}</p>
-      ${renderWorkOrderPhotos(item)}
+      <div class="work-order-content">
+        <div class="ticket-meta-grid">
+          <div class="ticket-meta-card">
+            <span>Customer</span>
+            <strong>${escapeHtml(customer?.name || "Unknown customer")}</strong>
+          </div>
+          <div class="ticket-meta-card">
+            <span>Location</span>
+            <strong>${escapeHtml(locationRecord?.name || "Unknown location")}</strong>
+          </div>
+          <div class="ticket-meta-card">
+            <span>${escapeHtml(targetKind)}</span>
+            <strong>${escapeHtml(targetLabel)}</strong>
+          </div>
+        </div>
+        <div class="ticket-note-block">
+          <span>Work notes</span>
+          <p>${escapeHtml(item.notes || "No notes entered.")}</p>
+        </div>
+        ${renderWorkOrderPhotos(item)}
+      </div>
       ${actions}
       ${renderWorkOrderHistory(item)}
     </details>
