@@ -1746,13 +1746,16 @@ document.addEventListener("submit", async (event) => {
     const dueDate = String(formData.get("dueDate") || "");
     workOrder.dueAt = dueDate ? parseLocalDate(dueDate).toISOString() : workOrder.dueAt;
   }
-  workOrder.notes = String(formData.get("notes") || "").trim();
+  const noteText = String(formData.get("notes") || "").trim();
+  if (noteText) {
+    workOrder.notes = appendDatedWorkNote(workOrder.notes, noteText);
+  }
   if (photo) {
     workOrder.photos = Array.isArray(workOrder.photos) ? workOrder.photos : [];
     workOrder.photos.push({
       ...photo,
       addedAt: new Date().toISOString(),
-      addedBy: currentUser?.name || currentUser?.username || "Unknown user"
+      addedBy: getCurrentUserLabel()
     });
   }
   if (workOrder.status === "Resolved" || workOrder.status === "Closed") {
@@ -1766,7 +1769,7 @@ document.addEventListener("submit", async (event) => {
   if (before.priority !== workOrder.priority) changes.push(`Priority: ${before.priority} -> ${workOrder.priority}`);
   if (before.status !== workOrder.status) changes.push(`Status: ${before.status} -> ${workOrder.status}`);
   if (before.dueAt !== workOrder.dueAt) changes.push(`Due date updated`);
-  if (before.notes !== workOrder.notes) changes.push("Notes updated");
+  if (before.notes !== workOrder.notes) changes.push("Work note added");
   if (photo) changes.push("Work photo added");
   addWorkOrderHistory(workOrder, "Edited", changes.join(" | ") || "No visible changes");
   addActivity("Ticket edited", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
@@ -4994,8 +4997,8 @@ function renderWorkOrderEditForm(item) {
   return `
     <form class="inline-edit-form compact-form" data-work-order-edit-form="${escapeAttribute(item.id)}">
       <label>
-        Work notes
-        <textarea name="notes" rows="3">${escapeHtml(item.notes || "")}</textarea>
+        Add work note
+        <textarea name="notes" rows="3" placeholder="Add a progress update. Date and user will be added automatically."></textarea>
       </label>
       <label>
         Add work photo
@@ -5141,26 +5144,20 @@ async function sendIssuePdfEmail(item, button) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(result.error || "The ticket email could not be sent.");
+      throw new Error(getEmailFunctionError(result, "The ticket email could not be sent."));
     }
-    addWorkOrderHistory(item, "PDF email sent", `Sent to ${recipient.trim()}`);
+    addWorkOrderHistory(item, "PDF email sent", buildEmailHistoryDetails(recipient.trim(), result));
     addActivity("Ticket PDF emailed", `${details.title} to ${recipient.trim()}`);
     saveState();
     render();
-    alert("Ticket PDF email sent.");
+    alert(buildEmailSuccessAlert("Ticket PDF email", result));
   } catch (error) {
     console.warn("Ticket PDF email failed.", error);
     addWorkOrderHistory(item, "PDF email failed", error.message || "Automatic PDF email could not be sent.");
     addActivity("Ticket PDF email failed", `${details.title} to ${recipient.trim()}`);
     saveState();
     render();
-    const useDraft = confirm([
-      "The automatic PDF email could not be sent.",
-      "",
-      "This usually means the Supabase email function is not deployed yet, or the Resend API key is not saved in Supabase secrets.",
-      "",
-      "Open a regular email draft to this contact instead?"
-    ].join("\n"));
+    const useDraft = confirm(buildEmailFailurePrompt(error));
     if (useDraft) {
       addWorkOrderHistory(item, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
       addActivity("Ticket fallback email draft", `${details.title} to ${recipient.trim()}`);
@@ -5212,6 +5209,43 @@ function getEmailFunctionReportDetails(details) {
   };
 }
 
+function getEmailReceiptId(result) {
+  return String(result?.id || result?.data?.id || result?.emailId || "").trim();
+}
+
+function buildEmailHistoryDetails(recipient, result) {
+  const receiptId = getEmailReceiptId(result);
+  return receiptId
+    ? `Sent to ${recipient}. Resend ID: ${receiptId}`
+    : `Sent to ${recipient}. Email service accepted the request, but no Resend receipt ID was returned. Check the Supabase Edge Function logs before assuming it delivered.`;
+}
+
+function buildEmailSuccessAlert(label, result) {
+  const receiptId = getEmailReceiptId(result);
+  return receiptId
+    ? `${label} sent.\n\nResend ID: ${receiptId}`
+    : `${label} was accepted by the email function, but no Resend receipt ID came back. Check the Supabase Edge Function logs before assuming it delivered.`;
+}
+
+function getEmailFunctionError(result, fallback) {
+  const base = String(result?.error || fallback || "The email could not be sent.").trim();
+  const detailMessage = String(result?.details?.message || result?.details?.error || "").trim();
+  return detailMessage && detailMessage !== base ? `${base} ${detailMessage}` : base;
+}
+
+function buildEmailFailurePrompt(error, contactLabel = "contact") {
+  const message = String(error?.message || "No error detail was returned.").trim();
+  return [
+    "The automatic PDF email could not be sent.",
+    "",
+    `Reason: ${message}`,
+    "",
+    "This usually means the Supabase email function is not deployed, the Resend API key is missing, the sender address is not allowed by Resend, or the photo/PDF was rejected.",
+    "",
+    `Open a regular email draft to this ${contactLabel} instead?`
+  ].join("\n");
+}
+
 function getUserNotificationEmail(user) {
   const candidates = [
     user?.email,
@@ -5254,9 +5288,9 @@ async function sendIssueAssignmentEmail(item, user) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(result.error || "The assignment email could not be sent.");
+      throw new Error(getEmailFunctionError(result, "The assignment email could not be sent."));
     }
-    addWorkOrderHistory(item, "Assignment email sent", `Sent to ${recipient}`);
+    addWorkOrderHistory(item, "Assignment email sent", buildEmailHistoryDetails(recipient, result));
     addActivity("Assignment email sent", `${details.issueNumber} to ${assigneeName}`);
   } catch (error) {
     console.warn("Ticket assignment email failed.", error);
@@ -5298,9 +5332,9 @@ async function sendServiceRequestAssignmentEmail(request, user) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(result.error || "The assignment email could not be sent.");
+      throw new Error(getEmailFunctionError(result, "The assignment email could not be sent."));
     }
-    addServiceRequestHistory(request, "Assignment email sent", `Sent to ${recipient}`);
+    addServiceRequestHistory(request, "Assignment email sent", buildEmailHistoryDetails(recipient, result));
     addActivity("Service assignment email sent", `${details.issueNumber} to ${assigneeName}`);
   } catch (error) {
     console.warn("Service request assignment email failed.", error);
@@ -5422,26 +5456,20 @@ async function sendServiceRequestPdfEmail(request, button) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(result.error || "The service request email could not be sent.");
+      throw new Error(getEmailFunctionError(result, "The service request email could not be sent."));
     }
-    addServiceRequestHistory(request, "PDF email sent", `Sent to ${recipient.trim()}`);
+    addServiceRequestHistory(request, "PDF email sent", buildEmailHistoryDetails(recipient.trim(), result));
     addActivity("Service request PDF emailed", `${details.title} to ${recipient.trim()}`);
     saveState();
     render();
-    alert("Service request PDF email sent.");
+    alert(buildEmailSuccessAlert("Service request PDF email", result));
   } catch (error) {
     console.warn("Service request PDF email failed.", error);
     addServiceRequestHistory(request, "PDF email failed", error.message || "Automatic PDF email could not be sent.");
     addActivity("Service request PDF email failed", `${details.title} to ${recipient.trim()}`);
     saveState();
     render();
-    const useDraft = confirm([
-      "The automatic PDF email could not be sent.",
-      "",
-      "This usually means the Supabase email function is not deployed yet, or the Resend API key is not saved in Supabase secrets.",
-      "",
-      "Open a regular email draft to this contact instead?"
-    ].join("\n"));
+    const useDraft = confirm(buildEmailFailurePrompt(error));
     if (useDraft) {
       addServiceRequestHistory(request, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
       addActivity("Service request fallback email draft", `${details.title} to ${recipient.trim()}`);
@@ -8290,6 +8318,18 @@ function formatDateTime(date) {
     hour: "numeric",
     minute: "2-digit"
   }).format(date);
+}
+
+function getCurrentUserLabel() {
+  return currentUser?.name || currentUser?.username || currentUser?.displayName || "SiteWorks user";
+}
+
+function appendDatedWorkNote(existingNotes, note, date = new Date()) {
+  const cleanNote = String(note || "").trim();
+  const currentNotes = String(existingNotes || "").trim();
+  if (!cleanNote) return currentNotes;
+  const entry = `${formatDateTime(date)} | ${getCurrentUserLabel()}\n${cleanNote}`;
+  return currentNotes ? `${currentNotes}\n\n${entry}` : entry;
 }
 
 function formatOpenTicketAge(item) {
