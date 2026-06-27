@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-  <link rel="stylesheet" href="styles.css?v=20260626-1135">
+  <link rel="stylesheet" href="styles.css?v=20260627-1235">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -133,6 +133,28 @@
 
   <main class="app-shell app-only hidden">
     <aside id="appSidebar" class="sidebar">
+        <nav id="workNav" class="sidebar-work-nav" aria-label="Work shortcuts">
+          <button type="button" class="sidebar-nav-btn" data-open-target="pmCalendarPanel" aria-expanded="false">
+            <span>PM Calendar</span>
+            <span class="sidebar-nav-hint">Open</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="assetRegisterDrawer" aria-expanded="false">
+            <span>Equipment Register</span>
+            <span class="sidebar-nav-hint">Open</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="workOrdersPanel" aria-expanded="false">
+            <span>Open Tickets</span>
+            <span class="sidebar-nav-hint">Open</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="serviceRequestsPanel" aria-expanded="false">
+            <span>Service Requests</span>
+            <span class="sidebar-nav-hint">Open</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
+            <span>Completed Tickets</span>
+            <span class="sidebar-nav-hint">Open</span>
+          </button>
+        </nav>
       <details id="adminToolsDrawer" class="sidebar-section setup-drawer admin-tools-drawer">
         <summary>
           <span>Admin & Settings</span>
@@ -657,7 +679,7 @@
         </div>
       </section>
 
-      <section id="pmCalendarPanel" class="work-orders-panel collapsible-panel is-collapsed">
+      <section id="pmCalendarPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="pmCalendarPanel">
           <h2>PM Calendar</h2>
           <span class="panel-title-actions">
@@ -689,7 +711,7 @@
         </div>
       </section>
 
-      <details id="assetRegisterDrawer" class="asset-table-panel asset-register-drawer">
+        <details id="assetRegisterDrawer" class="asset-table-panel asset-register-drawer sidebar-controlled-panel hidden">
         <summary class="section-title drawer-title clickable-panel-title">
           <h2>Equipment Register</h2>
           <span class="panel-title-actions">
@@ -770,7 +792,7 @@
         </div>
       </details>
 
-      <section id="workOrdersPanel" class="work-orders-panel collapsible-panel">
+        <section id="workOrdersPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="workOrdersPanel">
           <h2>Open Tickets</h2>
           <div class="panel-title-actions">
@@ -788,7 +810,7 @@
         <div id="workOrderList" class="work-order-list" data-panel-body></div>
       </section>
 
-      <section id="serviceRequestsPanel" class="work-orders-panel collapsible-panel is-collapsed">
+        <section id="serviceRequestsPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="serviceRequestsPanel">
           <h2>Service Requests</h2>
           <div class="panel-title-actions">
@@ -853,7 +875,7 @@
         </div>
       </section>
 
-      <section id="completedPmPanel" class="work-orders-panel collapsible-panel is-collapsed">
+        <section id="completedPmPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="completedPmPanel">
           <h2>Completed Tickets</h2>
           <div class="panel-title-actions">
@@ -1106,7 +1128,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260626-1810"></script>
+  <script src="app.js?v=20260627-1235"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

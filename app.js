@@ -91,6 +91,7 @@ const els = {
   appOnly: document.querySelectorAll(".app-only"),
   appShell: document.querySelector(".app-shell"),
   appSidebar: document.getElementById("appSidebar"),
+  workNav: document.getElementById("workNav"),
   adminToolsDrawer: document.getElementById("adminToolsDrawer"),
   quickAddDrawer: document.getElementById("quickAddDrawer"),
   workHeader: document.getElementById("workHeader"),
@@ -1223,9 +1224,18 @@ els.serviceRequestForm?.addEventListener("submit", async (event) => {
   await createServiceRequest();
 });
 
-els.assetRegisterDrawer?.addEventListener("toggle", () => {
-  if (!els.assetRegisterDrawer.open) delete els.assetRegisterDrawer.dataset.openedByMetric;
-});
+  els.assetRegisterDrawer?.addEventListener("toggle", () => {
+    const isOpen = els.assetRegisterDrawer.open;
+    if (!isOpen) {
+      delete els.assetRegisterDrawer.dataset.openedByMetric;
+      if (els.assetRegisterDrawer.classList.contains("sidebar-controlled-panel")) {
+        els.assetRegisterDrawer.classList.add("hidden");
+      }
+    } else if (els.assetRegisterDrawer.classList.contains("sidebar-controlled-panel")) {
+      els.assetRegisterDrawer.classList.remove("hidden");
+    }
+    setSidebarTargetButtonState("assetRegisterDrawer", isOpen && !els.assetRegisterDrawer.classList.contains("hidden"));
+  });
 
 els.assetForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1557,7 +1567,18 @@ document.addEventListener("click", (event) => {
   const panelToggle = event.target.closest("[data-panel-toggle]");
   if (panelToggle) {
     if (panelToggle.dataset.panelToggle === "dashboardPanel") return;
+    const panel = document.getElementById(panelToggle.dataset.panelToggle);
+    if (panel?.classList.contains("sidebar-controlled-panel")) {
+      closeSidebarTarget(panelToggle.dataset.panelToggle);
+      return;
+    }
     togglePanel(panelToggle.dataset.panelToggle);
+    return;
+  }
+
+  const openButton = event.target.closest("[data-open-target]");
+  if (openButton) {
+    openSidebarTarget(openButton.dataset.openTarget);
     return;
   }
 
@@ -1920,24 +1941,38 @@ function renderAuth() {
 function closeAssetRegisterDrawer() {
   if (!els.assetRegisterDrawer) return;
   els.assetRegisterDrawer.open = false;
+  if (els.assetRegisterDrawer.classList.contains("sidebar-controlled-panel")) {
+    els.assetRegisterDrawer.classList.add("hidden");
+  }
   delete els.assetRegisterDrawer.dataset.openedByMetric;
+  setSidebarTargetButtonState("assetRegisterDrawer", false);
 }
 
 function openAssetRegisterDrawer(openedByMetric = "") {
   if (!els.assetRegisterDrawer) return;
   if (openedByMetric) els.assetRegisterDrawer.dataset.openedByMetric = openedByMetric;
+  els.assetRegisterDrawer.classList.remove("hidden");
   els.assetRegisterDrawer.open = true;
+  setSidebarTargetButtonState("assetRegisterDrawer", true);
 }
 
 function toggleAssetRegisterDrawer() {
-  if (els.assetRegisterDrawer) els.assetRegisterDrawer.open = !els.assetRegisterDrawer.open;
+  if (!els.assetRegisterDrawer) return;
+  const isOpen = els.assetRegisterDrawer.open && !els.assetRegisterDrawer.classList.contains("hidden");
+  if (isOpen) closeAssetRegisterDrawer();
+  else openAssetRegisterDrawer();
 }
 
 function togglePanel(panelId) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
   const wasCollapsed = panel.classList.contains("is-collapsed");
+  const willCollapse = !wasCollapsed;
   panel.classList.toggle("is-collapsed");
+  if (panel.classList.contains("sidebar-controlled-panel")) {
+    panel.classList.toggle("hidden", willCollapse);
+    setSidebarTargetButtonState(panelId, !willCollapse);
+  }
   if (panelId === "assetPanel" && wasCollapsed) closeSelectedAssetDrawers();
   renderPanelToggles();
 }
@@ -1946,9 +1981,69 @@ function openPanel(panelId) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
   const wasCollapsed = panel.classList.contains("is-collapsed");
+  panel.classList.remove("hidden");
   panel.classList.remove("is-collapsed");
+  if (panel.classList.contains("sidebar-controlled-panel")) setSidebarTargetButtonState(panelId, true);
   if (panelId === "assetPanel" && wasCollapsed) closeSelectedAssetDrawers();
   renderPanelToggles();
+}
+
+function setSidebarTargetButtonState(targetId, isOpen) {
+  document.querySelectorAll("[data-open-target]").forEach((button) => {
+    if (button.dataset.openTarget !== targetId) return;
+    button.classList.toggle("is-active", isOpen);
+    button.setAttribute("aria-expanded", String(isOpen));
+    const hint = button.querySelector(".sidebar-nav-hint");
+    if (hint) hint.textContent = isOpen ? "Close" : "Open";
+  });
+}
+
+function closeSidebarTarget(targetId) {
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  if (target.tagName === "DETAILS") {
+    target.open = false;
+    if (target.classList.contains("sidebar-controlled-panel")) target.classList.add("hidden");
+  }
+  if (target.classList.contains("collapsible-panel")) {
+    target.classList.add("is-collapsed");
+    target.classList.add("hidden");
+    renderPanelToggles();
+  }
+  setSidebarTargetButtonState(targetId, false);
+}
+
+function openSidebarTarget(targetId) {
+  const target = document.getElementById(targetId);
+  if (!target) return;
+
+  const isOpen = target.tagName === "DETAILS"
+    ? target.open && !target.classList.contains("hidden")
+    : target.classList.contains("collapsible-panel")
+      && !target.classList.contains("hidden")
+      && !target.classList.contains("is-collapsed");
+
+  if (isOpen) {
+    closeSidebarTarget(targetId);
+    return;
+  }
+
+  if (target.tagName === "DETAILS") {
+    target.classList.remove("hidden");
+    target.open = true;
+  }
+  if (target.classList.contains("collapsible-panel")) {
+    target.classList.remove("hidden");
+    openPanel(targetId);
+  }
+  setSidebarTargetButtonState(targetId, true);
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeAllSidebarTargets() {
+  document.querySelectorAll("[data-open-target]").forEach((button) => {
+    closeSidebarTarget(button.dataset.openTarget);
+  });
 }
 
 function closeSelectedAssetDrawers() {
@@ -2131,9 +2226,13 @@ function renderRole() {
   const canCreateTickets = canCreateWorkOrders();
   const canUseNewActions = canAddAssets || canCreateTickets || canCreateServiceRequests();
   const isCustomer = currentRole === "Customer";
-  const hasSidebarAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed;
+  const hasAdminToolsAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed;
+  const canUseWorkNav = !isCustomer;
+  const hasSidebarAccess = canUseWorkNav || hasAdminToolsAccess;
   els.appShell?.classList.toggle("no-sidebar", !hasSidebarAccess);
   els.appSidebar?.classList.toggle("hidden", !hasSidebarAccess);
+  els.workNav?.classList.toggle("hidden", !canUseWorkNav);
+  if (!canUseWorkNav) closeAllSidebarTargets();
   els.dashboardPanel.classList.toggle("hidden", isCustomer);
   els.customerFilterField?.classList.toggle("hidden", !isAdmin);
   els.workHeader?.classList.toggle("hidden", !currentUser || isCustomer);
@@ -2144,8 +2243,8 @@ function renderRole() {
   if (els.newEquipmentBtn) els.newEquipmentBtn.disabled = !canAddAssets;
   if (els.newIssueBtn) els.newIssueBtn.disabled = !canCreateTickets;
   if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canCreateServiceRequests();
-  els.adminToolsDrawer.classList.toggle("hidden", !hasSidebarAccess);
-  if (!hasSidebarAccess) els.adminToolsDrawer.open = false;
+  els.adminToolsDrawer.classList.toggle("hidden", !hasAdminToolsAccess);
+  if (!hasAdminToolsAccess) els.adminToolsDrawer.open = false;
   els.quickAddDrawer.classList.toggle("hidden", !canAddAssets);
   if (!canAddAssets) els.quickAddDrawer.open = false;
   els.newIssueDrawer?.classList.toggle("hidden", !canCreateTickets);
