@@ -3305,16 +3305,22 @@ function renderPmCalendar() {
   if (els.pmCalendarCount) els.pmCalendarCount.textContent = records.length;
   const currentCustomer = getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
+  const viewLabel = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
   if (els.pmCalendarSummary) {
     els.pmCalendarSummary.innerHTML = `
       <strong>${escapeHtml(windowInfo.label)}</strong>
-      <span>${escapeHtml(currentCustomer?.name || "No customer selected")} | ${escapeHtml(currentLocation?.name || "All locations")}</span>
+      <span>${escapeHtml(viewLabel)}</span>
       <span>${records.length} upcoming PM${records.length === 1 ? "" : "s"}</span>
     `;
   }
-  els.pmCalendarList.innerHTML = records.length
-    ? renderPmCalendarGroups(records)
-    : `<p class="muted">No PMs are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
+  if (!records.length) {
+    els.pmCalendarList.innerHTML = `<p class="muted">No PMs are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
+    return;
+  }
+  const schedule = pmCalendarRange === "month"
+    ? renderPmCalendarMonthGrid(records, windowInfo)
+    : renderPmCalendarGroups(records);
+  els.pmCalendarList.innerHTML = `${schedule}${renderPmCalendarKeyEquipment(records)}`;
 }
 
 function pmCalendarWindow() {
@@ -3364,12 +3370,7 @@ function pmCalendarRecords(windowInfo = pmCalendarWindow()) {
 }
 
 function renderPmCalendarGroups(records) {
-  const groups = records.reduce((map, record) => {
-    const key = toDateInputValue(record.dueDate);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(record);
-    return map;
-  }, new Map());
+  const groups = groupPmCalendarRecords(records);
 
   return [...groups.entries()].map(([dateKey, items]) => {
     const date = parseLocalDate(dateKey);
@@ -3385,6 +3386,113 @@ function renderPmCalendarGroups(records) {
       </article>
     `;
   }).join("");
+}
+
+function groupPmCalendarRecords(records) {
+  return records.reduce((map, record) => {
+    const key = toDateInputValue(record.dueDate);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(record);
+    return map;
+  }, new Map());
+}
+
+function renderPmCalendarMonthGrid(records, windowInfo) {
+  const groups = groupPmCalendarRecords(records);
+  const monthStart = new Date(windowInfo.start.getFullYear(), windowInfo.start.getMonth(), 1);
+  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+  const gridStart = addDays(monthStart, -monthStart.getDay());
+  const gridEnd = addDays(monthEnd, 6 - monthEnd.getDay());
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const cells = [];
+
+  for (let day = gridStart; day <= gridEnd; day = addDays(day, 1)) {
+    const cellDate = startOfDay(day);
+    const key = toDateInputValue(cellDate);
+    const items = groups.get(key) || [];
+    const outsideClass = cellDate.getMonth() === monthStart.getMonth() ? "" : " is-outside";
+    const todayClass = key === toDateInputValue(today) ? " is-today" : "";
+    cells.push(`
+      <div class="pm-calendar-cell${outsideClass}${todayClass}">
+        <div class="pm-calendar-cell-date">${cellDate.getDate()}</div>
+        <div class="pm-calendar-cell-items">
+          ${items.slice(0, 4).map(renderPmCalendarTask).join("")}
+          ${items.length > 4 ? `<span class="pm-calendar-more">+${items.length - 4} more</span>` : ""}
+        </div>
+      </div>
+    `);
+  }
+
+  return `
+    <section class="pm-calendar-month-wrap">
+      <div class="pm-calendar-month-grid-wrap">
+        <div class="pm-calendar-month-grid">
+          ${weekdays.map((day) => `<div class="pm-calendar-weekday">${day}</div>`).join("")}
+          ${cells.join("")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderPmCalendarTask(record) {
+  const tone = pmCalendarTone(record);
+  return `
+    <button type="button" class="pm-calendar-task pm-calendar-task-${tone}" data-pm-calendar-asset="${escapeAttribute(record.asset.id)}">
+      ${escapeHtml(record.asset.name || record.template?.name || "PM")}
+    </button>
+  `;
+}
+
+function pmCalendarTone(record) {
+  const text = `${record.asset.name || ""} ${record.asset.type || ""} ${record.template?.name || ""}`.toLowerCase();
+  const criticality = String(record.asset.criticality || "").toLowerCase();
+  if (record.due.daysUntil < 0 || criticality === "high") return "danger";
+  if (text.includes("fire") || text.includes("life") || text.includes("safety") || criticality === "medium") return "warning";
+  if (text.includes("boiler") || text.includes("pump") || text.includes("hvac")) return "info";
+  return "success";
+}
+
+function renderPmCalendarKeyEquipment(records) {
+  const seen = new Set();
+  const uniqueRecords = records.filter((record) => {
+    if (seen.has(record.asset.id)) return false;
+    seen.add(record.asset.id);
+    return true;
+  }).slice(0, 12);
+  const rangeLabel = pmCalendarRange === "week" ? "week" : pmCalendarRange === "year" ? "year" : "month";
+  return `
+    <section class="pm-calendar-key-section">
+      <div class="pm-calendar-key-heading">
+        <h3>Key Equipment for PM Tasks this ${escapeHtml(rangeLabel)}</h3>
+        <span>${uniqueRecords.length} shown</span>
+      </div>
+      <div class="pm-calendar-equipment-grid">
+        ${uniqueRecords.map(renderPmCalendarEquipmentCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPmCalendarEquipmentCard(record) {
+  const openTickets = openWorkOrdersForAsset(record.asset.id).length;
+  const thumb = record.asset.photoDataUrl
+    ? `<img src="${escapeAttribute(record.asset.photoDataUrl)}" alt="">`
+    : `<span>No photo</span>`;
+  return `
+    <button type="button" class="pm-calendar-equipment-card" data-pm-calendar-asset="${escapeAttribute(record.asset.id)}">
+      <span class="pm-calendar-equipment-thumb">${thumb}</span>
+      <span class="pm-calendar-equipment-main">
+        <strong>${escapeHtml(record.asset.name || "Equipment")}</strong>
+        <small>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</small>
+        <span class="pm-calendar-mini-row">
+          <em class="pm-calendar-mini-chip">${escapeHtml(formatDate(record.dueDate))}</em>
+          <em class="pm-calendar-mini-chip">${openTickets ? `${openTickets} ticket${openTickets === 1 ? "" : "s"}` : "No tickets"}</em>
+        </span>
+      </span>
+      <span class="pm-calendar-card-action">&rsaquo;</span>
+    </button>
+  `;
 }
 
 function renderPmCalendarItem(record) {
