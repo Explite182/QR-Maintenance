@@ -1715,6 +1715,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const workOrderDeleteButton = event.target.closest("[data-work-order-delete]");
+  if (workOrderDeleteButton) {
+    deleteWorkOrder(workOrderDeleteButton.dataset.workOrderDelete);
+    return;
+  }
+
   const contractorDeleteButton = event.target.closest("[data-delete-contractor]");
   if (contractorDeleteButton && canManageContractors()) {
     deletePreferredContractor(contractorDeleteButton.dataset.deleteContractor);
@@ -2427,6 +2433,20 @@ function deletePreferredContractor(contractorId) {
   state.preferredContractors = state.preferredContractors.filter((item) => item.id !== contractorId);
   addActivity("Preferred contact deleted", contractor.name);
   saveState();
+  render();
+}
+
+async function deleteWorkOrder(workOrderId) {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canDeleteWorkOrders()) return;
+  const ticketLabel = `${formatIssueNumber(workOrder)} - ${workOrder.title || "Ticket"}`;
+  if (!confirm(`Delete ${ticketLabel}? This cannot be undone.`)) return;
+  state.workOrders = state.workOrders.filter((item) => item.id !== workOrder.id);
+  if (focusedWorkOrderId === workOrder.id) focusedWorkOrderId = "";
+  if (focusedCompletedRecordId === workOrder.id) focusedCompletedRecordId = "";
+  addActivity("Ticket deleted", ticketLabel);
+  saveState();
+  await deleteStructuredRows("work_orders", "id", [workOrder.id]);
   render();
 }
 
@@ -5291,6 +5311,7 @@ function renderWorkOrderItem(item) {
   const ageLabel = formatOpenTicketAge(item);
   const createdLabel = item.createdAt ? formatDate(new Date(item.createdAt)) : "Not recorded";
   const canManage = canManageWorkOrders();
+  const canDelete = canDeleteWorkOrders();
   const canWork = canWorkOnTicket(item);
   const assignmentControl = renderWorkOrderAssignmentControl(item);
   const targetLabel = asset?.name || item.areaName || "Area report";
@@ -5309,12 +5330,14 @@ function renderWorkOrderItem(item) {
   ` : "";
   const actionButtons = item.status === "Closed" ? `
     ${canManage ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
+    ${canDelete ? `<button class="secondary danger-action" data-work-order-delete="${escapeAttribute(item.id)}">Delete</button>` : ""}
   ` : `
     ${canWork && item.status === "Open" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
     ${canWork && item.status !== "Waiting parts" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
     ${canWork && item.status !== "Resolved" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
     ${canManage ? `<button class="secondary" data-work-order-convert-service="${escapeAttribute(item.id)}">Convert to Service Request</button>` : ""}
     ${canManage ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>` : ""}
+    ${canDelete ? `<button class="secondary danger-action" data-work-order-delete="${escapeAttribute(item.id)}">Delete</button>` : ""}
   `;
   const actions = reportActions.trim() || actionButtons.trim() ? `
     <div class="work-order-actions">
@@ -6976,6 +6999,10 @@ function canCompletePm() {
 
 function canManageWorkOrders() {
   return currentRole === "Admin" || (isManagerRole() && !currentUser?.locationId);
+}
+
+function canDeleteWorkOrders() {
+  return currentRole === "Admin";
 }
 
 function canWorkOnTicket(item = null) {
