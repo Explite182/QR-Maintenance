@@ -37,6 +37,7 @@ let assetQuery = "";
 let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
 let assetSort = "due";
+let assetRegisterTab = "active";
 let assetPageSize = 25;
 let assetPage = 1;
 let selectedPrintAssetIds = new Set();
@@ -97,6 +98,8 @@ const els = {
   workHeader: document.getElementById("workHeader"),
   currentViewLabel: document.getElementById("currentViewLabel"),
   newActionBar: document.getElementById("newActionBar"),
+  createNewBtn: document.getElementById("createNewBtn"),
+  createNewMenu: document.getElementById("createNewMenu"),
   newEquipmentBtn: document.getElementById("newEquipmentBtn"),
   newIssueBtn: document.getElementById("newIssueBtn"),
   newServiceRequestBtn: document.getElementById("newServiceRequestBtn"),
@@ -211,6 +214,7 @@ const els = {
   templateFilter: document.getElementById("templateFilter"),
   assetSort: document.getElementById("assetSort"),
   assetPageSize: document.getElementById("assetPageSize"),
+  assetRegisterTabs: document.querySelectorAll("[data-asset-register-tab]"),
   assetTableBody: document.getElementById("assetTableBody"),
   tableAssetCount: document.getElementById("tableAssetCount"),
   assetPageInfo: document.getElementById("assetPageInfo"),
@@ -1115,6 +1119,14 @@ els.assetPageSize.addEventListener("change", () => {
   render();
 });
 
+els.assetRegisterTabs?.forEach((button) => {
+  button.addEventListener("click", () => {
+    assetRegisterTab = button.dataset.assetRegisterTab || "active";
+    assetPage = 1;
+    render();
+  });
+});
+
 document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
   button.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -1124,23 +1136,32 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
 
 els.newEquipmentBtn?.addEventListener("click", () => {
   if (!canAddEquipment()) return;
+  closeCreateNewMenu();
   toggleTopActionDrawer(els.quickAddDrawer);
 });
 
+els.createNewBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleCreateNewMenu();
+});
+
 document.addEventListener("click", (event) => {
-  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #newEquipmentBtn, #newIssueBtn, #newServiceRequestBtn")) return;
+  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #createNewBtn, #createNewMenu")) return;
   closeTopActionDrawers();
   closeMetricMenus();
+  closeCreateNewMenu();
 });
 
 els.newIssueBtn?.addEventListener("click", () => {
   if (!canCreateWorkOrders()) return;
+  closeCreateNewMenu();
   renderNewIssueFormOptions();
   toggleTopActionDrawer(els.newIssueDrawer);
 });
 
 els.newServiceRequestBtn?.addEventListener("click", () => {
   if (!canCreateServiceRequests()) return;
+  closeCreateNewMenu();
   renderServiceRequestFormOptions();
   toggleTopActionDrawer(els.serviceRequestCreateDrawer);
 });
@@ -2274,9 +2295,12 @@ function renderRole() {
   els.customerFilterField?.classList.toggle("hidden", !isAdmin);
   els.workHeader?.classList.toggle("hidden", !currentUser || isCustomer);
   els.newActionBar?.classList.toggle("hidden", !canUseNewActions);
+  els.createNewBtn?.classList.toggle("hidden", !canUseNewActions);
+  if (!canUseNewActions) closeCreateNewMenu();
   els.newEquipmentBtn?.classList.toggle("hidden", !canAddAssets);
   els.newIssueBtn?.classList.toggle("hidden", !canCreateTickets);
   els.newServiceRequestBtn?.classList.toggle("hidden", !canCreateServiceRequests());
+  if (els.createNewBtn) els.createNewBtn.disabled = !canUseNewActions;
   if (els.newEquipmentBtn) els.newEquipmentBtn.disabled = !canAddAssets;
   if (els.newIssueBtn) els.newIssueBtn.disabled = !canCreateTickets;
   if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canCreateServiceRequests();
@@ -3858,6 +3882,11 @@ function renderAssetTableControls() {
   els.statusFilter.value = assetStatusFilter;
   els.assetSort.value = assetSort;
   els.assetPageSize.value = String(assetPageSize);
+  els.assetRegisterTabs?.forEach((button) => {
+    const isActive = (button.dataset.assetRegisterTab || "active") === assetRegisterTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
   els.printSelectedLabelsBtn.textContent = selectedPrintAssetIds.size
     ? `Print Selected (${selectedPrintAssetIds.size})`
     : "Print Selected";
@@ -3890,7 +3919,7 @@ function renderAssetTable() {
   els.tableAssetCount.textContent = assets.length;
   els.assetTableBody.innerHTML = pageAssets.length
     ? pageAssets.map(renderAssetTableRow).join("")
-    : `<tr><td colspan="10" class="empty-cell">No equipment matches these filters.</td></tr>`;
+    : `<tr><td colspan="7" class="empty-cell">No equipment matches these filters.</td></tr>`;
 
   els.assetTableBody.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", (event) => {
@@ -3937,28 +3966,25 @@ function renderAssetTable() {
 }
 
 function renderAssetTableRow(asset) {
-  const customer = getCustomer(asset.customerId);
-  const locationRecord = getLocation(asset.locationId);
-  const template = getTemplate(asset.templateId);
   const due = getDueInfo(asset);
-  const openCount = openWorkOrdersForAsset(asset.id).length;
   const active = asset.id === selectedId ? " selected-row" : "";
+  const equipmentId = asset.serial || asset.id.slice(0, 8).toUpperCase();
   return `
     <tr class="${active}" data-id="${asset.id}">
-      <td class="select-cell">
-        <input type="checkbox" data-print-select value="${escapeAttribute(asset.id)}" ${selectedPrintAssetIds.has(asset.id) ? "checked" : ""} aria-label="Select ${escapeAttribute(asset.name)} for QR printing">
+      <td class="equipment-id-cell">
+        <div class="equipment-id-wrap">
+          <input type="checkbox" data-print-select value="${escapeAttribute(asset.id)}" ${selectedPrintAssetIds.has(asset.id) ? "checked" : ""} aria-label="Select ${escapeAttribute(asset.name)} for QR printing">
+          <strong>${escapeHtml(equipmentId)}</strong>
+        </div>
       </td>
       <td>
         <strong>${escapeHtml(asset.name)}</strong>
-        <span>${escapeHtml(asset.manufacturer || asset.model || "No details")}</span>
+        <span>${escapeHtml(asset.type || "Facility equipment")}</span>
       </td>
-      <td>${escapeHtml(customer?.name || "Unknown")}</td>
-      <td>${escapeHtml(locationRecord?.name || "Unknown")}</td>
-      <td>${renderStatusBadge(due.label, due.className)}</td>
-      <td>${formatDate(due.nextDate)}</td>
-      <td>${openCount ? `<span class="status-badge badge-warn">${openCount} open</span>` : `<span class="status-badge badge-muted">0</span>`}</td>
-      <td>${escapeHtml(template?.name || "Template missing")}</td>
-      <td>${escapeHtml(asset.serial || "-")}</td>
+      <td>${escapeHtml(asset.model || "-")}</td>
+      <td>${escapeHtml(asset.manufacturer || "-")}</td>
+      <td>${renderAssetConditionBadge(asset, due)}</td>
+      <td>${renderAssetOperationalBadge(asset, due)}</td>
       <td><button type="button" class="secondary mini table-edit-btn" data-edit-asset="${escapeAttribute(asset.id)}">Edit</button></td>
     </tr>
   `;
@@ -3979,6 +4005,28 @@ function renderAssetBadges(asset, due = getDueInfo(asset)) {
 
 function renderStatusBadge(label, className) {
   return `<span class="status-badge ${badgeClassForStatus(className)}">${escapeHtml(label)}</span>`;
+}
+
+function renderAssetConditionBadge(asset, due = getDueInfo(asset)) {
+  const openCount = openWorkOrdersForAsset(asset.id).length;
+  if (isAssetMaintenanceRequired(asset, due)) {
+    return `<span class="status-badge badge-warn">Needs attention</span>`;
+  }
+  if (openCount) return `<span class="status-badge badge-muted">Monitor</span>`;
+  return `<span class="status-badge badge-ok">Good</span>`;
+}
+
+function renderAssetOperationalBadge(asset, due = getDueInfo(asset)) {
+  if (isAssetMaintenanceRequired(asset, due)) {
+    return `<span class="status-badge badge-maintenance">Maintenance Required</span>`;
+  }
+  return `<span class="status-badge badge-operational">Operational</span>`;
+}
+
+function isAssetMaintenanceRequired(asset, due = getDueInfo(asset)) {
+  return due.daysUntil <= 0 || openWorkOrdersForAsset(asset.id).some((item) =>
+    item.status !== "Closed" && (item.priority === "High" || item.status === "Waiting parts" || isFailedPmIssue(item))
+  );
 }
 
 function badgeClassForStatus(className) {
@@ -4198,9 +4246,10 @@ function renderCompletedTicketItem(record) {
 }
 
 function moveTopActionDrawers() {
-  els.newEquipmentBtn?.insertAdjacentElement("afterend", els.quickAddDrawer);
-  els.newIssueBtn?.insertAdjacentElement("afterend", els.newIssueDrawer);
-  els.newServiceRequestBtn?.insertAdjacentElement("afterend", els.serviceRequestCreateDrawer);
+  if (!els.newActionBar) return;
+  [els.quickAddDrawer, els.newIssueDrawer, els.serviceRequestCreateDrawer].filter(Boolean).forEach((drawer) => {
+    els.newActionBar.appendChild(drawer);
+  });
 }
 
 function getTopActionDrawers() {
@@ -4211,6 +4260,20 @@ function closeTopActionDrawers(except = null) {
   getTopActionDrawers().forEach((drawer) => {
     if (drawer !== except) drawer.open = false;
   });
+}
+
+function toggleCreateNewMenu() {
+  if (!els.createNewMenu || !els.createNewBtn) return;
+  const shouldOpen = els.createNewMenu.classList.contains("hidden");
+  closeMetricMenus();
+  closeTopActionDrawers();
+  els.createNewMenu.classList.toggle("hidden", !shouldOpen);
+  els.createNewBtn.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function closeCreateNewMenu() {
+  els.createNewMenu?.classList.add("hidden");
+  els.createNewBtn?.setAttribute("aria-expanded", "false");
 }
 
 function toggleTopActionDrawer(drawer) {
@@ -4825,6 +4888,7 @@ function clearWorkspaceFilters() {
   globalQuery = "";
   assetStatusFilter = "all";
   assetTemplateFilter = "all";
+  assetRegisterTab = "active";
   workOrderViewFilter = "active";
   workOrderNumberFilter = "all";
   focusedWorkOrderId = "";
@@ -4840,9 +4904,16 @@ function clearWorkspaceFilters() {
 function assetTableAssets() {
   return filteredAssets()
     .filter(matchesAssetSearch)
+    .filter(matchesAssetRegisterTab)
     .filter(matchesStatusFilter)
     .filter(matchesTemplateFilter)
     .sort(sortAssetsForTable);
+}
+
+function matchesAssetRegisterTab(asset) {
+  if (assetRegisterTab === "overdue") return getDueInfo(asset).daysUntil < 0;
+  if (assetRegisterTab === "upcoming") return getDueInfo(asset).daysUntil >= 0;
+  return true;
 }
 
 function matchesAssetSearch(asset) {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260629-email-fix">
+    <link rel="stylesheet" href="styles.css?v=20260629-equipment-tabs">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -402,9 +402,15 @@
           <h2 id="currentViewLabel">All customers | All locations</h2>
         </div>
         <div id="newActionBar" class="new-action-bar">
-          <button id="newEquipmentBtn" type="button">New Equipment</button>
-          <button id="newIssueBtn" type="button" class="secondary">New Ticket</button>
-          <button id="newServiceRequestBtn" type="button" class="secondary">New Service Request</button>
+          <button id="createNewBtn" class="create-new-trigger" type="button" aria-expanded="false" aria-controls="createNewMenu">
+            <span>+ Create New</span>
+            <span aria-hidden="true">v</span>
+          </button>
+          <div id="createNewMenu" class="create-new-menu hidden">
+            <button id="newEquipmentBtn" type="button">New Equipment</button>
+            <button id="newIssueBtn" type="button" class="secondary">New Ticket</button>
+            <button id="newServiceRequestBtn" type="button" class="secondary">New Service Request</button>
+          </div>
         </div>
       </section>
 
@@ -615,6 +621,7 @@
           </div>
           <div class="metric-menu-wrap">
             <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
+              <em class="metric-trend metric-trend-warn">▲ 5% this week</em>
               <span id="openWorkOrders">0</span>
               <p>Open tickets</p>
             </button>
@@ -651,6 +658,7 @@
           </div>
           <div class="metric-menu-wrap">
             <button type="button" class="metric-card metric-danger" data-dashboard-filter="highPriority">
+              <em class="metric-trend metric-trend-danger">▲ 2</em>
               <span id="highPriorityIssues">0</span>
               <p>High priority</p>
             </button>
@@ -660,6 +668,7 @@
           </div>
           <div class="metric-menu-wrap">
             <button type="button" class="metric-card metric-warn" data-dashboard-filter="waitingParts">
+              <em class="metric-trend metric-trend-ok">▼ 1</em>
               <span id="waitingPartsIssues">0</span>
               <p>Waiting parts</p>
             </button>
@@ -713,7 +722,7 @@
 
         <details id="assetRegisterDrawer" class="asset-table-panel asset-register-drawer sidebar-controlled-panel hidden">
         <summary class="section-title drawer-title clickable-panel-title">
-          <h2>Equipment Register</h2>
+          <h2>Selected Equipment</h2>
           <span class="panel-title-actions">
             <span id="tableAssetCount">0</span>
           </span>
@@ -764,19 +773,21 @@
             <button id="exportAssetRegisterBtn" class="secondary mini">Export CSV</button>
           </div>
         </div>
+        <div class="asset-subnav" aria-label="Equipment register views">
+          <button type="button" class="asset-subnav-tab is-active" data-asset-register-tab="active">Active Inventory</button>
+          <button type="button" class="asset-subnav-tab" data-asset-register-tab="upcoming">Upcoming Schedules</button>
+          <button type="button" class="asset-subnav-tab" data-asset-register-tab="overdue">Overdue Inspections</button>
+        </div>
         <div class="table-wrap">
           <table class="asset-table">
             <thead>
               <tr>
-                <th>Select</th>
-                <th>Equipment</th>
-                <th>Customer</th>
-                <th>Location</th>
+                <th>Equipment ID</th>
+                <th>Name</th>
+                <th>Model</th>
+                <th>Manufacturer</th>
+                <th>Condition</th>
                 <th>Status</th>
-                <th>Next maintenance</th>
-                <th>Open tickets</th>
-                <th>Template</th>
-                <th>Serial</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -1129,7 +1140,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260629-no-tab-scroll"></script>
+  <script src="app.js?v=20260629-equipment-tabs"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
