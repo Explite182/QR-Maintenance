@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260627-1558">
+    <link rel="stylesheet" href="styles.css?v=20260629-email-fix">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -887,7 +887,7 @@
         </div>
       </section>
 
-      <article id="emptyState" class="empty-state">
+      <article id="emptyState" class="empty-state hidden">
         <h2>Add equipment to start</h2>
         <p>Create equipment records, print QR labels, scan a label, and complete maintenance from a phone or browser.</p>
       </article>
@@ -895,6 +895,7 @@
       <article id="assetPanel" class="asset-panel collapsible-panel hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="assetPanel">
           <h2>Selected Equipment</h2>
+          <button id="closeAssetPanelBtn" class="secondary mini" type="button" data-close-asset-panel>Close</button>
         </div>
         <div class="asset-panel-body" data-panel-body>
         <div class="asset-heading">
@@ -1128,7 +1129,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260627-1500"></script>
+  <script src="app.js?v=20260629-no-tab-scroll"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

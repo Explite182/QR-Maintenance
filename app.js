@@ -228,6 +228,7 @@ const els = {
   globalSearchResults: document.getElementById("globalSearchResults"),
   emptyState: document.getElementById("emptyState"),
   assetPanel: document.getElementById("assetPanel"),
+  closeAssetPanelBtn: document.getElementById("closeAssetPanelBtn"),
   selectedLocation: document.getElementById("selectedLocation"),
   selectedAssetThumb: document.getElementById("selectedAssetThumb"),
   selectedName: document.getElementById("selectedName"),
@@ -1564,6 +1565,27 @@ els.restoreBackupBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (event) => {
+  const closeAssetPanelButton = event.target.closest("[data-close-asset-panel]");
+  if (closeAssetPanelButton) {
+    event.preventDefault();
+    closeSelectedAssetPanel();
+    return;
+  }
+
+  const addEquipmentButton = event.target.closest("[data-empty-add-equipment]");
+  if (addEquipmentButton) {
+    event.preventDefault();
+    openEmptyStateEquipmentForm();
+    return;
+  }
+
+  const clearFiltersButton = event.target.closest("[data-empty-clear-filters]");
+  if (clearFiltersButton) {
+    event.preventDefault();
+    clearWorkspaceFilters();
+    return;
+  }
+
   const panelToggle = event.target.closest("[data-panel-toggle]");
   if (panelToggle) {
     if (panelToggle.dataset.panelToggle === "dashboardPanel") return;
@@ -1879,9 +1901,10 @@ function render() {
     manageableSetupCustomers().some((customer) => customer.id === locationRecord.customerId)
   ).length;
   els.assetCount.textContent = filteredAssets().length;
-  els.emptyState.innerHTML = renderEmptyStateContent(asset);
-  els.emptyState.classList.toggle("hidden", Boolean(asset));
+  els.emptyState.innerHTML = "";
+  els.emptyState.classList.toggle("hidden", true);
   els.assetPanel.classList.toggle("hidden", !asset);
+  positionAssetPanelNearSelection(asset);
   renderPanelToggles();
   renderRole();
 
@@ -2001,6 +2024,11 @@ function setSidebarTargetButtonState(targetId, isOpen) {
 function closeSidebarTarget(targetId) {
   const target = document.getElementById(targetId);
   if (!target) return;
+  if (targetId === "assetRegisterDrawer" && els.assetPanel?.classList.contains("floating-asset-panel")) {
+    els.assetPanel.classList.add("hidden");
+    els.assetPanel.classList.remove("floating-asset-panel", "is-collapsed");
+    els.assetPanel.style.top = "";
+  }
   if (target.tagName === "DETAILS") {
     target.open = false;
     if (target.classList.contains("sidebar-controlled-panel")) target.classList.add("hidden");
@@ -2028,6 +2056,8 @@ function openSidebarTarget(targetId) {
     return;
   }
 
+  closeOtherSidebarTargets(targetId);
+
   if (target.tagName === "DETAILS") {
     target.classList.remove("hidden");
     target.open = true;
@@ -2037,12 +2067,19 @@ function openSidebarTarget(targetId) {
     openPanel(targetId);
   }
   setSidebarTargetButtonState(targetId, true);
-  target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function closeAllSidebarTargets() {
   document.querySelectorAll("[data-open-target]").forEach((button) => {
     closeSidebarTarget(button.dataset.openTarget);
+  });
+}
+
+function closeOtherSidebarTargets(activeTargetId) {
+  document.querySelectorAll("[data-open-target]").forEach((button) => {
+    if (button.dataset.openTarget !== activeTargetId) {
+      closeSidebarTarget(button.dataset.openTarget);
+    }
   });
 }
 
@@ -3314,6 +3351,13 @@ function renderPmCalendar() {
     `;
   }
   if (!records.length) {
+    if (pmCalendarRange === "month") {
+      els.pmCalendarList.innerHTML = `
+        ${renderPmCalendarMonthGrid(records, windowInfo)}
+        <p class="muted">No PMs are scheduled in this forward month for the current view.</p>
+      `;
+      return;
+    }
     els.pmCalendarList.innerHTML = `<p class="muted">No PMs are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
     return;
   }
@@ -3338,9 +3382,9 @@ function pmCalendarWindow() {
     end = new Date(baseDate.getFullYear(), 11, 31);
     label = `${baseDate.getFullYear()} PM schedule`;
   } else {
-    start = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
-    end = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
-    label = `${baseDate.toLocaleString(undefined, { month: "long", year: "numeric" })} PM schedule`;
+    start = baseDate;
+    end = addDays(start, 30);
+    label = `${formatDate(start)} - ${formatDate(end)} PM schedule`;
   }
 
   return { start: startOfDay(start), end: startOfDay(end), label };
@@ -3399,10 +3443,8 @@ function groupPmCalendarRecords(records) {
 
 function renderPmCalendarMonthGrid(records, windowInfo) {
   const groups = groupPmCalendarRecords(records);
-  const monthStart = new Date(windowInfo.start.getFullYear(), windowInfo.start.getMonth(), 1);
-  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
-  const gridStart = addDays(monthStart, -monthStart.getDay());
-  const gridEnd = addDays(monthEnd, 6 - monthEnd.getDay());
+  const gridStart = addDays(windowInfo.start, -windowInfo.start.getDay());
+  const gridEnd = addDays(windowInfo.end, 6 - windowInfo.end.getDay());
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const cells = [];
 
@@ -3410,7 +3452,7 @@ function renderPmCalendarMonthGrid(records, windowInfo) {
     const cellDate = startOfDay(day);
     const key = toDateInputValue(cellDate);
     const items = groups.get(key) || [];
-    const outsideClass = cellDate.getMonth() === monthStart.getMonth() ? "" : " is-outside";
+    const outsideClass = cellDate >= windowInfo.start && cellDate <= windowInfo.end ? "" : " is-outside";
     const todayClass = key === toDateInputValue(today) ? " is-today" : "";
     cells.push(`
       <div class="pm-calendar-cell${outsideClass}${todayClass}">
@@ -3853,12 +3895,15 @@ function renderAssetTable() {
   els.assetTableBody.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", (event) => {
       if (event.target.closest("[data-edit-asset], [data-print-select]")) return;
+      if (selectedId === row.dataset.id && !els.assetPanel.classList.contains("hidden")) {
+        closeSelectedAssetPanel();
+        return;
+      }
       selectedId = row.dataset.id;
       syncFiltersToSelectedAsset();
       location.hash = `asset/${selectedId}`;
       openPanel("assetPanel");
       render();
-      document.getElementById("assetPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
 
@@ -4714,10 +4759,82 @@ function renderEmptyStateContent(asset) {
       <p>Equipment will appear here when an open ticket is assigned to you.</p>
     `;
   }
+  const addEquipmentButton = canAddEquipment()
+    ? `<button type="button" data-empty-add-equipment>Add Equipment</button>`
+    : "";
   return `
-    <h2>No equipment found</h2>
-    <p>No equipment is available for the selected customer or filters.</p>
+    <h2>Selected Equipment</h2>
+    <p>Select equipment to view details.</p>
+    <div class="empty-state-actions">
+      ${addEquipmentButton}
+      <button type="button" class="link-action" data-empty-clear-filters>Clear all filters</button>
+    </div>
   `;
+}
+
+function positionAssetPanelNearSelection(asset) {
+  if (!els.assetPanel) return;
+  document.querySelectorAll(".asset-detail-table-row").forEach((row) => row.remove());
+  const canFloatOverRegister = Boolean(asset && els.assetRegisterDrawer && !els.assetRegisterDrawer.classList.contains("hidden"));
+  els.assetPanel.classList.toggle("floating-asset-panel", canFloatOverRegister);
+  els.assetPanel.style.top = "";
+  if (!asset) return;
+
+  const selectedRow = [...(els.assetTableBody?.querySelectorAll("tr[data-id]") || [])]
+    .find((row) => row.dataset.id === asset.id);
+  const host = canFloatOverRegister ? els.assetRegisterDrawer : null;
+  host?.appendChild(els.assetPanel);
+  if (host === els.assetRegisterDrawer) {
+    if (selectedRow) {
+      const hostRect = host.getBoundingClientRect();
+      const rowRect = selectedRow.getBoundingClientRect();
+      const top = Math.max(76, rowRect.bottom - hostRect.top + 8);
+      els.assetPanel.style.top = `${Math.round(top)}px`;
+    }
+    return;
+  }
+
+  els.assetRegisterDrawer?.insertAdjacentElement("afterend", els.assetPanel);
+}
+
+function closeSelectedAssetPanel() {
+  selectedId = null;
+  clearSelectedAssetUrl();
+  if (els.assetPanel) {
+    els.assetPanel.classList.add("hidden");
+    els.assetPanel.classList.remove("floating-asset-panel", "inline-asset-panel", "is-collapsed");
+    els.assetPanel.style.top = "";
+  }
+  render();
+}
+
+function openEmptyStateEquipmentForm() {
+  if (!canAddEquipment()) return;
+  closeMetricMenus();
+  closeTopActionDrawers(els.quickAddDrawer);
+  if (els.quickAddDrawer) {
+    els.quickAddDrawer.classList.remove("hidden");
+    els.quickAddDrawer.open = true;
+    els.quickAddDrawer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  els.assetName?.focus({ preventScroll: true });
+}
+
+function clearWorkspaceFilters() {
+  assetQuery = "";
+  globalQuery = "";
+  assetStatusFilter = "all";
+  assetTemplateFilter = "all";
+  workOrderViewFilter = "active";
+  workOrderNumberFilter = "all";
+  focusedWorkOrderId = "";
+  focusedServiceRequestId = "";
+  focusedCompletedRecordId = "";
+  assetPage = 1;
+  if (els.assetSearch) els.assetSearch.value = "";
+  if (els.globalSearch) els.globalSearch.value = "";
+  if (els.globalSearchResults) els.globalSearchResults.classList.add("hidden");
+  render();
 }
 
 function assetTableAssets() {
@@ -5383,19 +5500,24 @@ async function sendIssuePdfEmail(item, button) {
     addWorkOrderHistory(item, "PDF email failed", error.message || "Automatic PDF email could not be sent.");
     addActivity("Ticket PDF email failed", `${details.title} to ${recipient.trim()}`);
     saveState();
-    render();
+    restoreEmailActionButton(button, originalText);
     const useDraft = confirm(buildEmailFailurePrompt(error));
     if (useDraft) {
       addWorkOrderHistory(item, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
       addActivity("Ticket fallback email draft", `${details.title} to ${recipient.trim()}`);
       saveState();
-      render();
       openIssueEmailDraft(details, recipient.trim());
     }
+    render();
   } finally {
-    button.disabled = false;
-    button.textContent = originalText;
+    restoreEmailActionButton(button, originalText);
   }
+}
+
+function restoreEmailActionButton(button, label) {
+  if (!button) return;
+  button.disabled = false;
+  button.textContent = label;
 }
 
 function supabaseFunctionHeaders() {
@@ -5467,7 +5589,7 @@ function buildEmailFailurePrompt(error, contactLabel = "contact") {
     "",
     `Reason: ${message}`,
     "",
-    "This usually means the Supabase email function is not deployed, the Resend API key is missing, the sender address is not allowed by Resend, or the photo/PDF was rejected.",
+    "This usually means the Supabase email function is not deployed, the Resend API key is missing, the sender address is not allowed by Resend, the sender domain is not verified, or the photo/PDF was rejected.",
     "",
     `Open a regular email draft to this ${contactLabel} instead?`
   ].join("\n");
@@ -5695,18 +5817,17 @@ async function sendServiceRequestPdfEmail(request, button) {
     addServiceRequestHistory(request, "PDF email failed", error.message || "Automatic PDF email could not be sent.");
     addActivity("Service request PDF email failed", `${details.title} to ${recipient.trim()}`);
     saveState();
-    render();
+    restoreEmailActionButton(button, originalText);
     const useDraft = confirm(buildEmailFailurePrompt(error));
     if (useDraft) {
       addServiceRequestHistory(request, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
       addActivity("Service request fallback email draft", `${details.title} to ${recipient.trim()}`);
       saveState();
-      render();
       openServiceRequestEmailDraft(details, recipient.trim());
     }
+    render();
   } finally {
-    button.disabled = false;
-    button.textContent = originalText;
+    restoreEmailActionButton(button, originalText);
   }
 }
 
