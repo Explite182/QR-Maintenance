@@ -17,6 +17,19 @@ const DEFAULT_TEMPLATE_ITEMS = [
   "No leaks, damage, or abnormal noise",
   "Safety devices checked"
 ];
+const ASSET_DETAIL_FIELDS = [
+  { field: "type", label: "Equipment type", kind: "text", placeholder: "HVAC, pump, conveyor" },
+  { field: "criticality", label: "Criticality", kind: "select", options: ["", "Low", "Medium", "High"] },
+  { field: "manufacturer", label: "Manufacturer", kind: "text", placeholder: "Manufacturer" },
+  { field: "model", label: "Model", kind: "text", placeholder: "Model number" },
+  { field: "serial", label: "Serial", kind: "text", placeholder: "Serial number" },
+  { field: "installDate", label: "Install date", kind: "date" },
+  { field: "vendor", label: "Vendor / service company", kind: "text", placeholder: "Vendor or service company" },
+  { field: "vendorContact", label: "Vendor contact", kind: "text", placeholder: "Email or phone" },
+  { field: "warrantyDate", label: "Warranty expires", kind: "date" },
+  { field: "parts", label: "Parts / supply notes", kind: "textarea", placeholder: "Parts, suppliers, or ordering notes" },
+  { field: "notes", label: "Notes", kind: "textarea", placeholder: "Equipment notes" }
+];
 
 let state = normalizeState(loadState());
 hydrateAssetFromHash();
@@ -59,6 +72,7 @@ let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
 let lastPublicReportError = "";
+let editingAssetDetailField = "";
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -251,6 +265,7 @@ const els = {
   assetManualPanel: document.getElementById("assetManualPanel"),
   assetDetailsGrid: document.getElementById("assetDetailsGrid"),
   exportSelectedAssetBtn: document.getElementById("exportSelectedAssetBtn"),
+  deleteSelectedAssetBtn: document.getElementById("deleteSelectedAssetBtn"),
   assetInfoForm: document.getElementById("assetInfoForm"),
   editAssetName: document.getElementById("editAssetName"),
   editAssetCustomer: document.getElementById("editAssetCustomer"),
@@ -950,14 +965,22 @@ els.editAssetPhoto.addEventListener("change", async () => {
   const asset = getSelectedAsset();
   if (!asset || !canCompletePm() || !els.editAssetPhoto.files[0]) return;
 
+  const previousPhoto = asset.photo || null;
   const replacementPhoto = await readPhoto(els.editAssetPhoto.files[0]);
   if (!replacementPhoto) return;
   asset.photo = replacementPhoto;
   addActivity("Equipment photo updated", asset.name);
-  saveState();
-  els.editAssetPhoto.value = "";
-  render();
-  openAssetEditor();
+  try {
+    saveState();
+    els.editAssetPhoto.value = "";
+    render();
+    openAssetEditor();
+  } catch {
+    asset.photo = previousPhoto;
+    els.editAssetPhoto.value = "";
+    render();
+    openAssetEditor();
+  }
 });
 
 els.editAssetGalleryPhotos.addEventListener("change", async () => {
@@ -1363,12 +1386,27 @@ els.assetForm.addEventListener("submit", async (event) => {
   };
 
   if (!canSeeLocation(asset.locationId, asset.customerId)) return;
+  const previousSelectedId = selectedId;
+  const previousCustomerId = selectedCustomerId;
+  const previousLocationId = selectedLocationId;
   state.assets.unshift(asset);
   addActivity("Asset added", asset.name);
   selectedId = asset.id;
   selectedCustomerId = asset.customerId;
   selectedLocationId = defaultLocationSelection();
-  saveState();
+  try {
+    saveState();
+  } catch (error) {
+    state.assets = state.assets.filter((item) => item.id !== asset.id);
+    state.activityLog = state.activityLog.filter((entry) =>
+      !(entry.action === "Asset added" && entry.details === asset.name)
+    );
+    selectedId = previousSelectedId;
+    selectedCustomerId = previousCustomerId;
+    selectedLocationId = previousLocationId;
+    render();
+    return;
+  }
   els.assetForm.reset();
   els.assetFrequency.value = "30";
   els.quickAddDrawer.open = false;
@@ -1519,6 +1557,10 @@ els.exportBtn.addEventListener("click", () => {
   const asset = getSelectedAsset();
   if (!asset) return;
   downloadCsv(asset);
+});
+
+els.deleteSelectedAssetBtn?.addEventListener("click", () => {
+  deleteSelectedEquipment();
 });
 
 els.selectPageAssetsBtn.addEventListener("click", () => {
@@ -1675,6 +1717,20 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const cancelAssetDetailEdit = event.target.closest("[data-asset-detail-cancel]");
+  if (cancelAssetDetailEdit) {
+    event.preventDefault();
+    closeInlineAssetDetailEditor();
+    return;
+  }
+
+  const openAssetDetailEdit = event.target.closest("[data-asset-detail-open]");
+  if (openAssetDetailEdit) {
+    event.preventDefault();
+    openInlineAssetDetailEditor(openAssetDetailEdit.dataset.assetDetailOpen);
+    return;
+  }
+
   const openWorkDrawer = document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)");
   if (openWorkDrawer && !openWorkDrawer.contains(event.target)) {
     event.preventDefault();
@@ -1719,6 +1775,13 @@ document.addEventListener("click", (event) => {
   const openButton = event.target.closest("[data-open-target]");
   if (openButton) {
     openSidebarTarget(openButton.dataset.openTarget);
+    return;
+  }
+
+  const mobileTabButton = event.target.closest("[data-mobile-tab]");
+  if (mobileTabButton) {
+    event.preventDefault();
+    openMobileTab(mobileTabButton.dataset.mobileTab);
     return;
   }
 
@@ -1887,6 +1950,14 @@ document.addEventListener("change", (event) => {
   if (user && user.id !== previousAssigneeId && request.status !== "Completed" && request.status !== "Declined") {
     sendServiceRequestAssignmentEmail(request, user);
   }
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-asset-detail-edit]");
+  if (!form) return;
+  event.preventDefault();
+  const formData = new FormData(form);
+  saveInlineAssetDetail(form.dataset.assetDetailEdit, formData.get("value"));
 });
 
 document.addEventListener("submit", async (event) => {
@@ -2083,6 +2154,10 @@ function render() {
   els.assetPhotoPanel.innerHTML = renderAssetPhoto(asset);
   els.assetManualPanel.innerHTML = renderAssetManual(asset);
   els.assetDetailsGrid.innerHTML = renderAssetDetails(asset);
+  if (els.deleteSelectedAssetBtn) {
+    els.deleteSelectedAssetBtn.classList.toggle("hidden", !canDeleteEquipment());
+    els.deleteSelectedAssetBtn.disabled = !canDeleteEquipment();
+  }
   renderAssetInfoForm(asset);
   renderChecklist(template, asset);
   renderAssetWorkOrders(asset);
@@ -2234,6 +2309,33 @@ function closeOtherSidebarTargets(activeTargetId) {
     if (button.dataset.openTarget !== activeTargetId) {
       closeSidebarTarget(button.dataset.openTarget);
     }
+  });
+}
+
+function openMobileTab(targetId) {
+  if (targetId === "dashboardPanel") {
+    closeAllSidebarTargets();
+    closeSidebarTarget("adminToolsDrawer");
+    document.getElementById("dashboardPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setMobileTabState(targetId);
+    return;
+  }
+
+  if (targetId !== "adminToolsDrawer") closeSidebarTarget("adminToolsDrawer");
+  const target = document.getElementById(targetId);
+  const isOpen = target?.tagName === "DETAILS"
+    ? target.open && !target.classList.contains("hidden")
+    : target?.classList.contains("collapsible-panel")
+      && !target.classList.contains("hidden")
+      && !target.classList.contains("is-collapsed");
+  if (!isOpen) openSidebarTarget(targetId);
+  document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  setMobileTabState(targetId);
+}
+
+function setMobileTabState(targetId) {
+  document.querySelectorAll("[data-mobile-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.mobileTab === targetId);
   });
 }
 
@@ -5581,25 +5683,81 @@ function removeCustomChecklistItem(index) {
 }
 
 function renderAssetDetails(asset) {
-  const rows = [
-    ["Equipment type", asset.type],
-    ["Criticality", asset.criticality],
-    ["Manufacturer", asset.manufacturer],
-    ["Model", asset.model],
-    ["Serial", asset.serial],
-    ["Install date", asset.installDate],
-    ["Vendor / service company", asset.vendor],
-    ["Vendor contact", asset.vendorContact],
-    ["Warranty expires", asset.warrantyDate],
-    ["Parts / supply notes", asset.parts],
-    ["Notes", asset.notes]
-  ];
-  return rows.map(([label, value]) => `
-    <div>
-      <span class="label">${escapeHtml(label)}</span>
-      <strong>${label === "Manual / document" && value ? value : escapeHtml(value || "Not entered")}</strong>
-    </div>
-  `).join("");
+  const editable = canManageWorkOrders();
+  return ASSET_DETAIL_FIELDS.map((config) => {
+    const value = String(asset[config.field] || "");
+    if (editable && editingAssetDetailField === config.field) {
+      return renderInlineAssetDetailEditor(config, value);
+    }
+
+    const tag = editable ? "button" : "div";
+    const openAttr = editable ? ` type="button" data-asset-detail-open="${escapeAttribute(config.field)}"` : "";
+    return `
+      <${tag}${openAttr} class="asset-detail-card${editable ? " is-editable" : ""}">
+        <span class="label">${escapeHtml(config.label)}</span>
+        <strong>${escapeHtml(value || "Not entered")}</strong>
+        ${editable ? `<small>Tap to edit</small>` : ""}
+      </${tag}>
+    `;
+  }).join("");
+}
+
+function renderInlineAssetDetailEditor(config, value) {
+  const control = config.kind === "select"
+    ? `<select name="value" autofocus>
+        ${(config.options || []).map((option) => `
+          <option value="${escapeAttribute(option)}" ${value === option ? "selected" : ""}>${escapeHtml(option || "Not set")}</option>
+        `).join("")}
+      </select>`
+    : config.kind === "textarea"
+      ? `<textarea name="value" rows="3" autofocus placeholder="${escapeAttribute(config.placeholder || "")}">${escapeHtml(value)}</textarea>`
+      : `<input name="value" type="${config.kind === "date" ? "date" : "text"}" value="${escapeAttribute(value)}" autofocus placeholder="${escapeAttribute(config.placeholder || "")}">`;
+
+  return `
+    <form class="asset-detail-card asset-detail-card-editor" data-asset-detail-edit="${escapeAttribute(config.field)}">
+      <span class="label">${escapeHtml(config.label)}</span>
+      ${control}
+      <div class="asset-detail-edit-actions">
+        <button type="submit" class="primary mini">Save</button>
+        <button type="button" class="secondary mini" data-asset-detail-cancel>Cancel</button>
+      </div>
+    </form>
+  `;
+}
+
+function saveInlineAssetDetail(field, value) {
+  const asset = getSelectedAsset();
+  const config = ASSET_DETAIL_FIELDS.find((item) => item.field === field);
+  if (!asset || !config || !canManageWorkOrders()) return;
+
+  const nextValue = String(value || "").trim();
+  if (config.kind === "select" && nextValue && !(config.options || []).includes(nextValue)) return;
+
+  asset[field] = nextValue;
+  asset.updatedAt = new Date().toISOString();
+  editingAssetDetailField = "";
+  addActivity("Equipment detail updated", `${asset.name} - ${config.label}`);
+  saveState();
+  render();
+}
+
+function closeInlineAssetDetailEditor() {
+  if (!editingAssetDetailField) return;
+  editingAssetDetailField = "";
+  render();
+}
+
+function openInlineAssetDetailEditor(field) {
+  if (!canManageWorkOrders()) return;
+  if (!ASSET_DETAIL_FIELDS.some((item) => item.field === field)) return;
+  editingAssetDetailField = field;
+  render();
+  requestAnimationFrame(() => {
+    const editor = document.querySelector(`[data-asset-detail-edit="${CSS.escape(field)}"]`);
+    const input = editor?.querySelector("input, select, textarea");
+    input?.focus();
+    if (input?.select && input.tagName !== "SELECT") input.select();
+  });
 }
 
 function renderAssetManual(asset) {
@@ -7094,6 +7252,37 @@ async function deleteLocation(locationId) {
   render();
 }
 
+async function deleteSelectedEquipment() {
+  const asset = getSelectedAsset();
+  if (!asset || !canDeleteEquipment()) return;
+  const relatedWorkOrders = state.workOrders.filter((item) => item.assetId === asset.id);
+  const relatedServiceRequests = state.serviceRequests.filter((item) => item.assetId === asset.id);
+  const relatedPmCount = Array.isArray(asset.history) ? asset.history.length : 0;
+  const message = [
+    `Delete equipment "${asset.name}"?`,
+    "",
+    `This will also remove ${relatedWorkOrders.length} ticket(s), ${relatedServiceRequests.length} service request(s), and ${relatedPmCount} maintenance history record(s) tied to it.`
+  ].join("\n");
+  if (!confirm(message)) return;
+
+  state.assets = state.assets.filter((item) => item.id !== asset.id);
+  state.workOrders = state.workOrders.filter((item) => item.assetId !== asset.id);
+  state.serviceRequests = state.serviceRequests.filter((item) => item.assetId !== asset.id);
+  selectedPrintAssetIds.delete(asset.id);
+  if (selectedId === asset.id) selectedId = null;
+  addActivity("Equipment deleted", `${asset.name}: ${relatedWorkOrders.length} ticket(s), ${relatedServiceRequests.length} service request(s)`);
+  saveState();
+  await Promise.all([
+    deleteStructuredRows("assets", "id", [asset.id]),
+    deleteStructuredRows("work_orders", "asset_id", [asset.id]),
+    deleteStructuredRows("service_requests", "asset_id", [asset.id]),
+    deleteStructuredRows("pm_history", "asset_id", [asset.id])
+  ]);
+  clearSelectedAssetUrl();
+  closeSelectedAssetPanel();
+  render();
+}
+
 function getSelectedAsset() {
   return getAsset(selectedId);
 }
@@ -7657,6 +7846,10 @@ function visibleManagedUsers() {
 
 function canAddEquipment() {
   return currentRole === "Admin" || (isManagerRole() && !currentUser?.locationId);
+}
+
+function canDeleteEquipment() {
+  return currentRole === "Admin";
 }
 
 function canCompletePm() {
@@ -8927,9 +9120,10 @@ function persistLocalStateOnly() {
   } catch (error) {
     try {
       localStorage.removeItem(AUTO_BACKUP_KEY);
+      LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (retryError) {
-      alert("The browser could not save this file. Try one smaller photo first, or export a backup and remove a few old photos.");
+      alert("The browser could not save this change because this iPad's browser storage is full. Try exporting a backup, then remove a few old photos or PDFs from equipment records.");
       throw retryError;
     }
   }
@@ -9224,7 +9418,7 @@ function parseTemplateItems(value) {
 async function readPhoto(file) {
   if (!file) return null;
   const rawDataUrl = await fileToDataUrl(file);
-  const dataUrl = await resizePhotoDataUrl(rawDataUrl, 1000, 0.72);
+  const dataUrl = await resizePhotoDataUrl(rawDataUrl, 640, 0.5);
   return { name: file.name, dataUrl };
 }
 

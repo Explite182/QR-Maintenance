@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260630-service-request-matches-ticket">
+    <link rel="stylesheet" href="styles.css?v=20260630-mobile-dashboard">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -982,6 +982,7 @@
             </summary>
             <div class="asset-detail-actions">
               <button id="exportSelectedAssetBtn" class="secondary mini" type="button">Export Equipment CSV</button>
+              <button id="deleteSelectedAssetBtn" class="secondary mini danger-action hidden" type="button">Delete Equipment</button>
             </div>
             <div id="assetPhotoPanel" class="asset-photo-panel"></div>
             <div id="assetManualPanel" class="asset-manual-panel"></div>
@@ -1130,6 +1131,25 @@
     </section>
   </main>
 
+  <nav class="mobile-tab-bar app-only hidden" aria-label="Mobile navigation">
+    <button type="button" class="mobile-tab-btn is-active" data-mobile-tab="dashboardPanel">
+      <span class="mobile-tab-icon mobile-tab-dashboard" aria-hidden="true"></span>
+      <span>Dashboard</span>
+    </button>
+    <button type="button" class="mobile-tab-btn" data-mobile-tab="assetRegisterDrawer">
+      <span class="mobile-tab-icon mobile-tab-equipment" aria-hidden="true"></span>
+      <span>Equipment</span>
+    </button>
+    <button type="button" class="mobile-tab-btn" data-mobile-tab="workOrdersPanel">
+      <span class="mobile-tab-icon mobile-tab-tickets" aria-hidden="true"></span>
+      <span>Tickets</span>
+    </button>
+    <button type="button" class="mobile-tab-btn" data-mobile-tab="adminToolsDrawer">
+      <span class="mobile-tab-icon mobile-tab-settings" aria-hidden="true"></span>
+      <span>Settings</span>
+    </button>
+  </nav>
+
   <section id="labelSheet" class="label-sheet" aria-label="Printable QR labels"></section>
   <div id="assetPanelBackdrop" class="asset-panel-backdrop hidden" data-close-asset-panel></div>
   <div id="workDrawerBackdrop" class="work-drawer-backdrop hidden" data-close-work-drawer></div>
@@ -1151,7 +1171,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260630-shared-users-sync"></script>
+  <script src="app.js?v=20260630-mobile-dashboard"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
