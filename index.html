@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260629-equipment-tabs">
+    <link rel="stylesheet" href="styles.css?v=20260630-service-request-matches-ticket">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -136,23 +136,18 @@
         <nav id="workNav" class="sidebar-work-nav" aria-label="Work shortcuts">
           <button type="button" class="sidebar-nav-btn" data-open-target="pmCalendarPanel" aria-expanded="false">
             <span>PM Calendar</span>
-            <span class="sidebar-nav-hint">Open</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="assetRegisterDrawer" aria-expanded="false">
             <span>Equipment Register</span>
-            <span class="sidebar-nav-hint">Open</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="workOrdersPanel" aria-expanded="false">
             <span>Open Tickets</span>
-            <span class="sidebar-nav-hint">Open</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="serviceRequestsPanel" aria-expanded="false">
             <span>Service Requests</span>
-            <span class="sidebar-nav-hint">Open</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
             <span>Completed Tickets</span>
-            <span class="sidebar-nav-hint">Open</span>
           </button>
         </nav>
       <details id="adminToolsDrawer" class="sidebar-section setup-drawer admin-tools-drawer">
@@ -904,9 +899,9 @@
       </article>
 
       <article id="assetPanel" class="asset-panel collapsible-panel hidden">
-        <div class="section-title clickable-panel-title" data-panel-toggle="assetPanel">
+        <div class="section-title">
           <h2>Selected Equipment</h2>
-          <button id="closeAssetPanelBtn" class="secondary mini" type="button" data-close-asset-panel>Close</button>
+          <button id="closeAssetPanelBtn" class="secondary mini asset-drawer-close" type="button" data-close-asset-panel aria-label="Close selected equipment">X</button>
         </div>
         <div class="asset-panel-body" data-panel-body>
         <div class="asset-heading">
@@ -922,6 +917,7 @@
           <div id="selectedQr" class="qr-box" aria-label="Asset QR code"></div>
         </div>
         <div class="status-row">
+          <div class="next-maintenance-card">
           <div class="status-tile">
             <span class="label">Next maintenance</span>
             <strong id="nextPm"></strong>
@@ -934,6 +930,7 @@
             <button type="submit" class="secondary mini">Save</button>
             <button id="clearNextPmBtn" type="button" class="secondary mini">Clear</button>
           </form>
+          </div>
           <div class="status-tile">
             <span class="label">Status</span>
             <strong id="pmStatus"></strong>
@@ -1134,13 +1131,27 @@
   </main>
 
   <section id="labelSheet" class="label-sheet" aria-label="Printable QR labels"></section>
+  <div id="assetPanelBackdrop" class="asset-panel-backdrop hidden" data-close-asset-panel></div>
+  <div id="workDrawerBackdrop" class="work-drawer-backdrop hidden" data-close-work-drawer></div>
+  <div id="photoSideBay" class="photo-side-bay hidden" aria-label="Photo preview bay">
+    <img id="photoSideBayImage" alt="Photo preview">
+  </div>
+  <div id="commandPalette" class="command-palette hidden" role="dialog" aria-modal="true" aria-label="Quick search">
+    <div class="command-palette-card">
+      <label class="command-palette-search">
+        <span>Quick Search</span>
+        <input id="commandPaletteInput" type="search" placeholder="Go to equipment, open ticket, jump to a section">
+      </label>
+      <div id="commandPaletteResults" class="command-palette-results"></div>
+    </div>
+  </div>
   <div id="photoViewer" class="photo-viewer hidden" role="dialog" aria-modal="true" aria-label="Equipment photo viewer">
     <button id="photoViewerClose" class="photo-viewer-close" type="button" aria-label="Close photo viewer">Close</button>
     <img id="photoViewerImage" alt="Equipment photo full screen">
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260629-equipment-tabs"></script>
+  <script src="app.js?v=20260630-service-request-matches-ticket"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

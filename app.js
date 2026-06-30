@@ -30,6 +30,8 @@ let globalQuery = "";
 let focusedWorkOrderId = "";
 let focusedServiceRequestId = "";
 let focusedCompletedRecordId = "";
+let serviceRequestDrawerTab = "notes";
+let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
 let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
@@ -230,8 +232,13 @@ const els = {
   locationFilter: document.getElementById("locationFilter"),
   globalSearch: document.getElementById("globalSearch"),
   globalSearchResults: document.getElementById("globalSearchResults"),
+  commandPalette: document.getElementById("commandPalette"),
+  commandPaletteInput: document.getElementById("commandPaletteInput"),
+  commandPaletteResults: document.getElementById("commandPaletteResults"),
   emptyState: document.getElementById("emptyState"),
   assetPanel: document.getElementById("assetPanel"),
+  assetPanelBackdrop: document.getElementById("assetPanelBackdrop"),
+  workDrawerBackdrop: document.getElementById("workDrawerBackdrop"),
   closeAssetPanelBtn: document.getElementById("closeAssetPanelBtn"),
   selectedLocation: document.getElementById("selectedLocation"),
   selectedAssetThumb: document.getElementById("selectedAssetThumb"),
@@ -329,7 +336,9 @@ const els = {
   photoViewer: document.getElementById("photoViewer"),
   photoViewerImage: document.getElementById("photoViewerImage"),
   photoViewerCaption: document.getElementById("photoViewerCaption"),
-  photoViewerClose: document.getElementById("photoViewerClose")
+  photoViewerClose: document.getElementById("photoViewerClose"),
+  photoSideBay: document.getElementById("photoSideBay"),
+  photoSideBayImage: document.getElementById("photoSideBayImage")
 };
 
 moveTopActionDrawers();
@@ -1050,9 +1059,56 @@ els.photoViewer.addEventListener("click", (event) => {
   if (event.target === els.photoViewer) closePhotoViewer();
 });
 
+els.photoViewerImage.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
+
+els.photoSideBayImage?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  closePhotoSideBay();
+});
+
+window.addEventListener("resize", () => {
+  if (!els.photoSideBay || els.photoSideBay.classList.contains("hidden")) return;
+  const activeDrawer = getActivePhotoDrawer();
+  if (!activeDrawer) {
+    closePhotoSideBay();
+    return;
+  }
+  positionPhotoSideBay(activeDrawer);
+});
+
 document.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    openCommandPalette();
+    return;
+  }
+  if (event.key === "Escape" && els.commandPalette && !els.commandPalette.classList.contains("hidden")) {
+    closeCommandPalette();
+    return;
+  }
+  if (event.key === "Escape" && els.photoSideBay && !els.photoSideBay.classList.contains("hidden")) {
+    closePhotoSideBay();
+    return;
+  }
   if (event.key === "Escape" && !els.photoViewer.classList.contains("hidden")) {
     closePhotoViewer();
+    return;
+  }
+  if (event.key === "Escape" && els.assetPanel && !els.assetPanel.classList.contains("hidden")) {
+    closeSelectedAssetPanel();
+    return;
+  }
+  if (event.key === "Escape" && document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)")) {
+    closeFocusedWorkDrawer();
+    return;
+  }
+  if (event.key === "Enter" && document.activeElement === els.commandPaletteInput) {
+    event.preventDefault();
+    const firstResult = els.commandPaletteResults?.querySelector("[data-command-result-type]");
+    if (firstResult) openCommandPaletteResult(firstResult.dataset.commandResultType, firstResult.dataset.commandResultId);
+    return;
   }
 });
 
@@ -1079,12 +1135,31 @@ els.globalSearchResults?.addEventListener("click", (event) => {
   els.globalSearchResults.classList.add("hidden");
 });
 
+els.commandPaletteInput?.addEventListener("input", () => {
+  commandPaletteQuery = els.commandPaletteInput.value.trim().toLowerCase();
+  renderCommandPaletteResults();
+});
+
+els.commandPaletteResults?.addEventListener("click", (event) => {
+  const result = event.target.closest("[data-command-result-type]");
+  if (!result) return;
+  openCommandPaletteResult(result.dataset.commandResultType, result.dataset.commandResultId);
+});
+
+els.commandPalette?.addEventListener("click", (event) => {
+  if (event.target === els.commandPalette) closeCommandPalette();
+});
+
 document.addEventListener("click", (event) => {
   const result = event.target.closest("[data-dashboard-result-type]");
   if (!result) return;
   event.stopPropagation();
   openDashboardResult(result.dataset.dashboardResultType, result.dataset.dashboardResultId);
   closeMetricMenus();
+});
+
+document.addEventListener("click", () => {
+  requestAnimationFrame(syncWorkDrawerBackdrop);
 });
 
 els.workOrderNumberFilter?.addEventListener("change", () => {
@@ -1593,6 +1668,28 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const closeWorkDrawerButton = event.target.closest("[data-close-work-drawer]");
+  if (closeWorkDrawerButton) {
+    event.preventDefault();
+    closeFocusedWorkDrawer(closeWorkDrawerButton.closest(".work-order-drawer"));
+    return;
+  }
+
+  const openWorkDrawer = document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)");
+  if (openWorkDrawer && !openWorkDrawer.contains(event.target)) {
+    event.preventDefault();
+    closeFocusedWorkDrawer(openWorkDrawer);
+    return;
+  }
+
+  const serviceRequestTabButton = event.target.closest("[data-service-request-tab]");
+  if (serviceRequestTabButton) {
+    event.preventDefault();
+    serviceRequestDrawerTab = serviceRequestTabButton.dataset.serviceRequestTab === "history" ? "history" : "notes";
+    render();
+    return;
+  }
+
   const addEquipmentButton = event.target.closest("[data-empty-add-equipment]");
   if (addEquipmentButton) {
     event.preventDefault();
@@ -1848,6 +1945,35 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-work-order-quick-note-form]");
+  if (!form) return;
+  event.preventDefault();
+  const workOrder = getWorkOrder(form.dataset.workOrderQuickNoteForm);
+  if (!workOrder || !canWorkOnTicket(workOrder)) return;
+  const formData = new FormData(form);
+  const noteText = String(formData.get("note") || "").trim();
+  const photo = await readIssuePhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+  if (!noteText && !photo) return;
+  if (noteText) {
+    workOrder.notes = appendDatedWorkNote(workOrder.notes, noteText);
+    addWorkOrderHistory(workOrder, "Work note", noteText);
+  }
+  if (photo) {
+    workOrder.photos = Array.isArray(workOrder.photos) ? workOrder.photos : [];
+    workOrder.photos.push({
+      ...photo,
+      addedAt: new Date().toISOString(),
+      addedBy: getCurrentUserLabel()
+    });
+    addWorkOrderHistory(workOrder, "Photo added", photo.name || "Photo attached to ticket");
+  }
+  workOrder.updatedAt = new Date().toISOString();
+  addActivity("Ticket note added", `${formatIssueNumber(workOrder)} - ${workOrder.title || "Open ticket"}`);
+  saveState();
+  render();
+});
+
+document.addEventListener("submit", async (event) => {
   const form = event.target.closest("[data-service-request-edit-form]");
   if (!form) return;
   event.preventDefault();
@@ -1916,6 +2042,7 @@ function render() {
   renderAssetTable();
   renderWorkOrders();
   renderServiceRequests();
+  syncWorkDrawerBackdrop();
   renderServiceRequestFormOptions();
   renderNewIssueFormOptions();
   renderCompletedPms();
@@ -2114,6 +2241,26 @@ function closeSelectedAssetDrawers() {
   document.querySelectorAll("#assetPanel .asset-sub-drawer").forEach((drawer) => {
     drawer.open = false;
   });
+}
+
+function syncWorkDrawerBackdrop() {
+  const hasOpenWorkDrawer = Boolean(
+    focusedWorkOrderId ||
+    focusedServiceRequestId ||
+    document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)")
+  );
+  els.workDrawerBackdrop?.classList.toggle("hidden", !hasOpenWorkDrawer);
+}
+
+function closeFocusedWorkDrawer(drawer = null) {
+  if (drawer) drawer.open = false;
+  focusedWorkOrderId = "";
+  focusedServiceRequestId = "";
+  focusedCompletedRecordId = "";
+  serviceRequestDrawerTab = "notes";
+  els.workDrawerBackdrop?.classList.add("hidden");
+  closePhotoSideBay();
+  render();
 }
 
 function renderPanelToggles() {
@@ -3897,6 +4044,183 @@ function renderGlobalSearchResult(result) {
   `;
 }
 
+function openCommandPalette() {
+  if (!currentUser || isPublicReportUrl() || !els.commandPalette) return;
+  commandPaletteQuery = "";
+  els.commandPalette.classList.remove("hidden");
+  if (els.commandPaletteInput) {
+    els.commandPaletteInput.value = "";
+    requestAnimationFrame(() => els.commandPaletteInput.focus());
+  }
+  renderCommandPaletteResults();
+}
+
+function closeCommandPalette() {
+  els.commandPalette?.classList.add("hidden");
+  commandPaletteQuery = "";
+}
+
+function renderCommandPaletteResults() {
+  if (!els.commandPaletteResults) return;
+  const results = commandPaletteResults(commandPaletteQuery).slice(0, 10);
+  els.commandPaletteResults.innerHTML = results.length
+    ? results.map(renderCommandPaletteResult).join("")
+    : `<p class="command-palette-empty">No matches found.</p>`;
+}
+
+function renderCommandPaletteResult(result) {
+  return `
+    <button type="button" class="command-palette-result" data-command-result-type="${escapeAttribute(result.type)}" data-command-result-id="${escapeAttribute(result.id)}">
+      <span>
+        <strong>${escapeHtml(result.label)}</strong>
+        <small>${escapeHtml(result.meta)}</small>
+      </span>
+      <em>${escapeHtml(result.badge)}</em>
+    </button>
+  `;
+}
+
+function commandPaletteResults(query) {
+  const items = [
+    ...commandPaletteCommands(),
+    ...visibleCommandAssets(),
+    ...visibleCommandTickets(),
+    ...visibleCommandServiceRequests(),
+    ...visibleCommandCompletedPms()
+  ];
+  if (!query) return items;
+  return items.filter((item) => item.search.includes(query));
+}
+
+function commandPaletteCommands() {
+  const commands = [];
+  if (currentRole !== "Customer") {
+    commands.push(
+      commandPaletteItem("command", "pmCalendarPanel", "Open PM Calendar", "Jump to monthly preventative maintenance schedule.", "Go"),
+      commandPaletteItem("command", "assetRegisterDrawer", "Open Equipment Register", "Browse and select equipment.", "Go"),
+      commandPaletteItem("command", "workOrdersPanel", "Open Tickets", "Review active ticket work.", "Go"),
+      commandPaletteItem("command", "serviceRequestsPanel", "Service Requests", "Review customer service requests.", "Go"),
+      commandPaletteItem("command", "completedPmPanel", "Completed Tickets", "Review closed tickets and completed maintenance.", "Go")
+    );
+  }
+  if (canAddEquipment()) commands.push(commandPaletteItem("command", "newEquipment", "New Equipment", "Create an equipment record.", "Create"));
+  if (canCreateWorkOrders()) commands.push(commandPaletteItem("command", "newTicket", "New Ticket", "Create a maintenance ticket.", "Create"));
+  if (canCreateServiceRequests()) commands.push(commandPaletteItem("command", "newServiceRequest", "New Service Request", "Create a service request.", "Create"));
+  return commands;
+}
+
+function visibleCommandAssets() {
+  return commandVisibleAssets().map((asset) => {
+    const customer = getCustomer(asset.customerId);
+    const locationRecord = getLocation(asset.locationId);
+    const meta = `${customer?.name || "Unknown customer"} | ${locationRecord?.name || "Unknown location"}`;
+    return commandPaletteItem("asset", asset.id, `Go to ${asset.name}`, meta, "Equipment", assetSearchText(asset));
+  });
+}
+
+function visibleCommandTickets() {
+  return commandVisibleWorkOrders().map((ticket) => {
+    const meta = `${getCustomer(ticket.customerId)?.name || "Unknown customer"} | ${getLocation(ticket.locationId)?.name || "Unknown location"} | ${ticket.status || "Open"}`;
+    const label = `Open ${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}`;
+    return commandPaletteItem(ticket.status === "Closed" ? "completed" : "ticket", ticket.id, label, meta, ticket.status === "Closed" ? "Completed" : "Ticket", [
+      label,
+      ticket.issueNumber,
+      ticket.title,
+      ticket.notes,
+      ticket.status,
+      ticket.priority,
+      meta
+    ].join(" "));
+  });
+}
+
+function visibleCommandServiceRequests() {
+  return commandVisibleServiceRequests().map((request) => {
+    const meta = `${getCustomer(request.customerId)?.name || "Unknown customer"} | ${getLocation(request.locationId)?.name || "Unknown location"} | ${request.status || "New"}`;
+    const label = `Open ${formatServiceRequestNumber(request)} - ${request.title || "Service request"}`;
+    return commandPaletteItem("service", request.id, label, meta, "Service", [label, request.title, request.notes, request.status, meta].join(" "));
+  });
+}
+
+function visibleCommandCompletedPms() {
+  return commandVisibleCompletedPms().map((record) => {
+    const label = `${formatPmNumber(record.history)} - ${record.asset.name}`;
+    const meta = `${record.customer?.name || "Unknown customer"} | ${record.location?.name || "Unknown location"} | ${record.history.result || "Completed"}`;
+    return commandPaletteItem("completed", record.history?.id || record.asset.id, label, meta, "PM", [label, meta].join(" "));
+  });
+}
+
+function commandVisibleAssets() {
+  return state.assets.filter(canSeeAsset);
+}
+
+function commandVisibleWorkOrders() {
+  return state.workOrders.filter(canSeeWorkOrder);
+}
+
+function commandVisibleServiceRequests() {
+  return state.serviceRequests.filter(canSeeServiceRequest);
+}
+
+function commandVisibleCompletedPms() {
+  return commandVisibleAssets()
+    .flatMap((asset) => (asset.history || []).map((history) => ({
+      type: "pm",
+      asset,
+      history,
+      customer: getCustomer(asset.customerId),
+      location: getLocation(asset.locationId)
+    })))
+    .sort((a, b) => new Date(b.history.completedAt || 0) - new Date(a.history.completedAt || 0));
+}
+
+function commandPaletteItem(type, id, label, meta, badge, searchText = "") {
+  return {
+    type,
+    id,
+    label,
+    meta,
+    badge,
+    search: [label, meta, badge, searchText].join(" ").toLowerCase()
+  };
+}
+
+function openCommandPaletteResult(type, id) {
+  closeCommandPalette();
+  if (type === "command") {
+    runCommandPaletteAction(id);
+    return;
+  }
+  openDashboardResult(type, id);
+}
+
+function runCommandPaletteAction(id) {
+  if (id === "newEquipment" && canAddEquipment()) {
+    closeCreateNewMenu();
+    toggleTopActionDrawer(els.quickAddDrawer);
+    return;
+  }
+  if (id === "newTicket" && canCreateWorkOrders()) {
+    closeCreateNewMenu();
+    toggleTopActionDrawer(els.newIssueDrawer);
+    return;
+  }
+  if (id === "newServiceRequest" && canCreateServiceRequests()) {
+    closeCreateNewMenu();
+    toggleTopActionDrawer(els.serviceRequestCreateDrawer);
+    return;
+  }
+  if (id === "assetRegisterDrawer") {
+    openAssetRegisterDrawer();
+    render();
+    els.assetRegisterDrawer?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  openPanel(id);
+  render();
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function renderAssetTableControls() {
   els.assetSearch.value = assetQuery;
   els.statusFilter.value = assetStatusFilter;
@@ -4408,6 +4732,7 @@ function openDashboardResult(type, id) {
     selectedId = id;
     syncFiltersToSelectedAsset();
     location.hash = `asset/${selectedId}`;
+    if (currentRole !== "Customer") openAssetRegisterDrawer();
     openPanel("assetPanel");
   } else if (type === "ticket") {
     const ticket = state.workOrders.find((item) => item.id === id);
@@ -4422,6 +4747,7 @@ function openDashboardResult(type, id) {
     workOrderNumberFilter = "all";
     focusedServiceRequestId = id;
     focusedCompletedRecordId = "";
+    serviceRequestDrawerTab = "notes";
     openPanel("serviceRequestsPanel");
   } else if (type === "completed") {
     focusedWorkOrderId = "";
@@ -4573,7 +4899,10 @@ function renderServiceRequests() {
   const focusedRequest = focusedServiceRequestId
     ? visibleRequests.find((item) => item.id === focusedServiceRequestId)
     : null;
-  if (focusedServiceRequestId && !focusedRequest) focusedServiceRequestId = "";
+  if (focusedServiceRequestId && !focusedRequest) {
+    focusedServiceRequestId = "";
+    serviceRequestDrawerTab = "notes";
+  }
   const requests = focusedRequest ? [focusedRequest] : visibleRequests;
   if (els.serviceRequestCount) els.serviceRequestCount.textContent = visibleRequests.filter((item) => item.status !== "Completed" && item.status !== "Declined").length;
   if (!els.serviceRequestList) return;
@@ -4588,6 +4917,28 @@ function renderServiceRequests() {
     : `<p class="muted">No service requests for this view.</p>`;
 }
 
+function renderWorkDrawerProfile({ title, systemId, imageSrc = "", fallback = "SW", badges = "" }) {
+  return `
+    <div class="work-drawer-profile">
+      <div class="work-drawer-thumb">
+        ${imageSrc
+          ? `<img alt="${escapeAttribute(title)}" src="${escapeAttribute(imageSrc)}">`
+          : `<span>${escapeHtml(fallback)}</span>`}
+      </div>
+      <div class="work-drawer-profile-text">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(systemId)}</span>
+        ${badges ? `<div class="work-drawer-badges">${badges}</div>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function getDrawerItemUrl(type, id) {
+  const base = state.qrBaseUrl || getCurrentPageUrl();
+  return `${base}#${encodeURIComponent(type)}/${encodeURIComponent(id)}`;
+}
+
 function renderServiceRequestItem(request) {
   const customer = getCustomer(request.customerId);
   const locationRecord = getLocation(request.locationId);
@@ -4595,6 +4946,7 @@ function renderServiceRequestItem(request) {
   const assignedLabel = request.assignedUserName || "Unassigned";
   const createdLabel = request.createdAt ? formatDate(new Date(request.createdAt)) : "Not recorded";
   const ageLabel = formatOpenServiceRequestAge(request);
+  const requestNumber = formatServiceRequestNumber(request);
   const canEdit = canManageWorkOrders();
   const statusClass = request.status === "Completed"
     ? "badge-ok"
@@ -4608,44 +4960,158 @@ function renderServiceRequestItem(request) {
   const assigneeOptions = [`<option value="">Unassigned</option>`, ...assignableUsers.map((user) =>
     `<option value="${escapeAttribute(user.id)}" ${selectedAssigneeId === user.id ? "selected" : ""}>${escapeHtml(user.name || user.username)} (${escapeHtml(user.role)})</option>`
   )].join("");
+  const compactServiceAssignmentControl = canEdit
+    ? `<select class="compact-assignee-select" data-service-request-assignee="${escapeAttribute(request.id)}" aria-label="Assigned to">${assigneeOptions}</select>`
+    : "";
   const requestPhoto = request.photo?.dataUrl
-    ? `<button type="button" class="history-photo-button" data-view-photo data-photo-src="${escapeAttribute(request.photo.dataUrl)}" data-photo-caption="${escapeAttribute(request.photo.name || "Service request photo")}">
+    ? `<button type="button" class="history-photo-button ticket-photo-card" data-view-photo data-photo-src="${escapeAttribute(request.photo.dataUrl)}" data-photo-caption="${escapeAttribute(request.photo.name || "Service request photo")}">
         <img class="history-photo" alt="Service request photo" src="${escapeAttribute(request.photo.dataUrl)}">
+        <span>Submitted photo</span>
       </button>`
     : "";
-  const requestHistory = renderServiceRequestHistory(request);
+  const profileBadges = [
+    `<span class="drawer-param-badge badge-warn">${escapeHtml(request.priority || "Medium")} priority</span>`,
+    `<span class="drawer-param-badge ${statusClass}">${escapeHtml(request.status || "New")}</span>`,
+    `<span class="drawer-param-badge badge-muted">Created ${escapeHtml(createdLabel)}</span>`,
+    `<span class="drawer-param-badge badge-muted">Preferred ${request.preferredDate ? escapeHtml(formatDate(parseLocalDate(request.preferredDate))) : "Not set"}</span>`
+  ].join("");
+  const drawerProfile = renderWorkDrawerProfile({
+    title: asset?.name || request.title || "Service request",
+    systemId: `${requestNumber} | ${request.title || "Service request"}`,
+    imageSrc: request.photo?.dataUrl || asset?.photo?.dataUrl || "",
+    fallback: "SR",
+    badges: profileBadges
+  });
+  const requestNotesPanel = renderServiceRequestNotesPanel(request, requestPhoto);
+  const requestHistoryPanel = renderServiceRequestHistoryPanel(request);
+  const primaryActions = canEdit ? `
+    ${request.status !== "Reviewed" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Reviewed">Review</button>` : ""}
+    ${request.status !== "Completed" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Completed">Complete</button>` : ""}
+  ` : "";
+  const editAction = canEdit ? `
+    <details class="ticket-sub-drawer">
+      <summary>
+        <h3>Edit Request</h3>
+        <span>Update</span>
+      </summary>
+      ${renderServiceRequestEditForm(request)}
+    </details>
+  ` : "";
+  const moreActions = canEdit ? `
+    <button class="secondary mini" data-service-request-pdf="${escapeAttribute(request.id)}">PDF Form</button>
+    <button class="secondary mini" data-service-request-email="${escapeAttribute(request.id)}">Email Request</button>
+    <button class="secondary mini" data-service-request-send-pdf="${escapeAttribute(request.id)}">Send PDF Email</button>
+    ${request.status !== "Scheduled" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Scheduled">Schedule</button>` : ""}
+    ${request.status !== "Declined" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Declined">Decline</button>` : ""}
+    ${!request.convertedWorkOrderId ? `<button class="secondary mini" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Ticket</button>` : `<span class="status-badge badge-ok">Converted</span>`}
+  ` : "";
   return `
     <details class="work-order-item work-order-drawer service-request-item" ${request.id === focusedServiceRequestId ? "open" : ""}>
       <summary>
-        <div>
-          <strong>${escapeHtml(formatServiceRequestNumber(request))} - ${escapeHtml(request.title || "Service request")}</strong>
-          <span><span class="status-badge ${statusClass}">${escapeHtml(request.status || "New")}</span> ${escapeHtml(request.priority || "Medium")} priority | Created ${escapeHtml(createdLabel)} | Preferred ${request.preferredDate ? escapeHtml(formatDate(parseLocalDate(request.preferredDate))) : "Not set"}</span>
-          <span class="assigned-label">Assigned to ${escapeHtml(assignedLabel)}</span>
+        <div class="ticket-list-summary">
+          <strong>${escapeHtml(requestNumber)} - ${escapeHtml(request.title || "Service request")}</strong>
+          <span>${escapeHtml(asset?.name || "No equipment selected")} | ${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")}</span>
+          <div class="ticket-list-badges">${profileBadges}</div>
         </div>
-        ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
+        <div class="ticket-summary-tools">
+          ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
+          ${primaryActions}
+          ${moreActions.trim() ? `
+            <details class="ticket-action-menu">
+              <summary>More</summary>
+              <div class="ticket-action-menu-list">
+                ${moreActions}
+              </div>
+            </details>
+          ` : ""}
+          <button type="button" class="secondary mini ticket-drawer-close" data-close-work-drawer aria-label="Close service request drawer">X</button>
+        </div>
       </summary>
-      ${canEdit ? `<label class="work-order-assignment">Assign to<select data-service-request-assignee="${escapeAttribute(request.id)}">${assigneeOptions}</select></label>` : ""}
-      <p>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")} | ${escapeHtml(asset?.name || "No equipment selected")}</p>
-      <p>Requested by ${escapeHtml(request.requestedBy || "Not entered")}. ${escapeHtml(request.notes || "No details entered.")}</p>
-      ${requestPhoto}
-      ${canEdit ? `
-        <div class="work-order-actions">
-          <details class="inline-edit-drawer">
-            <summary>Edit</summary>
-            ${renderServiceRequestEditForm(request)}
-          </details>
-          <button class="secondary" data-service-request-pdf="${escapeAttribute(request.id)}">PDF Form</button>
-          <button class="secondary" data-service-request-email="${escapeAttribute(request.id)}">Email Request</button>
-          <button class="secondary" data-service-request-send-pdf="${escapeAttribute(request.id)}">Send PDF Email</button>
-          ${request.status !== "Reviewed" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Reviewed">Review</button>` : ""}
-          ${request.status !== "Scheduled" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Scheduled">Schedule</button>` : ""}
-          ${request.status !== "Completed" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Completed">Complete</button>` : ""}
-          ${request.status !== "Declined" ? `<button class="secondary" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Declined">Decline</button>` : ""}
-          ${!request.convertedWorkOrderId ? `<button class="primary" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Ticket</button>` : `<span class="status-badge badge-ok">Converted</span>`}
-        </div>
-      ` : ""}
-      ${requestHistory}
+      <div class="ticket-drawer-body">
+        <section class="ticket-profile-card">
+          ${drawerProfile}
+        </section>
+        <details class="ticket-sub-drawer" open>
+          <summary>
+            <h3>Description</h3>
+            <span>${escapeHtml(requestNumber)}</span>
+          </summary>
+          <section class="ticket-open-description">
+            <p>${escapeHtml(request.title || "No description entered.")}</p>
+          </section>
+        </details>
+        <details class="ticket-sub-drawer" open>
+          <summary>
+            <h3>Activity & Notes</h3>
+            <span>${serviceRequestHistoryEntries(request).length + (request.notes ? 1 : 0) + (request.photo?.dataUrl ? 1 : 0)}</span>
+          </summary>
+          <div class="service-request-activity-stack">
+            ${requestNotesPanel}
+            ${requestHistoryPanel}
+          </div>
+        </details>
+        <details class="ticket-sub-drawer">
+          <summary>
+            <h3>Request Meta</h3>
+            <span>${escapeHtml(assignedLabel)}</span>
+          </summary>
+          <div class="ticket-meta-list ticket-spec-grid">
+            <div class="ticket-spec-row ticket-assignment-panel compact-panel">
+              <span>Assigned to</span>
+              <div>
+                <strong>${escapeHtml(assignedLabel)}</strong>
+                ${compactServiceAssignmentControl}
+              </div>
+            </div>
+            <div class="service-request-meta-row">
+              <span>Customer</span>
+              <strong>${escapeHtml(customer?.name || "Unknown customer")}</strong>
+            </div>
+            <div class="service-request-meta-row">
+              <span>Location</span>
+              <strong>${escapeHtml(locationRecord?.name || "Unknown location")}</strong>
+            </div>
+            <div class="service-request-meta-row">
+              <span>Equipment</span>
+              <strong>${escapeHtml(asset?.name || "No equipment selected")}</strong>
+            </div>
+          </div>
+        </details>
+        ${editAction}
+      </div>
     </details>
+  `;
+}
+
+function renderServiceRequestNotesPanel(request, requestPhoto) {
+  return `
+    <div class="service-request-notes-timeline">
+      <article class="service-request-note-entry">
+        <strong>Request summary</strong>
+        <span>Requested by ${escapeHtml(request.requestedBy || "Not entered")}</span>
+        <p>${escapeHtml(request.notes || "No details entered.")}</p>
+      </article>
+      <article class="service-request-note-entry">
+        <strong>Description</strong>
+        <p>${escapeHtml(request.title || "Service request")}</p>
+      </article>
+      ${requestPhoto ? `<div class="ticket-photo-gallery">${requestPhoto}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderServiceRequestHistoryPanel(request) {
+  const entries = serviceRequestHistoryEntries(request);
+  return `
+    <div class="service-request-audit-list service-request-tab-history">
+      ${entries.map((entry) => `
+        <article class="service-request-audit-entry">
+          <strong>${escapeHtml(entry.action || "Updated")}</strong>
+          <span>${escapeHtml(formatDateTime(new Date(entry.createdAt || request.createdAt || new Date().toISOString())))} | ${escapeHtml(entry.userName || "System")}${entry.userRole ? ` | ${escapeHtml(entry.userRole)}` : ""}</span>
+          ${entry.details ? `<p>${escapeHtml(entry.details)}</p>` : ""}
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -4858,26 +5324,16 @@ function renderEmptyStateContent(asset) {
 function positionAssetPanelNearSelection(asset) {
   if (!els.assetPanel) return;
   document.querySelectorAll(".asset-detail-table-row").forEach((row) => row.remove());
-  const canFloatOverRegister = Boolean(asset && els.assetRegisterDrawer && !els.assetRegisterDrawer.classList.contains("hidden"));
-  els.assetPanel.classList.toggle("floating-asset-panel", canFloatOverRegister);
+  els.assetPanel.classList.remove("floating-asset-panel", "inline-asset-panel");
+  els.assetPanel.classList.toggle("asset-side-sheet", Boolean(asset));
+  els.assetPanel.classList.remove("is-collapsed");
+  els.assetPanel.classList.toggle("hidden", !asset);
+  els.assetPanelBackdrop?.classList.toggle("hidden", !asset);
+  els.assetPanel.querySelector("[data-panel-body]")?.classList.remove("hidden");
   els.assetPanel.style.top = "";
-  if (!asset) return;
-
-  const selectedRow = [...(els.assetTableBody?.querySelectorAll("tr[data-id]") || [])]
-    .find((row) => row.dataset.id === asset.id);
-  const host = canFloatOverRegister ? els.assetRegisterDrawer : null;
-  host?.appendChild(els.assetPanel);
-  if (host === els.assetRegisterDrawer) {
-    if (selectedRow) {
-      const hostRect = host.getBoundingClientRect();
-      const rowRect = selectedRow.getBoundingClientRect();
-      const top = Math.max(76, rowRect.bottom - hostRect.top + 8);
-      els.assetPanel.style.top = `${Math.round(top)}px`;
-    }
-    return;
+  if (asset && els.assetPanel.parentElement !== document.body) {
+    document.body.appendChild(els.assetPanel);
   }
-
-  els.assetRegisterDrawer?.insertAdjacentElement("afterend", els.assetPanel);
 }
 
 function closeSelectedAssetPanel() {
@@ -4885,9 +5341,11 @@ function closeSelectedAssetPanel() {
   clearSelectedAssetUrl();
   if (els.assetPanel) {
     els.assetPanel.classList.add("hidden");
-    els.assetPanel.classList.remove("floating-asset-panel", "inline-asset-panel", "is-collapsed");
+    els.assetPanel.classList.remove("asset-side-sheet", "floating-asset-panel", "inline-asset-panel", "is-collapsed");
     els.assetPanel.style.top = "";
   }
+  els.assetPanelBackdrop?.classList.add("hidden");
+  closePhotoSideBay();
   render();
 }
 
@@ -5208,6 +5666,12 @@ function renderAssetThumbnail(asset) {
 
 function openPhotoViewer(src, caption) {
   if (!src) return;
+  const activeDrawer = getActivePhotoDrawer();
+  if (activeDrawer) {
+    openPhotoSideBay(src, activeDrawer);
+    closePhotoViewer();
+    return;
+  }
   els.photoViewerImage.src = src;
   els.photoViewerCaption.textContent = caption || "Equipment photo";
   els.photoViewer.classList.remove("hidden");
@@ -5217,6 +5681,36 @@ function closePhotoViewer() {
   els.photoViewer.classList.add("hidden");
   els.photoViewerImage.removeAttribute("src");
   els.photoViewerCaption.textContent = "";
+}
+
+function getActivePhotoDrawer() {
+  const workDrawer = document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)");
+  if (workDrawer) return workDrawer;
+  if (els.assetPanel && !els.assetPanel.classList.contains("hidden") && els.assetPanel.classList.contains("asset-side-sheet")) {
+    return els.assetPanel;
+  }
+  return null;
+}
+
+function openPhotoSideBay(src, drawer) {
+  if (!els.photoSideBay || !els.photoSideBayImage || !drawer) return;
+  positionPhotoSideBay(drawer);
+  els.photoSideBayImage.src = src;
+  els.photoSideBay.classList.remove("hidden");
+}
+
+function positionPhotoSideBay(drawer) {
+  if (!els.photoSideBay || !drawer) return;
+  const rect = drawer.getBoundingClientRect();
+  const rightOffset = Math.max(0, window.innerWidth - rect.left);
+  els.photoSideBay.style.setProperty("--photo-bay-right", `${Math.round(rightOffset)}px`);
+}
+
+function closePhotoSideBay() {
+  if (!els.photoSideBay || !els.photoSideBayImage) return;
+  els.photoSideBay.classList.add("hidden");
+  els.photoSideBayImage.removeAttribute("src");
+  els.photoSideBay.style.removeProperty("--photo-bay-right");
 }
 
 function renderAssetInfoForm(asset) {
@@ -5310,39 +5804,52 @@ function renderWorkOrderItem(item) {
   const assignedLabel = item.assignedUserName || getUser(item.assignedUserId)?.name || getUser(item.assignedUserId)?.username || "Unassigned";
   const ageLabel = formatOpenTicketAge(item);
   const createdLabel = item.createdAt ? formatDate(new Date(item.createdAt)) : "Not recorded";
+  const issueNumber = formatIssueNumber(item);
   const canManage = canManageWorkOrders();
   const canDelete = canDeleteWorkOrders();
   const canWork = canWorkOnTicket(item);
   const assignmentControl = renderWorkOrderAssignmentControl(item);
+  const compactAssignmentControl = renderCompactWorkOrderAssignmentControl(item);
   const targetLabel = asset?.name || item.areaName || "Area report";
   const targetKind = asset ? "Equipment" : "Area";
   const assetAction = asset
     ? `<button class="secondary mini" type="button" data-asset-link="${item.assetId}">View Equipment</button>`
     : "";
-  const reportActions = canWork ? `
+  const editAction = canWork ? `
     <details class="inline-edit-drawer">
       <summary>Edit</summary>
       ${renderWorkOrderEditForm(item)}
     </details>
+  ` : "";
+  const secondaryActions = canWork ? `
     <button class="secondary mini" type="button" data-work-order-pdf="${escapeAttribute(item.id)}">PDF Form</button>
     <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Ticket</button>
     <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
   ` : "";
-  const actionButtons = item.status === "Closed" ? `
-    ${canManage ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
-    ${canDelete ? `<button class="secondary danger-action" data-work-order-delete="${escapeAttribute(item.id)}">Delete</button>` : ""}
+  const primaryActions = item.status === "Closed" ? `
+    ${canManage ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
   ` : `
-    ${canWork && item.status === "Open" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
-    ${canWork && item.status !== "Waiting parts" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
-    ${canWork && item.status !== "Resolved" ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
-    ${canManage ? `<button class="secondary" data-work-order-convert-service="${escapeAttribute(item.id)}">Convert to Service Request</button>` : ""}
-    ${canManage ? `<button class="secondary" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>` : ""}
-    ${canDelete ? `<button class="secondary danger-action" data-work-order-delete="${escapeAttribute(item.id)}">Delete</button>` : ""}
+    ${canWork && item.status === "Open" ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
+    ${canWork && item.status !== "Resolved" ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
+    ${canManage ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>` : ""}
   `;
-  const actions = reportActions.trim() || actionButtons.trim() ? `
-    <div class="work-order-actions">
-      ${reportActions}
-      ${actionButtons}
+  const moreActions = `
+    ${secondaryActions}
+    ${canWork && item.status !== "Waiting parts" && item.status !== "Closed" ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
+    ${canManage && item.status !== "Closed" ? `<button class="secondary mini" data-work-order-convert-service="${escapeAttribute(item.id)}">Convert to Service Request</button>` : ""}
+    ${canDelete ? `<button class="secondary mini danger-action" data-work-order-delete="${escapeAttribute(item.id)}">Delete</button>` : ""}
+  `;
+  const headerActions = primaryActions.trim() || moreActions.trim() ? `
+    <div class="ticket-header-actions">
+      ${primaryActions}
+      ${moreActions.trim() ? `
+        <details class="ticket-action-menu">
+          <summary>More</summary>
+          <div class="ticket-action-menu-list">
+            ${moreActions}
+          </div>
+        </details>
+      ` : ""}
     </div>
   ` : "";
   const statusClass = item.status === "Closed"
@@ -5353,42 +5860,85 @@ function renderWorkOrderItem(item) {
         ? "badge-ok"
         : item.priority === "High"
           ? "badge-danger"
-          : "badge-warn";
+        : "badge-warn";
+  const firstPhoto = getWorkOrderPhotos(item)[0]?.dataUrl || asset?.photo?.dataUrl || "";
+  const profileBadges = [
+    `<span class="drawer-param-badge ${statusClass}">${escapeHtml(item.status)}</span>`,
+    `<span class="drawer-param-badge ${item.priority === "High" ? "badge-danger" : "badge-warn"}">${escapeHtml(item.priority)} priority</span>`,
+    `<span class="drawer-param-badge badge-muted">Created ${escapeHtml(createdLabel)}</span>`,
+    `<span class="drawer-param-badge badge-muted">Due ${escapeHtml(formatDate(new Date(item.dueAt)))}</span>`
+  ].join("");
+  const drawerProfile = renderWorkDrawerProfile({
+    title: targetLabel,
+    systemId: `${issueNumber} | ${item.title || "Open ticket"}`,
+    imageSrc: firstPhoto,
+    fallback: "SW",
+    badges: profileBadges
+  });
   return `
-    <details class="work-order-item work-order-drawer" ${item.id === focusedWorkOrderId ? "open" : ""}>
+    <details class="work-order-item work-order-drawer ticket-drawer-item" ${item.id === focusedWorkOrderId ? "open" : ""}>
       <summary>
-        <div>
-          <strong>${escapeHtml(formatIssueNumber(item))} - ${escapeHtml(item.title)}</strong>
-          <span><span class="status-badge ${statusClass}">${escapeHtml(item.status)}</span> ${escapeHtml(item.priority)} priority | Created ${escapeHtml(createdLabel)} | Due ${formatDate(new Date(item.dueAt))}</span>
-          <span class="assigned-label">Assigned to ${escapeHtml(assignedLabel)}</span>
+        <div class="ticket-list-summary">
+          <strong>${escapeHtml(issueNumber)} - ${escapeHtml(item.title || "Open ticket")}</strong>
+          <span>${escapeHtml(targetLabel)} | ${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")}</span>
+          <div class="ticket-list-badges">${profileBadges}</div>
         </div>
-        ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
+        <div class="ticket-summary-tools">
+          ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
+          ${headerActions}
+          <button type="button" class="secondary mini ticket-drawer-close" data-close-work-drawer aria-label="Close ticket drawer">X</button>
+        </div>
       </summary>
-      ${assetAction ? `<div class="work-order-header-actions">${assetAction}</div>` : ""}
-      ${assignmentControl}
-      <div class="work-order-content">
-        <div class="ticket-meta-grid">
-          <div class="ticket-meta-card">
-            <span>Customer</span>
-            <strong>${escapeHtml(customer?.name || "Unknown customer")}</strong>
+      <div class="ticket-drawer-body">
+        <section class="ticket-profile-card">
+          ${drawerProfile}
+        </section>
+        <details class="ticket-sub-drawer" open>
+          <summary>
+            <h3>Description</h3>
+            <span>${escapeHtml(issueNumber)}</span>
+          </summary>
+          <section class="ticket-open-description">
+            <p>${escapeHtml(item.title || "No description entered.")}</p>
+          </section>
+        </details>
+        <details class="ticket-sub-drawer" open>
+          <summary>
+            <h3>Activity & Notes</h3>
+            <span>${workOrderHistoryEntries(item).length + (String(item.notes || "").trim() ? 1 : 0) + getWorkOrderPhotos(item).length}</span>
+          </summary>
+          ${renderTicketActivityTimeline(item, false)}
+        </details>
+        <details class="ticket-sub-drawer">
+          <summary>
+            <h3>Ticket Meta</h3>
+            <span>${escapeHtml(assignedLabel)}</span>
+          </summary>
+          <div class="ticket-meta-list ticket-spec-grid">
+            <div class="ticket-spec-row ticket-assignment-panel compact-panel">
+              <span>Assigned to</span>
+              <div>
+                <strong>${escapeHtml(assignedLabel)}</strong>
+                ${compactAssignmentControl}
+              </div>
+            </div>
+            <div class="service-request-meta-row">
+              <span>Customer</span>
+              <strong>${escapeHtml(customer?.name || "Unknown customer")}</strong>
+            </div>
+            <div class="service-request-meta-row">
+              <span>Location</span>
+              <strong>${escapeHtml(locationRecord?.name || "Unknown location")}</strong>
+            </div>
+            <div class="service-request-meta-row">
+              <span>${escapeHtml(targetKind)}</span>
+              <strong>${escapeHtml(targetLabel)}</strong>
+            </div>
           </div>
-          <div class="ticket-meta-card">
-            <span>Location</span>
-            <strong>${escapeHtml(locationRecord?.name || "Unknown location")}</strong>
-          </div>
-          <div class="ticket-meta-card">
-            <span>${escapeHtml(targetKind)}</span>
-            <strong>${escapeHtml(targetLabel)}</strong>
-          </div>
-        </div>
-        <div class="ticket-note-block">
-          <span>Work notes</span>
-          <p>${escapeHtml(item.notes || "No notes entered.")}</p>
-        </div>
-        ${renderWorkOrderPhotos(item)}
+          ${assetAction ? `<div class="work-order-header-actions">${assetAction}</div>` : ""}
+        </details>
+        ${editAction}
       </div>
-      ${actions}
-      ${renderWorkOrderHistory(item)}
     </details>
   `;
 }
@@ -5416,9 +5966,111 @@ function getWorkOrderPhotos(item) {
   return photos;
 }
 
+function renderTicketActivityTimeline(item, showHeading = true) {
+  const entries = workOrderHistoryEntries(item);
+  const photos = getWorkOrderPhotos(item);
+  const notes = String(item.notes || "").trim();
+  const createdAt = item.createdAt || new Date().toISOString();
+  const createdBy = item.source || item.assignedUserName || "System";
+  return `
+    <section class="ticket-activity-stream">
+      ${showHeading ? `<div class="ticket-stream-heading">
+        <span>Activity & Notes</span>
+        <strong>${entries.length + (notes ? 1 : 0) + photos.length}</strong>
+      </div>` : ""}
+      ${renderQuickAddNoteBox(item)}
+      <div class="ticket-timeline">
+        ${notes ? `
+          <article class="ticket-timeline-entry">
+            <div class="ticket-timeline-avatar">${escapeHtml(getInitials(createdBy))}</div>
+            <div class="ticket-timeline-bubble">
+              <header>
+                <strong>Work notes</strong>
+                <span>${escapeHtml(formatDateTime(new Date(createdAt)))}</span>
+              </header>
+              <p>${escapeHtml(notes)}</p>
+            </div>
+          </article>
+        ` : `
+          <article class="ticket-timeline-entry">
+            <div class="ticket-timeline-avatar">SW</div>
+            <div class="ticket-timeline-bubble">
+              <header>
+                <strong>Work notes</strong>
+                <span>${escapeHtml(formatDateTime(new Date(createdAt)))}</span>
+              </header>
+              <p>No notes entered.</p>
+            </div>
+          </article>
+        `}
+        ${photos.map((photo, index) => `
+          <article class="ticket-timeline-entry">
+            <div class="ticket-timeline-avatar">P${index + 1}</div>
+            <div class="ticket-timeline-bubble">
+              <header>
+                <strong>${escapeHtml(photo.label || "Submitted photo")}</strong>
+                <span>${escapeHtml(photo.addedAt ? formatDateTime(new Date(photo.addedAt)) : formatDateTime(new Date(createdAt)))}</span>
+              </header>
+              <button type="button" class="history-photo-button ticket-photo-card timeline-photo-card" data-view-photo data-photo-src="${escapeAttribute(photo.dataUrl)}" data-photo-caption="${escapeAttribute(photo.caption || photo.name || "Ticket photo")}">
+                <img class="history-photo" alt="${escapeAttribute(photo.label || "Ticket photo")}" src="${escapeAttribute(photo.dataUrl)}">
+                <span>${escapeHtml(photo.name || photo.label || "Submitted photo")}</span>
+              </button>
+            </div>
+          </article>
+        `).join("")}
+        ${entries.map((entry) => `
+          <article class="ticket-timeline-entry ticket-system-entry">
+            <div class="ticket-system-icon" aria-hidden="true"></div>
+            <div class="ticket-system-line">
+              <strong>${escapeHtml(entry.action || "Updated")}</strong>
+              <span>${escapeHtml(formatDateTime(new Date(entry.createdAt || createdAt)))}</span>
+              ${entry.details ? `<p>${escapeHtml(entry.details)}</p>` : ""}
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderQuickAddNoteBox(item) {
+  if (!canWorkOnTicket(item)) return "";
+  const inputId = `quick-note-photo-${escapeAttribute(item.id)}`;
+  return `
+    <form class="quick-note-box" data-work-order-quick-note-form="${escapeAttribute(item.id)}">
+      <textarea name="note" rows="3" placeholder="Type a work note or update..."></textarea>
+      <input id="${inputId}" class="hidden-input" type="file" name="photo" accept="image/*">
+      <div class="quick-note-tools">
+        <div class="quick-note-icons" aria-label="Note attachments">
+          <label class="quick-note-icon" for="${inputId}" title="Attach file" aria-label="Attach file">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 11.6 12 21a6 6 0 0 1-8.5-8.5l9.8-9.8a4.2 4.2 0 0 1 6 6L9.6 18.4a2.4 2.4 0 1 1-3.4-3.4l8.9-8.9"/></svg>
+          </label>
+          <label class="quick-note-icon" for="${inputId}" title="Upload photo" aria-label="Upload photo">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l1.4-2h7.2L17 7h3v13H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg>
+          </label>
+        </div>
+        <button class="primary mini" type="submit">Post Note</button>
+      </div>
+    </form>
+  `;
+}
+
+function getInitials(value) {
+  const parts = String(value || "SW").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "SW";
+  return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+}
+
 function renderWorkOrderPhotos(item) {
   const photos = getWorkOrderPhotos(item);
-  if (!photos.length) return "";
+  if (!photos.length) {
+    return `
+      <div class="ticket-photo-gallery ticket-photo-empty" aria-label="Ticket photos">
+        <span>Submitted photos</span>
+        <p class="muted">No submitted photos.</p>
+      </div>
+    `;
+  }
   return `
     <div class="ticket-photo-gallery" aria-label="Ticket photos">
       ${photos.map((photo) => `
@@ -5468,6 +6120,23 @@ function renderWorkOrderAssignmentControl(item) {
         ${options}
       </select>
     </label>
+  `;
+}
+
+function renderCompactWorkOrderAssignmentControl(item) {
+  if (!canManageWorkOrders()) return "";
+  const users = getAssignableUsersForWorkOrder(item);
+  const selectedAssigneeId = getSelectedAssigneeId(item, users);
+  const options = [
+    `<option value="">Unassigned</option>`,
+    ...users.map((user) =>
+      `<option value="${escapeAttribute(user.id)}" ${selectedAssigneeId === user.id ? "selected" : ""}>${escapeHtml(user.name || user.username)} (${escapeHtml(user.role)})</option>`
+    )
+  ].join("");
+  return `
+    <select class="compact-assignee-select" data-work-order-assignee="${escapeAttribute(item.id)}" aria-label="Assigned to">
+      ${options}
+    </select>
   `;
 }
 
