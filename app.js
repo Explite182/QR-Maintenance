@@ -364,6 +364,7 @@ setupInactivityLogout();
 loadSupabaseProfiles();
 loadSharedStateFromSupabase();
 window.setInterval(syncPublicReportsFromSupabase, 30000);
+window.setInterval(loadSharedStateFromSupabase, 30000);
 
 window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();

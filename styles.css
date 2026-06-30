@@ -4757,7 +4757,22 @@ button.asset-detail-card {
   }
 
   #logoutBtn {
-    display: none;
+    position: fixed;
+    right: 14px;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    z-index: 96;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 14px;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(220, 230, 227, 0.95);
+    border-radius: 999px;
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
+    font-size: 12px;
+    backdrop-filter: blur(12px);
   }
 
   .app-shell {
