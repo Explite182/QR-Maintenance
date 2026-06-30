@@ -8287,12 +8287,18 @@ function applySharedState(sharedData, updatedAt = "") {
   const localUsers = state.users || [];
   const localAccessRequests = state.accessRequests || [];
   const localCurrentUserId = state.currentUserId || "";
+  const nextUsers = Array.isArray(sharedData.users)
+    ? mergeSharedUsers(sharedData.users, localUsers, localCurrentUserId)
+    : localUsers;
+  const nextAccessRequests = Array.isArray(sharedData.accessRequests)
+    ? sharedData.accessRequests
+    : localAccessRequests;
   applyingSharedState = true;
   state = normalizeState({
     ...state,
     ...sharedData,
-    users: localUsers,
-    accessRequests: localAccessRequests,
+    users: nextUsers,
+    accessRequests: nextAccessRequests,
     currentUserId: localCurrentUserId,
     sharedDataUpdatedAt: updatedAt || sharedData.sharedDataUpdatedAt || ""
   });
@@ -8304,7 +8310,43 @@ function applySharedState(sharedData, updatedAt = "") {
   persistLocalStateOnly();
   applyingSharedState = false;
   render();
+  if (!Array.isArray(sharedData.users) && nextUsers.some((user) => user.username !== "scan-customer")) {
+    window.setTimeout(() => scheduleSharedStateSave(0), 0);
+  }
   window.setTimeout(syncLoginQrReportPrompt, 0);
+}
+
+function mergeSharedUsers(sharedUsers = [], localUsers = [], localCurrentUserId = "") {
+  const merged = [];
+  const seen = new Set();
+  const addUser = (user) => {
+    if (!user?.id && !user?.username) return;
+    const cleanUser = sanitizeSharedUser(user);
+    const key = cleanUser.id || cleanUser.username.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(cleanUser);
+  };
+  sharedUsers.forEach(addUser);
+  const currentLocalUser = localUsers.find((user) => user.id === localCurrentUserId);
+  if (currentLocalUser && !merged.some((user) => user.id === currentLocalUser.id || user.username?.toLowerCase() === currentLocalUser.username?.toLowerCase())) {
+    addUser(currentLocalUser);
+  }
+  return merged;
+}
+
+function sanitizeSharedUser(user) {
+  const { session, ...rest } = user || {};
+  return {
+    ...rest,
+    username: String(rest.username || "").trim().toLowerCase(),
+    name: rest.name || rest.username || "",
+    role: rest.role || "Customer",
+    customerId: rest.customerId || "",
+    locationId: rest.locationId || "",
+    password: rest.password || "",
+    localOnly: Boolean(rest.localOnly)
+  };
 }
 
 function isRemoteSharedStateNewer(remoteUpdatedAt = "") {
@@ -8354,6 +8396,8 @@ function buildSharedStatePayload(uploadedAt) {
     workOrders: state.workOrders || [],
     serviceRequests: state.serviceRequests || [],
     preferredContractors: state.preferredContractors || [],
+    users: (state.users || []).map(sanitizeSharedUser),
+    accessRequests: state.accessRequests || [],
     activityLog: state.activityLog || [],
     backupLocation: state.backupLocation || defaultBackupLocation(),
     qrBaseUrl: state.qrBaseUrl || guessNetworkQrUrl(),
@@ -8368,7 +8412,9 @@ function hasSharedMaintenanceData(candidate) {
     candidate?.assets?.length ||
     candidate?.workOrders?.length ||
     candidate?.serviceRequests?.length ||
-    candidate?.preferredContractors?.length
+    candidate?.preferredContractors?.length ||
+    candidate?.users?.some((user) => user.username !== "scan-customer") ||
+    candidate?.accessRequests?.length
   );
 }
 
