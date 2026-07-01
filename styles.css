@@ -4845,8 +4845,8 @@ button.asset-detail-card {
   .user-chip {
     min-width: 0;
     min-height: 38px;
-    max-width: 142px;
-    padding: 8px 12px;
+    max-width: 118px;
+    padding: 8px 10px;
     border-radius: 999px;
   }
 
@@ -4870,28 +4870,28 @@ button.asset-detail-card {
   }
 
   .user-chip::after {
-    content: " View";
+    content: "";
+    display: none;
     color: var(--muted);
     font-size: 12px;
     font-weight: 800;
   }
 
   #logoutBtn {
-    position: fixed;
-    right: 14px;
-    bottom: calc(82px + env(safe-area-inset-bottom));
-    z-index: 96;
+    position: static;
+    z-index: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 40px;
-    padding: 0 14px;
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding: 0 11px;
     color: var(--ink);
     background: rgba(255, 255, 255, 0.96);
     border: 1px solid rgba(220, 230, 227, 0.95);
     border-radius: 999px;
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
-    font-size: 12px;
+    box-shadow: none;
+    font-size: 11px;
     backdrop-filter: blur(12px);
   }
 
@@ -4994,10 +4994,24 @@ button.asset-detail-card {
   }
 
   .ticket-action-menu-list {
-    right: 0;
-    left: auto;
-    width: min(220px, calc(100vw - 32px));
-    max-width: calc(100vw - 32px);
+    position: fixed;
+    z-index: 110;
+    top: auto;
+    right: 12px;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 10px;
+    border-radius: 16px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+  }
+
+  .ticket-action-menu-list button {
+    min-height: 44px;
+    justify-content: center;
+    white-space: normal;
   }
 
   .asset-heading,
@@ -5229,7 +5243,7 @@ button.asset-detail-card {
     left: 0;
     z-index: 90;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 2px;
     padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
     background: rgba(255, 255, 255, 0.96);
@@ -5265,6 +5279,10 @@ button.asset-detail-card {
     background: rgba(8, 112, 95, 0.08);
   }
 
+  .mobile-logout-btn {
+    color: var(--danger);
+  }
+
   .mobile-tab-icon {
     position: relative;
     display: block;
@@ -5279,7 +5297,9 @@ button.asset-detail-card {
   .mobile-tab-tickets::before,
   .mobile-tab-tickets::after,
   .mobile-tab-settings::before,
-  .mobile-tab-settings::after {
+  .mobile-tab-settings::after,
+  .mobile-tab-logout::before,
+  .mobile-tab-logout::after {
     content: "";
     position: absolute;
     border: 2px solid currentColor;
@@ -5335,6 +5355,23 @@ button.asset-detail-card {
     height: 4px;
     border-radius: 999px;
     background: currentColor;
+  }
+
+  .mobile-tab-logout::before {
+    top: 4px;
+    left: 3px;
+    width: 10px;
+    height: 14px;
+    border-right: 0;
+    border-radius: 4px 0 0 4px;
+  }
+
+  .mobile-tab-logout::after {
+    top: 10px;
+    right: 2px;
+    width: 12px;
+    height: 0;
+    border-width: 2px 0 0;
   }
 
 }
