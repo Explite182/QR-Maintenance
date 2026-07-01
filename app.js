@@ -119,6 +119,8 @@ const els = {
   newEquipmentBtn: document.getElementById("newEquipmentBtn"),
   newIssueBtn: document.getElementById("newIssueBtn"),
   newServiceRequestBtn: document.getElementById("newServiceRequestBtn"),
+  mobileCreateBtn: document.getElementById("mobileCreateBtn"),
+  mobileCreateMenu: document.getElementById("mobileCreateMenu"),
   newIssueDrawer: document.getElementById("newIssueDrawer"),
   newIssueForm: document.getElementById("newIssueForm"),
   newIssueCustomer: document.getElementById("newIssueCustomer"),
@@ -558,6 +560,19 @@ els.logoutBtn.addEventListener("click", () => {
 
 document.querySelector("#mobileLogoutBtn")?.addEventListener("click", () => {
   logoutCurrentUser("manual");
+});
+
+els.mobileCreateBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleMobileCreateMenu();
+});
+
+els.mobileCreateMenu?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-mobile-create-action]");
+  if (!button) return;
+  event.preventDefault();
+  closeMobileCreateMenu();
+  runCommandPaletteAction(button.dataset.mobileCreateAction);
 });
 
 els.userSwitcher?.addEventListener("change", () => {
@@ -1249,10 +1264,11 @@ els.createNewBtn?.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #createNewBtn, #createNewMenu")) return;
+  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #createNewBtn, #createNewMenu, #mobileCreateBtn, #mobileCreateMenu")) return;
   closeTopActionDrawers();
   closeMetricMenus();
   closeCreateNewMenu();
+  closeMobileCreateMenu();
 });
 
 els.newIssueBtn?.addEventListener("click", () => {
@@ -2577,6 +2593,7 @@ function renderRole() {
   if (els.newEquipmentBtn) els.newEquipmentBtn.disabled = !canAddAssets;
   if (els.newIssueBtn) els.newIssueBtn.disabled = !canCreateTickets;
   if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canCreateServiceRequests();
+  renderMobileCreateActions();
   els.adminToolsDrawer.classList.toggle("hidden", !hasAdminToolsAccess);
   if (!hasAdminToolsAccess) els.adminToolsDrawer.open = false;
   els.quickAddDrawer.classList.toggle("hidden", !canAddAssets);
@@ -4322,11 +4339,13 @@ function runCommandPaletteAction(id) {
   }
   if (id === "newTicket" && canCreateWorkOrders()) {
     closeCreateNewMenu();
+    renderNewIssueFormOptions();
     toggleTopActionDrawer(els.newIssueDrawer);
     return;
   }
   if (id === "newServiceRequest" && canCreateServiceRequests()) {
     closeCreateNewMenu();
+    renderServiceRequestFormOptions();
     toggleTopActionDrawer(els.serviceRequestCreateDrawer);
     return;
   }
@@ -4738,6 +4757,33 @@ function toggleCreateNewMenu() {
 function closeCreateNewMenu() {
   els.createNewMenu?.classList.add("hidden");
   els.createNewBtn?.setAttribute("aria-expanded", "false");
+}
+
+function toggleMobileCreateMenu() {
+  if (!els.mobileCreateMenu || !els.mobileCreateBtn) return;
+  const shouldOpen = els.mobileCreateMenu.classList.contains("hidden");
+  renderMobileCreateActions();
+  closeMetricMenus();
+  closeTopActionDrawers();
+  els.mobileCreateMenu.classList.toggle("hidden", !shouldOpen);
+  els.mobileCreateBtn.classList.toggle("is-active", shouldOpen);
+  els.mobileCreateBtn.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function closeMobileCreateMenu() {
+  els.mobileCreateMenu?.classList.add("hidden");
+  els.mobileCreateBtn?.classList.remove("is-active");
+  els.mobileCreateBtn?.setAttribute("aria-expanded", "false");
+}
+
+function renderMobileCreateActions() {
+  els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newEquipment']")
+    ?.classList.toggle("hidden", !canAddEquipment());
+  els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newTicket']")
+    ?.classList.toggle("hidden", !canCreateWorkOrders());
+  els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newServiceRequest']")
+    ?.classList.toggle("hidden", !canCreateServiceRequests());
+  els.mobileCreateBtn?.classList.toggle("hidden", !(canAddEquipment() || canCreateWorkOrders() || canCreateServiceRequests()));
 }
 
 function toggleTopActionDrawer(drawer) {

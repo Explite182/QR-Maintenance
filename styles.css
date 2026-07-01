@@ -4822,6 +4822,12 @@ button.asset-detail-card {
     grid-template-columns: 1fr;
     align-items: start;
     gap: 10px;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100vw;
+    min-width: 0;
+    overflow: hidden;
     padding: 12px 14px;
     background: rgba(255, 255, 255, 0.96);
     border-bottom: 1px solid rgba(220, 230, 227, 0.92);
@@ -4852,7 +4858,10 @@ button.asset-detail-card {
     justify-content: space-between;
     gap: 8px;
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     margin-left: 0;
+    overflow: hidden;
   }
 
   .user-switcher {
@@ -4904,7 +4913,7 @@ button.asset-detail-card {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 96px;
+    flex: 0 0 88px;
     min-height: 38px;
     padding: 0 11px;
     color: var(--ink);
@@ -5300,8 +5309,8 @@ button.asset-detail-card {
     background: rgba(8, 112, 95, 0.08);
   }
 
-  .mobile-logout-btn {
-    color: var(--danger);
+  .mobile-create-btn {
+    color: var(--accent);
   }
 
   .mobile-tab-icon {
@@ -5319,11 +5328,42 @@ button.asset-detail-card {
   .mobile-tab-tickets::after,
   .mobile-tab-settings::before,
   .mobile-tab-settings::after,
-  .mobile-tab-logout::before,
-  .mobile-tab-logout::after {
+  .mobile-tab-create::before,
+  .mobile-tab-create::after {
     content: "";
     position: absolute;
     border: 2px solid currentColor;
+  }
+
+  .mobile-create-menu {
+    position: fixed;
+    right: 12px;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    left: 12px;
+    z-index: 112;
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(220, 230, 227, 0.95);
+    border-radius: 18px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(12px);
+  }
+
+  .mobile-create-menu button {
+    min-height: 46px;
+    justify-content: center;
+    color: var(--ink);
+    background: #f8fbfa;
+    border: 1px solid var(--line);
+    box-shadow: none;
+  }
+
+  .mobile-create-menu button:first-child {
+    color: white;
+    background: var(--accent);
+    border-color: var(--accent);
   }
 
   .mobile-tab-dashboard::before {
@@ -5378,21 +5418,17 @@ button.asset-detail-card {
     background: currentColor;
   }
 
-  .mobile-tab-logout::before {
-    top: 4px;
-    left: 3px;
-    width: 10px;
-    height: 14px;
-    border-right: 0;
-    border-radius: 4px 0 0 4px;
+  .mobile-tab-create::before {
+    inset: 4px;
+    border-radius: 999px;
   }
 
-  .mobile-tab-logout::after {
-    top: 10px;
-    right: 2px;
-    width: 12px;
-    height: 0;
-    border-width: 2px 0 0;
+  .mobile-tab-create::after {
+    inset: 6px;
+    border: 0;
+    background:
+      linear-gradient(currentColor, currentColor) center / 2px 10px no-repeat,
+      linear-gradient(currentColor, currentColor) center / 10px 2px no-repeat;
   }
 
 }
