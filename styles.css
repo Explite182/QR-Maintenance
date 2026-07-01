@@ -4994,8 +4994,10 @@ button.asset-detail-card {
   }
 
   .ticket-action-menu-list {
-    right: auto;
-    left: 0;
+    right: 0;
+    left: auto;
+    width: min(220px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
   }
 
   .asset-heading,
