@@ -3261,6 +3261,13 @@ button.asset-detail-card {
   font-weight: 700;
 }
 
+.work-drawer-profile-text .work-drawer-context {
+  color: #52646c;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .work-drawer-badges {
   display: flex;
   flex-wrap: wrap;

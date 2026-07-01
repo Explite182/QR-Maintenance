@@ -556,6 +556,10 @@ els.logoutBtn.addEventListener("click", () => {
   logoutCurrentUser("manual");
 });
 
+document.querySelector("#mobileLogoutBtn")?.addEventListener("click", () => {
+  logoutCurrentUser("manual");
+});
+
 els.userSwitcher?.addEventListener("change", () => {
   const user = state.users.find((item) => item.id === els.userSwitcher.value);
   if (!user || !canUseUserSwitcher()) return;
@@ -5033,7 +5037,7 @@ function renderServiceRequests() {
     : `<p class="muted">No service requests for this view.</p>`;
 }
 
-function renderWorkDrawerProfile({ title, systemId, imageSrc = "", fallback = "SW", badges = "" }) {
+function renderWorkDrawerProfile({ title, systemId, context = "", imageSrc = "", fallback = "SW", badges = "" }) {
   return `
     <div class="work-drawer-profile">
       <div class="work-drawer-thumb">
@@ -5044,6 +5048,7 @@ function renderWorkDrawerProfile({ title, systemId, imageSrc = "", fallback = "S
       <div class="work-drawer-profile-text">
         <strong>${escapeHtml(title)}</strong>
         <span>${escapeHtml(systemId)}</span>
+        ${context ? `<span class="work-drawer-context">${escapeHtml(context)}</span>` : ""}
         ${badges ? `<div class="work-drawer-badges">${badges}</div>` : ""}
       </div>
     </div>
@@ -6041,8 +6046,9 @@ function renderWorkOrderItem(item) {
     `<span class="drawer-param-badge badge-muted">Due ${escapeHtml(formatDate(new Date(item.dueAt)))}</span>`
   ].join("");
   const drawerProfile = renderWorkDrawerProfile({
-    title: targetLabel,
-    systemId: `${issueNumber} | ${item.title || "Open ticket"}`,
+    title: `${issueNumber} - ${item.title || "Open ticket"}`,
+    systemId: `${targetKind}: ${targetLabel}`,
+    context: `${targetLabel} | ${customer?.name || "Unknown customer"} | ${locationRecord?.name || "Unknown location"}`,
     imageSrc: firstPhoto,
     fallback: "SW",
     badges: profileBadges
