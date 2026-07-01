@@ -4818,8 +4818,9 @@ button.asset-detail-card {
   .app-header {
     position: sticky;
     top: 0;
-    align-items: center;
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
     gap: 10px;
     padding: 12px 14px;
     background: rgba(255, 255, 255, 0.96);
@@ -4827,8 +4828,17 @@ button.asset-detail-card {
     box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
   }
 
+  .app-header > div:first-child {
+    width: 100%;
+    min-width: 0;
+  }
+
   .app-header h1 {
-    font-size: 24px;
+    overflow: hidden;
+    font-size: 26px;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .eyebrow {
@@ -4839,10 +4849,10 @@ button.asset-detail-card {
   .header-actions {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     gap: 8px;
-    width: auto;
-    margin-left: auto;
+    width: 100%;
+    margin-left: 0;
   }
 
   .user-switcher {
@@ -4850,9 +4860,10 @@ button.asset-detail-card {
   }
 
   .user-chip {
+    flex: 1 1 auto;
     min-width: 0;
     min-height: 38px;
-    max-width: 118px;
+    max-width: none;
     padding: 8px 10px;
     border-radius: 999px;
   }
@@ -4862,7 +4873,10 @@ button.asset-detail-card {
   }
 
   .user-chip strong {
+    overflow: hidden;
     font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .user-chip::before {
@@ -4890,7 +4904,7 @@ button.asset-detail-card {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
+    flex: 0 0 96px;
     min-height: 38px;
     padding: 0 11px;
     color: var(--ink);
