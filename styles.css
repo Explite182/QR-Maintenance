@@ -4653,7 +4653,7 @@ button.asset-detail-card {
   }
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1120px) and (orientation: portrait) {
   .app-shell {
     grid-template-columns: 1fr;
     min-height: auto;
@@ -4672,6 +4672,126 @@ button.asset-detail-card {
 
   .admin-tools-drawer > .setup-drawer {
     margin-top: 0;
+  }
+}
+
+@media (min-width: 841px) and (max-width: 1180px) and (orientation: landscape) {
+  .app-shell {
+    grid-template-columns: 250px minmax(0, 1fr);
+    min-height: calc(100vh - 82px);
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 82px;
+    align-self: start;
+    height: calc(100vh - 82px);
+    overflow-y: auto;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 0;
+  }
+
+  .workspace {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .filters {
+    grid-template-columns: minmax(180px, 0.75fr) minmax(180px, 0.75fr) minmax(260px, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .global-search-field {
+    grid-column: auto;
+  }
+
+  .app-shell.calendar-focus .dashboard-panel {
+    display: block;
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .app-shell.calendar-focus .dashboard-panel .panel-heading {
+    display: none;
+  }
+
+  .app-shell.calendar-focus .dashboard {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .app-shell.calendar-focus .metric-menu-wrap {
+    flex: 0 0 auto;
+  }
+
+  .app-shell.calendar-focus .metric-card {
+    min-width: 118px;
+    min-height: 54px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    align-content: center;
+    gap: 3px;
+  }
+
+  .app-shell.calendar-focus .metric-card span {
+    font-size: 20px;
+  }
+
+  .app-shell.calendar-focus .metric-card p {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .app-shell.calendar-focus .metric-trend {
+    display: none;
+  }
+
+  .app-shell.calendar-focus #pmCalendarPanel {
+    padding: 12px;
+  }
+
+  .app-shell.calendar-focus #pmCalendarPanel > .section-title {
+    min-height: 42px;
+    padding-bottom: 8px;
+  }
+
+  .app-shell.calendar-focus .pm-calendar-body {
+    gap: 10px;
+    padding-top: 6px;
+  }
+
+  .app-shell.calendar-focus .pm-calendar-toolbar {
+    grid-template-columns: minmax(120px, 150px) minmax(150px, 180px) minmax(240px, 1fr);
+    gap: 10px;
+  }
+
+  .app-shell.calendar-focus .pm-calendar-summary {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .app-shell.calendar-focus .pm-calendar-month-grid-wrap {
+    overflow-x: hidden;
+  }
+
+  .app-shell.calendar-focus .pm-calendar-month-grid {
+    min-width: 0;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .app-shell.calendar-focus .pm-calendar-cell {
+    min-height: clamp(92px, 11.2vw, 126px);
+    padding: 6px;
+  }
+
+  .app-shell.calendar-focus .pm-calendar-task {
+    min-height: 22px;
+    padding: 4px 6px;
+    font-size: 11px;
   }
 }
 

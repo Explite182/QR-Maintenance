@@ -2228,6 +2228,7 @@ function togglePanel(panelId) {
   }
   if (panelId === "assetPanel" && wasCollapsed) closeSelectedAssetDrawers();
   renderPanelToggles();
+  syncCalendarFocusState();
 }
 
 function openPanel(panelId) {
@@ -2239,6 +2240,7 @@ function openPanel(panelId) {
   if (panel.classList.contains("sidebar-controlled-panel")) setSidebarTargetButtonState(panelId, true);
   if (panelId === "assetPanel" && wasCollapsed) closeSelectedAssetDrawers();
   renderPanelToggles();
+  syncCalendarFocusState();
 }
 
 function setSidebarTargetButtonState(targetId, isOpen) {
@@ -2269,6 +2271,7 @@ function closeSidebarTarget(targetId) {
     renderPanelToggles();
   }
   setSidebarTargetButtonState(targetId, false);
+  syncCalendarFocusState();
 }
 
 function openSidebarTarget(targetId) {
@@ -2297,6 +2300,7 @@ function openSidebarTarget(targetId) {
     openPanel(targetId);
   }
   setSidebarTargetButtonState(targetId, true);
+  syncCalendarFocusState();
 }
 
 function closeAllSidebarTargets() {
@@ -2311,6 +2315,15 @@ function closeOtherSidebarTargets(activeTargetId) {
       closeSidebarTarget(button.dataset.openTarget);
     }
   });
+}
+
+function syncCalendarFocusState() {
+  const calendarOpen = Boolean(
+    document.getElementById("pmCalendarPanel") &&
+    !document.getElementById("pmCalendarPanel").classList.contains("hidden") &&
+    !document.getElementById("pmCalendarPanel").classList.contains("is-collapsed")
+  );
+  els.appShell?.classList.toggle("calendar-focus", calendarOpen);
 }
 
 function openMobileTab(targetId) {
