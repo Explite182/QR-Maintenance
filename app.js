@@ -74,6 +74,7 @@ let authProfilesLoading = false;
 let lastAuthError = "";
 let lastPublicReportError = "";
 let editingAssetDetailField = "";
+let storageFullWarningShown = false;
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -268,6 +269,23 @@ const els = {
   assetPhotoPanel: document.getElementById("assetPhotoPanel"),
   assetManualPanel: document.getElementById("assetManualPanel"),
   assetDetailsGrid: document.getElementById("assetDetailsGrid"),
+  electricalPanelScheduleDrawer: document.getElementById("electricalPanelScheduleDrawer"),
+  electricalPanelScheduleCount: document.getElementById("electricalPanelScheduleCount"),
+  electricalPanelScheduleContent: document.getElementById("electricalPanelScheduleContent"),
+  panelScheduleBackdrop: document.getElementById("panelScheduleBackdrop"),
+  panelScheduleSheet: document.getElementById("panelScheduleSheet"),
+  panelScheduleSheetTitle: document.getElementById("panelScheduleSheetTitle"),
+  panelScheduleSheetMeta: document.getElementById("panelScheduleSheetMeta"),
+  panelScheduleForm: document.getElementById("panelScheduleForm"),
+  panelScheduleCircuitRows: document.getElementById("panelScheduleCircuitRows"),
+  addPanelCircuitBtn: document.getElementById("addPanelCircuitBtn"),
+  panelScheduleCsvInput: document.getElementById("panelScheduleCsvInput"),
+  importPanelScheduleCsvBtn: document.getElementById("importPanelScheduleCsvBtn"),
+  panelScheduleImportStatus: document.getElementById("panelScheduleImportStatus"),
+  panelScheduleLogoInput: document.getElementById("panelScheduleLogoInput"),
+  panelScheduleLogoPreview: document.getElementById("panelScheduleLogoPreview"),
+  removePanelScheduleLogoBtn: document.getElementById("removePanelScheduleLogoBtn"),
+  printPanelScheduleBtn: document.getElementById("printPanelScheduleBtn"),
   exportSelectedAssetBtn: document.getElementById("exportSelectedAssetBtn"),
   deleteSelectedAssetBtn: document.getElementById("deleteSelectedAssetBtn"),
   assetInfoForm: document.getElementById("assetInfoForm"),
@@ -400,7 +418,7 @@ els.loginForm.addEventListener("submit", async (event) => {
     rememberAdminUserSwitcher(localUser);
     restoreScannedAssetSelection();
     closeAssetRegisterDrawer();
-    saveState();
+    saveStateQuietly();
     els.loginForm.reset();
     els.loginError.textContent = "";
     render();
@@ -413,7 +431,7 @@ els.loginForm.addEventListener("submit", async (event) => {
   rememberAdminUserSwitcher(user);
   restoreScannedAssetSelection();
   closeAssetRegisterDrawer();
-  saveState();
+  saveStateQuietly();
   els.loginForm.reset();
   els.loginError.textContent = "";
   render();
@@ -447,7 +465,7 @@ els.firstAdminForm.addEventListener("submit", async (event) => {
   rememberAdminUserSwitcher(user);
   closeAssetRegisterDrawer();
   addActivity("First admin created", email);
-  saveState();
+  saveStateQuietly();
   els.firstAdminForm.reset();
   els.firstAdminMessage.textContent = "";
   render();
@@ -460,7 +478,7 @@ if (els.scanAccessBtn) {
     currentRole = user.role;
     state.currentUserId = user.id;
     closeAssetRegisterDrawer();
-    saveState();
+    saveStateQuietly();
     els.loginForm.reset();
     els.loginError.textContent = "";
     render();
@@ -1114,6 +1132,46 @@ els.photoSideBayImage?.addEventListener("click", (event) => {
   closePhotoSideBay();
 });
 
+els.addPanelCircuitBtn?.addEventListener("click", () => {
+  addPanelScheduleEditorRow({ number: getNextPanelCircuitNumber(), load: "", breaker: "", notes: "" });
+});
+
+els.panelScheduleForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  savePanelScheduleEditor();
+});
+
+els.panelScheduleCsvInput?.addEventListener("change", () => {
+  const file = els.panelScheduleCsvInput.files?.[0];
+  if (els.panelScheduleImportStatus) {
+    els.panelScheduleImportStatus.textContent = file ? `Ready to import ${file.name}.` : "";
+  }
+});
+
+els.importPanelScheduleCsvBtn?.addEventListener("click", async () => {
+  await importPanelScheduleCsv();
+});
+
+els.printPanelScheduleBtn?.addEventListener("click", () => {
+  printPanelSchedule();
+});
+
+els.panelScheduleLogoInput?.addEventListener("change", async () => {
+  const logo = await readPhoto(els.panelScheduleLogoInput.files?.[0]);
+  if (!logo || !els.panelScheduleForm) return;
+  els.panelScheduleForm.dataset.logoDataUrl = logo.dataUrl;
+  els.panelScheduleForm.dataset.logoName = logo.name || "Company logo";
+  renderPanelScheduleLogoPreview(logo);
+});
+
+els.removePanelScheduleLogoBtn?.addEventListener("click", () => {
+  if (!els.panelScheduleForm) return;
+  delete els.panelScheduleForm.dataset.logoDataUrl;
+  delete els.panelScheduleForm.dataset.logoName;
+  if (els.panelScheduleLogoInput) els.panelScheduleLogoInput.value = "";
+  renderPanelScheduleLogoPreview(null);
+});
+
 window.addEventListener("resize", () => {
   if (!els.photoSideBay || els.photoSideBay.classList.contains("hidden")) return;
   const activeDrawer = getActivePhotoDrawer();
@@ -1136,6 +1194,10 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape" && els.photoSideBay && !els.photoSideBay.classList.contains("hidden")) {
     closePhotoSideBay();
+    return;
+  }
+  if (event.key === "Escape" && els.panelScheduleSheet && !els.panelScheduleSheet.classList.contains("hidden")) {
+    closePanelScheduleSheet();
     return;
   }
   if (event.key === "Escape" && !els.photoViewer.classList.contains("hidden")) {
@@ -1729,6 +1791,34 @@ els.restoreBackupBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (event) => {
+  const closePanelScheduleButton = event.target.closest("[data-close-panel-schedule]");
+  if (closePanelScheduleButton) {
+    event.preventDefault();
+    closePanelScheduleSheet();
+    return;
+  }
+
+  const openPanelScheduleButton = event.target.closest("[data-open-panel-schedule]");
+  if (openPanelScheduleButton) {
+    event.preventDefault();
+    openPanelScheduleSheet();
+    return;
+  }
+
+  const printPanelScheduleButton = event.target.closest("[data-print-panel-schedule]");
+  if (printPanelScheduleButton) {
+    event.preventDefault();
+    printPanelSchedule();
+    return;
+  }
+
+  const removePanelCircuitButton = event.target.closest("[data-remove-panel-circuit]");
+  if (removePanelCircuitButton) {
+    event.preventDefault();
+    removePanelScheduleEditorRow(removePanelCircuitButton.closest("[data-panel-circuit-row]"));
+    return;
+  }
+
   const closeAssetPanelButton = event.target.closest("[data-close-asset-panel]");
   if (closeAssetPanelButton) {
     event.preventDefault();
@@ -2180,6 +2270,7 @@ function render() {
   els.assetPhotoPanel.innerHTML = renderAssetPhoto(asset);
   els.assetManualPanel.innerHTML = renderAssetManual(asset);
   els.assetDetailsGrid.innerHTML = renderAssetDetails(asset);
+  renderElectricalPanelSchedule(asset);
   if (els.deleteSelectedAssetBtn) {
     els.deleteSelectedAssetBtn.classList.toggle("hidden", !canDeleteEquipment());
     els.deleteSelectedAssetBtn.disabled = !canDeleteEquipment();
@@ -5525,6 +5616,7 @@ function closeSelectedAssetPanel() {
     els.assetPanel.style.top = "";
   }
   els.assetPanelBackdrop?.classList.add("hidden");
+  closePanelScheduleSheet();
   closePhotoSideBay();
   render();
 }
@@ -5782,6 +5874,502 @@ function renderAssetDetails(asset) {
       </${tag}>
     `;
   }).join("");
+}
+
+function renderElectricalPanelSchedule(asset) {
+  if (!els.electricalPanelScheduleDrawer || !els.electricalPanelScheduleContent) return;
+  const visible = isElectricalPanelAsset(asset);
+  els.electricalPanelScheduleDrawer.classList.toggle("hidden", !visible);
+  if (!visible) {
+    els.electricalPanelScheduleContent.innerHTML = "";
+    if (els.electricalPanelScheduleCount) els.electricalPanelScheduleCount.textContent = "0 circuits";
+    return;
+  }
+
+  const schedule = getElectricalPanelSchedule(asset);
+  if (els.electricalPanelScheduleCount) {
+    els.electricalPanelScheduleCount.textContent = `${schedule.circuitCount || 42} circuits`;
+  }
+  els.electricalPanelScheduleContent.innerHTML = `
+    <div class="panel-schedule-preview-actions">
+      <p>Open the full panel schedule to edit circuit labels, breaker sizes, and panel specs.</p>
+      <div>
+        <button type="button" class="secondary mini" data-print-panel-schedule>Print</button>
+        <button type="button" class="secondary mini" data-open-panel-schedule>Open Schedule</button>
+      </div>
+    </div>
+    <div class="panel-schedule-overview">
+      ${panelScheduleInfoTile("Panel", schedule.panelName)}
+      ${panelScheduleInfoTile("Voltage", schedule.voltage)}
+      ${panelScheduleInfoTile("Phase", schedule.phase)}
+      ${panelScheduleInfoTile("Main breaker", schedule.mainBreaker)}
+      ${panelScheduleInfoTile("Circuits", String(schedule.circuitCount || 42))}
+    </div>
+    <div class="panel-schedule-table-wrap">
+      <table class="panel-schedule-table">
+        <thead>
+          <tr>
+            <th>CCT</th>
+            <th>Breaker</th>
+            <th>Load served</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${schedule.circuits.map((circuit) => `
+            <tr>
+              <td>${escapeHtml(circuit.number)}</td>
+              <td>${escapeHtml(circuit.breaker)}</td>
+              <td>${escapeHtml(panelCircuitLoadText(circuit) || "-")}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function isElectricalPanelAsset(asset) {
+  const text = [asset?.type, asset?.name, asset?.model].filter(Boolean).join(" ").toLowerCase();
+  return text.includes("electrical panel") || text.includes("panel");
+}
+
+function getElectricalPanelSchedule(asset) {
+  const savedSchedule = asset?.electricalPanelSchedule;
+  if (savedSchedule?.circuits?.length) {
+    return {
+      panelName: savedSchedule.panelName || asset.name || "Electrical Panel",
+      voltage: savedSchedule.voltage || "Not entered",
+      phase: savedSchedule.phase || "Not entered",
+      mainBreaker: savedSchedule.mainBreaker || "Not entered",
+      circuitCount: normalizePanelCircuitCount(savedSchedule.circuitCount || savedSchedule.circuits?.length || 42),
+      logo: savedSchedule.logo || null,
+      circuits: savedSchedule.circuits
+    };
+  }
+
+  return {
+    panelName: asset?.name || "Electrical Panel",
+    voltage: "120/208V",
+    phase: "3 phase",
+    mainBreaker: "Not entered",
+    circuitCount: 42,
+    logo: null,
+    circuits: [
+      { number: "1", load: "Lighting", breaker: "15A", notes: "Confirm label" },
+      { number: "2", load: "Receptacles", breaker: "20A", notes: "Confirm label" },
+      { number: "3", load: "Mechanical / HVAC", breaker: "30A", notes: "Spare if not used" },
+      { number: "4", load: "Spare", breaker: "-", notes: "Available" }
+    ]
+  };
+}
+
+function panelScheduleInfoTile(label, value) {
+  return `
+    <div class="panel-schedule-info-tile">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "Not entered")}</strong>
+    </div>
+  `;
+}
+
+function openPanelScheduleSheet() {
+  const asset = getSelectedAsset();
+  if (!asset || !isElectricalPanelAsset(asset) || !els.panelScheduleSheet || !els.panelScheduleForm) return;
+  const schedule = getElectricalPanelSchedule(asset);
+  els.panelScheduleSheetTitle.textContent = schedule.panelName || asset.name || "Panel Schedule";
+  els.panelScheduleSheetMeta.textContent = `${getAssetEquipmentId(asset)} | ${getLocation(asset.locationId)?.name || "Unknown location"}`;
+  els.panelScheduleForm.elements.panelName.value = schedule.panelName || "";
+  els.panelScheduleForm.elements.voltage.value = schedule.voltage || "";
+  els.panelScheduleForm.elements.phase.value = schedule.phase || "";
+  els.panelScheduleForm.elements.mainBreaker.value = schedule.mainBreaker || "";
+  els.panelScheduleForm.elements.circuitCount.value = schedule.circuitCount || 42;
+  els.panelScheduleForm.dataset.logoDataUrl = schedule.logo?.dataUrl || "";
+  els.panelScheduleForm.dataset.logoName = schedule.logo?.name || "";
+  if (els.panelScheduleLogoInput) els.panelScheduleLogoInput.value = "";
+  renderPanelScheduleLogoPreview(schedule.logo || null);
+  els.panelScheduleCircuitRows.innerHTML = "";
+  schedule.circuits.forEach((circuit) => addPanelScheduleEditorRow(circuit));
+  els.panelScheduleForm.querySelectorAll("input, button").forEach((control) => {
+    if (control.matches("[data-close-panel-schedule]")) return;
+    if (control.id === "printPanelScheduleBtn") return;
+    if (control.id === "removePanelScheduleLogoBtn") return;
+    control.disabled = !canManageWorkOrders();
+  });
+  els.panelScheduleBackdrop?.classList.remove("hidden");
+  els.panelScheduleSheet.classList.remove("hidden");
+}
+
+function closePanelScheduleSheet() {
+  els.panelScheduleBackdrop?.classList.add("hidden");
+  els.panelScheduleSheet?.classList.add("hidden");
+}
+
+function addPanelScheduleEditorRow(circuit = {}) {
+  if (!els.panelScheduleCircuitRows) return;
+  const row = document.createElement("div");
+  row.className = "panel-schedule-editor-row";
+  row.dataset.panelCircuitRow = "true";
+  row.innerHTML = `
+    <label>
+      CCT
+      <input name="circuitNumber" value="${escapeAttribute(circuit.number || "")}" placeholder="1">
+    </label>
+    <label>
+      Breaker
+      <input name="circuitBreaker" value="${escapeAttribute(circuit.breaker || "")}" placeholder="20A">
+    </label>
+    <label>
+      Load served
+      <input name="circuitLoad" value="${escapeAttribute(panelCircuitLoadText(circuit))}" placeholder="Lighting">
+    </label>
+    <button type="button" class="secondary mini danger-action" data-remove-panel-circuit>Remove</button>
+  `;
+  els.panelScheduleCircuitRows.appendChild(row);
+}
+
+function removePanelScheduleEditorRow(row) {
+  if (!row) return;
+  row.remove();
+}
+
+async function importPanelScheduleCsv() {
+  if (!canManageWorkOrders() || !els.panelScheduleCsvInput || !els.panelScheduleCircuitRows) return;
+  const file = els.panelScheduleCsvInput.files?.[0];
+  if (!file) {
+    setPanelScheduleImportStatus("Choose a CSV file first.");
+    alert("Choose a CSV file first.");
+    return;
+  }
+
+  const importButton = els.importPanelScheduleCsvBtn;
+  if (importButton) {
+    importButton.disabled = true;
+    importButton.textContent = "Importing...";
+  }
+
+  try {
+    setPanelScheduleImportStatus("Reading CSV...");
+    const text = await file.text();
+    const circuits = parsePanelScheduleCsvCircuits(text);
+
+    if (!circuits.length) {
+      setPanelScheduleImportStatus("No circuit rows were found in that CSV.");
+      alert("No circuit rows were found in that CSV.");
+      return;
+    }
+
+    els.panelScheduleCircuitRows.innerHTML = "";
+    circuits.forEach((circuit) => addPanelScheduleEditorRow(circuit));
+    const maxCircuit = circuits.reduce((max, circuit) => {
+      const numeric = Number(String(circuit.number || "").replace(/\D/g, ""));
+      return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
+    }, circuits.length);
+    if (els.panelScheduleForm?.elements.circuitCount) {
+      els.panelScheduleForm.elements.circuitCount.value = normalizePanelCircuitCount(maxCircuit);
+    }
+    setPanelScheduleImportStatus(`Imported ${circuits.length} circuit row${circuits.length === 1 ? "" : "s"}. Save the schedule to keep them.`);
+    els.panelScheduleCsvInput.value = "";
+  } catch (error) {
+    console.warn("Panel schedule CSV import failed.", error);
+    setPanelScheduleImportStatus("Import failed. Check that this is a valid CSV file.");
+    alert("Import failed. Check that this is a valid CSV file.");
+  } finally {
+    if (importButton) {
+      importButton.disabled = false;
+      importButton.textContent = "Import CSV";
+    }
+  }
+}
+
+function setPanelScheduleImportStatus(message) {
+  if (els.panelScheduleImportStatus) els.panelScheduleImportStatus.textContent = message;
+}
+
+function parsePanelScheduleCsvCircuits(text) {
+  const records = parseCsvRecords(text);
+  if (!records.length) return [];
+  const firstRecord = records[0] || [];
+  const normalizedHeaders = firstRecord.map(normalizeCsvHeader);
+  const hasHeader = normalizedHeaders.some((header) => [
+    "circuit",
+    "cct",
+    "circuit number",
+    "circuit no",
+    "breaker",
+    "breaker size",
+    "load",
+    "load served",
+    "description",
+    "notes"
+  ].includes(header));
+  return hasHeader
+    ? parsePanelScheduleNamedCsvRows(records, normalizedHeaders)
+    : parsePanelSchedulePlainCsvRows(records);
+}
+
+function parsePanelScheduleNamedCsvRows(records, headers) {
+  return records.slice(1)
+    .map((record, index) => {
+      const row = {};
+      headers.forEach((header, columnIndex) => {
+        if (!header) return;
+        row[header] = String(record[columnIndex] || "").trim();
+      });
+      const number = findCsvValue(row, ["circuit", "cct", "circuit number", "circuit no", "breaker number", "breaker no", "#"]) || String(index + 1);
+      const load = findCsvValue(row, ["load", "load served", "description", "circuit description", "label", "name"]);
+      const notes = findCsvValue(row, ["notes", "note", "remarks", "comments"]);
+      return {
+        number,
+        load: mergePanelCircuitLoad(load, notes),
+        breaker: findCsvValue(row, ["breaker", "breaker size", "amps", "amp", "amperage", "rating"]),
+        notes: ""
+      };
+    })
+    .filter((circuit) => circuit.number || circuit.load || circuit.breaker);
+}
+
+function parsePanelSchedulePlainCsvRows(records) {
+  return records
+    .map((record, index) => {
+      const cells = record.map((cell) => String(cell || "").trim());
+      return {
+        number: cells[0] || String(index + 1),
+        breaker: cells[1] || "",
+        load: cells.slice(2).filter(Boolean).join(" - "),
+        notes: ""
+      };
+    })
+    .filter((circuit) => circuit.number || circuit.load || circuit.breaker);
+}
+
+function getNextPanelCircuitNumber() {
+  if (!els.panelScheduleCircuitRows) return "1";
+  const usedNumbers = [...els.panelScheduleCircuitRows.querySelectorAll('[name="circuitNumber"]')]
+    .map((input) => Number(input.value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const maxNumber = usedNumbers.length ? Math.max(...usedNumbers) : 0;
+  return String(maxNumber + 1);
+}
+
+function normalizePanelCircuitCount(value) {
+  const numeric = Number(value);
+  const safe = Number.isFinite(numeric) && numeric > 0 ? Math.ceil(numeric) : 42;
+  const even = safe % 2 === 0 ? safe : safe + 1;
+  return Math.min(132, Math.max(2, even));
+}
+
+function panelCircuitLoadText(circuit = {}) {
+  return mergePanelCircuitLoad(circuit.load, circuit.notes);
+}
+
+function mergePanelCircuitLoad(load, notes) {
+  const cleanLoad = String(load || "").trim();
+  const cleanNotes = String(notes || "").trim();
+  if (cleanLoad && cleanNotes && !cleanLoad.includes(cleanNotes)) return `${cleanLoad} - ${cleanNotes}`;
+  return cleanLoad || cleanNotes;
+}
+
+function savePanelScheduleEditor() {
+  const asset = getSelectedAsset();
+  if (!asset || !els.panelScheduleForm || !canManageWorkOrders()) return;
+  const form = els.panelScheduleForm;
+  const circuits = [...els.panelScheduleCircuitRows.querySelectorAll("[data-panel-circuit-row]")]
+    .map((row) => ({
+      number: row.querySelector('[name="circuitNumber"]')?.value.trim() || "",
+      load: row.querySelector('[name="circuitLoad"]')?.value.trim() || "",
+      breaker: row.querySelector('[name="circuitBreaker"]')?.value.trim() || "",
+      notes: ""
+    }))
+    .filter((circuit) => circuit.number || circuit.load || circuit.breaker || circuit.notes);
+
+  asset.electricalPanelSchedule = {
+    panelName: form.elements.panelName.value.trim() || asset.name,
+    voltage: form.elements.voltage.value.trim(),
+    phase: form.elements.phase.value.trim(),
+    mainBreaker: form.elements.mainBreaker.value.trim(),
+    circuitCount: normalizePanelCircuitCount(form.elements.circuitCount.value),
+    logo: form.dataset.logoDataUrl ? {
+      dataUrl: form.dataset.logoDataUrl,
+      name: form.dataset.logoName || "Company logo"
+    } : null,
+    circuits
+  };
+  asset.updatedAt = new Date().toISOString();
+  addActivity("Electrical panel schedule updated", asset.name);
+  saveState();
+  closePanelScheduleSheet();
+  render();
+}
+
+function renderPanelScheduleLogoPreview(logo) {
+  if (!els.panelScheduleLogoPreview) return;
+  els.panelScheduleLogoPreview.innerHTML = logo?.dataUrl
+    ? `<img alt="${escapeAttribute(logo.name || "Company logo")}" src="${logo.dataUrl}"><span>${escapeHtml(logo.name || "Company logo")}</span>`
+    : "No logo uploaded";
+}
+
+function printPanelSchedule() {
+  const asset = getSelectedAsset();
+  if (!asset || !isElectricalPanelAsset(asset)) return;
+  const schedule = getCurrentPanelScheduleForPrint(asset);
+  const customer = getCustomer(asset.customerId);
+  const locationRecord = getLocation(asset.locationId);
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("The print window was blocked. Allow pop-ups for SiteWorks and try again.");
+    return;
+  }
+  const rows = buildPanelSchedulePrintRows(schedule.circuits, schedule.circuitCount).map(({ left, right }) => `
+    <tr>
+      ${printPanelCircuitCells(left)}
+      ${printPanelCircuitCells(right)}
+    </tr>
+  `).join("");
+  const logoHtml = schedule.logo?.dataUrl
+    ? `<div class="print-logo"><img alt="${escapeAttribute(schedule.logo.name || "Company logo")}" src="${schedule.logo.dataUrl}"></div>`
+    : `<div class="print-logo print-logo-empty">Company<br>Logo</div>`;
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>${escapeHtml(schedule.panelName)} Panel Schedule</title>
+        <style>
+          @page { size: letter portrait; margin: 0.35in; }
+          * { box-sizing: border-box; }
+          body { margin: 0; color: #111; font-family: Arial, Helvetica, sans-serif; }
+          .sheet { width: 100%; border: 2px solid #111; }
+          .title { display: grid; grid-template-columns: 128px 1fr auto; align-items: stretch; border-bottom: 2px solid #111; }
+          .print-logo { display: flex; align-items: center; justify-content: center; min-height: 96px; padding: 8px; border-right: 2px solid #111; }
+          .print-logo img { max-width: 108px; max-height: 78px; object-fit: contain; }
+          .print-logo-empty { color: #666; font-size: 11px; font-weight: 800; line-height: 1.2; text-align: center; text-transform: uppercase; }
+          .title-main { padding: 10px 12px; text-align: center; }
+          .title-main h1 { margin: 0; font-size: 24px; letter-spacing: 0.08em; text-transform: uppercase; }
+          .title-main p { margin: 4px 0 0; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+          .qr { width: 92px; padding: 7px; border-left: 2px solid #111; text-align: center; }
+          .qr img { width: 74px; height: 74px; display: block; margin: 0 auto 4px; }
+          .qr span { display: block; font-size: 8px; font-weight: 700; }
+          .meta { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 2px solid #111; }
+          .meta div { min-height: 44px; padding: 6px 8px; border-right: 1px solid #111; }
+          .meta div:nth-child(3n) { border-right: 0; }
+          .meta span { display: block; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+          .meta strong { display: block; margin-top: 4px; font-size: 13px; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          col.circuit-col, col.breaker-col { width: 6%; }
+          col.load-col { width: 38%; }
+          th, td { border: 1px solid #111; padding: 3px 4px; vertical-align: middle; }
+          th { background: #e7e7e7; font-size: 9px; letter-spacing: 0.04em; text-transform: uppercase; }
+          td { height: 24px; font-size: 10px; }
+          .circuit-no, .breaker { text-align: center; font-weight: 800; }
+          .load { font-weight: 700; }
+          .footer { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 2px solid #111; }
+          .footer div { min-height: 34px; padding: 6px 8px; border-right: 1px solid #111; font-size: 9px; }
+          .footer div:last-child { border-right: 0; }
+          .footer span { display: block; font-weight: 800; text-transform: uppercase; }
+          .no-print { margin: 0 0 10px; }
+          .no-print button { padding: 9px 12px; border: 1px solid #111; background: #fff; font-weight: 800; cursor: pointer; }
+          @media print { .no-print { display: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="no-print"><button onclick="window.print()">Print / Save PDF</button></div>
+        <section class="sheet">
+          <div class="title">
+            ${logoHtml}
+            <div class="title-main">
+              <h1>Panel Schedule</h1>
+              <p>${escapeHtml(schedule.panelName || asset.name)}</p>
+            </div>
+            <div class="qr">
+              <img alt="Equipment QR code" src="${qrUrl(getAssetUrl(asset.id))}">
+              <span>Scan for SiteWorks record</span>
+            </div>
+          </div>
+          <div class="meta">
+            ${printPanelMetaCell("Customer", customer?.name || "Not entered")}
+            ${printPanelMetaCell("Location", locationRecord?.name || "Not entered")}
+            ${printPanelMetaCell("Equipment ID", getAssetEquipmentId(asset))}
+            ${printPanelMetaCell("Panel", schedule.panelName || asset.name)}
+            ${printPanelMetaCell("Voltage", schedule.voltage || "Not entered")}
+            ${printPanelMetaCell("Phase", schedule.phase || "Not entered")}
+            ${printPanelMetaCell("Main breaker", schedule.mainBreaker || "Not entered")}
+            ${printPanelMetaCell("Circuits", String(schedule.circuitCount || 42))}
+            ${printPanelMetaCell("Generated", formatDate(new Date()))}
+          </div>
+          <table>
+            <colgroup>
+              <col class="circuit-col"><col class="breaker-col"><col class="load-col">
+              <col class="circuit-col"><col class="breaker-col"><col class="load-col">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>CCT</th><th>Breaker</th><th>Load Served</th>
+                <th>CCT</th><th>Breaker</th><th>Load Served</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="footer">
+            <div><span>Prepared by</span> SiteWorks</div>
+            <div><span>Checked by</span></div>
+            <div><span>Revision / date</span></div>
+          </div>
+        </section>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+}
+
+function getCurrentPanelScheduleForPrint(asset) {
+  const schedule = getElectricalPanelSchedule(asset);
+  if (!els.panelScheduleSheet || els.panelScheduleSheet.classList.contains("hidden") || !els.panelScheduleForm) return schedule;
+  const form = els.panelScheduleForm;
+  return {
+    panelName: form.elements.panelName.value.trim() || schedule.panelName,
+    voltage: form.elements.voltage.value.trim() || schedule.voltage,
+    phase: form.elements.phase.value.trim() || schedule.phase,
+    mainBreaker: form.elements.mainBreaker.value.trim() || schedule.mainBreaker,
+    circuitCount: normalizePanelCircuitCount(form.elements.circuitCount.value || schedule.circuitCount),
+    logo: form.dataset.logoDataUrl ? {
+      dataUrl: form.dataset.logoDataUrl,
+      name: form.dataset.logoName || "Company logo"
+    } : null,
+    circuits: [...els.panelScheduleCircuitRows.querySelectorAll("[data-panel-circuit-row]")]
+      .map((row) => ({
+        number: row.querySelector('[name="circuitNumber"]')?.value.trim() || "",
+        load: row.querySelector('[name="circuitLoad"]')?.value.trim() || "",
+        breaker: row.querySelector('[name="circuitBreaker"]')?.value.trim() || "",
+        notes: ""
+      }))
+      .filter((circuit) => circuit.number || circuit.load || circuit.breaker || circuit.notes)
+  };
+}
+
+function buildPanelSchedulePrintRows(circuits = [], circuitCount = 42) {
+  const byNumber = new Map(circuits.map((circuit) => [String(circuit.number || "").trim(), circuit]));
+  const rowCount = normalizePanelCircuitCount(circuitCount) / 2;
+  return Array.from({ length: rowCount }, (_, index) => {
+    const leftNumber = String(index * 2 + 1);
+    const rightNumber = String(index * 2 + 2);
+    return {
+      left: byNumber.get(leftNumber) || { number: leftNumber, load: "", breaker: "", notes: "" },
+      right: byNumber.get(rightNumber) || { number: rightNumber, load: "", breaker: "", notes: "" }
+    };
+  });
+}
+
+function printPanelCircuitCells(circuit) {
+  return `
+    <td class="circuit-no">${escapeHtml(circuit.number || "")}</td>
+    <td class="breaker">${escapeHtml(circuit.breaker || "")}</td>
+    <td class="load">${escapeHtml(panelCircuitLoadText(circuit))}</td>
+  `;
+}
+
+function printPanelMetaCell(label, value) {
+  return `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "")}</strong></div>`;
 }
 
 function renderInlineAssetDetailEditor(config, value) {
@@ -8512,7 +9100,11 @@ function restoreSavedSessionUser() {
 
 function saveAuthSession(session) {
   if (!session?.access_token) return;
-  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  try {
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  } catch (error) {
+    console.warn("Auth session was not saved because browser storage is full.", error);
+  }
 }
 
 function getSavedAuthSession() {
@@ -8524,7 +9116,11 @@ function getSavedAuthSession() {
 }
 
 function clearAuthSession() {
-  localStorage.removeItem(AUTH_SESSION_KEY);
+  try {
+    localStorage.removeItem(AUTH_SESSION_KEY);
+  } catch (error) {
+    console.warn("Auth session could not be cleared.", error);
+  }
 }
 
 async function loadSharedStateFromSupabase() {
@@ -8982,7 +9578,7 @@ function getInitialUser() {
 
   if (user?.username === "scan-customer") {
     state.currentUserId = "";
-    saveState();
+    saveStateQuietly();
     return null;
   }
   return user;
@@ -9199,7 +9795,18 @@ function saveState() {
   scheduleStructuredDataSync();
 }
 
-function persistLocalStateOnly() {
+function saveStateQuietly() {
+  state.updatedAt = new Date().toISOString();
+  try {
+    persistLocalStateOnly(false);
+  } catch (error) {
+    console.warn("Local state save skipped because browser storage is full.", error);
+  }
+  scheduleSharedStateSave();
+  scheduleStructuredDataSync();
+}
+
+function persistLocalStateOnly(showStorageWarning = true) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (error) {
@@ -9208,7 +9815,7 @@ function persistLocalStateOnly() {
       LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (retryError) {
-      alert("The browser could not save this change because this iPad's browser storage is full. Try exporting a backup, then remove a few old photos or PDFs from equipment records.");
+      if (showStorageWarning) showStorageFullWarning();
       throw retryError;
     }
   }
@@ -9217,6 +9824,12 @@ function persistLocalStateOnly() {
   } catch (error) {
     console.warn("Auto backup skipped because browser storage is full.", error);
   }
+}
+
+function showStorageFullWarning() {
+  if (storageFullWarningShown) return;
+  storageFullWarningShown = true;
+  alert("The browser could not save this change because this iPad's browser storage is full. Try exporting a backup, then remove a few old photos or PDFs from equipment records.");
 }
 
 function addActivity(action, details = "") {

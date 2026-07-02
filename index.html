@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260702-generated-equipment-id">
+    <link rel="stylesheet" href="styles.css?v=20260702-panel-schedule-load-wide">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -1115,6 +1115,14 @@
             </details>
           </details>
 
+          <details id="electricalPanelScheduleDrawer" class="asset-sub-drawer electrical-panel-schedule hidden">
+            <summary>
+              <h3>Electrical Panel Schedule</h3>
+              <span id="electricalPanelScheduleCount">0 circuits</span>
+            </summary>
+            <div id="electricalPanelScheduleContent" class="panel-schedule-content"></div>
+          </details>
+
           <details class="asset-sub-drawer">
             <summary>
               <h3>Maintenance History</h3>
@@ -1170,6 +1178,71 @@
 
   <section id="labelSheet" class="label-sheet" aria-label="Printable QR labels"></section>
   <div id="assetPanelBackdrop" class="asset-panel-backdrop hidden" data-close-asset-panel></div>
+  <div id="panelScheduleBackdrop" class="panel-schedule-backdrop hidden" data-close-panel-schedule></div>
+  <aside id="panelScheduleSheet" class="panel-schedule-sheet hidden" aria-label="Electrical panel schedule editor">
+    <div class="panel-schedule-sheet-header">
+      <div>
+        <span class="eyebrow">Electrical</span>
+        <h2 id="panelScheduleSheetTitle">Panel Schedule</h2>
+        <p id="panelScheduleSheetMeta"></p>
+      </div>
+      <button type="button" class="secondary mini asset-drawer-close" data-close-panel-schedule aria-label="Close panel schedule">X</button>
+    </div>
+    <form id="panelScheduleForm" class="panel-schedule-form">
+      <div class="panel-schedule-form-grid">
+        <label>
+          Panel name
+          <input name="panelName" placeholder="Main Panel">
+        </label>
+        <label>
+          Voltage
+          <input name="voltage" placeholder="120/208V">
+        </label>
+        <label>
+          Phase
+          <input name="phase" placeholder="3 phase">
+        </label>
+        <label>
+          Main breaker
+          <input name="mainBreaker" placeholder="225A">
+        </label>
+        <label>
+          Circuit count
+          <input name="circuitCount" type="number" min="2" max="132" step="2" placeholder="42">
+        </label>
+      </div>
+      <div class="panel-schedule-logo-editor">
+        <div>
+          <h3>Company Logo</h3>
+          <p>Upload a logo to show in the printed panel schedule header.</p>
+        </div>
+        <div id="panelScheduleLogoPreview" class="panel-schedule-logo-preview">No logo uploaded</div>
+        <label class="panel-schedule-logo-upload">
+          Upload logo
+          <input id="panelScheduleLogoInput" type="file" accept="image/*">
+        </label>
+        <button id="removePanelScheduleLogoBtn" type="button" class="secondary mini">Remove</button>
+      </div>
+      <div class="section-title inline-section-title">
+        <h3>Circuits</h3>
+        <button id="addPanelCircuitBtn" type="button" class="secondary mini">Add Circuit</button>
+      </div>
+      <div class="panel-schedule-csv-import">
+        <label>
+          Import panel schedule CSV
+          <input id="panelScheduleCsvInput" type="file" accept=".csv,text/csv">
+        </label>
+        <button id="importPanelScheduleCsvBtn" type="button" class="secondary mini">Import CSV</button>
+        <p id="panelScheduleImportStatus" class="inline-status"></p>
+      </div>
+      <div id="panelScheduleCircuitRows" class="panel-schedule-editor-rows"></div>
+      <div class="panel-schedule-actions">
+        <button id="printPanelScheduleBtn" type="button" class="secondary">Print Schedule</button>
+        <button type="submit" class="primary">Save Schedule</button>
+        <button type="button" class="secondary" data-close-panel-schedule>Cancel</button>
+      </div>
+    </form>
+  </aside>
   <div id="workDrawerBackdrop" class="work-drawer-backdrop hidden" data-close-work-drawer></div>
   <div id="photoSideBay" class="photo-side-bay hidden" aria-label="Photo preview bay">
     <img id="photoSideBayImage" alt="Photo preview">
@@ -1189,7 +1262,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260702-generated-equipment-id"></script>
+  <script src="app.js?v=20260702-panel-schedule-print-colgroup"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
