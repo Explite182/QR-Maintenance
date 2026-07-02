@@ -18,6 +18,7 @@ const DEFAULT_TEMPLATE_ITEMS = [
   "Safety devices checked"
 ];
 const ASSET_DETAIL_FIELDS = [
+  { field: "equipmentId", label: "Equipment ID", kind: "text", placeholder: "FT6-US-EMA0528A" },
   { field: "type", label: "Equipment type", kind: "text", placeholder: "HVAC, pump, conveyor" },
   { field: "criticality", label: "Criticality", kind: "select", options: ["", "Low", "Medium", "High"] },
   { field: "manufacturer", label: "Manufacturer", kind: "text", placeholder: "Manufacturer" },
@@ -208,6 +209,7 @@ const els = {
   assetCustomer: document.getElementById("assetCustomer"),
   assetLocation: document.getElementById("assetLocation"),
   assetName: document.getElementById("assetName"),
+  assetEquipmentId: document.getElementById("assetEquipmentId"),
   assetTemplate: document.getElementById("assetTemplate"),
   assetFrequency: document.getElementById("assetFrequency"),
   assetManufacturer: document.getElementById("assetManufacturer"),
@@ -270,6 +272,7 @@ const els = {
   deleteSelectedAssetBtn: document.getElementById("deleteSelectedAssetBtn"),
   assetInfoForm: document.getElementById("assetInfoForm"),
   editAssetName: document.getElementById("editAssetName"),
+  editAssetEquipmentId: document.getElementById("editAssetEquipmentId"),
   editAssetCustomer: document.getElementById("editAssetCustomer"),
   editAssetLocation: document.getElementById("editAssetLocation"),
   editAssetTemplate: document.getElementById("editAssetTemplate"),
@@ -1389,6 +1392,7 @@ els.assetForm.addEventListener("submit", async (event) => {
     locationId: els.assetLocation.value,
     templateId: els.assetTemplate.value,
     name: els.assetName.value.trim(),
+    equipmentId: els.assetEquipmentId.value.trim(),
     nextPmDate: "",
     manufacturer: els.assetManufacturer.value.trim(),
     model: els.assetModel.value.trim(),
@@ -1519,6 +1523,7 @@ els.assetInfoForm.addEventListener("submit", async (event) => {
 
   const replacementPhoto = await readPhoto(els.editAssetPhoto.files[0]);
   asset.name = els.editAssetName.value.trim();
+  asset.equipmentId = els.editAssetEquipmentId.value.trim();
   asset.customerId = els.editAssetCustomer.value;
   asset.locationId = els.editAssetLocation.value;
   asset.templateId = els.editAssetTemplate.value;
@@ -2162,7 +2167,7 @@ function render() {
   const due = getDueInfo(asset);
   els.selectedLocation.textContent = `${customer?.name || "Unknown customer"} | ${locationRecord?.name || "Unknown location"}`;
   els.selectedName.textContent = asset.name;
-  els.selectedMeta.textContent = `Equipment ID ${asset.id.slice(0, 8)} | Every ${asset.frequencyDays} days`;
+  els.selectedMeta.textContent = `Equipment ID ${getAssetEquipmentId(asset) || "Not set"} | Every ${asset.frequencyDays} days`;
   els.selectedBadges.innerHTML = renderAssetBadges(asset, due);
   els.selectedAssetThumb.innerHTML = renderAssetThumbnail(asset);
   els.selectedTemplate.textContent = template?.name || "Template missing";
@@ -3133,8 +3138,9 @@ async function importEquipmentCsv() {
         return;
       }
 
-      const serial = findCsvValue(row, ["serial", "serial number", "serial no", "serial #", "asset tag", "tag"]);
-      if (isDuplicateImportAsset(customer.id, locationRecord.id, equipmentName, serial)) {
+      const equipmentId = findCsvValue(row, ["equipment id", "equipment #", "equipment number", "asset id", "asset number", "asset tag", "tag", "id"]);
+      const serial = findCsvValue(row, ["serial", "serial number", "serial no", "serial #"]);
+      if (isDuplicateImportAsset(customer.id, locationRecord.id, equipmentName, equipmentId || serial)) {
         stats.duplicates += 1;
         stats.skipped += 1;
         return;
@@ -3148,6 +3154,7 @@ async function importEquipmentCsv() {
         locationId: locationRecord.id,
         templateId: template?.id || "",
         name: equipmentName,
+        equipmentId,
         nextPmDate: normalizeCsvDate(findCsvValue(row, ["next pm date", "next pm", "next maintenance", "next maintenance date", "next service date"])),
         manufacturer: findCsvValue(row, ["manufacturer", "make", "mfg"]),
         model: findCsvValue(row, ["model", "model number", "model no"]),
@@ -3567,11 +3574,11 @@ function nextImportedIssueNumber(value) {
   return nextIssueNumber();
 }
 
-function isDuplicateImportAsset(customerId, locationId, name, serial) {
+function isDuplicateImportAsset(customerId, locationId, name, equipmentId) {
   return state.assets.some((asset) => {
     const sameCustomerLocation = asset.customerId === customerId && asset.locationId === locationId;
-    const sameSerial = serial && sameText(asset.serial, serial);
-    return sameCustomerLocation && (sameText(asset.name, name) || sameSerial);
+    const sameEquipmentId = equipmentId && sameText(getAssetEquipmentId(asset), equipmentId);
+    return sameCustomerLocation && (sameText(asset.name, name) || sameEquipmentId);
   });
 }
 
@@ -4450,8 +4457,9 @@ function renderAssetTable() {
 
 function renderAssetTableRow(asset) {
   const due = getDueInfo(asset);
+  const locationRecord = getLocation(asset.locationId);
   const active = asset.id === selectedId ? " selected-row" : "";
-  const equipmentId = asset.serial || asset.id.slice(0, 8).toUpperCase();
+  const equipmentId = getAssetEquipmentId(asset) || "Not set";
   return `
     <tr class="${active}" data-id="${asset.id}">
       <td class="equipment-id-cell">
@@ -4464,6 +4472,7 @@ function renderAssetTableRow(asset) {
         <strong>${escapeHtml(asset.name)}</strong>
         <span>${escapeHtml(asset.type || "Facility equipment")}</span>
       </td>
+      <td>${escapeHtml(locationRecord?.name || "No location")}</td>
       <td>${escapeHtml(asset.model || "-")}</td>
       <td>${escapeHtml(asset.manufacturer || "-")}</td>
       <td>${renderAssetConditionBadge(asset, due)}</td>
@@ -4488,6 +4497,10 @@ function renderAssetBadges(asset, due = getDueInfo(asset)) {
 
 function renderStatusBadge(label, className) {
   return `<span class="status-badge ${badgeClassForStatus(className)}">${escapeHtml(label)}</span>`;
+}
+
+function getAssetEquipmentId(asset) {
+  return asset?.equipmentId || asset?.assetTag || asset?.serial || "";
 }
 
 function renderAssetConditionBadge(asset, due = getDueInfo(asset)) {
@@ -5585,6 +5598,8 @@ function assetSearchText(asset) {
     .flatMap((item) => [formatServiceRequestNumber(item), item.serviceRequestNumber]);
   const haystack = [
     asset.name,
+    getAssetEquipmentId(asset),
+    asset.equipmentId,
     asset.serial,
     asset.model,
     asset.manufacturer,
@@ -5938,6 +5953,7 @@ function closePhotoSideBay() {
 
 function renderAssetInfoForm(asset) {
   els.editAssetName.value = asset.name || "";
+  els.editAssetEquipmentId.value = asset.equipmentId || asset.assetTag || "";
   els.editAssetCustomer.innerHTML = visibleCustomers().map((customer) =>
     `<option value="${customer.id}">${escapeHtml(customer.name)}</option>`
   ).join("");
@@ -9015,6 +9031,7 @@ function normalizeState(input) {
     locationId: asset.locationId || defaultLocation.id,
     templateId: asset.templateId || normalized.templates[0].id,
     nextPmDate: asset.nextPmDate || "",
+    equipmentId: asset.equipmentId || asset.assetTag || "",
     manufacturer: asset.manufacturer || "",
     model: asset.model || "",
     serial: asset.serial || "",
@@ -9608,7 +9625,7 @@ function downloadCsv(asset) {
 
 function downloadAssetRegisterCsv(assets, filename = `asset-register-${timestampForFile()}.csv`) {
   const rows = [
-    ["Customer", "Location", "Equipment", "Status", "Next Maintenance", "Open Tickets", "Template", "Equipment Type", "Criticality", "Manufacturer", "Model", "Serial", "Install Date", "Vendor", "Vendor Contact", "Warranty Expires", "Parts / Supply Notes", "Manual / Document Link", "Uploaded Manual File", "Photo File", "Notes"],
+    ["Customer", "Location", "Equipment ID", "Equipment", "Status", "Next Maintenance", "Open Tickets", "Template", "Equipment Type", "Criticality", "Manufacturer", "Model", "Serial", "Install Date", "Vendor", "Vendor Contact", "Warranty Expires", "Parts / Supply Notes", "Manual / Document Link", "Uploaded Manual File", "Photo File", "Notes"],
     ...assets.map((asset) => {
       const customer = getCustomer(asset.customerId);
       const locationRecord = getLocation(asset.locationId);
@@ -9617,6 +9634,7 @@ function downloadAssetRegisterCsv(assets, filename = `asset-register-${timestamp
       return [
         customer?.name || "",
         locationRecord?.name || "",
+        getAssetEquipmentId(asset),
         asset.name,
         due.label,
         due.nextDate.toISOString(),

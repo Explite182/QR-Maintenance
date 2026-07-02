@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260701-mobile-create-actions">
+    <link rel="stylesheet" href="styles.css?v=20260702-equipment-location-column">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -428,6 +428,10 @@
             <input id="assetName" required placeholder="Rooftop Unit 1">
           </label>
           <label>
+            Equipment ID
+            <input id="assetEquipmentId" placeholder="FT6-US-EMA0528A">
+          </label>
+          <label>
             Maintenance template
             <select id="assetTemplate"></select>
           </label>
@@ -496,7 +500,7 @@
         <details id="assetImportDrawer" class="asset-import-drawer">
           <summary>Import Equipment CSV</summary>
           <div class="asset-import-body">
-            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment Name, Equipment Type, Manufacturer, Model, Serial, PM Frequency Days, Next PM Date, Criticality, and Notes.</p>
+            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment ID, Equipment Name, Equipment Type, Manufacturer, Model, Serial, PM Frequency Days, Next PM Date, Criticality, and Notes.</p>
             <label>
               CSV file
               <input id="assetImportFile" type="file" accept=".csv,text/csv">
@@ -779,6 +783,7 @@
               <tr>
                 <th>Equipment ID</th>
                 <th>Name</th>
+                <th>Location</th>
                 <th>Model</th>
                 <th>Manufacturer</th>
                 <th>Condition</th>
@@ -994,6 +999,10 @@
                   Equipment name
                   <input id="editAssetName" required placeholder="Rooftop Unit 1">
                 </label>
+                <label>
+                  Equipment ID
+                  <input id="editAssetEquipmentId" placeholder="FT6-US-EMA0528A">
+                </label>
                 <div class="form-grid">
                   <label>
                     Customer
@@ -1180,7 +1189,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260701-mobile-create-actions"></script>
+  <script src="app.js?v=20260702-equipment-location-column"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
