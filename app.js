@@ -2167,7 +2167,7 @@ function render() {
   const due = getDueInfo(asset);
   els.selectedLocation.textContent = `${customer?.name || "Unknown customer"} | ${locationRecord?.name || "Unknown location"}`;
   els.selectedName.textContent = asset.name;
-  els.selectedMeta.textContent = `Equipment ID ${getAssetEquipmentId(asset) || "Not set"} | Every ${asset.frequencyDays} days`;
+  els.selectedMeta.textContent = `Equipment ID ${getAssetEquipmentId(asset)} | Every ${asset.frequencyDays} days`;
   els.selectedBadges.innerHTML = renderAssetBadges(asset, due);
   els.selectedAssetThumb.innerHTML = renderAssetThumbnail(asset);
   els.selectedTemplate.textContent = template?.name || "Template missing";
@@ -3138,7 +3138,7 @@ async function importEquipmentCsv() {
         return;
       }
 
-      const equipmentId = findCsvValue(row, ["equipment id", "equipment #", "equipment number", "asset id", "asset number", "asset tag", "tag", "id"]);
+      const equipmentId = findCsvValue(row, ["equipment id", "equipment #", "equipment number"]);
       const serial = findCsvValue(row, ["serial", "serial number", "serial no", "serial #"]);
       if (isDuplicateImportAsset(customer.id, locationRecord.id, equipmentName, equipmentId || serial)) {
         stats.duplicates += 1;
@@ -4459,7 +4459,7 @@ function renderAssetTableRow(asset) {
   const due = getDueInfo(asset);
   const locationRecord = getLocation(asset.locationId);
   const active = asset.id === selectedId ? " selected-row" : "";
-  const equipmentId = getAssetEquipmentId(asset) || "Not set";
+  const equipmentId = getAssetEquipmentId(asset);
   return `
     <tr class="${active}" data-id="${asset.id}">
       <td class="equipment-id-cell">
@@ -4500,7 +4500,7 @@ function renderStatusBadge(label, className) {
 }
 
 function getAssetEquipmentId(asset) {
-  return asset?.equipmentId || asset?.assetTag || asset?.serial || "";
+  return asset?.equipmentId || (asset?.id ? asset.id.slice(0, 8).toUpperCase() : "");
 }
 
 function renderAssetConditionBadge(asset, due = getDueInfo(asset)) {
@@ -5765,7 +5765,9 @@ function removeCustomChecklistItem(index) {
 function renderAssetDetails(asset) {
   const editable = canManageWorkOrders();
   return ASSET_DETAIL_FIELDS.map((config) => {
-    const value = String(asset[config.field] || "");
+    const value = config.field === "equipmentId"
+      ? getAssetEquipmentId(asset)
+      : String(asset[config.field] || "");
     if (editable && editingAssetDetailField === config.field) {
       return renderInlineAssetDetailEditor(config, value);
     }
@@ -5953,7 +5955,7 @@ function closePhotoSideBay() {
 
 function renderAssetInfoForm(asset) {
   els.editAssetName.value = asset.name || "";
-  els.editAssetEquipmentId.value = asset.equipmentId || asset.assetTag || "";
+  els.editAssetEquipmentId.value = asset.equipmentId || "";
   els.editAssetCustomer.innerHTML = visibleCustomers().map((customer) =>
     `<option value="${customer.id}">${escapeHtml(customer.name)}</option>`
   ).join("");
@@ -9031,7 +9033,7 @@ function normalizeState(input) {
     locationId: asset.locationId || defaultLocation.id,
     templateId: asset.templateId || normalized.templates[0].id,
     nextPmDate: asset.nextPmDate || "",
-    equipmentId: asset.equipmentId || asset.assetTag || "",
+    equipmentId: asset.equipmentId || "",
     manufacturer: asset.manufacturer || "",
     model: asset.model || "",
     serial: asset.serial || "",
