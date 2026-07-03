@@ -68,6 +68,8 @@ let sharedStateReady = false;
 let sharedStateLoading = false;
 let sharedStateSaveTimer = null;
 let applyingSharedState = false;
+let structuredDataLoading = false;
+let structuredDataReady = false;
 let structuredSyncTimer = null;
 let structuredSyncActive = false;
 let authProfilesLoaded = false;
@@ -391,9 +393,9 @@ window.setTimeout(syncLoginQrReportPrompt, 0);
 window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
 loadSupabaseProfiles();
-loadSharedStateFromSupabase();
+bootstrapCloudData();
 window.setInterval(syncPublicReportsFromSupabase, 30000);
-window.setInterval(loadSharedStateFromSupabase, 30000);
+window.setInterval(refreshCloudDataFromSupabase, 30000);
 
 window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();
@@ -9157,6 +9159,258 @@ function clearAuthSession() {
   }
 }
 
+async function bootstrapCloudData() {
+  const loadedStructuredData = await loadStructuredDataFromSupabase();
+  if (!loadedStructuredData) await loadSharedStateFromSupabase();
+}
+
+async function refreshCloudDataFromSupabase() {
+  const loadedStructuredData = await loadStructuredDataFromSupabase();
+  if (!loadedStructuredData) await loadSharedStateFromSupabase();
+}
+
+async function loadStructuredDataFromSupabase() {
+  if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  structuredDataLoading = true;
+  try {
+    const [
+      customerRows,
+      locationRows,
+      templateRows,
+      assetRows,
+      workOrderRows,
+      serviceRequestRows,
+      historyRows
+    ] = await Promise.all([
+      fetchStructuredRows("customers", "updated_at.asc"),
+      fetchStructuredRows("locations", "updated_at.asc"),
+      fetchStructuredRows("pm_templates", "updated_at.asc"),
+      fetchStructuredRows("assets", "updated_at.asc"),
+      fetchStructuredRows("work_orders", "updated_at.asc"),
+      fetchStructuredRows("service_requests", "updated_at.asc"),
+      fetchStructuredRows("pm_history", "completed_at.asc")
+    ]);
+    structuredDataLoading = false;
+    structuredDataReady = true;
+    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length;
+    if (!hasRows) {
+      if (hasSharedMaintenanceData(state)) scheduleStructuredDataSync(0);
+      return false;
+    }
+    const structuredRows = {
+      customers: customerRows,
+      locations: locationRows,
+      templates: templateRows,
+      assets: assetRows,
+      workOrders: workOrderRows,
+      serviceRequests: serviceRequestRows,
+      history: historyRows
+    };
+    const structuredUpdatedAt = newestStructuredUpdatedAt(structuredRows);
+    if (hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(structuredUpdatedAt)) {
+      scheduleStructuredDataSync(0);
+      return true;
+    }
+    applyStructuredState(structuredRows, structuredUpdatedAt);
+    return true;
+  } catch (error) {
+    structuredDataLoading = false;
+    structuredDataReady = true;
+    console.warn("Structured Supabase load skipped.", error);
+    return false;
+  }
+}
+
+async function fetchStructuredRows(table, order = "updated_at.asc") {
+  const response = await supabaseFetch(`${table}?select=*&order=${encodeURIComponent(order)}`);
+  if (!response.ok) {
+    console.warn(`Structured Supabase load skipped for ${table}.`, await response.text());
+    return [];
+  }
+  return response.json();
+}
+
+function applyStructuredState(rows, updatedAt = "") {
+  const localUsers = state.users || [];
+  const localAccessRequests = state.accessRequests || [];
+  const localCurrentUserId = state.currentUserId || "";
+  const nextAssets = rows.assets.map(assetFromStructuredRow);
+  const historyByAsset = groupStructuredHistoryByAsset(rows.history);
+  nextAssets.forEach((asset) => {
+    if (!Array.isArray(asset.history) || !asset.history.length) {
+      asset.history = historyByAsset.get(asset.id) || [];
+    }
+  });
+  applyingSharedState = true;
+  state = normalizeState({
+    ...state,
+    customers: rows.customers.map(customerFromStructuredRow),
+    locations: rows.locations.map(locationFromStructuredRow),
+    templates: rows.templates.map(templateFromStructuredRow),
+    assets: nextAssets,
+    workOrders: rows.workOrders.map(workOrderFromStructuredRow),
+    serviceRequests: rows.serviceRequests.map(serviceRequestFromStructuredRow),
+    users: localUsers,
+    accessRequests: localAccessRequests,
+    currentUserId: localCurrentUserId,
+    sharedDataUpdatedAt: updatedAt || newestStructuredUpdatedAt(rows)
+  });
+  currentUser = state.users.find((user) => user.id === state.currentUserId) || currentUser;
+  currentRole = currentUser?.role || "Customer";
+  selectedCustomerId = selectedCustomerId || state.customers[0]?.id || "";
+  selectedLocationId = "all";
+  selectedId = getAssetIdFromUrl() || selectedId;
+  persistLocalStateOnly(false);
+  applyingSharedState = false;
+  render();
+  window.setTimeout(syncLoginQrReportPrompt, 0);
+}
+
+function structuredPayload(row) {
+  return row?.data && typeof row.data === "object" ? row.data : {};
+}
+
+function customerFromStructuredRow(row) {
+  return {
+    id: row.id,
+    name: row.name || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function locationFromStructuredRow(row) {
+  return {
+    id: row.id,
+    customerId: row.customer_id || "",
+    name: row.name || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function templateFromStructuredRow(row) {
+  return {
+    id: row.id,
+    name: row.name || "",
+    items: Array.isArray(row.items) ? row.items : [],
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function assetFromStructuredRow(row) {
+  return {
+    id: row.id,
+    customerId: row.customer_id || "",
+    locationId: row.location_id || "",
+    templateId: row.template_id || "",
+    name: row.name || "",
+    frequencyDays: Number(row.frequency_days || 30),
+    nextPmDate: row.next_pm_date || "",
+    manufacturer: row.manufacturer || "",
+    model: row.model || "",
+    serial: row.serial || "",
+    installDate: row.install_date || "",
+    type: row.type || "",
+    criticality: row.criticality || "",
+    documentUrl: row.document_url || "",
+    vendor: row.vendor || "",
+    vendorContact: row.vendor_contact || "",
+    warrantyDate: row.warranty_date || "",
+    parts: row.parts || "",
+    notes: row.notes || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function workOrderFromStructuredRow(row) {
+  return {
+    id: row.id,
+    issueNumber: row.issue_number || row.ticket_number || null,
+    assetId: row.asset_id || "",
+    customerId: row.customer_id || "",
+    locationId: row.location_id || "",
+    title: row.title || "",
+    priority: row.priority || "Medium",
+    status: row.status || "Open",
+    source: row.source || "",
+    areaName: row.area_name || "",
+    assignedUserId: row.assigned_user_id || "",
+    assignedUserName: row.assigned_user_name || "",
+    notes: row.notes || "",
+    dueAt: row.due_at || "",
+    resolvedAt: row.resolved_at || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function serviceRequestFromStructuredRow(row) {
+  return {
+    id: row.id,
+    serviceRequestNumber: row.service_request_number || null,
+    assetId: row.asset_id || "",
+    customerId: row.customer_id || "",
+    locationId: row.location_id || "",
+    title: row.title || "",
+    priority: row.priority || "Medium",
+    status: row.status || "New",
+    requestedBy: row.requested_by || "",
+    preferredDate: row.preferred_date || "",
+    assignedUserId: row.assigned_user_id || "",
+    assignedUserName: row.assigned_user_name || "",
+    convertedWorkOrderId: row.converted_work_order_id || "",
+    notes: row.notes || "",
+    photo: row.photo_data_url ? { name: row.photo_name || "Service request photo", url: row.photo_data_url } : null,
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function groupStructuredHistoryByAsset(historyRows = []) {
+  const grouped = new Map();
+  historyRows.forEach((row) => {
+    const history = {
+      id: row.id,
+      pmNumber: row.pm_number || null,
+      technician: row.technician || "",
+      result: row.result || "",
+      reading: row.reading || "",
+      notes: row.notes || "",
+      completedChecks: Array.isArray(row.completed_checks) ? row.completed_checks : [],
+      completedAt: row.completed_at || "",
+      ...structuredPayload(row)
+    };
+    const list = grouped.get(row.asset_id) || [];
+    list.push(history);
+    grouped.set(row.asset_id, list);
+  });
+  return grouped;
+}
+
+function newestStructuredUpdatedAt(rows) {
+  return [
+    ...rows.customers,
+    ...rows.locations,
+    ...rows.templates,
+    ...rows.assets,
+    ...rows.workOrders,
+    ...rows.serviceRequests,
+    ...rows.history
+  ].map((row) => row.updated_at || row.completed_at || row.created_at || "")
+    .filter(Boolean)
+    .sort()
+    .at(-1) || new Date().toISOString();
+}
+
 async function loadSharedStateFromSupabase() {
   if (sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
   sharedStateLoading = true;
@@ -9339,7 +9593,8 @@ async function syncStructuredDataToSupabase() {
       id: customer.id,
       name: customer.name || "",
       created_at: customer.createdAt || new Date().toISOString(),
-      updated_at: customer.updatedAt || state.updatedAt || new Date().toISOString()
+      updated_at: customer.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: customer
     })));
 
     await upsertStructuredRows("locations", state.locations.map((locationRecord) => ({
@@ -9347,7 +9602,8 @@ async function syncStructuredDataToSupabase() {
       customer_id: locationRecord.customerId,
       name: locationRecord.name || "",
       created_at: locationRecord.createdAt || new Date().toISOString(),
-      updated_at: locationRecord.updatedAt || state.updatedAt || new Date().toISOString()
+      updated_at: locationRecord.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: locationRecord
     })));
 
     await upsertStructuredRows("pm_templates", state.templates.map((template) => ({
@@ -9355,7 +9611,8 @@ async function syncStructuredDataToSupabase() {
       name: template.name || "",
       items: template.items || [],
       created_at: template.createdAt || new Date().toISOString(),
-      updated_at: template.updatedAt || state.updatedAt || new Date().toISOString()
+      updated_at: template.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: template
     })));
 
     await upsertStructuredRows("assets", state.assets.map((asset) => ({
@@ -9379,12 +9636,13 @@ async function syncStructuredDataToSupabase() {
       parts: asset.parts || "",
       notes: asset.notes || "",
       created_at: asset.createdAt || new Date().toISOString(),
-      updated_at: asset.updatedAt || state.updatedAt || new Date().toISOString()
+      updated_at: asset.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: asset
     })));
 
     await upsertStructuredRows("work_orders", state.workOrders.map((item) => ({
       id: item.id,
-      ticket_number: item.issueNumber || null,
+      issue_number: item.issueNumber || null,
       asset_id: item.assetId || null,
       customer_id: item.customerId || null,
       location_id: item.locationId || null,
@@ -9399,7 +9657,8 @@ async function syncStructuredDataToSupabase() {
       due_at: item.dueAt || null,
       resolved_at: item.resolvedAt || null,
       created_at: item.createdAt || new Date().toISOString(),
-      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString()
+      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: item
     })));
 
     await upsertStructuredRows("service_requests", state.serviceRequests.map((item) => ({
@@ -9420,7 +9679,8 @@ async function syncStructuredDataToSupabase() {
       photo_data_url: mediaSource(item.photo) || "",
       photo_name: item.photo?.name || "",
       created_at: item.createdAt || new Date().toISOString(),
-      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString()
+      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: item
     })));
 
     const historyRows = state.assets.flatMap((asset) => (asset.history || []).map((item) => ({
@@ -9432,9 +9692,12 @@ async function syncStructuredDataToSupabase() {
       reading: item.reading || "",
       notes: item.notes || "",
       completed_checks: item.completedChecks || [],
-      completed_at: item.completedAt || new Date().toISOString()
+      completed_at: item.completedAt || new Date().toISOString(),
+      data: item
     })));
     await upsertStructuredRows("pm_history", historyRows);
+    state.sharedDataUpdatedAt = state.updatedAt || new Date().toISOString();
+    persistLocalStateOnly(false);
   } catch (error) {
     console.warn("Structured Supabase sync skipped.", error);
   } finally {

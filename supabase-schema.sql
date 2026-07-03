@@ -3,25 +3,34 @@ create extension if not exists pgcrypto;
 create table if not exists public.customers (
   id text primary key,
   name text not null,
+  data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.customers add column if not exists data jsonb not null default '{}'::jsonb;
 
 create table if not exists public.locations (
   id text primary key,
   customer_id text not null references public.customers(id) on delete cascade,
   name text not null,
+  data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.locations add column if not exists data jsonb not null default '{}'::jsonb;
 
 create table if not exists public.pm_templates (
   id text primary key,
   name text not null,
   items jsonb not null default '[]'::jsonb,
+  data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.pm_templates add column if not exists data jsonb not null default '{}'::jsonb;
 
 create table if not exists public.assets (
   id text primary key,
@@ -43,9 +52,12 @@ create table if not exists public.assets (
   warranty_date date,
   parts text not null default '',
   notes text not null default '',
+  data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.assets add column if not exists data jsonb not null default '{}'::jsonb;
 
 create table if not exists public.work_orders (
   id text primary key,
@@ -63,6 +75,7 @@ create table if not exists public.work_orders (
   notes text not null default '',
   due_at timestamptz,
   resolved_at timestamptz,
+  data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -70,6 +83,7 @@ create table if not exists public.work_orders (
 alter table public.work_orders add column if not exists assigned_user_id text not null default '';
 alter table public.work_orders add column if not exists assigned_user_name text not null default '';
 alter table public.work_orders add column if not exists issue_number integer;
+alter table public.work_orders add column if not exists data jsonb not null default '{}'::jsonb;
 
 create table if not exists public.service_requests (
   id text primary key,
@@ -88,12 +102,14 @@ create table if not exists public.service_requests (
   notes text not null default '',
   photo_data_url text not null default '',
   photo_name text not null default '',
+  data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.service_requests add column if not exists photo_data_url text not null default '';
 alter table public.service_requests add column if not exists photo_name text not null default '';
+alter table public.service_requests add column if not exists data jsonb not null default '{}'::jsonb;
 
 create table if not exists public.pm_history (
   id text primary key,
@@ -104,10 +120,12 @@ create table if not exists public.pm_history (
   reading text not null default '',
   notes text not null default '',
   completed_checks jsonb not null default '[]'::jsonb,
+  data jsonb not null default '{}'::jsonb,
   completed_at timestamptz not null default now()
 );
 
 alter table public.pm_history add column if not exists pm_number integer;
+alter table public.pm_history add column if not exists data jsonb not null default '{}'::jsonb;
 
 create table if not exists public.asset_files (
   id text primary key,
@@ -167,15 +185,29 @@ create policy "Prototype read asset files" on public.asset_files for select to a
 drop policy if exists "Prototype write asset files" on public.asset_files;
 create policy "Prototype write asset files" on public.asset_files for all to anon using (true) with check (true);
 
+create index if not exists idx_siteworks_customers_updated_at on public.customers(updated_at);
+create index if not exists idx_siteworks_locations_updated_at on public.locations(updated_at);
+create index if not exists idx_siteworks_templates_updated_at on public.pm_templates(updated_at);
+create index if not exists idx_siteworks_assets_updated_at on public.assets(updated_at);
+create index if not exists idx_siteworks_work_orders_updated_at on public.work_orders(updated_at);
+create index if not exists idx_siteworks_service_requests_updated_at on public.service_requests(updated_at);
+create index if not exists idx_siteworks_pm_history_completed_at on public.pm_history(completed_at);
+create index if not exists idx_siteworks_assets_customer_location on public.assets(customer_id, location_id);
+create index if not exists idx_siteworks_work_orders_customer_location on public.work_orders(customer_id, location_id);
+create index if not exists idx_siteworks_service_requests_customer_location on public.service_requests(customer_id, location_id);
+
 create table if not exists public.profiles (
   id uuid primary key,
   email text not null unique,
   name text not null default '',
   role text not null default 'Customer',
   customer_id text not null default '',
+  location_id text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists location_id text not null default '';
 
 alter table public.profiles enable row level security;
 
