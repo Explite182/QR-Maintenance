@@ -1262,11 +1262,12 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260702-panel-schedule-print-colgroup"></script>
+  <script src="app.js?v=20260702-storage-phase1"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
       const SUPABASE_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
+      const SUPABASE_STORAGE_BUCKET = "siteworks-files";
       const params = new URLSearchParams(location.search);
       if (params.get("report") !== "1") return;
       const reportScreen = document.getElementById("publicReportScreen");
@@ -1354,7 +1355,47 @@
         if (!file) return null;
         const rawDataUrl = await fileToDataUrl(file);
         const dataUrl = await resizeImageDataUrl(rawDataUrl);
-        return { name: file.name || "Report photo.jpg", dataUrl };
+        const blob = dataUrlToBlob(dataUrl);
+        const uploadFile = new File([blob], replaceFileExtension(file.name || "Report photo.jpg", "jpg"), { type: "image/jpeg" });
+        const stored = await uploadPublicReportPhoto(uploadFile);
+        return stored || { name: file.name || "Report photo.jpg", dataUrl };
+      }
+
+      function dataUrlToBlob(dataUrl) {
+        const [header, payload] = String(dataUrl || "").split(",");
+        const mime = /data:([^;]+)/.exec(header || "")?.[1] || "application/octet-stream";
+        const binary = atob(payload || "");
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+        return new Blob([bytes], { type: mime });
+      }
+
+      function replaceFileExtension(name, extension) {
+        return `${String(name || "file").replace(/\.[^.]+$/, "")}.${extension}`;
+      }
+
+      async function uploadPublicReportPhoto(file) {
+        const cleanName = slugify(file.name || "report-photo.jpg");
+        const path = `public-reports/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${cleanName}`;
+        try {
+          const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_STORAGE_BUCKET}/${path}`, {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`,
+              "Content-Type": file.type || "image/jpeg",
+              "x-upsert": "false"
+            },
+            body: file
+          });
+          if (!response.ok) return null;
+          return {
+            name: file.name || "Report photo.jpg",
+            url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`
+          };
+        } catch {
+          return null;
+        }
       }
 
       form?.addEventListener("submit", async (event) => {
@@ -1390,7 +1431,7 @@
               equipment_name: params.get("n") || "",
               note: noteText,
               contact: (contact?.value || "").trim(),
-              photo_data_url: attachedPhoto?.dataUrl || "",
+              photo_data_url: attachedPhoto?.url || attachedPhoto?.dataUrl || "",
               photo_name: attachedPhoto?.name || ""
             })
           });

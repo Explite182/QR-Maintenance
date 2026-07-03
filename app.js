@@ -7,6 +7,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
 const ISSUE_REPORT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-issue-report`;
 const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
+const SUPABASE_STORAGE_BUCKET = "siteworks-files";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const MANAGER_ROLES = ["Manager", "Facility Manager"];
@@ -75,6 +76,7 @@ let lastAuthError = "";
 let lastPublicReportError = "";
 let editingAssetDetailField = "";
 let storageFullWarningShown = false;
+let suppressStorageFullWarning = false;
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -399,6 +401,7 @@ window.addEventListener("hashchange", () => {
 
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  suppressStorageFullWarning = true;
   els.loginError.textContent = "Signing in...";
   const user = await signInWithSupabase(els.loginUsername.value, els.loginPassword.value);
 
@@ -407,9 +410,11 @@ els.loginForm.addEventListener("submit", async (event) => {
     if (!localUser) {
       if (authProfilesLoaded && !hasSetupUsers()) {
         showFirstAdminSetup("No SiteWorks admin account exists yet. Create the first admin below.");
+        suppressStorageFullWarning = false;
         return;
       }
       els.loginError.textContent = lastAuthError || "Email or password is incorrect.";
+      suppressStorageFullWarning = false;
       return;
     }
     currentUser = localUser;
@@ -422,6 +427,9 @@ els.loginForm.addEventListener("submit", async (event) => {
     els.loginForm.reset();
     els.loginError.textContent = "";
     render();
+    window.setTimeout(() => {
+      suppressStorageFullWarning = false;
+    }, 1500);
     return;
   }
 
@@ -435,6 +443,9 @@ els.loginForm.addEventListener("submit", async (event) => {
   els.loginForm.reset();
   els.loginError.textContent = "";
   render();
+  window.setTimeout(() => {
+    suppressStorageFullWarning = false;
+  }, 1500);
 });
 
 els.firstAdminForm.addEventListener("submit", async (event) => {
@@ -1114,7 +1125,8 @@ els.assetWorkOrderList?.addEventListener("click", (event) => {
 
 els.selectedAssetThumb.addEventListener("click", () => {
   const asset = getSelectedAsset();
-  if (asset?.photo?.dataUrl) openPhotoViewer(asset.photo.dataUrl, asset.photo.name || "Equipment photo");
+  const assetPhotoSrc = mediaSource(asset?.photo);
+  if (assetPhotoSrc) openPhotoViewer(assetPhotoSrc, asset.photo.name || "Equipment photo");
 });
 
 els.photoViewerClose.addEventListener("click", closePhotoViewer);
@@ -1159,14 +1171,14 @@ els.printPanelScheduleBtn?.addEventListener("click", () => {
 els.panelScheduleLogoInput?.addEventListener("change", async () => {
   const logo = await readPhoto(els.panelScheduleLogoInput.files?.[0]);
   if (!logo || !els.panelScheduleForm) return;
-  els.panelScheduleForm.dataset.logoDataUrl = logo.dataUrl;
+  els.panelScheduleForm.dataset.logoUrl = mediaSource(logo);
   els.panelScheduleForm.dataset.logoName = logo.name || "Company logo";
   renderPanelScheduleLogoPreview(logo);
 });
 
 els.removePanelScheduleLogoBtn?.addEventListener("click", () => {
   if (!els.panelScheduleForm) return;
-  delete els.panelScheduleForm.dataset.logoDataUrl;
+  delete els.panelScheduleForm.dataset.logoUrl;
   delete els.panelScheduleForm.dataset.logoName;
   if (els.panelScheduleLogoInput) els.panelScheduleLogoInput.value = "";
   renderPanelScheduleLogoPreview(null);
@@ -4582,7 +4594,7 @@ function renderAssetBadges(asset, due = getDueInfo(asset)) {
   if (failedPmCount) badges.push(`<span class="status-badge badge-danger">Failed PM open</span>`);
   if (openCount) badges.push(`<span class="status-badge badge-warn">${openCount} open ticket${openCount === 1 ? "" : "s"}</span>`);
   if (asset.criticality) badges.push(`<span class="status-badge ${criticalityBadgeClass(asset.criticality)}">${escapeHtml(asset.criticality)} criticality</span>`);
-  if (asset.manualFile?.dataUrl || asset.documentUrl) badges.push(`<span class="status-badge badge-muted">Manual ready</span>`);
+  if (hasMedia(asset.manualFile) || asset.documentUrl) badges.push(`<span class="status-badge badge-muted">Manual ready</span>`);
   return badges.join("");
 }
 
@@ -5234,9 +5246,10 @@ function renderServiceRequestItem(request) {
   const compactServiceAssignmentControl = canEdit
     ? `<select class="compact-assignee-select" data-service-request-assignee="${escapeAttribute(request.id)}" aria-label="Assigned to">${assigneeOptions}</select>`
     : "";
-  const requestPhoto = request.photo?.dataUrl
-    ? `<button type="button" class="history-photo-button ticket-photo-card" data-view-photo data-photo-src="${escapeAttribute(request.photo.dataUrl)}" data-photo-caption="${escapeAttribute(request.photo.name || "Service request photo")}">
-        <img class="history-photo" alt="Service request photo" src="${escapeAttribute(request.photo.dataUrl)}">
+  const requestPhotoSrc = mediaSource(request.photo);
+  const requestPhoto = requestPhotoSrc
+    ? `<button type="button" class="history-photo-button ticket-photo-card" data-view-photo data-photo-src="${escapeAttribute(requestPhotoSrc)}" data-photo-caption="${escapeAttribute(request.photo.name || "Service request photo")}">
+        <img class="history-photo" alt="Service request photo" src="${escapeAttribute(requestPhotoSrc)}">
         <span>Submitted photo</span>
       </button>`
     : "";
@@ -5249,7 +5262,7 @@ function renderServiceRequestItem(request) {
   const drawerProfile = renderWorkDrawerProfile({
     title: asset?.name || request.title || "Service request",
     systemId: `${requestNumber} | ${request.title || "Service request"}`,
-    imageSrc: request.photo?.dataUrl || asset?.photo?.dataUrl || "",
+    imageSrc: mediaSource(request.photo) || mediaSource(asset?.photo) || "",
     fallback: "SR",
     badges: profileBadges
   });
@@ -5314,7 +5327,7 @@ function renderServiceRequestItem(request) {
         <details class="ticket-sub-drawer" open>
           <summary>
             <h3>Activity & Notes</h3>
-            <span>${serviceRequestHistoryEntries(request).length + (request.notes ? 1 : 0) + (request.photo?.dataUrl ? 1 : 0)}</span>
+            <span>${serviceRequestHistoryEntries(request).length + (request.notes ? 1 : 0) + (hasMedia(request.photo) ? 1 : 0)}</span>
           </summary>
           <div class="service-request-activity-stack">
             ${requestNotesPanel}
@@ -5983,7 +5996,7 @@ function openPanelScheduleSheet() {
   els.panelScheduleForm.elements.phase.value = schedule.phase || "";
   els.panelScheduleForm.elements.mainBreaker.value = schedule.mainBreaker || "";
   els.panelScheduleForm.elements.circuitCount.value = schedule.circuitCount || 42;
-  els.panelScheduleForm.dataset.logoDataUrl = schedule.logo?.dataUrl || "";
+  els.panelScheduleForm.dataset.logoUrl = mediaSource(schedule.logo) || "";
   els.panelScheduleForm.dataset.logoName = schedule.logo?.name || "";
   if (els.panelScheduleLogoInput) els.panelScheduleLogoInput.value = "";
   renderPanelScheduleLogoPreview(schedule.logo || null);
@@ -6188,8 +6201,8 @@ function savePanelScheduleEditor() {
     phase: form.elements.phase.value.trim(),
     mainBreaker: form.elements.mainBreaker.value.trim(),
     circuitCount: normalizePanelCircuitCount(form.elements.circuitCount.value),
-    logo: form.dataset.logoDataUrl ? {
-      dataUrl: form.dataset.logoDataUrl,
+    logo: form.dataset.logoUrl ? {
+      url: form.dataset.logoUrl,
       name: form.dataset.logoName || "Company logo"
     } : null,
     circuits
@@ -6203,8 +6216,9 @@ function savePanelScheduleEditor() {
 
 function renderPanelScheduleLogoPreview(logo) {
   if (!els.panelScheduleLogoPreview) return;
-  els.panelScheduleLogoPreview.innerHTML = logo?.dataUrl
-    ? `<img alt="${escapeAttribute(logo.name || "Company logo")}" src="${logo.dataUrl}"><span>${escapeHtml(logo.name || "Company logo")}</span>`
+  const logoSrc = mediaSource(logo);
+  els.panelScheduleLogoPreview.innerHTML = logoSrc
+    ? `<img alt="${escapeAttribute(logo.name || "Company logo")}" src="${escapeAttribute(logoSrc)}"><span>${escapeHtml(logo.name || "Company logo")}</span>`
     : "No logo uploaded";
 }
 
@@ -6225,8 +6239,9 @@ function printPanelSchedule() {
       ${printPanelCircuitCells(right)}
     </tr>
   `).join("");
-  const logoHtml = schedule.logo?.dataUrl
-    ? `<div class="print-logo"><img alt="${escapeAttribute(schedule.logo.name || "Company logo")}" src="${schedule.logo.dataUrl}"></div>`
+  const logoSrc = mediaSource(schedule.logo);
+  const logoHtml = logoSrc
+    ? `<div class="print-logo"><img alt="${escapeAttribute(schedule.logo.name || "Company logo")}" src="${escapeAttribute(logoSrc)}"></div>`
     : `<div class="print-logo print-logo-empty">Company<br>Logo</div>`;
   printWindow.document.write(`
     <!doctype html>
@@ -6332,8 +6347,8 @@ function getCurrentPanelScheduleForPrint(asset) {
     phase: form.elements.phase.value.trim() || schedule.phase,
     mainBreaker: form.elements.mainBreaker.value.trim() || schedule.mainBreaker,
     circuitCount: normalizePanelCircuitCount(form.elements.circuitCount.value || schedule.circuitCount),
-    logo: form.dataset.logoDataUrl ? {
-      dataUrl: form.dataset.logoDataUrl,
+    logo: form.dataset.logoUrl ? {
+      url: form.dataset.logoUrl,
       name: form.dataset.logoName || "Company logo"
     } : null,
     circuits: [...els.panelScheduleCircuitRows.querySelectorAll("[data-panel-circuit-row]")]
@@ -6431,8 +6446,9 @@ function openInlineAssetDetailEditor(field) {
 }
 
 function renderAssetManual(asset) {
-  const uploadedManual = asset.manualFile?.dataUrl ? `
-    <a class="manual-link" href="${asset.manualFile.dataUrl}" target="_blank" rel="noopener">
+  const manualSrc = mediaSource(asset.manualFile);
+  const uploadedManual = manualSrc ? `
+    <a class="manual-link" href="${escapeAttribute(manualSrc)}" target="_blank" rel="noopener">
       <strong>Open uploaded PDF manual</strong>
       <span>${escapeHtml(asset.manualFile.name || "Asset manual.pdf")}</span>
     </a>
@@ -6452,13 +6468,14 @@ function renderAssetManual(asset) {
 }
 
 function renderAssetPhoto(asset) {
-  if (!asset.photo?.dataUrl) {
+  const photoSrc = mediaSource(asset.photo);
+  if (!photoSrc) {
     return `<div class="asset-photo-empty">No equipment photo uploaded.</div>`;
   }
   return `
     <figure class="asset-photo-card">
-      <button type="button" class="photo-open-button" data-view-photo data-photo-src="${escapeAttribute(asset.photo.dataUrl)}" data-photo-caption="${escapeAttribute(asset.photo.name || "Primary equipment photo")}">
-        <img alt="Photo of ${escapeHtml(asset.name)}" src="${asset.photo.dataUrl}">
+      <button type="button" class="photo-open-button" data-view-photo data-photo-src="${escapeAttribute(photoSrc)}" data-photo-caption="${escapeAttribute(asset.photo.name || "Primary equipment photo")}">
+        <img alt="Photo of ${escapeHtml(asset.name)}" src="${escapeAttribute(photoSrc)}">
       </button>
       <figcaption>
         <strong>Primary equipment photo</strong>
@@ -6477,19 +6494,22 @@ function renderAssetGallery(asset) {
 }
 
 function renderGalleryPhotoButton(photo, index) {
+  const photoSrc = mediaSource(photo);
+  if (!photoSrc) return "";
   return `
-    <button type="button" class="asset-gallery-item" data-view-photo data-photo-src="${escapeAttribute(photo.dataUrl)}" data-photo-caption="${escapeAttribute(photo.name || `Equipment photo ${index + 1}`)}">
-      <img alt="Equipment gallery photo ${index + 1}" src="${photo.dataUrl}">
+    <button type="button" class="asset-gallery-item" data-view-photo data-photo-src="${escapeAttribute(photoSrc)}" data-photo-caption="${escapeAttribute(photo.name || `Equipment photo ${index + 1}`)}">
+      <img alt="Equipment gallery photo ${index + 1}" src="${escapeAttribute(photoSrc)}">
       <span>${escapeHtml(photo.name || `Photo ${index + 1}`)}</span>
     </button>
   `;
 }
 
 function renderAssetThumbnail(asset) {
-  if (!asset.photo?.dataUrl) {
+  const photoSrc = mediaSource(asset.photo);
+  if (!photoSrc) {
     return `<span>No photo</span>`;
   }
-  return `<img alt="Photo of ${escapeHtml(asset.name)}" src="${asset.photo.dataUrl}">`;
+  return `<img alt="Photo of ${escapeHtml(asset.name)}" src="${escapeAttribute(photoSrc)}">`;
 }
 
 function openPhotoViewer(src, caption) {
@@ -6576,9 +6596,10 @@ function renderAssetInfoForm(asset) {
 function renderHistoryItem(item, index) {
   const checks = item.completedChecks || [];
   const completedAt = new Date(item.completedAt);
-  const photo = item.photo?.dataUrl ? `
-    <button type="button" class="history-photo-button" data-view-photo data-photo-src="${escapeAttribute(item.photo.dataUrl)}" data-photo-caption="${escapeAttribute(item.photo.name || "PM evidence photo")}">
-      <img class="history-photo" alt="PM evidence photo" src="${item.photo.dataUrl}">
+  const itemPhotoSrc = mediaSource(item.photo);
+  const photo = itemPhotoSrc ? `
+    <button type="button" class="history-photo-button" data-view-photo data-photo-src="${escapeAttribute(itemPhotoSrc)}" data-photo-caption="${escapeAttribute(item.photo.name || "PM evidence photo")}">
+      <img class="history-photo" alt="PM evidence photo" src="${escapeAttribute(itemPhotoSrc)}">
     </button>
   ` : `<p class="muted">No photo attached.</p>`;
   return `
@@ -6690,7 +6711,7 @@ function renderWorkOrderItem(item) {
         : item.priority === "High"
           ? "badge-danger"
         : "badge-warn";
-  const firstPhoto = getWorkOrderPhotos(item)[0]?.dataUrl || asset?.photo?.dataUrl || "";
+  const firstPhoto = mediaSource(getWorkOrderPhotos(item)[0]) || mediaSource(asset?.photo) || "";
   const profileBadges = [
     `<span class="drawer-param-badge ${statusClass}">${escapeHtml(item.status)}</span>`,
     `<span class="drawer-param-badge ${item.priority === "High" ? "badge-danger" : "badge-warn"}">${escapeHtml(item.priority)} priority</span>`,
@@ -6775,7 +6796,7 @@ function renderWorkOrderItem(item) {
 
 function getWorkOrderPhotos(item) {
   const photos = [];
-  if (item.photo?.dataUrl) {
+  if (hasMedia(item.photo)) {
     photos.push({
       ...item.photo,
       label: "Submitted photo",
@@ -6784,7 +6805,7 @@ function getWorkOrderPhotos(item) {
   }
   if (Array.isArray(item.photos)) {
     item.photos.forEach((photo, index) => {
-      if (!photo?.dataUrl) return;
+      if (!hasMedia(photo)) return;
       const addedLabel = photo.addedAt ? ` - ${formatDateTime(new Date(photo.addedAt))}` : "";
       photos.push({
         ...photo,
@@ -6841,8 +6862,8 @@ function renderTicketActivityTimeline(item, showHeading = true) {
                 <strong>${escapeHtml(photo.label || "Submitted photo")}</strong>
                 <span>${escapeHtml(photo.addedAt ? formatDateTime(new Date(photo.addedAt)) : formatDateTime(new Date(createdAt)))}</span>
               </header>
-              <button type="button" class="history-photo-button ticket-photo-card timeline-photo-card" data-view-photo data-photo-src="${escapeAttribute(photo.dataUrl)}" data-photo-caption="${escapeAttribute(photo.caption || photo.name || "Ticket photo")}">
-                <img class="history-photo" alt="${escapeAttribute(photo.label || "Ticket photo")}" src="${escapeAttribute(photo.dataUrl)}">
+              <button type="button" class="history-photo-button ticket-photo-card timeline-photo-card" data-view-photo data-photo-src="${escapeAttribute(mediaSource(photo))}" data-photo-caption="${escapeAttribute(photo.caption || photo.name || "Ticket photo")}">
+                <img class="history-photo" alt="${escapeAttribute(photo.label || "Ticket photo")}" src="${escapeAttribute(mediaSource(photo))}">
                 <span>${escapeHtml(photo.name || photo.label || "Submitted photo")}</span>
               </button>
             </div>
@@ -6904,8 +6925,8 @@ function renderWorkOrderPhotos(item) {
   return `
     <div class="ticket-photo-gallery" aria-label="Ticket photos">
       ${photos.map((photo) => `
-        <button type="button" class="history-photo-button ticket-photo-card" data-view-photo data-photo-src="${escapeAttribute(photo.dataUrl)}" data-photo-caption="${escapeAttribute(photo.caption)}">
-          <img class="history-photo" alt="${escapeAttribute(photo.label)}" src="${escapeAttribute(photo.dataUrl)}">
+        <button type="button" class="history-photo-button ticket-photo-card" data-view-photo data-photo-src="${escapeAttribute(mediaSource(photo))}" data-photo-caption="${escapeAttribute(photo.caption)}">
+          <img class="history-photo" alt="${escapeAttribute(photo.label)}" src="${escapeAttribute(mediaSource(photo))}">
           <span>${escapeHtml(photo.label)}</span>
         </button>
       `).join("")}
@@ -6995,7 +7016,7 @@ function getIssueReportDetails(item) {
     updatedAt: item.updatedAt ? formatDateTime(new Date(item.updatedAt)) : "Not recorded",
     resolvedAt: item.resolvedAt ? formatDateTime(new Date(item.resolvedAt)) : "",
     notes: item.notes || "No notes provided.",
-    photoDataUrl: item.photo?.dataUrl || "",
+    photoDataUrl: mediaSource(item.photo) || "",
     photos: getWorkOrderPhotos(item)
   };
 }
@@ -7315,7 +7336,7 @@ function getServiceRequestReportDetails(request) {
       `Requested by: ${request.requestedBy || "Not entered"}`,
       request.notes || "No details entered."
     ].join("\n"),
-    photoDataUrl: request.photo?.dataUrl || ""
+    photoDataUrl: mediaSource(request.photo) || ""
   };
 }
 
@@ -7513,7 +7534,7 @@ function buildIssuePdfHtml(details) {
   const reportPhotos = Array.isArray(details.photos) && details.photos.length
     ? details.photos
     : details.photoDataUrl
-      ? [{ label: "Submitted photo", dataUrl: details.photoDataUrl }]
+      ? [{ label: "Submitted photo", url: details.photoDataUrl }]
       : [];
   const rows = [
     ["Customer", details.customer],
@@ -7599,7 +7620,7 @@ function buildIssuePdfHtml(details) {
           ${reportPhotos.map((photo) => `
             <div class="photo-card">
               <span>${escapeHtml(photo.label || "Ticket photo")}</span>
-              <img alt="${escapeAttribute(photo.label || "Ticket photo")}" src="${escapeAttribute(photo.dataUrl)}">
+              <img alt="${escapeAttribute(photo.label || "Ticket photo")}" src="${escapeAttribute(mediaSource(photo))}">
             </div>
           `).join("")}
         </div>
@@ -8792,7 +8813,7 @@ async function savePublicReportToSupabase(report, note, contact, photo) {
     equipment_name: report.asset?.name || "",
     note,
     contact,
-    photo_data_url: photo?.dataUrl || "",
+    photo_data_url: mediaSource(photo) || "",
     photo_name: photo?.name || ""
   };
   try {
@@ -9383,7 +9404,7 @@ async function syncStructuredDataToSupabase() {
       assigned_user_name: item.assignedUserName || "",
       converted_work_order_id: item.convertedWorkOrderId || null,
       notes: item.notes || "",
-      photo_data_url: item.photo?.dataUrl || "",
+      photo_data_url: mediaSource(item.photo) || "",
       photo_name: item.photo?.name || "",
       created_at: item.createdAt || new Date().toISOString(),
       updated_at: item.updatedAt || state.updatedAt || new Date().toISOString()
@@ -9464,7 +9485,7 @@ function createIssueFromRemoteReport(report) {
       report.contact ? `Contact: ${report.contact}` : "",
       "Source: public QR report"
     ].filter(Boolean).join("\n"),
-    photo: report.photo_data_url ? { name: report.photo_name || "Report photo", dataUrl: report.photo_data_url } : null,
+    photo: report.photo_data_url ? { name: report.photo_name || "Report photo", url: report.photo_data_url } : null,
     createdAt: report.created_at || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -9827,9 +9848,18 @@ function persistLocalStateOnly(showStorageWarning = true) {
 }
 
 function showStorageFullWarning() {
+  if (shouldSuppressStorageFullWarning()) {
+    console.warn("Browser storage is full; warning suppressed during login.");
+    return;
+  }
   if (storageFullWarningShown) return;
   storageFullWarningShown = true;
   alert("The browser could not save this change because this iPad's browser storage is full. Try exporting a backup, then remove a few old photos or PDFs from equipment records.");
+}
+
+function shouldSuppressStorageFullWarning() {
+  const loginVisible = els.loginScreen && !els.loginScreen.classList.contains("hidden");
+  return suppressStorageFullWarning || (loginVisible && !currentUser);
 }
 
 function addActivity(action, details = "") {
@@ -9917,12 +9947,12 @@ function buildBackupPayload(reason) {
 }
 
 function buildBackupManifest() {
-  const primaryPhotos = state.assets.filter((asset) => asset.photo?.dataUrl).length;
+  const primaryPhotos = state.assets.filter((asset) => hasMedia(asset.photo)).length;
   const extraPhotos = state.assets.reduce((total, asset) => total + (asset.photos || []).length, 0);
   const pmPhotos = state.assets.reduce((total, asset) => (
-    total + (asset.history || []).filter((item) => item.photo?.dataUrl).length
+    total + (asset.history || []).filter((item) => hasMedia(item.photo)).length
   ), 0);
-  const uploadedManuals = state.assets.filter((asset) => asset.manualFile?.dataUrl).length;
+  const uploadedManuals = state.assets.filter((asset) => hasMedia(asset.manualFile)).length;
   return {
     backupLocation: state.backupLocation || defaultBackupLocation(),
     customers: state.customers.length,
@@ -10117,28 +10147,28 @@ async function readPhoto(file) {
   if (!file) return null;
   const rawDataUrl = await fileToDataUrl(file);
   const dataUrl = await resizePhotoDataUrl(rawDataUrl, 640, 0.5);
-  return { name: file.name, dataUrl };
+  return storeResizedPhotoFile(file, dataUrl, "equipment");
 }
 
 async function readIssuePhoto(file) {
   if (!file) return null;
   const rawDataUrl = await fileToDataUrl(file);
   const dataUrl = await resizePhotoDataUrl(rawDataUrl, 720, 0.58);
-  return { name: file.name, dataUrl };
+  return storeResizedPhotoFile(file, dataUrl, "tickets");
 }
 
 async function readServiceRequestPhoto(file) {
   if (!file) return null;
   const rawDataUrl = await fileToDataUrl(file);
   const dataUrl = await resizePhotoDataUrl(rawDataUrl, 680, 0.54);
-  return { name: file.name, dataUrl };
+  return storeResizedPhotoFile(file, dataUrl, "service-requests");
 }
 
 async function readPublicReportPhoto(file) {
   if (!file) return null;
   const rawDataUrl = await fileToDataUrl(file);
   const dataUrl = await resizePhotoDataUrl(rawDataUrl, 520, 0.45);
-  return { name: file.name, dataUrl };
+  return storeResizedPhotoFile(file, dataUrl, "public-reports");
 }
 
 async function safeReadPublicReportPhoto(file) {
@@ -10162,7 +10192,7 @@ async function readGalleryPhoto(file) {
   if (!file) return null;
   const rawDataUrl = await fileToDataUrl(file);
   const dataUrl = await resizePhotoDataUrl(rawDataUrl, 760, 0.64);
-  return { name: file.name, dataUrl };
+  return storeResizedPhotoFile(file, dataUrl, "equipment-gallery");
 }
 
 async function readDocumentFile(file, expectedType) {
@@ -10172,12 +10202,92 @@ async function readDocumentFile(file, expectedType) {
     alert("Please choose a PDF file.");
     return null;
   }
+  const stored = await uploadFileToSupabaseStorage(file, "manuals");
+  if (stored) {
+    return stored;
+  }
   if (file.size > 4 * 1024 * 1024) {
-    alert("That PDF is too large for this browser prototype. Please use the manual link field for larger manuals. Smaller PDFs under 4 MB can be uploaded.");
+    alert("That PDF could not be uploaded to cloud storage and is too large for browser storage. Run the Supabase Storage setup, then try again.");
     return null;
   }
   const dataUrl = await fileToDataUrl(file);
   return { name: file.name, type: file.type || expectedType || "application/octet-stream", dataUrl };
+}
+
+async function storeResizedPhotoFile(file, dataUrl, folder) {
+  const blob = dataUrlToBlob(dataUrl);
+  const uploadFile = new File([blob], replaceFileExtension(file.name || "photo.jpg", "jpg"), { type: "image/jpeg" });
+  const stored = await uploadFileToSupabaseStorage(uploadFile, folder);
+  return stored || { name: file.name, type: "image/jpeg", dataUrl };
+}
+
+async function uploadFileToSupabaseStorage(file, folder = "uploads") {
+  if (!file || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const cleanFolder = slugifyStoragePath(folder || "uploads");
+  const cleanName = slugifyStoragePath(file.name || "file");
+  const path = `${cleanFolder}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${cleanName}`;
+  const session = getSavedAuthSession();
+  const token = session?.access_token || SUPABASE_ANON_KEY;
+  try {
+    const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_STORAGE_BUCKET}/${path}`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": file.type || "application/octet-stream",
+        "x-upsert": "false"
+      },
+      body: file
+    });
+    if (!response.ok) {
+      console.warn("Supabase Storage upload skipped.", await response.text());
+      return null;
+    }
+    return {
+      name: file.name,
+      type: file.type || "application/octet-stream",
+      size: file.size || 0,
+      bucket: SUPABASE_STORAGE_BUCKET,
+      path,
+      url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`
+    };
+  } catch (error) {
+    console.warn("Supabase Storage upload skipped.", error);
+    return null;
+  }
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [header, payload] = String(dataUrl || "").split(",");
+  const mime = /data:([^;]+)/.exec(header || "")?.[1] || "application/octet-stream";
+  const binary = atob(payload || "");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+function replaceFileExtension(name, extension) {
+  const cleanName = String(name || "file").replace(/\.[^.]+$/, "");
+  return `${cleanName}.${extension}`;
+}
+
+function slugifyStoragePath(value) {
+  return String(value || "file")
+    .trim()
+    .replace(/[^a-z0-9._/-]+/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-/]+|[-/]+$/g, "")
+    .toLowerCase() || "file";
+}
+
+function mediaSource(file) {
+  return file?.url || file?.dataUrl || "";
+}
+
+function hasMedia(file) {
+  return Boolean(mediaSource(file));
 }
 
 function fileToDataUrl(file) {
