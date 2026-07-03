@@ -165,6 +165,10 @@ const els = {
   importDataBtn: document.getElementById("importDataBtn"),
   importDataInput: document.getElementById("importDataInput"),
   restoreBackupBtn: document.getElementById("restoreBackupBtn"),
+  cloudCleanupBlock: document.getElementById("cloudCleanupBlock"),
+  cloudCleanupStatus: document.getElementById("cloudCleanupStatus"),
+  scanLocalFilesBtn: document.getElementById("scanLocalFilesBtn"),
+  migrateLocalFilesBtn: document.getElementById("migrateLocalFilesBtn"),
   printReportLabelsBtn: document.getElementById("printReportLabelsBtn"),
   customerForm: document.getElementById("customerForm"),
   customerName: document.getElementById("customerName"),
@@ -1800,6 +1804,14 @@ els.importDataInput.addEventListener("change", async () => {
 
 els.restoreBackupBtn.addEventListener("click", () => {
   restoreLatestAutoBackup();
+});
+
+els.scanLocalFilesBtn?.addEventListener("click", () => {
+  updateCloudCleanupStatus(buildLocalFileMigrationSummaryText(scanLocalFilesForCloudMigration()));
+});
+
+els.migrateLocalFilesBtn?.addEventListener("click", async () => {
+  await migrateLocalFilesToCloud();
 });
 
 document.addEventListener("click", (event) => {
@@ -4686,6 +4698,7 @@ function renderBackupStatus() {
     ? `Last auto backup ${formatDateTime(new Date(latest.createdAt))}`
     : "No auto backup yet";
   els.backupLocation.value = state.backupLocation || defaultBackupLocation();
+  updateCloudCleanupStatus(buildLocalFileMigrationSummaryText(scanLocalFilesForCloudMigration()));
 }
 
 function renderQrSettings() {
@@ -9973,6 +9986,134 @@ function buildBackupManifest() {
     manualLinks: state.assets.filter((asset) => asset.documentUrl).length,
     note: "This complete backup includes the app data plus any uploaded photos and PDF manuals currently stored in the browser."
   };
+}
+
+function scanLocalFilesForCloudMigration() {
+  const items = collectLocalFileMigrationItems();
+  const counts = items.reduce((summary, item) => {
+    summary.total += 1;
+    summary[item.kind] = (summary[item.kind] || 0) + 1;
+    return summary;
+  }, { total: 0 });
+  return counts;
+}
+
+function buildLocalFileMigrationSummaryText(summary) {
+  if (!summary.total) return "No old browser-stored photos or PDFs were found. New uploads are already cloud-ready.";
+  const parts = [
+    summary.equipmentPhoto ? `${summary.equipmentPhoto} primary equipment photo${summary.equipmentPhoto === 1 ? "" : "s"}` : "",
+    summary.equipmentGallery ? `${summary.equipmentGallery} gallery photo${summary.equipmentGallery === 1 ? "" : "s"}` : "",
+    summary.manual ? `${summary.manual} PDF manual${summary.manual === 1 ? "" : "s"}` : "",
+    summary.pmHistory ? `${summary.pmHistory} PM history photo${summary.pmHistory === 1 ? "" : "s"}` : "",
+    summary.ticketPhoto ? `${summary.ticketPhoto} ticket photo${summary.ticketPhoto === 1 ? "" : "s"}` : "",
+    summary.servicePhoto ? `${summary.servicePhoto} service request photo${summary.servicePhoto === 1 ? "" : "s"}` : "",
+    summary.panelLogo ? `${summary.panelLogo} panel logo${summary.panelLogo === 1 ? "" : "s"}` : ""
+  ].filter(Boolean);
+  return `Found ${summary.total} old browser-stored file${summary.total === 1 ? "" : "s"}: ${parts.join(", ")}.`;
+}
+
+function updateCloudCleanupStatus(message) {
+  if (els.cloudCleanupStatus) els.cloudCleanupStatus.textContent = message;
+}
+
+function collectLocalFileMigrationItems() {
+  const items = [];
+  state.assets.forEach((asset) => {
+    if (shouldMigrateLocalFile(asset.photo)) {
+      items.push({ kind: "equipmentPhoto", folder: "equipment", name: asset.photo.name, get: () => asset.photo, set: (file) => { asset.photo = file; } });
+    }
+    (asset.photos || []).forEach((photo, index) => {
+      if (!shouldMigrateLocalFile(photo)) return;
+      items.push({ kind: "equipmentGallery", folder: "equipment-gallery", name: photo.name, get: () => asset.photos[index], set: (file) => { asset.photos[index] = file; } });
+    });
+    if (shouldMigrateLocalFile(asset.manualFile)) {
+      items.push({ kind: "manual", folder: "manuals", name: asset.manualFile.name, get: () => asset.manualFile, set: (file) => { asset.manualFile = file; } });
+    }
+    (asset.history || []).forEach((record, index) => {
+      if (!shouldMigrateLocalFile(record.photo)) return;
+      items.push({ kind: "pmHistory", folder: "pm-history", name: record.photo.name, get: () => asset.history[index].photo, set: (file) => { asset.history[index].photo = file; } });
+    });
+    if (shouldMigrateLocalFile(asset.electricalPanelSchedule?.logo)) {
+      items.push({
+        kind: "panelLogo",
+        folder: "panel-logos",
+        name: asset.electricalPanelSchedule.logo.name,
+        get: () => asset.electricalPanelSchedule.logo,
+        set: (file) => { asset.electricalPanelSchedule.logo = file; }
+      });
+    }
+  });
+  state.workOrders.forEach((workOrder) => {
+    if (shouldMigrateLocalFile(workOrder.photo)) {
+      items.push({ kind: "ticketPhoto", folder: "tickets", name: workOrder.photo.name, get: () => workOrder.photo, set: (file) => { workOrder.photo = file; } });
+    }
+    (workOrder.photos || []).forEach((photo, index) => {
+      if (!shouldMigrateLocalFile(photo)) return;
+      items.push({ kind: "ticketPhoto", folder: "tickets", name: photo.name, get: () => workOrder.photos[index], set: (file) => { workOrder.photos[index] = file; } });
+    });
+  });
+  state.serviceRequests.forEach((request) => {
+    if (!shouldMigrateLocalFile(request.photo)) return;
+    items.push({ kind: "servicePhoto", folder: "service-requests", name: request.photo.name, get: () => request.photo, set: (file) => { request.photo = file; } });
+  });
+  return items;
+}
+
+function shouldMigrateLocalFile(file) {
+  return Boolean(file?.dataUrl && !file.url && !file.path);
+}
+
+async function migrateLocalFilesToCloud() {
+  if (!canManageWorkOrders()) {
+    updateCloudCleanupStatus("Only Admin or Manager logins can move files to cloud storage.");
+    return;
+  }
+  const items = collectLocalFileMigrationItems();
+  if (!items.length) {
+    updateCloudCleanupStatus("No old browser-stored photos or PDFs were found.");
+    return;
+  }
+  const confirmed = window.confirm(`Move ${items.length} old browser-stored file${items.length === 1 ? "" : "s"} to Supabase Storage? A complete backup will download first.`);
+  if (!confirmed) return;
+  exportCompleteBackup();
+  els.cloudCleanupBlock?.classList.add("is-working");
+  if (els.migrateLocalFilesBtn) els.migrateLocalFilesBtn.disabled = true;
+  if (els.scanLocalFilesBtn) els.scanLocalFilesBtn.disabled = true;
+  let moved = 0;
+  let failed = 0;
+  try {
+    for (const item of items) {
+      updateCloudCleanupStatus(`Moving ${moved + 1} of ${items.length}: ${item.name || "file"}...`);
+      const localFile = item.get();
+      const stored = await uploadDataUrlToSupabaseStorage(localFile, item.folder);
+      if (stored) {
+        item.set({ ...localFile, ...stored, dataUrl: "" });
+        moved += 1;
+      } else {
+        failed += 1;
+      }
+    }
+    if (moved) {
+      addActivity("Local files moved to cloud", `${moved} file${moved === 1 ? "" : "s"} moved to Supabase Storage.`);
+      saveState();
+      render();
+    }
+    updateCloudCleanupStatus(failed
+      ? `Moved ${moved} file${moved === 1 ? "" : "s"} to cloud. ${failed} file${failed === 1 ? "" : "s"} could not be uploaded.`
+      : `Moved ${moved} file${moved === 1 ? "" : "s"} to cloud. Browser storage should be lighter now.`);
+  } finally {
+    els.cloudCleanupBlock?.classList.remove("is-working");
+    if (els.migrateLocalFilesBtn) els.migrateLocalFilesBtn.disabled = false;
+    if (els.scanLocalFilesBtn) els.scanLocalFilesBtn.disabled = false;
+  }
+}
+
+async function uploadDataUrlToSupabaseStorage(file, folder) {
+  if (!file?.dataUrl) return null;
+  const blob = dataUrlToBlob(file.dataUrl);
+  const uploadName = file.name || `${folder || "file"}-${Date.now()}`;
+  const uploadFile = new File([blob], uploadName, { type: file.type || blob.type || "application/octet-stream" });
+  return uploadFileToSupabaseStorage(uploadFile, folder);
 }
 
 async function importDataBackup(file) {

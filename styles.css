@@ -375,6 +375,16 @@ textarea:disabled {
   font-size: 12px;
 }
 
+.cloud-cleanup-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.cloud-cleanup.is-working {
+  opacity: 0.82;
+}
+
 .sidebar-sub-drawer {
   display: grid;
   gap: 8px;

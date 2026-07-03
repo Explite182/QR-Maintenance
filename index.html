@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260702-panel-schedule-load-wide">
+    <link rel="stylesheet" href="styles.css?v=20260703-storage-migration">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -368,6 +368,14 @@
           <button id="exportCompleteBackupBtn" class="secondary">Export Complete Backup</button>
           <button id="importDataBtn" class="secondary">Import Data</button>
           <button id="restoreBackupBtn" class="secondary">Restore Latest</button>
+          <div id="cloudCleanupBlock" class="backup-location cloud-cleanup">
+            <strong>Cloud cleanup</strong>
+            <small id="cloudCleanupStatus">Scan for old browser-stored photos and PDFs, then move them to Supabase Storage.</small>
+            <div class="cloud-cleanup-actions">
+              <button id="scanLocalFilesBtn" type="button" class="secondary">Scan Local Files</button>
+              <button id="migrateLocalFilesBtn" type="button" class="secondary">Move to Cloud</button>
+            </div>
+          </div>
           <button id="printReportLabelsBtn" class="secondary">Print Report QRs</button>
         </div>
       </details>
@@ -1262,7 +1270,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260702-storage-phase1"></script>
+  <script src="app.js?v=20260703-storage-migration"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
