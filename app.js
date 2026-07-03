@@ -1211,6 +1211,10 @@ document.addEventListener("keydown", (event) => {
     closeCommandPalette();
     return;
   }
+  if (event.key === "Escape" && document.querySelector(".ticket-action-menu[open]")) {
+    closeOpenTicketActionMenus();
+    return;
+  }
   if (event.key === "Escape" && els.photoSideBay && !els.photoSideBay.classList.contains("hidden")) {
     closePhotoSideBay();
     return;
@@ -1287,6 +1291,16 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("click", () => {
   requestAnimationFrame(syncWorkDrawerBackdrop);
+});
+
+function closeOpenTicketActionMenus(exceptMenu = null) {
+  document.querySelectorAll(".ticket-action-menu[open]").forEach((menu) => {
+    if (menu !== exceptMenu) menu.removeAttribute("open");
+  });
+}
+
+document.addEventListener("click", (event) => {
+  closeOpenTicketActionMenus(event.target.closest(".ticket-action-menu"));
 });
 
 els.workOrderNumberFilter?.addEventListener("change", () => {
@@ -4705,7 +4719,12 @@ function renderBackupStatus() {
 }
 
 function renderQrSettings() {
-  els.qrBaseUrl.value = state.qrBaseUrl || getCurrentPageUrl();
+  const repairedUrl = getQrBaseUrl();
+  if (state.qrBaseUrl !== repairedUrl) {
+    state.qrBaseUrl = repairedUrl;
+    saveStateQuietly();
+  }
+  els.qrBaseUrl.value = repairedUrl;
 }
 
 function renderPublicReport() {
@@ -5234,7 +5253,7 @@ function renderWorkDrawerProfile({ title, systemId, context = "", imageSrc = "",
 }
 
 function getDrawerItemUrl(type, id) {
-  const base = state.qrBaseUrl || getCurrentPageUrl();
+  const base = getQrBaseUrl();
   return `${base}#${encodeURIComponent(type)}/${encodeURIComponent(id)}`;
 }
 
@@ -9573,7 +9592,7 @@ function buildSharedStatePayload(uploadedAt) {
     accessRequests: state.accessRequests || [],
     activityLog: state.activityLog || [],
     backupLocation: state.backupLocation || defaultBackupLocation(),
-    qrBaseUrl: state.qrBaseUrl || guessNetworkQrUrl(),
+    qrBaseUrl: getQrBaseUrl(),
     sharedDataUpdatedAt: uploadedAt
   };
 }
