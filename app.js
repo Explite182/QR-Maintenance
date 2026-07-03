@@ -1874,6 +1874,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const openTicketEditButton = event.target.closest("[data-open-ticket-edit]");
+  if (openTicketEditButton) {
+    event.preventDefault();
+    const drawer = openTicketEditButton.closest(".work-order-drawer");
+    const editDrawer = drawer?.querySelector("[data-ticket-edit-drawer]");
+    if (editDrawer) {
+      editDrawer.open = true;
+      editDrawer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    return;
+  }
+
   const cancelAssetDetailEdit = event.target.closest("[data-asset-detail-cancel]");
   if (cancelAssetDetailEdit) {
     event.preventDefault();
@@ -5304,11 +5316,12 @@ function renderServiceRequestItem(request) {
   const requestNotesPanel = renderServiceRequestNotesPanel(request, requestPhoto);
   const requestHistoryPanel = renderServiceRequestHistoryPanel(request);
   const primaryActions = canEdit ? `
+    <button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>
     ${request.status !== "Reviewed" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Reviewed">Review</button>` : ""}
     ${request.status !== "Completed" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Completed">Complete</button>` : ""}
   ` : "";
   const editAction = canEdit ? `
-    <details class="ticket-sub-drawer">
+    <details class="ticket-sub-drawer" data-ticket-edit-drawer>
       <summary>
         <h3>Edit Request</h3>
         <span>Update</span>
@@ -6700,9 +6713,10 @@ function renderWorkOrderItem(item) {
   const assetAction = asset
     ? `<button class="secondary mini" type="button" data-asset-link="${item.assetId}">View Equipment</button>`
     : "";
+  const canEditTicket = canManageWorkOrders();
   const editAction = canWork ? `
-    <details class="inline-edit-drawer">
-      <summary>Edit</summary>
+    <details class="inline-edit-drawer" data-ticket-edit-drawer>
+      <summary>${canEditTicket ? "Edit Ticket" : "Add Note"}</summary>
       ${renderWorkOrderEditForm(item)}
     </details>
   ` : "";
@@ -6712,8 +6726,10 @@ function renderWorkOrderItem(item) {
     <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
   ` : "";
   const primaryActions = item.status === "Closed" ? `
+    ${canEditTicket ? `<button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>` : ""}
     ${canManage ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
   ` : `
+    ${canEditTicket ? `<button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>` : ""}
     ${canWork && item.status === "Open" ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
     ${canWork && item.status !== "Resolved" ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
     ${canManage ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>` : ""}
@@ -6970,8 +6986,38 @@ function renderWorkOrderPhotos(item) {
 }
 
 function renderWorkOrderEditForm(item) {
+  const canEditTicket = canManageWorkOrders();
+  const priorities = ["Low", "Medium", "High"];
+  const statuses = ["Open", "In progress", "Waiting parts", "Resolved", "Closed"];
+  const dueValue = item.dueAt ? toDateInputValue(new Date(item.dueAt)) : "";
   return `
     <form class="inline-edit-form compact-form" data-work-order-edit-form="${escapeAttribute(item.id)}">
+      ${canEditTicket ? `
+        <div class="form-grid">
+          <label>
+            Ticket title
+            <input name="title" value="${escapeAttribute(item.title || "")}" required>
+          </label>
+          <label>
+            Priority
+            <select name="priority">
+              ${priorities.map((priority) => `<option value="${priority}" ${item.priority === priority ? "selected" : ""}>${priority}</option>`).join("")}
+            </select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Status
+            <select name="status">
+              ${statuses.map((status) => `<option value="${status}" ${item.status === status ? "selected" : ""}>${status}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Due date
+            <input name="dueDate" type="date" value="${escapeAttribute(dueValue)}">
+          </label>
+        </div>
+      ` : ""}
       <label>
         Add work note
         <textarea name="notes" rows="3" placeholder="Add a progress update. Date and user will be added automatically."></textarea>
@@ -6981,7 +7027,7 @@ function renderWorkOrderEditForm(item) {
         <input name="photo" type="file" accept="image/*">
       </label>
       <div class="work-order-actions">
-        <button class="primary" type="submit">Save Note / Photo</button>
+        <button class="primary" type="submit">${canEditTicket ? "Save Ticket" : "Save Note / Photo"}</button>
       </div>
     </form>
   `;
@@ -8588,7 +8634,7 @@ function canCompletePm() {
 }
 
 function canManageWorkOrders() {
-  return currentRole === "Admin" || (isManagerRole() && !currentUser?.locationId);
+  return currentRole === "Admin" || isManagerRole();
 }
 
 function canDeleteWorkOrders() {
