@@ -8,6 +8,7 @@ const ISSUE_REPORT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-issue-repor
 const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
 const SUPABASE_STORAGE_BUCKET = "siteworks-files";
+const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const MANAGER_ROLES = ["Manager", "Facility Manager"];
@@ -8663,19 +8664,19 @@ function canSeeAllCustomers() {
 }
 
 function getAssetUrl(id) {
-  const base = state.qrBaseUrl || getCurrentPageUrl();
+  const base = getQrBaseUrl();
   const params = getCompactAssetParams(id);
   return `${base}?qr=1&a=${encodeURIComponent(id)}${params ? `&${params}` : ""}`;
 }
 
 function getReportAssetUrl(id) {
-  const base = state.qrBaseUrl || getCurrentPageUrl();
+  const base = getQrBaseUrl();
   const params = getCompactAssetParams(id);
   return `${base}?report=1&a=${encodeURIComponent(id)}${params ? `&${params}` : ""}`;
 }
 
 function getReportLocationUrl(locationId) {
-  const base = state.qrBaseUrl || getCurrentPageUrl();
+  const base = getQrBaseUrl();
   const locationRecord = getLocation(locationId);
   const customer = getCustomer(locationRecord?.customerId);
   const params = new URLSearchParams();
@@ -8701,7 +8702,18 @@ function clearSelectedAssetUrl() {
 function normalizeBaseUrl(value) {
   const trimmed = value.trim();
   if (!trimmed) return "";
-  return trimmed.split(/[?#]/)[0];
+  return normalizeQrBaseUrl(trimmed);
+}
+
+function getQrBaseUrl() {
+  return normalizeQrBaseUrl(state.qrBaseUrl || guessNetworkQrUrl());
+}
+
+function normalizeQrBaseUrl(value) {
+  const clean = String(value || "").trim().split(/[?#]/)[0];
+  if (!clean) return "";
+  if (/explite182\.github\.io/i.test(clean)) return PRODUCTION_SITE_URL;
+  return clean;
 }
 
 function getAssetIdFromUrl() {
@@ -9895,7 +9907,7 @@ function normalizeState(input) {
     activityLog: input.activityLog || [],
     currentUserId: input.currentUserId || "",
     backupLocation: input.backupLocation || defaultBackupLocation(),
-    qrBaseUrl: input.qrBaseUrl || guessNetworkQrUrl(),
+    qrBaseUrl: normalizeQrBaseUrl(input.qrBaseUrl || guessNetworkQrUrl()),
     updatedAt: input.updatedAt || "",
     sharedDataUpdatedAt: input.sharedDataUpdatedAt || ""
   };
@@ -10079,10 +10091,11 @@ function defaultBackupLocation() {
 }
 
 function guessNetworkQrUrl() {
+  if (/sitesworks\.info$/i.test(location.hostname)) return PRODUCTION_SITE_URL;
   if (location.protocol.startsWith("http") && location.hostname !== "127.0.0.1" && location.hostname !== "localhost") {
     return getCurrentPageUrl();
   }
-  return "http://10.0.0.12:8766/index.html";
+  return PRODUCTION_SITE_URL;
 }
 
 function saveState() {
