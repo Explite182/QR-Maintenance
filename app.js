@@ -421,7 +421,7 @@ els.loginForm.addEventListener("submit", async (event) => {
         suppressStorageFullWarning = false;
         return;
       }
-      els.loginError.textContent = lastAuthError || "Email or password is incorrect.";
+      els.loginError.textContent = lastAuthError || "Login did not work. Check that this manager user exists in Supabase and that the email/password are correct.";
       suppressStorageFullWarning = false;
       return;
     }
@@ -7925,7 +7925,8 @@ function restoreScannedAssetSelection() {
   if (!scannedAssetId) return;
   hydrateAssetFromHash();
   const asset = getRawAsset(scannedAssetId);
-  if (!asset || !canSeeAsset(asset)) return;
+  if (!asset) return;
+  if (!canSeeAsset(asset) && !isQrAccessUrl()) return;
   selectedId = asset.id;
   selectedCustomerId = asset.customerId;
   selectedLocationId = defaultLocationSelection();
@@ -9292,11 +9293,15 @@ function clearAuthSession() {
 async function bootstrapCloudData() {
   const loadedStructuredData = await loadStructuredDataFromSupabase();
   if (!loadedStructuredData) await loadSharedStateFromSupabase();
+  restoreScannedAssetSelection();
+  syncFiltersToSelectedAsset();
+  render();
 }
 
 async function refreshCloudDataFromSupabase() {
   const loadedStructuredData = await loadStructuredDataFromSupabase();
   if (!loadedStructuredData) await loadSharedStateFromSupabase();
+  restoreScannedAssetSelection();
 }
 
 async function loadStructuredDataFromSupabase() {
