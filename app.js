@@ -2668,14 +2668,16 @@ function getScannedAreaReportUrl() {
 
 function setLoginQrReportStatus(isReady) {
   if (!els.loginQrReportMessage) return;
+  const hasAssetId = Boolean(getAssetIdFromUrl());
+  const canReport = isReady || hasAssetId;
   els.loginQrReportMessage.textContent = isReady
     ? "Send a photo and quick note without logging in."
     : "This scanned link is missing report details. Please scan a printed SiteWorks QR label.";
   if (els.loginQrReportBtn) {
     els.loginQrReportBtn.textContent = "Report Issue";
-    els.loginQrReportBtn.classList.toggle("disabled-link", !isReady);
-    els.loginQrReportBtn.setAttribute("aria-disabled", String(!isReady));
-    els.loginQrReportBtn.setAttribute("href", isReady ? getScannedIssueReportUrl() : "#");
+    els.loginQrReportBtn.classList.toggle("disabled-link", !canReport);
+    els.loginQrReportBtn.setAttribute("aria-disabled", String(!canReport));
+    els.loginQrReportBtn.setAttribute("href", canReport ? getScannedIssueReportUrl() : "#");
   }
   if (els.loginQrAreaReportBtn) {
     els.loginQrAreaReportBtn.classList.add("hidden");

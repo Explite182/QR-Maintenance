@@ -1271,13 +1271,28 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260703-report-issue-ready"></script>
+  <script src="app.js?v=20260703-qr-report-direct-link"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
       const SUPABASE_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
       const SUPABASE_STORAGE_BUCKET = "siteworks-files";
       const params = new URLSearchParams(location.search);
+      const reportButton = document.getElementById("loginQrReportBtn");
+      const areaReportButton = document.getElementById("loginQrAreaReportBtn");
+      const promptMessage = document.getElementById("loginQrReportMessage");
+      const hasReportContext = Boolean(params.get("a") || params.get("lid") || (params.get("c") && params.get("l")));
+      if (params.get("report") !== "1" && hasReportContext && reportButton) {
+        const reportParams = new URLSearchParams(location.search);
+        reportParams.set("report", "1");
+        reportParams.delete("qr");
+        reportButton.textContent = "Report Issue";
+        reportButton.href = `${location.href.split(/[?#]/)[0]}?${reportParams.toString()}`;
+        reportButton.classList.remove("disabled-link");
+        reportButton.setAttribute("aria-disabled", "false");
+        areaReportButton?.classList.add("hidden");
+        if (promptMessage) promptMessage.textContent = "Send a photo and quick note without logging in.";
+      }
       if (params.get("report") !== "1") return;
       const reportScreen = document.getElementById("publicReportScreen");
       const loginScreen = document.getElementById("loginScreen");
