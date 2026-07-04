@@ -9044,9 +9044,10 @@ function supabaseAuthFetch(path, options = {}, session = null) {
 async function signInWithSupabase(email, password) {
   lastAuthError = "";
   try {
+    const loginEmail = await resolveSupabaseLoginEmail(email);
     const response = await supabaseAuthFetch("token?grant_type=password", {
       method: "POST",
-      body: JSON.stringify({ email: email.trim().toLowerCase(), password })
+      body: JSON.stringify({ email: loginEmail, password })
     });
     if (!response.ok) {
       const errorText = await response.text();
@@ -9071,6 +9072,32 @@ async function signInWithSupabase(email, password) {
     console.warn("Supabase sign in failed.", error);
     return null;
   }
+}
+
+async function resolveSupabaseLoginEmail(identifier) {
+  const clean = String(identifier || "").trim();
+  const lower = clean.toLowerCase();
+  if (isEmailAddress(lower)) return lower;
+
+  const localMatch = state.users.find((user) =>
+    String(user.username || "").toLowerCase() === lower ||
+    String(user.name || "").toLowerCase() === lower
+  );
+  if (localMatch?.username && isEmailAddress(localMatch.username)) return localMatch.username.toLowerCase();
+
+  try {
+    const escaped = lower.replace(/[%*_]/g, "\\$&");
+    const response = await supabaseFetch(`profiles?or=(email.ilike.${encodeURIComponent(escaped)},name.ilike.${encodeURIComponent(escaped)})&select=email,name&limit=1`);
+    if (response.ok) {
+      const rows = await response.json();
+      const email = rows?.[0]?.email || "";
+      if (isEmailAddress(email)) return email.toLowerCase();
+    }
+  } catch (error) {
+    console.warn("Supabase login name lookup skipped.", error);
+  }
+
+  return lower;
 }
 
 async function createMissingAuthProfile(authUser) {
