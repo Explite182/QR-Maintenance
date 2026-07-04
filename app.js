@@ -327,6 +327,7 @@ const els = {
   clearNextPmBtn: document.getElementById("clearNextPmBtn"),
   pmStatus: document.getElementById("pmStatus"),
   copyLinkBtn: document.getElementById("copyLinkBtn"),
+  reportIssueBtn: document.getElementById("reportIssueBtn"),
   pmForm: document.getElementById("pmForm"),
   checklistFields: document.getElementById("checklistFields"),
   technician: document.getElementById("technician"),
@@ -1674,6 +1675,12 @@ els.copyLinkBtn.addEventListener("click", async () => {
   }, 1200);
 });
 
+els.reportIssueBtn?.addEventListener("click", () => {
+  const asset = getSelectedAsset();
+  if (!asset) return;
+  location.href = getReportAssetUrl(asset.id);
+});
+
 els.exportBtn.addEventListener("click", () => {
   const asset = getSelectedAsset();
   if (!asset) return;
@@ -2612,6 +2619,7 @@ function hasScannedReportContext() {
 
 function isScannedReportLinkReady(asset = getScannedReportAsset()) {
   if (asset) return true;
+  if (getAssetIdFromUrl()) return true;
   const params = new URLSearchParams(location.search);
   return Boolean(
     (params.get("a") && params.get("n") && params.get("c") && params.get("l")) ||
