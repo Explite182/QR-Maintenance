@@ -1270,7 +1270,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260703-report-issue-button"></script>
+  <script src="app.js?v=20260703-qr-report-issue-fix"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
@@ -1323,6 +1323,19 @@
         const customerFilter = customer?.id ? `&customer_id=eq.${encodeURIComponent(customer.id)}` : "";
         const rows = await getRows(`locations?name=eq.${encodeURIComponent(name)}${customerFilter}&select=id,name,customer_id&limit=1`);
         return rows[0] || { id: `scan-location-${slugify(customer?.name || "customer")}-${slugify(name)}`, name };
+      }
+
+      async function resolveAsset() {
+        const assetId = params.get("a") || "";
+        if (!assetId) return { id: null, name: params.get("n") || "" };
+        const rows = await getRows(`assets?id=eq.${encodeURIComponent(assetId)}&select=id,name,customer_id,location_id&limit=1`);
+        const asset = rows[0] || null;
+        return {
+          id: asset?.id || assetId,
+          name: asset?.name || params.get("n") || "",
+          customerId: asset?.customer_id || "",
+          locationId: asset?.location_id || ""
+        };
       }
 
       function slugify(value) {
@@ -1419,9 +1432,12 @@
         try {
           if (submitButton) submitButton.disabled = true;
           if (message) message.textContent = "Preparing report...";
-          const customer = await resolveCustomer();
-          const locationRecord = await resolveLocation(customer);
-          if (!customer.name && !locationRecord.name && !params.get("n")) {
+          const asset = await resolveAsset();
+          let customer = await resolveCustomer();
+          let locationRecord = await resolveLocation(customer);
+          if (!customer.id && asset.customerId) customer = { id: asset.customerId, name: params.get("c") || "" };
+          if (!locationRecord.id && asset.locationId) locationRecord = { id: asset.locationId, name: params.get("l") || "" };
+          if (!customer.name && !locationRecord.name && !asset.name && !asset.id) {
             if (message) message.textContent = "This QR report link is missing equipment or location details.";
             return;
           }
@@ -1431,12 +1447,12 @@
             method: "POST",
             headers: { ...headers, Prefer: "return=representation" },
             body: JSON.stringify({
-              equipment_id: params.get("a") || null,
+              equipment_id: asset.id || null,
               customer_id: customer.id || null,
               customer_name: customer.name || params.get("c") || "",
               location_id: locationRecord.id || null,
               location_name: locationRecord.name || params.get("l") || "",
-              equipment_name: params.get("n") || "",
+              equipment_name: asset.name || params.get("n") || "",
               note: noteText,
               contact: (contact?.value || "").trim(),
               photo_data_url: attachedPhoto?.url || attachedPhoto?.dataUrl || "",

@@ -2591,14 +2591,23 @@ function syncLoginQrReportPrompt() {
   if (!els.loginQrReportPrompt) return;
   const isReport = isPublicReportUrl();
   const loginIsVisible = !els.loginScreen.classList.contains("hidden");
-  const assetId = getAssetIdFromUrl();
-  if (isReport || !loginIsVisible || !assetId) {
+  const hasReportContext = hasScannedReportContext();
+  if (isReport || !loginIsVisible || !hasReportContext) {
     els.loginQrReportPrompt.classList.add("hidden");
     return;
   }
   const asset = getScannedReportAsset();
   setLoginQrReportStatus(isScannedReportLinkReady(asset));
   els.loginQrReportPrompt.classList.remove("hidden");
+}
+
+function hasScannedReportContext() {
+  const params = new URLSearchParams(location.search);
+  return Boolean(
+    getAssetIdFromUrl() ||
+    params.get("lid") ||
+    (params.get("c") && params.get("l"))
+  );
 }
 
 function isScannedReportLinkReady(asset = getScannedReportAsset()) {
