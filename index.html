@@ -56,8 +56,8 @@
         <strong>Opening a ticket?</strong>
         <p id="loginQrReportMessage">Send a photo and quick note without logging in.</p>
         <div class="login-qr-actions">
-          <a id="loginQrReportBtn" class="secondary primary-action" href="javascript:(()=>{const p=new URLSearchParams(location.search);p.set('report','1');p.delete('qr');location.href=location.href.split(/[?#]/)[0]+'?'+p.toString();setTimeout(()=>location.reload(),50);})()">Report Equipment Ticket</a>
-          <a id="loginQrAreaReportBtn" class="secondary" href="javascript:(()=>{const s=new URLSearchParams(location.search);const p=new URLSearchParams();p.set('report','1');if(s.get('c')&&s.get('l')){p.set('c',s.get('c'));p.set('l',s.get('l'));}else{p.set('a',s.get('a')||'');if(s.get('n'))p.set('n',s.get('n'));if(s.get('c'))p.set('c',s.get('c'));if(s.get('l'))p.set('l',s.get('l'));}location.href=location.href.split(/[?#]/)[0]+'?'+p.toString();setTimeout(()=>location.reload(),50);})()">Report Area Ticket</a>
+          <a id="loginQrReportBtn" class="secondary primary-action" href="#">Report Issue</a>
+          <a id="loginQrAreaReportBtn" class="secondary hidden" href="#">Report Area Ticket</a>
         </div>
       </div>
       <form id="firstAdminForm" class="stack hidden">
@@ -1270,7 +1270,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260703-ticket-edit-actions"></script>
+  <script src="app.js?v=20260703-report-issue-button"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
@@ -1290,7 +1290,7 @@
       document.querySelectorAll(".app-only").forEach((node) => node.classList.add("hidden"));
       const title = document.getElementById("reportTitle");
       const context = document.getElementById("reportContext");
-      if (title) title.textContent = params.get("a") ? "Report equipment ticket" : "Report area ticket";
+      if (title) title.textContent = "Report Issue";
       if (context) {
         const pieces = [params.get("c"), params.get("l"), params.get("n")].filter(Boolean);
         context.textContent = pieces.join(" | ");

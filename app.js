@@ -1353,7 +1353,7 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
 els.newEquipmentBtn?.addEventListener("click", () => {
   if (!canAddEquipment()) return;
   closeCreateNewMenu();
-  toggleTopActionDrawer(els.quickAddDrawer);
+  openTopActionDrawer(els.quickAddDrawer);
 });
 
 els.createNewBtn?.addEventListener("click", (event) => {
@@ -1373,14 +1373,14 @@ els.newIssueBtn?.addEventListener("click", () => {
   if (!canCreateWorkOrders()) return;
   closeCreateNewMenu();
   renderNewIssueFormOptions();
-  toggleTopActionDrawer(els.newIssueDrawer);
+  openTopActionDrawer(els.newIssueDrawer);
 });
 
 els.newServiceRequestBtn?.addEventListener("click", () => {
   if (!canCreateServiceRequests()) return;
   closeCreateNewMenu();
   renderServiceRequestFormOptions();
-  toggleTopActionDrawer(els.serviceRequestCreateDrawer);
+  openTopActionDrawer(els.serviceRequestCreateDrawer);
 });
 
 els.prevAssetPageBtn.addEventListener("click", () => {
@@ -2604,7 +2604,22 @@ function syncLoginQrReportPrompt() {
 function isScannedReportLinkReady(asset = getScannedReportAsset()) {
   if (asset) return true;
   const params = new URLSearchParams(location.search);
-  return Boolean(params.get("a") && params.get("n") && params.get("c") && params.get("l"));
+  return Boolean(
+    (params.get("a") && params.get("n") && params.get("c") && params.get("l")) ||
+    params.get("lid") ||
+    (params.get("c") && params.get("l"))
+  );
+}
+
+function getScannedIssueReportUrl() {
+  const asset = getScannedReportAsset();
+  if (asset) return getReportAssetUrl(asset.id);
+
+  const params = new URLSearchParams(location.search);
+  if (params.get("a") || (params.get("n") && params.get("c") && params.get("l"))) {
+    return getScannedEquipmentReportUrl();
+  }
+  return getScannedAreaReportUrl();
 }
 
 function getScannedEquipmentReportUrl() {
@@ -2638,13 +2653,18 @@ function setLoginQrReportStatus(isReady) {
   if (!els.loginQrReportMessage) return;
   els.loginQrReportMessage.textContent = isReady
     ? "Send a photo and quick note without logging in."
-    : "This scanned link is missing equipment details. Please scan a printed SiteWorks QR label for an existing asset.";
-  [els.loginQrReportBtn, els.loginQrAreaReportBtn].forEach((button) => {
-    if (!button) return;
-    button.classList.toggle("disabled-link", !isReady);
-    button.setAttribute("aria-disabled", String(!isReady));
-    if (!isReady) button.setAttribute("href", "#");
-  });
+    : "This scanned link is missing report details. Please scan a printed SiteWorks QR label.";
+  if (els.loginQrReportBtn) {
+    els.loginQrReportBtn.textContent = "Report Issue";
+    els.loginQrReportBtn.classList.toggle("disabled-link", !isReady);
+    els.loginQrReportBtn.setAttribute("aria-disabled", String(!isReady));
+    els.loginQrReportBtn.setAttribute("href", isReady ? getScannedIssueReportUrl() : "#");
+  }
+  if (els.loginQrAreaReportBtn) {
+    els.loginQrAreaReportBtn.classList.add("hidden");
+    els.loginQrAreaReportBtn.setAttribute("aria-disabled", "true");
+    els.loginQrAreaReportBtn.setAttribute("href", "#");
+  }
 }
 
 function showFirstAdminSetup(message = "") {
@@ -4485,19 +4505,19 @@ function openCommandPaletteResult(type, id) {
 function runCommandPaletteAction(id) {
   if (id === "newEquipment" && canAddEquipment()) {
     closeCreateNewMenu();
-    toggleTopActionDrawer(els.quickAddDrawer);
+    openTopActionDrawer(els.quickAddDrawer);
     return;
   }
   if (id === "newTicket" && canCreateWorkOrders()) {
     closeCreateNewMenu();
     renderNewIssueFormOptions();
-    toggleTopActionDrawer(els.newIssueDrawer);
+    openTopActionDrawer(els.newIssueDrawer);
     return;
   }
   if (id === "newServiceRequest" && canCreateServiceRequests()) {
     closeCreateNewMenu();
     renderServiceRequestFormOptions();
-    toggleTopActionDrawer(els.serviceRequestCreateDrawer);
+    openTopActionDrawer(els.serviceRequestCreateDrawer);
     return;
   }
   if (id === "assetRegisterDrawer") {
@@ -4748,7 +4768,7 @@ function renderPublicReport() {
     return;
   }
   els.publicReportForm.classList.remove("hidden");
-  els.reportTitle.textContent = `Report ${report.asset ? "equipment" : "area"} ticket`;
+  els.reportTitle.textContent = "Report Issue";
   els.reportContext.textContent = [
     report.customer?.name,
     report.location?.name,
@@ -4954,6 +4974,20 @@ function toggleTopActionDrawer(drawer) {
   const shouldOpen = !drawer.open;
   closeTopActionDrawers(drawer);
   drawer.open = shouldOpen;
+  if (shouldOpen) scrollToTopActionDrawer(drawer);
+}
+
+function openTopActionDrawer(drawer) {
+  if (!drawer) return;
+  closeTopActionDrawers(drawer);
+  drawer.open = true;
+  scrollToTopActionDrawer(drawer);
+}
+
+function scrollToTopActionDrawer(drawer) {
+  requestAnimationFrame(() => {
+    drawer.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 function closeMetricMenus(except = null) {
@@ -7785,7 +7819,7 @@ function renderReportLabels(assets = filteredAssets()) {
           <strong>${escapeHtml(asset.name)}</strong>
           <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
           <span>${escapeHtml(locationRecord?.name || "Unknown location")}</span>
-          <span>Scan to report an equipment ticket</span>
+          <span>Scan to report an issue</span>
         </div>
       </div>
     `;
@@ -7800,7 +7834,7 @@ function renderReportLabels(assets = filteredAssets()) {
           <strong>${escapeHtml(locationRecord.name)}</strong>
           <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
           <span>Area report QR</span>
-          <span>Scan to report an area ticket</span>
+          <span>Scan to report an issue</span>
         </div>
       </div>
     `;
