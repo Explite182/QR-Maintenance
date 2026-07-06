@@ -265,8 +265,8 @@
           </div>
           <form id="userForm" class="stack compact-form">
             <label>
-              Login name
-              <input id="newUsername" required placeholder="tech1 or name@example.com">
+              Email or login name
+              <input id="newUsername" required placeholder="name@example.com">
             </label>
             <label>
               Display name
@@ -295,6 +295,7 @@
               <select id="newUserLocation"></select>
             </label>
             <button type="submit">Add User</button>
+            <p id="userFormStatus" class="inline-status"></p>
           </form>
           <details class="sidebar-sub-drawer">
             <summary>
@@ -1271,7 +1272,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260703-manager-login-name"></script>
+  <script src="app.js?v=20260706-phase3-users"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

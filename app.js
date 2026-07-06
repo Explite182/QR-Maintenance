@@ -192,6 +192,7 @@ const els = {
   newUserRole: document.getElementById("newUserRole"),
   newUserCustomer: document.getElementById("newUserCustomer"),
   newUserLocation: document.getElementById("newUserLocation"),
+  userFormStatus: document.getElementById("userFormStatus"),
   userCount: document.getElementById("userCount"),
   userList: document.getElementById("userList"),
   accessRequestCount: document.getElementById("accessRequestCount"),
@@ -742,49 +743,63 @@ els.customerList?.addEventListener("submit", (event) => {
   render();
 });
 
+function setUserFormStatus(message = "", isError = false) {
+  if (!els.userFormStatus) return;
+  els.userFormStatus.textContent = message;
+  els.userFormStatus.classList.toggle("is-error", Boolean(isError));
+  els.userFormStatus.classList.toggle("is-ok", Boolean(message && !isError));
+}
+
 els.userForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageUsers()) return;
   const username = els.newUsername.value.trim().toLowerCase();
+  setUserFormStatus("");
+  if (!isEmailAddress(username)) {
+    setUserFormStatus("Use an email address to create a shared login for PC, iPad, and phone.", true);
+    return;
+  }
   if (state.users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
-    alert("That login name already exists.");
+    setUserFormStatus("That email is already in the user list.", true);
     return;
   }
 
   const newUserRole = els.newUserRole.value;
   if (!canCreateUserRole(newUserRole)) {
-    alert(userRolePermissionMessage());
+    setUserFormStatus(userRolePermissionMessage(), true);
     return;
   }
   const newUserCustomerId = newUserRole === "Admin" ? "" : els.newUserCustomer.value;
   const newUserLocationId = newUserRole === "Admin" ? "" : els.newUserLocation?.value || "";
   if (!canManageUserCustomer(newUserCustomerId, newUserRole)) {
-    alert("Managers can only add users for their assigned customer.");
+    setUserFormStatus("Managers can only add users for their assigned customer.", true);
     return;
   }
   if (!canManageUserLocation(newUserCustomerId, newUserLocationId)) {
-    alert("Choose a location this user is allowed to access.");
+    setUserFormStatus("Choose a location this user is allowed to access.", true);
     return;
   }
-  const newUser = isEmailAddress(username)
-    ? await signUpSupabaseUser(
-      username,
-      els.newUserPassword.value,
-      els.newUserName.value.trim(),
-      newUserRole,
-      newUserCustomerId,
-      newUserLocationId
-    )
-    : createLocalUser(
-      username,
-      els.newUserPassword.value,
-      els.newUserName.value.trim(),
-      newUserRole,
-      newUserCustomerId,
-      newUserLocationId
-    );
+  const submitButton = els.userForm.querySelector("button[type='submit']");
+  const originalButtonText = submitButton?.textContent || "Add User";
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Creating...";
+  }
+  setUserFormStatus("Creating Supabase login...");
+  const newUser = await signUpSupabaseUser(
+    username,
+    els.newUserPassword.value,
+    els.newUserName.value.trim(),
+    newUserRole,
+    newUserCustomerId,
+    newUserLocationId
+  );
+  if (submitButton) {
+    submitButton.disabled = false;
+    submitButton.textContent = originalButtonText;
+  }
   if (!newUser) {
-    alert("Could not create that user. For shared cloud login, use an email address. For local testing, use a simple login name.");
+    setUserFormStatus(lastAuthError || "Could not create that Supabase user.", true);
     return;
   }
   upsertLocalUser(newUser);
@@ -799,6 +814,7 @@ els.userForm.addEventListener("submit", async (event) => {
   els.userForm.reset();
   delete els.userForm.dataset.requestId;
   render();
+  setUserFormStatus(`Cloud user created for ${newUser.username}.`);
 });
 
 els.userList.addEventListener("submit", async (event) => {
@@ -2944,6 +2960,9 @@ function renderUserItem(user) {
     : user.role !== "Admin"
       ? " | All locations"
       : "";
+  const cloudLabel = isEmailAddress(user.username) && !user.localOnly
+    ? `<span class="user-cloud-label">Cloud login</span>`
+    : `<span class="user-local-label">Local only</span>`;
   return `
     <details class="user-list-item user-editor">
       <summary>
@@ -2951,7 +2970,7 @@ function renderUserItem(user) {
           <strong>${escapeHtml(user.name || user.username)}</strong>
           <small>${escapeHtml(user.username)} | ${escapeHtml(user.role)}${customerAssignment}${locationAssignment}</small>
         </span>
-        ${currentLabel}
+        <span class="user-summary-badges">${cloudLabel}${currentLabel}</span>
       </summary>
       <form class="stack compact-form" data-user-id="${escapeAttribute(user.id)}">
         <label>
@@ -9162,6 +9181,7 @@ async function signUpSupabaseUser(email, password, name, role, customerId, locat
     upsertLocalUser(profile);
     return profile;
   } catch (error) {
+    lastAuthError = error?.message || "Supabase sign up failed.";
     console.warn("Supabase sign up failed.", error);
     return null;
   }

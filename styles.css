@@ -516,6 +516,14 @@ textarea:disabled {
   gap: 2px;
 }
 
+.user-editor summary .user-summary-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .user-editor summary small {
   color: var(--muted);
   font-size: 12px;
@@ -534,6 +542,27 @@ textarea:disabled {
   font-size: 11px;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.user-cloud-label,
+.user-local-label {
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.user-cloud-label {
+  color: #07584c;
+  background: #e8f4f1;
+  border: 1px solid #b9ddd5;
+}
+
+.user-local-label {
+  color: #7a4b0a;
+  background: #fff4df;
+  border: 1px solid #f0d4a4;
 }
 
 .user-actions,
@@ -3141,6 +3170,14 @@ textarea {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.inline-status.is-error {
+  color: var(--danger);
+}
+
+.inline-status.is-ok {
+  color: var(--ok);
 }
 
 .asset-manual-panel {
