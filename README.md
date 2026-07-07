@@ -49,6 +49,8 @@ Then start the server:
 $env:SUPABASE_URL="https://your-project.supabase.co"
 $env:SUPABASE_ANON_KEY="your-publishable-anon-key"
 $env:SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+$env:ALLOWED_ORIGIN="http://localhost:8787"
+$env:ALLOW_DEV_AUTH_HEADERS="false"
 $env:MAX_UPLOAD_BYTES="10485760"
 $env:RESEND_API_KEY="your-resend-api-key"
 $env:ISSUE_EMAIL_FROM="SiteWorks <service@sitesworks.info>"
@@ -91,6 +93,8 @@ npm run smoke -- https://api.sitesworks.info
 Do not expose the Supabase service role key in `index.html`, `app.js`, GitHub Pages, or any browser file.
 
 The service role key belongs only on a private server.
+
+Private routes now read the signed-in Supabase session from the browser's `Authorization: Bearer ...` header. The old development shortcut headers are disabled unless `ALLOW_DEV_AUTH_HEADERS=true` is set on purpose for local testing.
 
 ## File Uploads
 

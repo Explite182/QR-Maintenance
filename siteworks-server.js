@@ -8,6 +8,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "siteworks-files";
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
+const ALLOW_DEV_AUTH_HEADERS = process.env.ALLOW_DEV_AUTH_HEADERS === "true";
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 10 * 1024 * 1024);
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const ISSUE_EMAIL_FROM = process.env.ISSUE_EMAIL_FROM || "SiteWorks <onboarding@resend.dev>";
@@ -33,15 +34,70 @@ const STRUCTURED_TABLES = new Set([
   "asset_files"
 ]);
 
-function getRequestActor(request) {
+function getBearerToken(request) {
+  const authorization = String(request.headers.authorization || "").trim();
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || "";
+}
+
+function getDevHeaderActor(request) {
+  if (!ALLOW_DEV_AUTH_HEADERS || !request.headers["x-siteworks-user-role"]) return null;
   return policies.normalizeUser({
     id: request.headers["x-siteworks-user-id"] || "",
     email: request.headers["x-siteworks-user-email"] || "",
-    name: request.headers["x-siteworks-user-name"] || "Server shim",
-    role: request.headers["x-siteworks-user-role"] || "Admin",
+    name: request.headers["x-siteworks-user-name"] || "Development user",
+    role: request.headers["x-siteworks-user-role"] || "Customer",
     customerId: request.headers["x-siteworks-customer-id"] || "",
     locationId: request.headers["x-siteworks-location-id"] || ""
   });
+}
+
+async function loadSupabaseAuthUser(token) {
+  if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const upstream = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`
+    }
+  });
+  if (!upstream.ok) return null;
+  return upstream.json().catch(() => null);
+}
+
+async function loadProfileForAuthUser(userId) {
+  if (!userId || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  const upstream = await supabaseFetch(
+    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*&limit=1`,
+    {},
+    true
+  );
+  if (!upstream.ok) return null;
+  const rows = await upstream.json().catch(() => []);
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function getRequestActor(request) {
+  const devActor = getDevHeaderActor(request);
+  if (devActor) return devActor;
+
+  const token = getBearerToken(request);
+  const authUser = await loadSupabaseAuthUser(token);
+  const userId = authUser?.id || authUser?.user?.id || "";
+  const profile = await loadProfileForAuthUser(userId);
+  const metadata = authUser?.user_metadata || authUser?.user?.user_metadata || {};
+
+  if (authUser || profile) {
+    return policies.normalizeUser({
+      id: profile?.id || userId,
+      email: profile?.email || authUser?.email || authUser?.user?.email || "",
+      name: profile?.name || profile?.display_name || metadata.name || metadata.display_name || "",
+      role: profile?.role || "Customer",
+      customer_id: profile?.customer_id || "",
+      location_id: profile?.location_id || ""
+    });
+  }
+
+  return policies.normalizeUser({ role: "Customer" });
 }
 
 function sendJson(response, status, body, extraHeaders = {}) {
@@ -523,6 +579,84 @@ function normalizeTable(table) {
   return STRUCTURED_TABLES.has(clean) ? clean : "";
 }
 
+function encodeFilterValue(value) {
+  return encodeURIComponent(String(value || ""));
+}
+
+function actorDataScope(actor, table) {
+  const viewer = policies.normalizeUser(actor);
+  if (policies.isAdmin(viewer)) return [];
+  if (table === "pm_templates") return [];
+  if (!viewer.customerId) return ["id=eq.__siteworks_no_customer__"];
+
+  if (table === "customers") return [`id=eq.${encodeFilterValue(viewer.customerId)}`];
+
+  const filters = [`customer_id=eq.${encodeFilterValue(viewer.customerId)}`];
+  if (viewer.locationId && ["locations", "assets", "work_orders", "service_requests", "asset_files"].includes(table)) {
+    filters.push(`location_id=eq.${encodeFilterValue(viewer.locationId)}`);
+  }
+  return filters;
+}
+
+async function scopedAssetIdsForActor(actor) {
+  const viewer = policies.normalizeUser(actor);
+  if (policies.isAdmin(viewer)) return null;
+  if (!viewer.customerId) return [];
+  const filters = [`customer_id=eq.${encodeFilterValue(viewer.customerId)}`];
+  if (viewer.locationId) filters.push(`location_id=eq.${encodeFilterValue(viewer.locationId)}`);
+  const upstream = await supabaseFetch(`/rest/v1/assets?select=id&${filters.join("&")}`, {}, true);
+  if (!upstream.ok) return [];
+  const rows = await upstream.json().catch(() => []);
+  return Array.isArray(rows) ? rows.map((row) => row.id).filter(Boolean) : [];
+}
+
+async function buildScopedTableQuery(table, actor, options = {}) {
+  const select = options.select || "*";
+  const parts = [`select=${encodeURIComponent(select)}`];
+  if (options.order) parts.push(`order=${encodeURIComponent(options.order)}`);
+  if (options.limit) parts.push(`limit=${encodeURIComponent(options.limit)}`);
+
+  if (table === "pm_history") {
+    const assetIds = await scopedAssetIdsForActor(actor);
+    if (Array.isArray(assetIds)) {
+      if (!assetIds.length) parts.push("asset_id=eq.__siteworks_no_asset__");
+      else parts.push(`asset_id=in.(${assetIds.map(encodeFilterValue).join(",")})`);
+    }
+  } else {
+    parts.push(...actorDataScope(actor, table));
+  }
+
+  return `/rest/v1/${table}?${parts.join("&")}`;
+}
+
+async function assertRowsMatchActorScope(actor, table, rows) {
+  const viewer = policies.normalizeUser(actor);
+  if (policies.isAdmin(viewer) || table === "pm_templates") return;
+  policies.assertAllowed(Boolean(viewer.customerId), "This user does not have a customer scope.");
+
+  if (table === "pm_history") {
+    const allowedAssetIds = await scopedAssetIdsForActor(viewer);
+    const allowed = new Set(allowedAssetIds || []);
+    rows.forEach((row) => {
+      policies.assertAllowed(allowed.has(row.asset_id || row.assetId || ""), "This history row is outside the user's scope.");
+    });
+    return;
+  }
+
+  rows.forEach((row) => {
+    if (table === "customers") {
+      policies.assertAllowed((row.id || "") === viewer.customerId, "This customer row is outside the user's scope.");
+      return;
+    }
+    const rowCustomerId = row.customer_id || row.customerId || "";
+    const rowLocationId = row.location_id || row.locationId || "";
+    policies.assertAllowed(rowCustomerId === viewer.customerId, "This row is outside the user's customer scope.");
+    if (viewer.locationId && ["locations", "assets", "work_orders", "service_requests", "asset_files"].includes(table)) {
+      policies.assertAllowed(rowLocationId === viewer.locationId, "This row is outside the user's location scope.");
+    }
+  });
+}
+
 async function handleAuth(request, response, pathname) {
   if (pathname === "/api/auth/login" && request.method === "POST") {
     if (!requireSupabase(response)) return true;
@@ -540,7 +674,12 @@ async function handleAuth(request, response, pathname) {
   }
 
   if (pathname === "/api/auth/me" && request.method === "GET") {
-    return sendJson(response, 200, { mode: "server-shim", authenticated: false });
+    const actor = await getRequestActor(request);
+    return sendJson(response, 200, {
+      mode: "server-shim",
+      authenticated: Boolean(actor.id || actor.email),
+      user: actor
+    });
   }
 
   return false;
@@ -556,13 +695,17 @@ async function handleUsers(request, response, pathname) {
 
   if (pathname === "/api/users" && request.method === "GET") {
     if (!requireSupabase(response) || !requireServiceRole(response)) return true;
-    const upstream = await supabaseFetch("/rest/v1/profiles?select=*&order=created_at.asc", {}, true);
+    const actor = await getRequestActor(request);
+    policies.assertAllowed(policies.canManageUsers(actor), "Only Admin or Manager users can load users.");
+    const viewer = policies.normalizeUser(actor);
+    const scope = policies.isAdmin(viewer) ? "" : `&customer_id=eq.${encodeFilterValue(viewer.customerId)}`;
+    const upstream = await supabaseFetch(`/rest/v1/profiles?select=*&order=created_at.asc${scope}`, {}, true);
     return proxyJson(response, upstream);
   }
 
   if (pathname === "/api/users" && request.method === "POST") {
     if (!requireSupabase(response) || !requireServiceRole(response)) return true;
-    const actor = getRequestActor(request);
+    const actor = await getRequestActor(request);
     const body = await getRequestBody(request);
     const email = String(body.email || "").trim().toLowerCase();
     const name = String(body.name || email).trim();
@@ -608,11 +751,12 @@ async function handleUsers(request, response, pathname) {
   const userMatch = pathname.match(/^\/api\/users\/([^/]+)$/);
   if (userMatch && ["GET", "PUT", "PATCH", "DELETE"].includes(request.method)) {
     if (!requireSupabase(response) || !requireServiceRole(response)) return true;
-    const actor = getRequestActor(request);
+    const actor = await getRequestActor(request);
     const userId = encodeURIComponent(userMatch[1]);
     if (request.method === "GET") {
       policies.assertAllowed(policies.canManageUsers(actor), "Only Admin or Manager users can load user records.");
-      const upstream = await supabaseFetch(`/rest/v1/profiles?id=eq.${userId}&select=*&limit=1`, {}, true);
+      const scope = policies.isAdmin(actor) ? "" : `&customer_id=eq.${encodeFilterValue(actor.customerId)}`;
+      const upstream = await supabaseFetch(`/rest/v1/profiles?id=eq.${userId}&select=*&limit=1${scope}`, {}, true);
       return proxyJson(response, upstream);
     }
     if (request.method === "DELETE") {
@@ -638,7 +782,10 @@ async function handleUsers(request, response, pathname) {
 async function handlePublicReports(request, response, pathname) {
   if (pathname === "/api/public/reports" && request.method === "GET") {
     if (!requireSupabase(response)) return true;
-    const upstream = await supabaseFetch("/rest/v1/public_reports?select=id,equipment_id,customer_id,customer_name,location_id,location_name,equipment_name,note,contact,photo_data_url,photo_name,created_at&order=created_at.desc&limit=50");
+    const actor = await getRequestActor(request);
+    policies.assertAllowed(policies.canManageTickets(actor, {}), "Only Admin or Manager users can load public reports.");
+    const scopeFilters = actorDataScope(actor, "service_requests").join("&");
+    const upstream = await supabaseFetch(`/rest/v1/public_reports?select=id,equipment_id,customer_id,customer_name,location_id,location_name,equipment_name,note,contact,photo_data_url,photo_name,created_at&order=created_at.desc&limit=50${scopeFilters ? `&${scopeFilters}` : ""}`);
     return proxyJson(response, upstream);
   }
 
@@ -660,6 +807,8 @@ async function handleSharedState(request, response, pathname) {
   const match = pathname.match(/^\/api\/sync\/shared-state\/([^/]+)$/);
   if (!match || !["GET", "PUT"].includes(request.method)) return false;
   if (!requireSupabase(response) || !requireServiceRole(response)) return true;
+  const actor = await getRequestActor(request);
+  policies.assertAllowed(policies.isAdmin(actor) || policies.isManager(actor), "Only Admin or Manager users can access shared state.");
 
   const stateId = encodeURIComponent(match[1]);
   if (request.method === "GET") {
@@ -684,13 +833,15 @@ async function handleData(request, response, pathname) {
   const table = normalizeTable(batchMatch?.[1] || deleteMatch?.[1] || peekMatch?.[1] || tableMatch?.[1]);
   if (!table) return false;
   if (!requireSupabase(response) || !requireServiceRole(response)) return true;
-  const actor = getRequestActor(request);
+  const actor = await getRequestActor(request);
 
   if (tableMatch && request.method === "GET") {
     policies.assertAllowed(policies.canAccessTable(actor, table, "read"), `This user cannot read ${table}.`);
     const url = new URL(request.url, `http://${request.headers.host}`);
-    const order = encodeURIComponent(url.searchParams.get("order") || "updated_at.asc");
-    const upstream = await supabaseFetch(`/rest/v1/${table}?select=*&order=${order}`, {}, true);
+    const query = await buildScopedTableQuery(table, actor, {
+      order: url.searchParams.get("order") || "updated_at.asc"
+    });
+    const upstream = await supabaseFetch(query, {}, true);
     return proxyJson(response, upstream);
   }
 
@@ -698,7 +849,12 @@ async function handleData(request, response, pathname) {
     policies.assertAllowed(policies.canAccessTable(actor, table, "read"), `This user cannot check ${table}.`);
     const url = new URL(request.url, `http://${request.headers.host}`);
     const timestampColumn = String(url.searchParams.get("timestampColumn") || "updated_at").replace(/[^a-z0-9_]/gi, "");
-    const upstream = await supabaseFetch(`/rest/v1/${table}?select=id,${timestampColumn}&order=${encodeURIComponent(`${timestampColumn}.desc`)}&limit=1`, {}, true);
+    const query = await buildScopedTableQuery(table, actor, {
+      select: `id,${timestampColumn}`,
+      order: `${timestampColumn}.desc`,
+      limit: 1
+    });
+    const upstream = await supabaseFetch(query, {}, true);
     return proxyJson(response, upstream);
   }
 
@@ -707,6 +863,7 @@ async function handleData(request, response, pathname) {
     const body = await getRequestBody(request);
     const rows = Array.isArray(body.rows) ? body.rows : [];
     if (!rows.length) return sendJson(response, 200, { ok: true, saved: 0 });
+    await assertRowsMatchActorScope(actor, table, rows);
     const upstream = await supabaseFetch(`/rest/v1/${table}?on_conflict=id`, {
       method: "POST",
       headers: { Prefer: "resolution=merge-duplicates" },
@@ -722,7 +879,8 @@ async function handleData(request, response, pathname) {
     const values = Array.isArray(body.values) ? body.values.filter(Boolean) : [];
     if (!values.length) return sendJson(response, 200, { ok: true, deleted: 0 });
     const filter = values.map((value) => encodeURIComponent(value)).join(",");
-    const upstream = await supabaseFetch(`/rest/v1/${table}?${column}=in.(${filter})`, { method: "DELETE" }, true);
+    const scopeFilters = table === "pm_history" ? [] : actorDataScope(actor, table);
+    const upstream = await supabaseFetch(`/rest/v1/${table}?${column}=in.(${filter})${scopeFilters.length ? `&${scopeFilters.join("&")}` : ""}`, { method: "DELETE" }, true);
     return proxyJson(response, upstream);
   }
 
@@ -732,7 +890,7 @@ async function handleData(request, response, pathname) {
 async function handleFiles(request, response, pathname) {
   if (pathname !== "/api/files" || request.method !== "POST") return false;
   if (!requireSupabase(response) || !requireServiceRole(response)) return true;
-  const actor = getRequestActor(request);
+  const actor = await getRequestActor(request);
   policies.assertAllowed(policies.canAccessTable(actor, "asset_files", "write"), "This user cannot upload files.");
 
   const rawBody = await getRawRequestBody(request);
@@ -775,7 +933,7 @@ async function handleEmail(request, response, pathname) {
   const emailMatch = pathname.match(/^\/api\/email\/(ticket|service-request|assignment)$/);
   if (!emailMatch || request.method !== "POST") return false;
 
-  const actor = getRequestActor(request);
+  const actor = await getRequestActor(request);
   const body = await getRequestBody(request);
   const to = String(body.to || "").trim();
   const sourceReport = body.issue || body.ticket || body.serviceRequest || body.report || {};
@@ -825,6 +983,8 @@ async function handleRequest(request, response) {
         serviceRoleConfigured: Boolean(SUPABASE_SERVICE_ROLE_KEY),
         emailConfigured: Boolean(RESEND_API_KEY),
         policyLayer: "enabled",
+        authMode: ALLOW_DEV_AUTH_HEADERS ? "dev-headers-enabled" : "supabase-bearer-token",
+        devAuthHeadersEnabled: ALLOW_DEV_AUTH_HEADERS,
         maxUploadBytes: MAX_UPLOAD_BYTES,
         allowedUploadTypes: [...ALLOWED_UPLOAD_TYPES]
       });

@@ -34,6 +34,7 @@ RESEND_API_KEY=your-resend-api-key
 ISSUE_EMAIL_FROM=SiteWorks <service@sitesworks.info>
 ISSUE_EMAIL_REPLY_TO=your-email@example.com
 ALLOWED_ORIGIN=https://sitesworks.info
+ALLOW_DEV_AUTH_HEADERS=false
 ```
 
 Do not put real secret values in GitHub Pages, `index.html`, `app.js`, or any public file.
@@ -73,6 +74,7 @@ The health response should show:
 - `serviceRoleConfigured: true`
 - `emailConfigured: true`
 - `policyLayer: "enabled"`
+- `authMode: "supabase-bearer-token"`
 
 You can also run the automated smoke check while the local server is running:
 
@@ -120,6 +122,8 @@ Recommended:
 Confirm these work on the hosted server:
 
 - Login route
+- `/api/auth/me` returns the signed-in user when called with a browser session token
+- Scoped data routes return only the signed-in user's allowed customer/location rows
 - Public report route
 - File upload route
 - Email route
@@ -128,7 +132,6 @@ Confirm these work on the hosted server:
 
 ## Production Hardening Still Needed
 
-- Real session validation from `Authorization` headers
 - Rate limiting public QR reports
 - Private file storage or signed URLs
 - Richer PDF layout

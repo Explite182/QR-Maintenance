@@ -401,6 +401,7 @@ Current shim status:
 
 - Health check route is available at `/api/health`
 - Login route is available at `/api/auth/login`
+- Session profile route is available at `/api/auth/me`
 - User/profile routes are scaffolded
 - Public report routes are scaffolded
 - Structured data batch routes are scaffolded
@@ -459,6 +460,10 @@ Started in this repo:
 - `server/deploy-smoke-test.js` checks `/api/health` before frontend cutover
 - Server deployment env vars are listed in one place
 - The recommended DNS shape is `sitesworks.info` for frontend and `api.sitesworks.info` for server
+- Private server routes now read Supabase bearer tokens from `Authorization` headers
+- Development auth headers are disabled unless `ALLOW_DEV_AUTH_HEADERS=true` is set
+- Structured table reads now add server-side customer/location filters for scoped users
+- Structured table writes now reject rows outside the signed-in user's customer/location scope
 
 ## Immediate Next Coding Step
 
