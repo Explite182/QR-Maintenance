@@ -2974,6 +2974,14 @@ textarea {
   margin-top: 12px;
 }
 
+.table-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .asset-sub-drawer.asset-details > :last-child {
   margin-bottom: 16px;
 }

@@ -4670,11 +4670,11 @@ function renderAssetTable() {
   els.tableAssetCount.textContent = assets.length;
   els.assetTableBody.innerHTML = pageAssets.length
     ? pageAssets.map(renderAssetTableRow).join("")
-    : `<tr><td colspan="7" class="empty-cell">${escapeHtml(emptyAssetTableMessage())}</td></tr>`;
+    : `<tr><td colspan="8" class="empty-cell">${escapeHtml(emptyAssetTableMessage())}</td></tr>`;
 
   els.assetTableBody.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", (event) => {
-      if (event.target.closest("[data-edit-asset], [data-print-select]")) return;
+      if (event.target.closest("[data-edit-asset], [data-delete-asset], [data-print-select]")) return;
       if (selectedId === row.dataset.id && !els.assetPanel.classList.contains("hidden")) {
         closeSelectedAssetPanel();
         return;
@@ -4709,6 +4709,14 @@ function renderAssetTable() {
     });
   });
 
+  els.assetTableBody.querySelectorAll("[data-delete-asset]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      selectedId = button.dataset.deleteAsset;
+      await deleteSelectedEquipment();
+    });
+  });
+
   const showingStart = assets.length ? start + 1 : 0;
   const showingEnd = Math.min(start + pageAssets.length, assets.length);
   els.assetPageInfo.textContent = `Showing ${showingStart}-${showingEnd} of ${assets.length}`;
@@ -4733,6 +4741,9 @@ function renderAssetTableRow(asset) {
   const locationRecord = getLocation(asset.locationId);
   const active = asset.id === selectedId ? " selected-row" : "";
   const equipmentId = getAssetEquipmentId(asset);
+  const deleteButton = canDeleteEquipment()
+    ? `<button type="button" class="secondary mini danger-action table-delete-btn" data-delete-asset="${escapeAttribute(asset.id)}">Delete</button>`
+    : "";
   return `
     <tr class="${active}" data-id="${asset.id}">
       <td class="equipment-id-cell">
@@ -4750,7 +4761,12 @@ function renderAssetTableRow(asset) {
       <td>${escapeHtml(asset.manufacturer || "-")}</td>
       <td>${renderAssetConditionBadge(asset, due)}</td>
       <td>${renderAssetOperationalBadge(asset, due)}</td>
-      <td><button type="button" class="secondary mini table-edit-btn" data-edit-asset="${escapeAttribute(asset.id)}">Edit</button></td>
+      <td>
+        <div class="table-row-actions">
+          <button type="button" class="secondary mini table-edit-btn" data-edit-asset="${escapeAttribute(asset.id)}">Edit</button>
+          ${deleteButton}
+        </div>
+      </td>
     </tr>
   `;
 }
@@ -5231,9 +5247,16 @@ function runDashboardAction(filter) {
     return;
   }
 
+  assetQuery = "";
+  globalQuery = "";
+  assetTemplateFilter = "all";
+  assetRegisterTab = filter === "overdue" ? "overdue" : "active";
   assetStatusFilter = filter;
   assetSort = filter === "all" ? "due" : assetSort;
   assetPage = 1;
+  if (els.assetSearch) els.assetSearch.value = "";
+  if (els.globalSearch) els.globalSearch.value = "";
+  if (els.globalSearchResults) els.globalSearchResults.classList.add("hidden");
   const willOpen = !els.assetRegisterDrawer?.open;
   openAssetRegisterDrawer(filter);
   render();
