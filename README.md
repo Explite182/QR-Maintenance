@@ -61,6 +61,12 @@ To quickly check the policy layer:
 node policy-smoke-test.js
 ```
 
+To quickly check server PDF generation:
+
+```powershell
+node pdf-smoke-test.js
+```
+
 ## Important
 
 Do not expose the Supabase service role key in `index.html`, `app.js`, GitHub Pages, or any browser file.
@@ -96,4 +102,6 @@ These routes validate the recipient, build a SiteWorks email body, and send thro
 
 The frontend still uses the Supabase Edge Function while `SITEWORKS_API_BASE_URL` is blank. When the frontend is pointed at this server, the existing Send PDF Email buttons will call these server routes.
 
-Current limitation: server-side PDF attachment generation is planned for the next email phase. This version sends the structured ticket/service-request details in the email body.
+The server attaches a generated PDF summary to each ticket, service request, or assignment email.
+
+Current limitation: the PDF is a clean text-based server PDF. A richer production PDF can replace this builder later without changing the route names.

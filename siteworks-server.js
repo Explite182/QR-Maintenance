@@ -289,6 +289,148 @@ function buildEmailHtml(issue) {
   `;
 }
 
+function pdfText(value) {
+  return String(value ?? "")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function safePdfFilename(value) {
+  return String(value || "report")
+    .trim()
+    .replace(/[^a-z0-9._-]/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase() || "report";
+}
+
+function wrapPdfLine(value, maxLength = 88) {
+  const words = String(value || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > maxLength && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+}
+
+function buildIssuePdfLines(issue) {
+  const rows = [
+    `${issue.reportTitle}: ${issue.title}`,
+    "",
+    `${issue.numberLabel}: ${issue.issueNumber}`,
+    `Customer: ${issue.customer}`,
+    `Location: ${issue.location}`,
+    `Equipment/Area: ${issue.equipment}`,
+    `Status: ${issue.status}`,
+    `Priority: ${issue.priority}`,
+    `Assigned to: ${issue.assignedTo}`,
+    `Due: ${issue.dueAt}`,
+    `Created: ${issue.createdAt}`,
+    `Updated: ${issue.updatedAt}`,
+    issue.resolvedAt ? `Resolved: ${issue.resolvedAt}` : "",
+    "",
+    "Notes:"
+  ].filter((line) => line !== "");
+
+  const noteLines = String(issue.notes || "No notes provided.")
+    .split(/\r?\n/)
+    .flatMap((line) => wrapPdfLine(line, 84));
+
+  return [
+    "SITEWORKS",
+    "Preventative Maintenance",
+    "",
+    ...rows,
+    ...noteLines,
+    "",
+    issue.footerLabel
+  ];
+}
+
+function paginatePdfLines(lines, maxLinesPerPage = 44) {
+  const pages = [];
+  for (let index = 0; index < lines.length; index += maxLinesPerPage) {
+    pages.push(lines.slice(index, index + maxLinesPerPage));
+  }
+  return pages.length ? pages : [["SITEWORKS"]];
+}
+
+function buildPdfPageContent(lines, pageNumber, pageCount) {
+  const commands = [
+    "BT /F1 18 Tf 54 750 Td (SITEWORKS) Tj ET",
+    "BT /F1 9 Tf 54 735 Td (Preventative Maintenance) Tj ET"
+  ];
+  let y = 700;
+  lines.forEach((line, index) => {
+    const fontSize = index === 0 ? 14 : 10;
+    const x = index === 0 ? 54 : 62;
+    commands.push(`BT /F1 ${fontSize} Tf ${x} ${y} Td (${pdfText(line)}) Tj ET`);
+    y -= index === 0 ? 22 : 15;
+  });
+  commands.push(`BT /F1 8 Tf 54 36 Td (Page ${pageNumber} of ${pageCount}) Tj ET`);
+  return commands.join("\n");
+}
+
+function buildPdfBuffer(pages) {
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj",
+    "",
+    "3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj"
+  ];
+  const pageObjectIds = [];
+  const contentObjectIds = [];
+  let nextObjectId = 4;
+
+  pages.forEach((lines, index) => {
+    const pageObjectId = nextObjectId++;
+    const contentObjectId = nextObjectId++;
+    pageObjectIds.push(pageObjectId);
+    contentObjectIds.push(contentObjectId);
+    const content = buildPdfPageContent(lines, index + 1, pages.length);
+    objects.push(`${pageObjectId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectId} 0 R >>\nendobj`);
+    objects.push(`${contentObjectId} 0 obj\n<< /Length ${Buffer.byteLength(content, "latin1")} >>\nstream\n${content}\nendstream\nendobj`);
+  });
+
+  objects[1] = `2 0 obj\n<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageObjectIds.length} >>\nendobj`;
+
+  const header = "%PDF-1.4\n";
+  let body = header;
+  const offsets = [0];
+  objects.forEach((object) => {
+    offsets.push(Buffer.byteLength(body, "latin1"));
+    body += `${object}\n`;
+  });
+  const xrefOffset = Buffer.byteLength(body, "latin1");
+  body += `xref\n0 ${objects.length + 1}\n`;
+  body += "0000000000 65535 f \n";
+  offsets.slice(1).forEach((offset) => {
+    body += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(body, "latin1");
+}
+
+function buildIssuePdfAttachment(issue) {
+  const lines = buildIssuePdfLines(issue);
+  const pages = paginatePdfLines(lines);
+  const pdfBuffer = buildPdfBuffer(pages);
+  return {
+    filename: `siteworks-${safePdfFilename(issue.issueNumber || issue.id)}.pdf`,
+    content: pdfBuffer.toString("base64"),
+    content_type: "application/pdf"
+  };
+}
+
 async function sendResendEmail({ to, issue }) {
   if (!RESEND_API_KEY) {
     const error = new Error("RESEND_API_KEY is not configured on this server.");
@@ -306,7 +448,8 @@ async function sendResendEmail({ to, issue }) {
     to: [to],
     subject: buildEmailSubject(issue),
     html: buildEmailHtml(issue),
-    text: buildEmailText(issue)
+    text: buildEmailText(issue),
+    attachments: [buildIssuePdfAttachment(issue)]
   };
   if (ISSUE_EMAIL_REPLY_TO) payload.reply_to = ISSUE_EMAIL_REPLY_TO;
 
@@ -663,8 +806,8 @@ async function handleEmail(request, response, pathname) {
     ok: true,
     id: result?.id || "",
     data: result,
-    pdfStatus: "planned",
-    message: "Email sent by the SiteWorks server. Server-side PDF attachment generation is planned for the next email phase."
+    pdfStatus: "attached",
+    message: "Email sent by the SiteWorks server with a PDF attachment."
   });
 }
 
@@ -701,6 +844,13 @@ async function handleRequest(request, response) {
   }
 }
 
-http.createServer(handleRequest).listen(PORT, () => {
-  console.log(`SiteWorks API shim listening on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  http.createServer(handleRequest).listen(PORT, () => {
+    console.log(`SiteWorks API shim listening on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = {
+  buildIssuePdfAttachment,
+  normalizeIssueReport
+};

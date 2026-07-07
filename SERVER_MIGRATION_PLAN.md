@@ -240,7 +240,9 @@ Current email status:
 
 - Good enough to prove server-owned email sending
 - Keeps the Resend API key out of browser files
-- Server-side PDF attachment generation is still planned
+- Server-side PDF attachment generation is started
+- Ticket, service request, and assignment emails can include a generated PDF attachment
+- Current PDF is a clean text summary and can be replaced with a richer renderer later
 
 ## Data Model Notes
 
