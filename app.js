@@ -9,6 +9,8 @@ const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
 const SUPABASE_STORAGE_BUCKET = "siteworks-files";
 const PRODUCTION_SITE_URL = "https://sitesworks.info/";
+const SITEWORKS_API_BASE_URL = "";
+const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const PUBLIC_REPORT_SYNC_INTERVAL_MS = 2 * 60 * 1000;
@@ -4831,6 +4833,7 @@ function renderSyncHealth() {
     : "Cloud sync looks healthy.";
   els.syncHealthPanel?.classList.toggle("has-sync-error", hasError);
   els.syncHealthGrid.innerHTML = [
+    ["Backend mode", siteworksApi.backendLabel()],
     ["Cloud load", loadStatus],
     ["Cloud save", saveStatus],
     ["Public reports", publicReportStatus],
@@ -9129,6 +9132,28 @@ function supabaseAuthFetch(path, options = {}, session = null) {
   return fetch(url, { ...options, headers });
 }
 
+function siteworksServerEnabled() {
+  return Boolean(SITEWORKS_API_BASE_URL);
+}
+
+function siteworksServerUrl(path) {
+  const cleanBase = SITEWORKS_API_BASE_URL.replace(/\/+$/, "");
+  const cleanPath = String(path || "").replace(/^\/+/, "");
+  return `${cleanBase}/${cleanPath}`;
+}
+
+function siteworksServerFetch(path, options = {}) {
+  const body = options.body;
+  const hasFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const session = getSavedAuthSession();
+  const headers = {
+    ...(hasFormData ? {} : { "Content-Type": "application/json" }),
+    ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    ...(options.headers || {})
+  };
+  return fetch(siteworksServerUrl(path), { ...options, headers });
+}
+
 const cloudApi = {
   rest(path, options = {}) {
     return supabaseFetch(path, options);
@@ -9183,7 +9208,22 @@ const cloudApi = {
 };
 
 const siteworksApi = {
+  mode() {
+    return SITEWORKS_API_MODE;
+  },
+  backendLabel() {
+    return siteworksServerEnabled() ? "SiteWorks server" : "Supabase prototype";
+  },
+  server(path, options = {}) {
+    return siteworksServerFetch(path, options);
+  },
   async login(email, password) {
+    if (siteworksServerEnabled()) {
+      return this.server("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ login: email, password })
+      });
+    }
     const loginEmail = await resolveSupabaseLoginEmail(email);
     return cloudApi.auth("token?grant_type=password", {
       method: "POST",
@@ -9191,6 +9231,12 @@ const siteworksApi = {
     });
   },
   createUser(email, password, name) {
+    if (siteworksServerEnabled()) {
+      return this.server("/api/users", {
+        method: "POST",
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password, name })
+      });
+    }
     return cloudApi.auth("signup", {
       method: "POST",
       body: JSON.stringify({
@@ -9202,15 +9248,26 @@ const siteworksApi = {
   },
   findLoginEmail(loginName) {
     const escaped = String(loginName || "").toLowerCase().replace(/[%*_]/g, "\\$&");
+    if (siteworksServerEnabled()) {
+      return this.server(`/api/users/resolve-login?login=${encodeURIComponent(escaped)}`);
+    }
     return cloudApi.rest(`profiles?or=(email.ilike.${encodeURIComponent(escaped)},name.ilike.${encodeURIComponent(escaped)})&select=email,name&limit=1`);
   },
   loadProfiles() {
+    if (siteworksServerEnabled()) return this.server("/api/users");
     return cloudApi.rest("profiles?select=*&order=created_at.asc");
   },
   loadProfile(userId) {
+    if (siteworksServerEnabled()) return this.server(`/api/users/${encodeURIComponent(userId)}`);
     return cloudApi.rest(`profiles?id=eq.${encodeURIComponent(userId)}&select=*&limit=1`);
   },
   saveProfile(payload) {
+    if (siteworksServerEnabled()) {
+      return this.server(`/api/users/${encodeURIComponent(payload.id)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+    }
     return cloudApi.rest("profiles?on_conflict=id", {
       method: "POST",
       headers: { Prefer: "resolution=merge-duplicates" },
@@ -9218,11 +9275,22 @@ const siteworksApi = {
     });
   },
   deleteProfile(userId) {
+    if (siteworksServerEnabled()) {
+      return this.server(`/api/users/${encodeURIComponent(userId)}`, {
+        method: "DELETE"
+      });
+    }
     return cloudApi.rest(`profiles?id=eq.${encodeURIComponent(userId)}`, {
       method: "DELETE"
     });
   },
   submitPublicReport(payload) {
+    if (siteworksServerEnabled()) {
+      return this.server("/api/public/reports", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    }
     return cloudApi.rest("public_reports?select=id", {
       method: "POST",
       headers: { Prefer: "return=representation" },
@@ -9230,12 +9298,20 @@ const siteworksApi = {
     });
   },
   loadPublicReports() {
+    if (siteworksServerEnabled()) return this.server("/api/public/reports?limit=50");
     return cloudApi.rest("public_reports?select=id,equipment_id,customer_id,customer_name,location_id,location_name,equipment_name,note,contact,photo_data_url,photo_name,created_at&order=created_at.desc&limit=50");
   },
   loadSharedState(id) {
+    if (siteworksServerEnabled()) return this.server(`/api/sync/shared-state/${encodeURIComponent(id)}`);
     return cloudApi.rest(`app_state?id=eq.${encodeURIComponent(id)}&select=data,updated_at`);
   },
   saveSharedState(payload) {
+    if (siteworksServerEnabled()) {
+      return this.server(`/api/sync/shared-state/${encodeURIComponent(payload.id)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+    }
     return cloudApi.rest("app_state?on_conflict=id", {
       method: "POST",
       headers: { Prefer: "resolution=merge-duplicates" },
@@ -9243,21 +9319,61 @@ const siteworksApi = {
     });
   },
   loadRows(table, order = "updated_at.asc") {
+    if (siteworksServerEnabled()) {
+      return this.server(`/api/data/${encodeURIComponent(table)}?order=${encodeURIComponent(order)}`).then((response) => {
+        if (!response.ok) throw new Error("Server data load failed.");
+        return response.json();
+      });
+    }
     return cloudApi.select(`${table}?select=*&order=${encodeURIComponent(order)}`);
   },
   peekRows(table, timestampColumn) {
+    if (siteworksServerEnabled()) {
+      return this.server(`/api/data/${encodeURIComponent(table)}/peek?timestampColumn=${encodeURIComponent(timestampColumn)}`).then((response) => {
+        if (!response.ok) throw new Error("Server data check failed.");
+        return response.json();
+      });
+    }
     return cloudApi.select(`${table}?select=id,${timestampColumn}&order=${encodeURIComponent(`${timestampColumn}.desc`)}&limit=1`);
   },
   saveRows(table, rows) {
+    if (siteworksServerEnabled()) {
+      return this.server(`/api/data/${encodeURIComponent(table)}/batch`, {
+        method: "POST",
+        body: JSON.stringify({ rows })
+      }).then(async (response) => {
+        if (!response.ok) throw new Error(await response.text());
+      });
+    }
     return cloudApi.upsert(`${table}?on_conflict=id`, rows);
   },
   deleteRows(table, column, values) {
     const cleanValues = values.filter(Boolean);
     if (!cleanValues.length) return Promise.resolve();
+    if (siteworksServerEnabled()) {
+      return this.server(`/api/data/${encodeURIComponent(table)}/delete`, {
+        method: "POST",
+        body: JSON.stringify({ column, values: cleanValues })
+      }).then(async (response) => {
+        if (!response.ok) throw new Error(await response.text());
+      });
+    }
     const filter = cleanValues.map((value) => encodeURIComponent(value)).join(",");
     return cloudApi.delete(`${table}?${column}=in.(${filter})`);
   },
   uploadFile(file, folder, session = null) {
+    if (siteworksServerEnabled()) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", folder || "uploads");
+      return this.server("/api/files", {
+        method: "POST",
+        body: formData
+      }).then(async (response) => {
+        if (!response.ok) throw new Error(await response.text());
+        return response.json();
+      });
+    }
     return cloudApi.uploadFile(file, folder, session);
   }
 };
