@@ -1,34 +1,31 @@
--- SiteWorks Phase 1 storage setup
--- Run this in Supabase SQL Editor once before using cloud file uploads.
--- This compatibility setup keeps the bucket public.
--- For private storage after the server signed URL route is deployed, run supabase-storage-private.sql.
+-- SiteWorks private storage phase
+-- Run this after the server signed URL route is deployed and working.
+-- It keeps server/service-role uploads working while removing anonymous public reads.
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'siteworks-files',
   'siteworks-files',
-  true,
+  false,
   26214400,
   array[
     'image/jpeg',
     'image/png',
     'image/webp',
+    'image/gif',
     'image/heic',
+    'image/heif',
     'application/pdf',
     'application/octet-stream'
   ]
 )
 on conflict (id) do update
 set
-  public = excluded.public,
+  public = false,
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "SiteWorks files public read" on storage.objects;
-create policy "SiteWorks files public read"
-on storage.objects
-for select
-using (bucket_id = 'siteworks-files');
 
 drop policy if exists "SiteWorks files app upload" on storage.objects;
 create policy "SiteWorks files app upload"

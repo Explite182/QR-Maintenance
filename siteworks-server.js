@@ -7,6 +7,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "siteworks-files";
+const SUPABASE_STORAGE_PUBLIC_URLS = process.env.SUPABASE_STORAGE_PUBLIC_URLS === "true";
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const ALLOW_DEV_AUTH_HEADERS = process.env.ALLOW_DEV_AUTH_HEADERS === "true";
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 10 * 1024 * 1024);
@@ -245,6 +246,11 @@ function normalizeSignedUrlExpires(value) {
   const seconds = Number(value || SIGNED_URL_EXPIRES_SECONDS);
   if (!Number.isFinite(seconds)) return SIGNED_URL_EXPIRES_SECONDS;
   return Math.max(60, Math.min(Math.round(seconds), 60 * 60));
+}
+
+function publicStorageUrl(path) {
+  if (!SUPABASE_STORAGE_PUBLIC_URLS || !path) return "";
+  return `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`;
 }
 
 function validateUpload(file) {
@@ -973,6 +979,7 @@ async function handleFiles(request, response, pathname) {
   });
 
   if (!upstream.ok) return proxyJson(response, upstream);
+  const publicUrl = publicStorageUrl(path);
 
   return sendJson(response, 201, {
     name: file.name,
@@ -982,10 +989,10 @@ async function handleFiles(request, response, pathname) {
     path,
     storageKey: path,
     storage_key: path,
-    url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`,
-    publicUrl: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`,
-    public_url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`,
-    accessMode: "signed-url-ready",
+    url: publicUrl,
+    publicUrl,
+    public_url: publicUrl,
+    accessMode: publicUrl ? "public-compatible" : "signed-url",
     ownerType: fields.ownerType || fields.owner_type || "",
     ownerId: fields.ownerId || fields.owner_id || "",
     customerId: fields.customerId || fields.customer_id || actor.customerId || "",
@@ -1053,6 +1060,7 @@ async function handleRequest(request, response) {
         devAuthHeadersEnabled: ALLOW_DEV_AUTH_HEADERS,
         maxUploadBytes: MAX_UPLOAD_BYTES,
         signedUrlExpiresSeconds: SIGNED_URL_EXPIRES_SECONDS,
+        storagePublicUrlsEnabled: SUPABASE_STORAGE_PUBLIC_URLS,
         allowedUploadTypes: [...ALLOWED_UPLOAD_TYPES]
       });
     }

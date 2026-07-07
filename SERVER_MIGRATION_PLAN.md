@@ -189,7 +189,9 @@ Current upload status:
 - Still needs production-grade image resizing/compression
 - Signed URL behavior is started; frontend screens still need to move away from public URL display fields
 - Frontend media rendering now requests signed URLs when server mode is enabled and a storage key is available
-- Still needs private bucket enforcement before real customer data
+- Private bucket enforcement is started with `supabase-storage-private.sql`
+- Server uploads no longer return permanent public URLs unless `SUPABASE_STORAGE_PUBLIC_URLS=true`
+- Still needs full production testing before real customer data
 
 ### QR Public Reports
 
@@ -470,6 +472,7 @@ Started in this repo:
 - File uploads now return storage keys and signed-link readiness metadata
 - The server now exposes a scoped signed file URL route for temporary access
 - The frontend media resolver now caches signed URLs and falls back to existing public/data URLs while migration continues
+- Private storage cutover SQL is available in `supabase-storage-private.sql`
 
 ## Immediate Next Coding Step
 

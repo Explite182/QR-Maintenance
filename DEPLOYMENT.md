@@ -29,6 +29,7 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-publishable-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_STORAGE_BUCKET=siteworks-files
+SUPABASE_STORAGE_PUBLIC_URLS=false
 MAX_UPLOAD_BYTES=10485760
 SIGNED_URL_EXPIRES_SECONDS=600
 RESEND_API_KEY=your-resend-api-key
@@ -77,6 +78,7 @@ The health response should show:
 - `policyLayer: "enabled"`
 - `authMode: "supabase-bearer-token"`
 - `signedUrlExpiresSeconds: 600`
+- `storagePublicUrlsEnabled: false`
 
 You can also run the automated smoke check while the local server is running:
 
@@ -118,6 +120,17 @@ Recommended:
 
 - `sitesworks.info` points to GitHub Pages frontend
 - `api.sitesworks.info` points to the Node server
+
+## Private Storage Cutover
+
+After signed file links work on the hosted API:
+
+1. Run `supabase-storage-private.sql` in the Supabase SQL Editor.
+2. Confirm `/api/health` shows `storagePublicUrlsEnabled: false`.
+3. Upload a test photo or manual.
+4. Confirm it opens inside SiteWorks through the signed URL route.
+
+Do not run the private storage SQL before the signed URL route is deployed and tested.
 
 ## Before Switching the Frontend
 

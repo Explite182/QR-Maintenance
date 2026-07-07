@@ -48,6 +48,7 @@ async function main() {
     "devAuthHeadersEnabled",
     "maxUploadBytes",
     "signedUrlExpiresSeconds",
+    "storagePublicUrlsEnabled",
     "allowedUploadTypes"
   ];
   const missingKeys = requiredKeys.filter((key) => !(key in health));
@@ -74,6 +75,7 @@ async function main() {
   }
   console.log(`Max upload bytes: ${health.maxUploadBytes}`);
   console.log(`Signed URL seconds: ${health.signedUrlExpiresSeconds}`);
+  console.log(`Storage public URLs enabled: ${health.storagePublicUrlsEnabled}`);
 }
 
 main();

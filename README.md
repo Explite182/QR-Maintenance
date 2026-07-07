@@ -49,6 +49,7 @@ Then start the server:
 $env:SUPABASE_URL="https://your-project.supabase.co"
 $env:SUPABASE_ANON_KEY="your-publishable-anon-key"
 $env:SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+$env:SUPABASE_STORAGE_PUBLIC_URLS="false"
 $env:ALLOWED_ORIGIN="http://localhost:8787"
 $env:ALLOW_DEV_AUTH_HEADERS="false"
 $env:MAX_UPLOAD_BYTES="10485760"
@@ -117,6 +118,8 @@ The default upload limit is 10 MB. Change it with `MAX_UPLOAD_BYTES`.
 The upload route returns file metadata with a storage path, storage key, and temporary signed-link readiness. Existing public URL fields remain for compatibility while the frontend is migrated toward signed access.
 
 When server mode is enabled, the frontend media resolver asks `/api/files/signed-url` for temporary links whenever an uploaded file has a storage key.
+
+For production-style private storage, keep `SUPABASE_STORAGE_PUBLIC_URLS=false` and run `supabase-storage-private.sql` after signed file links are deployed. Set `SUPABASE_STORAGE_PUBLIC_URLS=true` only as a temporary compatibility fallback.
 
 ## Email Routes
 
