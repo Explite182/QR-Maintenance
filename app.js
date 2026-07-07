@@ -3879,7 +3879,10 @@ function renderEditAssetLocationOptions(selectedLocationId = "") {
 
 function renderDashboard() {
   const assets = dashboardAssets();
-  const dueInfos = assets.map(getDueInfo);
+  const dueInfos = assets.map((asset) => ({
+    ...getDueInfo(asset),
+    asset
+  }));
   const activeIssues = filteredWorkOrders().filter((item) => item.status !== "Closed");
   const activeServiceRequests = filteredServiceRequests().filter((item) => item.status !== "Completed" && item.status !== "Declined");
   const completedIssues = completedTicketRecords();
