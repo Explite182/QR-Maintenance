@@ -92,6 +92,8 @@ let syncHealth = {
 let editingAssetDetailField = "";
 let storageFullWarningShown = false;
 let suppressStorageFullWarning = false;
+const signedMediaUrlCache = new Map();
+const signedMediaUrlPending = new Set();
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -9804,6 +9806,30 @@ function structuredPayload(row) {
   return row?.data && typeof row.data === "object" ? row.data : {};
 }
 
+function withFileScope(file, scope = {}) {
+  if (!file || typeof file !== "object") return file;
+  return {
+    ...file,
+    customerId: file.customerId || file.customer_id || scope.customerId || scope.customer_id || "",
+    locationId: file.locationId || file.location_id || scope.locationId || scope.location_id || ""
+  };
+}
+
+function withRecordMediaScope(record, scope = {}) {
+  if (!record || typeof record !== "object") return record;
+  const next = { ...record };
+  if (next.photo) next.photo = withFileScope(next.photo, scope);
+  if (next.manualFile) next.manualFile = withFileScope(next.manualFile, scope);
+  if (Array.isArray(next.photos)) next.photos = next.photos.map((photo) => withFileScope(photo, scope));
+  if (Array.isArray(next.history)) {
+    next.history = next.history.map((item) => ({
+      ...item,
+      photo: withFileScope(item.photo, scope)
+    }));
+  }
+  return next;
+}
+
 function customerFromStructuredRow(row) {
   return {
     id: row.id,
@@ -9837,7 +9863,7 @@ function templateFromStructuredRow(row) {
 }
 
 function assetFromStructuredRow(row) {
-  return {
+  const asset = {
     id: row.id,
     customerId: row.customer_id || "",
     locationId: row.location_id || "",
@@ -9861,10 +9887,11 @@ function assetFromStructuredRow(row) {
     updatedAt: row.updated_at || "",
     ...structuredPayload(row)
   };
+  return withRecordMediaScope(asset, asset);
 }
 
 function workOrderFromStructuredRow(row) {
-  return {
+  const workOrder = {
     id: row.id,
     issueNumber: row.issue_number || row.ticket_number || null,
     assetId: row.asset_id || "",
@@ -9884,10 +9911,11 @@ function workOrderFromStructuredRow(row) {
     updatedAt: row.updated_at || "",
     ...structuredPayload(row)
   };
+  return withRecordMediaScope(workOrder, workOrder);
 }
 
 function serviceRequestFromStructuredRow(row) {
-  return {
+  const request = {
     id: row.id,
     serviceRequestNumber: row.service_request_number || null,
     assetId: row.asset_id || "",
@@ -9907,6 +9935,7 @@ function serviceRequestFromStructuredRow(row) {
     updatedAt: row.updated_at || "",
     ...structuredPayload(row)
   };
+  return withRecordMediaScope(request, request);
 }
 
 function groupStructuredHistoryByAsset(historyRows = []) {
@@ -9923,6 +9952,7 @@ function groupStructuredHistoryByAsset(historyRows = []) {
       completedAt: row.completed_at || "",
       ...structuredPayload(row)
     };
+    if (history.photo) history.photo = withFileScope(history.photo, { assetId: row.asset_id });
     const list = grouped.get(row.asset_id) || [];
     list.push(history);
     grouped.set(row.asset_id, list);
@@ -11290,15 +11320,51 @@ function slugifyStoragePath(value) {
 }
 
 function mediaSource(file) {
-  return file?.url || file?.dataUrl || "";
+  if (!file) return "";
+  const signedUrl = signedMediaSource(file);
+  return signedUrl || file.url || file.publicUrl || file.public_url || file.dataUrl || "";
 }
 
 function cloudMediaSource(file) {
-  return file?.url || "";
+  return file?.url || file?.publicUrl || file?.public_url || "";
 }
 
 function hasMedia(file) {
   return Boolean(mediaSource(file));
+}
+
+function signedMediaKey(file) {
+  const path = file?.storageKey || file?.storage_key || file?.path || "";
+  if (!path) return "";
+  return `${file.bucket || file.storageBucket || SUPABASE_STORAGE_BUCKET}:${path}`;
+}
+
+function signedMediaSource(file) {
+  if (!siteworksServerEnabled()) return "";
+  const key = signedMediaKey(file);
+  if (!key) return "";
+  const cached = signedMediaUrlCache.get(key);
+  if (cached && cached.expiresAt > Date.now() + 30 * 1000) return cached.url;
+  requestSignedMediaUrl(file, key);
+  return cached?.url || "";
+}
+
+function requestSignedMediaUrl(file, key = signedMediaKey(file)) {
+  if (!key || signedMediaUrlPending.has(key)) return;
+  signedMediaUrlPending.add(key);
+  siteworksApi.getSignedFileUrl(file)
+    .then(async (response) => {
+      if (!response?.ok) return;
+      const data = await response.json();
+      if (!data?.signedUrl) return;
+      signedMediaUrlCache.set(key, {
+        url: data.signedUrl,
+        expiresAt: Date.now() + Number(data.expiresIn || 600) * 1000
+      });
+      window.setTimeout(render, 0);
+    })
+    .catch((error) => console.warn("Signed file link skipped.", error))
+    .finally(() => signedMediaUrlPending.delete(key));
 }
 
 function fileToDataUrl(file) {

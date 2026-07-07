@@ -188,6 +188,7 @@ Current upload status:
 - Good enough for proving server-routed uploads
 - Still needs production-grade image resizing/compression
 - Signed URL behavior is started; frontend screens still need to move away from public URL display fields
+- Frontend media rendering now requests signed URLs when server mode is enabled and a storage key is available
 - Still needs private bucket enforcement before real customer data
 
 ### QR Public Reports
@@ -468,6 +469,7 @@ Started in this repo:
 - Structured table writes now reject rows outside the signed-in user's customer/location scope
 - File uploads now return storage keys and signed-link readiness metadata
 - The server now exposes a scoped signed file URL route for temporary access
+- The frontend media resolver now caches signed URLs and falls back to existing public/data URLs while migration continues
 
 ## Immediate Next Coding Step
 

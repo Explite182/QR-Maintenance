@@ -940,7 +940,11 @@ async function handleFiles(request, response, pathname) {
       path,
       storageKey: path,
       expiresIn,
-      signedUrl: signedPath ? `${SUPABASE_URL}/storage/v1${signedPath}` : "",
+      signedUrl: signedPath
+        ? signedPath.startsWith("http")
+          ? signedPath
+          : `${SUPABASE_URL}/storage/v1${signedPath}`
+        : "",
       data: result
     });
   }

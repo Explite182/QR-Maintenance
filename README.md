@@ -116,6 +116,8 @@ The default upload limit is 10 MB. Change it with `MAX_UPLOAD_BYTES`.
 
 The upload route returns file metadata with a storage path, storage key, and temporary signed-link readiness. Existing public URL fields remain for compatibility while the frontend is migrated toward signed access.
 
+When server mode is enabled, the frontend media resolver asks `/api/files/signed-url` for temporary links whenever an uploaded file has a storage key.
+
 ## Email Routes
 
 The server now owns the first version of the SiteWorks email routes:
