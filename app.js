@@ -4645,7 +4645,7 @@ function renderAssetTable() {
   els.tableAssetCount.textContent = assets.length;
   els.assetTableBody.innerHTML = pageAssets.length
     ? pageAssets.map(renderAssetTableRow).join("")
-    : `<tr><td colspan="7" class="empty-cell">No equipment matches these filters.</td></tr>`;
+    : `<tr><td colspan="7" class="empty-cell">${escapeHtml(emptyAssetTableMessage())}</td></tr>`;
 
   els.assetTableBody.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", (event) => {
@@ -4689,6 +4689,18 @@ function renderAssetTable() {
   els.assetPageInfo.textContent = `Showing ${showingStart}-${showingEnd} of ${assets.length}`;
   els.prevAssetPageBtn.disabled = assetPage <= 1;
   els.nextAssetPageBtn.disabled = assetPage >= totalPages;
+}
+
+function emptyAssetTableMessage() {
+  const currentCustomer = getCustomer(selectedCustomerId);
+  const scopedAssets = filteredAssets();
+  if (state.assets.length && currentCustomer && !scopedAssets.length) {
+    return `No equipment is linked to ${currentCustomer.name} in this view. Try another customer/location or clear search filters.`;
+  }
+  if (scopedAssets.length && !assetTableAssets().length) {
+    return "Equipment exists for this view, but the current search/status/tab filters are hiding it.";
+  }
+  return "No equipment matches these filters.";
 }
 
 function renderAssetTableRow(asset) {
@@ -7979,6 +7991,8 @@ function ensureSelection() {
     selectedCustomerId = customers[0].id;
   }
 
+  repairSelectedCustomerToPopulatedDuplicate(customers);
+
   const visibleLocations = locationsForCustomer(selectedCustomerId);
   if (selectedLocationId !== "all" && !visibleLocations.some((locationRecord) => locationRecord.id === selectedLocationId)) {
     selectedLocationId = "all";
@@ -9422,6 +9436,34 @@ async function signInWithSupabase(email, password) {
   }
 }
 
+function normalizedName(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function customerVisibleAssetCount(customerId) {
+  return state.assets.filter((asset) =>
+    asset.customerId === customerId &&
+    canSeeAsset(asset)
+  ).length;
+}
+
+function repairSelectedCustomerToPopulatedDuplicate(customers = visibleCustomers()) {
+  const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
+  if (!selectedCustomer || customerVisibleAssetCount(selectedCustomer.id)) return;
+  const selectedName = normalizedName(selectedCustomer.name);
+  if (!selectedName) return;
+
+  const replacement = customers.find((customer) =>
+    customer.id !== selectedCustomer.id &&
+    normalizedName(customer.name) === selectedName &&
+    customerVisibleAssetCount(customer.id) > 0
+  );
+  if (!replacement) return;
+
+  selectedCustomerId = replacement.id;
+  selectedLocationId = "all";
+}
+
 async function resolveSupabaseLoginEmail(identifier) {
   const clean = String(identifier || "").trim();
   const lower = clean.toLowerCase();
@@ -9708,6 +9750,12 @@ async function loadStructuredDataFromSupabase() {
       serviceRequests: serviceRequestRows,
       history: historyRows
     };
+    if (structuredRowsMissingAssets(structuredRows)) {
+      markSyncError("Structured cloud load returned related records but no equipment. Keeping/restoring the last known equipment list.");
+      const restoredSharedState = await loadSharedStateFromSupabase(true);
+      if (!restoredSharedState && state.assets?.length) scheduleStructuredDataSync(0);
+      return Boolean(restoredSharedState || state.assets?.length);
+    }
     const structuredUpdatedAt = newestStructuredUpdatedAt(structuredRows);
     if (hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(structuredUpdatedAt)) {
       scheduleStructuredDataSync(0);
@@ -9724,6 +9772,16 @@ async function loadStructuredDataFromSupabase() {
     console.warn("Structured Supabase load skipped.", error);
     return false;
   }
+}
+
+function structuredRowsMissingAssets(rows = {}) {
+  if (rows.assets?.length) return false;
+  if (state.assets?.length) return true;
+  return Boolean(
+    rows.workOrders?.some((row) => row.asset_id || row.assetId) ||
+    rows.serviceRequests?.some((row) => row.asset_id || row.assetId) ||
+    rows.history?.some((row) => row.asset_id || row.assetId)
+  );
 }
 
 async function fetchStructuredRows(table, order = "updated_at.asc") {
@@ -9979,8 +10037,8 @@ function newestTimestampFromRows(rows = []) {
     .at(-1) || new Date().toISOString();
 }
 
-async function loadSharedStateFromSupabase() {
-  if (sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+async function loadSharedStateFromSupabase(forceApplyAssets = false) {
+  if (sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
   sharedStateLoading = true;
   const localHadSharedData = hasSharedMaintenanceData(state);
 
@@ -10000,20 +10058,29 @@ async function loadSharedStateFromSupabase() {
     const remoteRecord = rows?.[0];
     if (!remoteRecord?.data) {
       if (localHadSharedData) scheduleSharedStateSave(0);
-      return;
+      return false;
+    }
+
+    if (forceApplyAssets && Array.isArray(remoteRecord.data.assets) && remoteRecord.data.assets.length) {
+      applySharedState(remoteRecord.data, remoteRecord.updated_at);
+      markSyncSuccess("load");
+      window.setTimeout(() => scheduleStructuredDataSync(0), 0);
+      return true;
     }
 
     if (!localHadSharedData || isRemoteSharedStateNewer(remoteRecord.updated_at)) {
       applySharedState(remoteRecord.data, remoteRecord.updated_at);
       markSyncSuccess("load");
-      return;
+      return true;
     }
     markSyncSuccess("load");
+    return false;
   } catch (error) {
     sharedStateLoading = false;
     sharedStateReady = true;
     markSyncError(error?.message || "Shared cloud load failed.");
     console.warn("Supabase shared data sync skipped.", error);
+    return false;
   }
 }
 
