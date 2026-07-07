@@ -9056,11 +9056,7 @@ async function savePublicReportToSupabase(report, note, contact, photo) {
     photo_name: photo?.name || ""
   };
   try {
-    const response = await cloudApi.rest("public_reports?select=id", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(payload)
-    });
+    const response = await siteworksApi.submitPublicReport(payload);
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     return data?.[0]?.id || "";
@@ -9079,7 +9075,7 @@ async function syncPublicReportsFromSupabase(force = false) {
   remoteReportsLoading = true;
   let data = [];
   try {
-    const response = await cloudApi.rest("public_reports?select=id,equipment_id,customer_id,customer_name,location_id,location_name,equipment_name,note,contact,photo_data_url,photo_name,created_at&order=created_at.desc&limit=50");
+    const response = await siteworksApi.loadPublicReports();
     remoteReportsLoading = false;
     remoteReportsLoaded = true;
     if (!response.ok) {
@@ -9186,14 +9182,90 @@ const cloudApi = {
   }
 };
 
-async function signInWithSupabase(email, password) {
-  lastAuthError = "";
-  try {
+const siteworksApi = {
+  async login(email, password) {
     const loginEmail = await resolveSupabaseLoginEmail(email);
-    const response = await cloudApi.auth("token?grant_type=password", {
+    return cloudApi.auth("token?grant_type=password", {
       method: "POST",
       body: JSON.stringify({ email: loginEmail, password })
     });
+  },
+  createUser(email, password, name) {
+    return cloudApi.auth("signup", {
+      method: "POST",
+      body: JSON.stringify({
+        email: email.trim().toLowerCase(),
+        password,
+        data: { name }
+      })
+    });
+  },
+  findLoginEmail(loginName) {
+    const escaped = String(loginName || "").toLowerCase().replace(/[%*_]/g, "\\$&");
+    return cloudApi.rest(`profiles?or=(email.ilike.${encodeURIComponent(escaped)},name.ilike.${encodeURIComponent(escaped)})&select=email,name&limit=1`);
+  },
+  loadProfiles() {
+    return cloudApi.rest("profiles?select=*&order=created_at.asc");
+  },
+  loadProfile(userId) {
+    return cloudApi.rest(`profiles?id=eq.${encodeURIComponent(userId)}&select=*&limit=1`);
+  },
+  saveProfile(payload) {
+    return cloudApi.rest("profiles?on_conflict=id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify(payload)
+    });
+  },
+  deleteProfile(userId) {
+    return cloudApi.rest(`profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "DELETE"
+    });
+  },
+  submitPublicReport(payload) {
+    return cloudApi.rest("public_reports?select=id", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(payload)
+    });
+  },
+  loadPublicReports() {
+    return cloudApi.rest("public_reports?select=id,equipment_id,customer_id,customer_name,location_id,location_name,equipment_name,note,contact,photo_data_url,photo_name,created_at&order=created_at.desc&limit=50");
+  },
+  loadSharedState(id) {
+    return cloudApi.rest(`app_state?id=eq.${encodeURIComponent(id)}&select=data,updated_at`);
+  },
+  saveSharedState(payload) {
+    return cloudApi.rest("app_state?on_conflict=id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify(payload)
+    });
+  },
+  loadRows(table, order = "updated_at.asc") {
+    return cloudApi.select(`${table}?select=*&order=${encodeURIComponent(order)}`);
+  },
+  peekRows(table, timestampColumn) {
+    return cloudApi.select(`${table}?select=id,${timestampColumn}&order=${encodeURIComponent(`${timestampColumn}.desc`)}&limit=1`);
+  },
+  saveRows(table, rows) {
+    return cloudApi.upsert(`${table}?on_conflict=id`, rows);
+  },
+  deleteRows(table, column, values) {
+    const cleanValues = values.filter(Boolean);
+    if (!cleanValues.length) return Promise.resolve();
+    const filter = cleanValues.map((value) => encodeURIComponent(value)).join(",");
+    return cloudApi.delete(`${table}?${column}=in.(${filter})`);
+  },
+  uploadFile(file, folder, session = null) {
+    return cloudApi.uploadFile(file, folder, session);
+  }
+};
+
+async function signInWithSupabase(email, password) {
+  lastAuthError = "";
+  try {
+    const response = await siteworksApi.login(email, password);
     if (!response.ok) {
       const errorText = await response.text();
       lastAuthError = readableSupabaseError(errorText) || "Supabase login failed. Check the email, password, and Auth settings.";
@@ -9232,7 +9304,7 @@ async function resolveSupabaseLoginEmail(identifier) {
 
   try {
     const escaped = lower.replace(/[%*_]/g, "\\$&");
-    const response = await cloudApi.rest(`profiles?or=(email.ilike.${encodeURIComponent(escaped)},name.ilike.${encodeURIComponent(escaped)})&select=email,name&limit=1`);
+    const response = await siteworksApi.findLoginEmail(lower);
     if (response.ok) {
       const rows = await response.json();
       const email = rows?.[0]?.email || "";
@@ -9272,14 +9344,7 @@ function readableSupabaseError(errorText) {
 async function signUpSupabaseUser(email, password, name, role, customerId, locationId = "") {
   lastAuthError = "";
   try {
-    const response = await cloudApi.auth("signup", {
-      method: "POST",
-      body: JSON.stringify({
-        email: email.trim().toLowerCase(),
-        password,
-        data: { name }
-      })
-    });
+    const response = await siteworksApi.createUser(email, password, name);
     if (!response.ok) {
       const errorText = await response.text();
       lastAuthError = readableSupabaseError(errorText) || "Supabase could not create this user.";
@@ -9317,7 +9382,7 @@ async function loadSupabaseProfiles() {
   if (authProfilesLoading) return;
   authProfilesLoading = true;
   try {
-    const response = await cloudApi.rest("profiles?select=*&order=created_at.asc");
+    const response = await siteworksApi.loadProfiles();
     authProfilesLoading = false;
     authProfilesLoaded = true;
     if (!response.ok) {
@@ -9356,21 +9421,13 @@ async function saveSupabaseProfile(profile) {
     location_id: profile.role === "Admin" ? "" : profile.locationId || "",
     updated_at: new Date().toISOString()
   };
-  const response = await cloudApi.rest("profiles?on_conflict=id", {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates" },
-    body: JSON.stringify(payload)
-  });
+  const response = await siteworksApi.saveProfile(payload);
   if (!response.ok) {
     const errorText = await response.text();
     if (errorText.includes("location_id") || errorText.includes("PGRST204")) {
       const fallbackPayload = { ...payload };
       delete fallbackPayload.location_id;
-      const fallbackResponse = await cloudApi.rest("profiles?on_conflict=id", {
-        method: "POST",
-        headers: { Prefer: "resolution=merge-duplicates" },
-        body: JSON.stringify(fallbackPayload)
-      });
+      const fallbackResponse = await siteworksApi.saveProfile(fallbackPayload);
       if (!fallbackResponse.ok) console.warn("Supabase profile save skipped.", await fallbackResponse.text());
       return;
     }
@@ -9379,15 +9436,13 @@ async function saveSupabaseProfile(profile) {
 }
 
 async function deleteSupabaseProfile(userId) {
-  const response = await cloudApi.rest(`profiles?id=eq.${encodeURIComponent(userId)}`, {
-    method: "DELETE"
-  });
+  const response = await siteworksApi.deleteProfile(userId);
   if (!response.ok) console.warn("Supabase profile delete skipped.", await response.text());
 }
 
 async function getProfileForAuthUser(authUser) {
   if (!authUser?.id) return null;
-  const response = await cloudApi.rest(`profiles?id=eq.${encodeURIComponent(authUser.id)}&select=*&limit=1`);
+  const response = await siteworksApi.loadProfile(authUser.id);
   if (!response.ok) {
     console.warn("Supabase profile lookup failed.", await response.text());
     return null;
@@ -9542,7 +9597,7 @@ async function loadStructuredDataFromSupabase() {
 
 async function fetchStructuredRows(table, order = "updated_at.asc") {
   try {
-    return await cloudApi.select(`${table}?select=*&order=${encodeURIComponent(order)}`);
+    return await siteworksApi.loadRows(table, order);
   } catch (error) {
     const message = `Structured cloud load failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
@@ -9571,7 +9626,7 @@ async function peekStructuredCloudState() {
 
 async function fetchStructuredTimestampRows(table, timestampColumn) {
   try {
-    return await cloudApi.select(`${table}?select=id,${timestampColumn}&order=${encodeURIComponent(`${timestampColumn}.desc`)}&limit=1`);
+    return await siteworksApi.peekRows(table, timestampColumn);
   } catch (error) {
     const message = `Structured cloud change check failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
@@ -9771,7 +9826,7 @@ async function loadSharedStateFromSupabase() {
   const localHadSharedData = hasSharedMaintenanceData(state);
 
   try {
-    const response = await cloudApi.rest(`app_state?id=eq.${encodeURIComponent(SHARED_APP_STATE_ID)}&select=data,updated_at`);
+    const response = await siteworksApi.loadSharedState(SHARED_APP_STATE_ID);
     sharedStateLoading = false;
     sharedStateReady = true;
 
@@ -9891,11 +9946,7 @@ async function saveSharedStateToSupabase() {
   };
 
   try {
-    const response = await cloudApi.rest("app_state?on_conflict=id", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify(payload)
-    });
+    const response = await siteworksApi.saveSharedState(payload);
     if (!response.ok) {
       const errorText = await response.text();
       markSyncError(`Shared cloud save failed: ${errorText}`);
@@ -10101,7 +10152,7 @@ async function syncStructuredDataToSupabase() {
 async function upsertStructuredRows(table, rows) {
   if (!rows.length) return;
   try {
-    await cloudApi.upsert(`${table}?on_conflict=id`, rows);
+    await siteworksApi.saveRows(table, rows);
   } catch (error) {
     const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
@@ -10111,11 +10162,8 @@ async function upsertStructuredRows(table, rows) {
 }
 
 async function deleteStructuredRows(table, column, values) {
-  const cleanValues = values.filter(Boolean);
-  if (!cleanValues.length) return;
-  const filter = cleanValues.map((value) => encodeURIComponent(value)).join(",");
   try {
-    await cloudApi.delete(`${table}?${column}=in.(${filter})`);
+    await siteworksApi.deleteRows(table, column, values);
   } catch (error) {
     console.warn(`Structured Supabase delete skipped for ${table}.`, error);
   }
@@ -11080,7 +11128,7 @@ async function storeResizedPhotoFile(file, dataUrl, folder) {
 async function uploadFileToSupabaseStorage(file, folder = "uploads") {
   if (!file) return null;
   try {
-    return await cloudApi.uploadFile(file, folder, getSavedAuthSession());
+    return await siteworksApi.uploadFile(file, folder, getSavedAuthSession());
   } catch (error) {
     console.warn("Supabase Storage upload skipped.", error);
     return null;
