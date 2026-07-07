@@ -30,6 +30,7 @@ SUPABASE_ANON_KEY=your-publishable-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_STORAGE_BUCKET=siteworks-files
 MAX_UPLOAD_BYTES=10485760
+SIGNED_URL_EXPIRES_SECONDS=600
 RESEND_API_KEY=your-resend-api-key
 ISSUE_EMAIL_FROM=SiteWorks <service@sitesworks.info>
 ISSUE_EMAIL_REPLY_TO=your-email@example.com
@@ -75,6 +76,7 @@ The health response should show:
 - `emailConfigured: true`
 - `policyLayer: "enabled"`
 - `authMode: "supabase-bearer-token"`
+- `signedUrlExpiresSeconds: 600`
 
 You can also run the automated smoke check while the local server is running:
 
@@ -126,6 +128,7 @@ Confirm these work on the hosted server:
 - Scoped data routes return only the signed-in user's allowed customer/location rows
 - Public report route
 - File upload route
+- Signed file URL route
 - Email route
 - PDF smoke test locally before deploy
 - Supabase service role is private and not visible in browser files
@@ -133,7 +136,7 @@ Confirm these work on the hosted server:
 ## Production Hardening Still Needed
 
 - Rate limiting public QR reports
-- Private file storage or signed URLs
+- Move remaining frontend file display from public URLs to signed URLs
 - Richer PDF layout
 - Logging and monitoring
 - Scheduled database backups

@@ -10,6 +10,7 @@ const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "sitework
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const ALLOW_DEV_AUTH_HEADERS = process.env.ALLOW_DEV_AUTH_HEADERS === "true";
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 10 * 1024 * 1024);
+const SIGNED_URL_EXPIRES_SECONDS = Number(process.env.SIGNED_URL_EXPIRES_SECONDS || 60 * 10);
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const ISSUE_EMAIL_FROM = process.env.ISSUE_EMAIL_FROM || "SiteWorks <onboarding@resend.dev>";
 const ISSUE_EMAIL_REPLY_TO = process.env.ISSUE_EMAIL_REPLY_TO || "";
@@ -228,6 +229,22 @@ function buildStoragePath(file, folder = "uploads") {
   const cleanName = slugifyStoragePath(file.name || "file");
   const dateFolder = new Date().toISOString().slice(0, 10);
   return `${cleanFolder}/${dateFolder}/${randomUUID()}-${cleanName}`;
+}
+
+function normalizeStoragePath(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/^\/+/, "")
+    .replace(/\.\./g, "")
+    .split("/")
+    .filter(Boolean)
+    .join("/");
+}
+
+function normalizeSignedUrlExpires(value) {
+  const seconds = Number(value || SIGNED_URL_EXPIRES_SECONDS);
+  if (!Number.isFinite(seconds)) return SIGNED_URL_EXPIRES_SECONDS;
+  return Math.max(60, Math.min(Math.round(seconds), 60 * 60));
 }
 
 function validateUpload(file) {
@@ -888,6 +905,46 @@ async function handleData(request, response, pathname) {
 }
 
 async function handleFiles(request, response, pathname) {
+  if (pathname === "/api/files/signed-url" && request.method === "POST") {
+    if (!requireSupabase(response) || !requireServiceRole(response)) return true;
+    const actor = await getRequestActor(request);
+    policies.assertAllowed(policies.canAccessTable(actor, "asset_files", "read"), "This user cannot view files.");
+
+    const body = await getRequestBody(request);
+    const path = normalizeStoragePath(body.path || body.storageKey || body.storage_key);
+    const bucket = String(body.bucket || SUPABASE_STORAGE_BUCKET).trim() || SUPABASE_STORAGE_BUCKET;
+    const customerId = body.customerId || body.customer_id || "";
+    const locationId = body.locationId || body.location_id || "";
+    const expiresIn = normalizeSignedUrlExpires(body.expiresIn || body.expires_in);
+
+    if (!path) return sendError(response, 400, "A storage path is required.");
+    if (!policies.isAdmin(actor)) {
+      policies.assertAllowed(customerId, "Customer context is required to create a signed file link.");
+      policies.assertAllowed(policies.canSeeLocation(actor, locationId, customerId), "This file is outside the user's customer/location scope.");
+    }
+
+    const upstream = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${encodeURIComponent(bucket)}/${path.split("/").map(encodeURIComponent).join("/")}`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ expiresIn })
+    });
+    if (!upstream.ok) return proxyJson(response, upstream);
+    const result = await upstream.json().catch(() => ({}));
+    const signedPath = result.signedURL || result.signedUrl || "";
+    return sendJson(response, 200, {
+      bucket,
+      path,
+      storageKey: path,
+      expiresIn,
+      signedUrl: signedPath ? `${SUPABASE_URL}/storage/v1${signedPath}` : "",
+      data: result
+    });
+  }
+
   if (pathname !== "/api/files" || request.method !== "POST") return false;
   if (!requireSupabase(response) || !requireServiceRole(response)) return true;
   const actor = await getRequestActor(request);
@@ -919,7 +976,12 @@ async function handleFiles(request, response, pathname) {
     size: file.size,
     bucket: SUPABASE_STORAGE_BUCKET,
     path,
+    storageKey: path,
+    storage_key: path,
     url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`,
+    publicUrl: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`,
+    public_url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`,
+    accessMode: "signed-url-ready",
     ownerType: fields.ownerType || fields.owner_type || "",
     ownerId: fields.ownerId || fields.owner_id || "",
     customerId: fields.customerId || fields.customer_id || actor.customerId || "",
@@ -986,6 +1048,7 @@ async function handleRequest(request, response) {
         authMode: ALLOW_DEV_AUTH_HEADERS ? "dev-headers-enabled" : "supabase-bearer-token",
         devAuthHeadersEnabled: ALLOW_DEV_AUTH_HEADERS,
         maxUploadBytes: MAX_UPLOAD_BYTES,
+        signedUrlExpiresSeconds: SIGNED_URL_EXPIRES_SECONDS,
         allowedUploadTypes: [...ALLOWED_UPLOAD_TYPES]
       });
     }

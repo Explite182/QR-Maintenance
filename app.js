@@ -9364,6 +9364,18 @@ const siteworksApi = {
     }
     return cloudApi.uploadFile(file, folder, session);
   },
+  getSignedFileUrl(file) {
+    if (!siteworksServerEnabled()) return Promise.resolve({ ok: false, json: async () => ({}) });
+    return this.server("/api/files/signed-url", {
+      method: "POST",
+      body: JSON.stringify({
+        bucket: file?.bucket || file?.storageBucket || "",
+        path: file?.path || file?.storageKey || file?.storage_key || "",
+        customerId: file?.customerId || file?.customer_id || "",
+        locationId: file?.locationId || file?.location_id || ""
+      })
+    });
+  },
   sendEmail(kind, payload) {
     if (siteworksServerEnabled()) {
       return this.server(`/api/email/${encodeURIComponent(kind)}`, {

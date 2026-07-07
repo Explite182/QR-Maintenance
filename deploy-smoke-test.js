@@ -47,6 +47,7 @@ async function main() {
     "authMode",
     "devAuthHeadersEnabled",
     "maxUploadBytes",
+    "signedUrlExpiresSeconds",
     "allowedUploadTypes"
   ];
   const missingKeys = requiredKeys.filter((key) => !(key in health));
@@ -72,6 +73,7 @@ async function main() {
     console.warn("Warning: development auth headers are enabled. Turn ALLOW_DEV_AUTH_HEADERS off before production use.");
   }
   console.log(`Max upload bytes: ${health.maxUploadBytes}`);
+  console.log(`Signed URL seconds: ${health.signedUrlExpiresSeconds}`);
 }
 
 main();

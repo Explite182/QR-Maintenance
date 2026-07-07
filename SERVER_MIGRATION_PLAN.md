@@ -177,6 +177,7 @@ Server rules:
 Started in this repo:
 
 - `POST /api/files` accepts multipart file uploads in `server/siteworks-server.js`
+- `POST /api/files/signed-url` creates temporary signed links for stored files
 - The server validates file type before upload
 - The server rejects uploads above `MAX_UPLOAD_BYTES`
 - Approved files are stored in the configured Supabase Storage bucket
@@ -186,7 +187,8 @@ Current upload status:
 
 - Good enough for proving server-routed uploads
 - Still needs production-grade image resizing/compression
-- Still needs private storage or signed URL behavior before real customer data
+- Signed URL behavior is started; frontend screens still need to move away from public URL display fields
+- Still needs private bucket enforcement before real customer data
 
 ### QR Public Reports
 
@@ -464,6 +466,8 @@ Started in this repo:
 - Development auth headers are disabled unless `ALLOW_DEV_AUTH_HEADERS=true` is set
 - Structured table reads now add server-side customer/location filters for scoped users
 - Structured table writes now reject rows outside the signed-in user's customer/location scope
+- File uploads now return storage keys and signed-link readiness metadata
+- The server now exposes a scoped signed file URL route for temporary access
 
 ## Immediate Next Coding Step
 

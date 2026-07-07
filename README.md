@@ -52,6 +52,7 @@ $env:SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 $env:ALLOWED_ORIGIN="http://localhost:8787"
 $env:ALLOW_DEV_AUTH_HEADERS="false"
 $env:MAX_UPLOAD_BYTES="10485760"
+$env:SIGNED_URL_EXPIRES_SECONDS="600"
 $env:RESEND_API_KEY="your-resend-api-key"
 $env:ISSUE_EMAIL_FROM="SiteWorks <service@sitesworks.info>"
 $env:ISSUE_EMAIL_REPLY_TO="your-email@example.com"
@@ -100,6 +101,8 @@ Private routes now read the signed-in Supabase session from the browser's `Autho
 
 `POST /api/files` now accepts multipart uploads and forwards approved files to Supabase Storage.
 
+`POST /api/files/signed-url` creates a temporary signed link for a stored file. Non-admin users must include customer/location context so the server can confirm the file is inside their scope.
+
 Current allowed upload types:
 
 - JPEG
@@ -111,7 +114,7 @@ Current allowed upload types:
 
 The default upload limit is 10 MB. Change it with `MAX_UPLOAD_BYTES`.
 
-The route returns file metadata with a storage path and public URL. A final production server should move customer files to private storage or signed URLs.
+The upload route returns file metadata with a storage path, storage key, and temporary signed-link readiness. Existing public URL fields remain for compatibility while the frontend is migrated toward signed access.
 
 ## Email Routes
 
