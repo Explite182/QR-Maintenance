@@ -11,6 +11,9 @@ const SUPABASE_STORAGE_BUCKET = "siteworks-files";
 const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
+const PUBLIC_REPORT_SYNC_INTERVAL_MS = 2 * 60 * 1000;
+const CLOUD_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+const PUBLIC_REPORT_SYNC_MIN_AGE_MS = 60 * 1000;
 const MANAGER_ROLES = ["Manager", "Facility Manager"];
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
@@ -77,6 +80,13 @@ let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
 let lastPublicReportError = "";
+let syncHealth = {
+  lastCloudLoadAt: "",
+  lastCloudSaveAt: "",
+  lastPublicReportSyncAt: "",
+  lastErrorAt: "",
+  lastError: ""
+};
 let editingAssetDetailField = "";
 let storageFullWarningShown = false;
 let suppressStorageFullWarning = false;
@@ -168,10 +178,15 @@ const els = {
   importDataBtn: document.getElementById("importDataBtn"),
   importDataInput: document.getElementById("importDataInput"),
   restoreBackupBtn: document.getElementById("restoreBackupBtn"),
+  syncHealthPanel: document.getElementById("syncHealthPanel"),
+  syncHealthSummary: document.getElementById("syncHealthSummary"),
+  syncHealthGrid: document.getElementById("syncHealthGrid"),
+  refreshCloudNowBtn: document.getElementById("refreshCloudNowBtn"),
   cloudCleanupBlock: document.getElementById("cloudCleanupBlock"),
   cloudCleanupStatus: document.getElementById("cloudCleanupStatus"),
   scanLocalFilesBtn: document.getElementById("scanLocalFilesBtn"),
   migrateLocalFilesBtn: document.getElementById("migrateLocalFilesBtn"),
+  removeLocalCopiesBtn: document.getElementById("removeLocalCopiesBtn"),
   printReportLabelsBtn: document.getElementById("printReportLabelsBtn"),
   customerForm: document.getElementById("customerForm"),
   customerName: document.getElementById("customerName"),
@@ -397,8 +412,8 @@ window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
 loadSupabaseProfiles();
 bootstrapCloudData();
-window.setInterval(syncPublicReportsFromSupabase, 30000);
-window.setInterval(refreshCloudDataFromSupabase, 30000);
+window.setInterval(syncPublicReportsFromSupabase, PUBLIC_REPORT_SYNC_INTERVAL_MS);
+window.setInterval(refreshCloudDataFromSupabase, CLOUD_REFRESH_INTERVAL_MS);
 
 window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();
@@ -1847,11 +1862,25 @@ els.restoreBackupBtn.addEventListener("click", () => {
 });
 
 els.scanLocalFilesBtn?.addEventListener("click", () => {
-  updateCloudCleanupStatus(buildLocalFileMigrationSummaryText(scanLocalFilesForCloudMigration()));
+  const migrationText = buildLocalFileMigrationSummaryText(scanLocalFilesForCloudMigration());
+  const removable = collectCloudBackedLocalCopies().length;
+  updateCloudCleanupStatus(removable
+    ? `${migrationText} ${removable} cloud-backed local cop${removable === 1 ? "y is" : "ies are"} ready to remove.`
+    : migrationText);
 });
 
 els.migrateLocalFilesBtn?.addEventListener("click", async () => {
   await migrateLocalFilesToCloud();
+});
+
+els.removeLocalCopiesBtn?.addEventListener("click", () => {
+  removeCloudBackedLocalCopies();
+});
+
+els.refreshCloudNowBtn?.addEventListener("click", async () => {
+  await refreshCloudDataFromSupabase();
+  await syncPublicReportsFromSupabase(true);
+  render();
 });
 
 document.addEventListener("click", (event) => {
@@ -2300,6 +2329,7 @@ function render() {
   renderDashboard();
   renderPmCalendar();
   renderBackupStatus();
+  renderSyncHealth();
   renderQrSettings();
   renderAssetTableControls();
   renderAssetTable();
@@ -4785,7 +4815,51 @@ function renderBackupStatus() {
     ? `Last auto backup ${formatDateTime(new Date(latest.createdAt))}`
     : "No auto backup yet";
   els.backupLocation.value = state.backupLocation || defaultBackupLocation();
-  updateCloudCleanupStatus(buildLocalFileMigrationSummaryText(scanLocalFilesForCloudMigration()));
+  if (!els.cloudCleanupStatus?.dataset.manualMessage) {
+    updateCloudCleanupStatus(buildLocalFileMigrationSummaryText(scanLocalFilesForCloudMigration()), false);
+  }
+}
+
+function renderSyncHealth() {
+  if (!els.syncHealthGrid) return;
+  const hasError = Boolean(syncHealth.lastError);
+  const loadStatus = structuredDataLoading || sharedStateLoading ? "Loading..." : formatSyncTimestamp(syncHealth.lastCloudLoadAt);
+  const saveStatus = structuredSyncActive ? "Saving..." : formatSyncTimestamp(syncHealth.lastCloudSaveAt);
+  const publicReportStatus = remoteReportsLoading ? "Checking..." : formatSyncTimestamp(syncHealth.lastPublicReportSyncAt);
+  els.syncHealthSummary.textContent = hasError
+    ? `Last issue: ${syncHealth.lastError}`
+    : "Cloud sync looks healthy.";
+  els.syncHealthPanel?.classList.toggle("has-sync-error", hasError);
+  els.syncHealthGrid.innerHTML = [
+    ["Cloud load", loadStatus],
+    ["Cloud save", saveStatus],
+    ["Public reports", publicReportStatus],
+    ["Last error", hasError ? `${formatSyncTimestamp(syncHealth.lastErrorAt)} - ${syncHealth.lastError}` : "None"]
+  ].map(([label, value]) => `
+    <div class="sync-health-row">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+}
+
+function formatSyncTimestamp(value) {
+  if (!value) return "Not yet";
+  return formatDateTime(new Date(value));
+}
+
+function markSyncSuccess(type) {
+  const now = new Date().toISOString();
+  if (type === "load") syncHealth.lastCloudLoadAt = now;
+  if (type === "save") syncHealth.lastCloudSaveAt = now;
+  if (type === "publicReports") syncHealth.lastPublicReportSyncAt = now;
+  syncHealth.lastError = "";
+  syncHealth.lastErrorAt = "";
+}
+
+function markSyncError(message) {
+  syncHealth.lastError = message || "Cloud sync failed.";
+  syncHealth.lastErrorAt = new Date().toISOString();
 }
 
 function renderQrSettings() {
@@ -8978,49 +9052,48 @@ async function savePublicReportToSupabase(report, note, contact, photo) {
     equipment_name: report.asset?.name || "",
     note,
     contact,
-    photo_data_url: mediaSource(photo) || "",
+    photo_data_url: cloudMediaSource(photo),
     photo_name: photo?.name || ""
   };
   try {
-    const response = await supabaseFetch("public_reports?select=id", {
+    const response = await cloudApi.rest("public_reports?select=id", {
       method: "POST",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify(payload)
     });
-    if (!response.ok) {
-      const errorText = await response.text();
-      lastPublicReportError = "Report was not sent to SiteWorks. Try again with a smaller photo or no photo.";
-      console.warn("Supabase public report save skipped.", errorText);
-      return "";
-    }
+    if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     return data?.[0]?.id || "";
   } catch (error) {
-    lastPublicReportError = "Report was not sent. Check the phone connection and try again.";
+    lastPublicReportError = "Report was not sent to SiteWorks. Try again with a smaller photo or no photo.";
     console.warn("Supabase public report save skipped.", error);
     return "";
   }
 }
 
-async function syncPublicReportsFromSupabase() {
+async function syncPublicReportsFromSupabase(force = false) {
   if (remoteReportsLoading || !canManageWorkOrders()) return;
   const now = Date.now();
-  if (now - lastRemoteReportsSyncAt < 15000) return;
+  if (!force && now - lastRemoteReportsSyncAt < PUBLIC_REPORT_SYNC_MIN_AGE_MS) return;
   lastRemoteReportsSyncAt = now;
   remoteReportsLoading = true;
   let data = [];
   try {
-    const response = await supabaseFetch("public_reports?select=*&order=created_at.desc&limit=100");
+    const response = await cloudApi.rest("public_reports?select=id,equipment_id,customer_id,customer_name,location_id,location_name,equipment_name,note,contact,photo_data_url,photo_name,created_at&order=created_at.desc&limit=50");
     remoteReportsLoading = false;
     remoteReportsLoaded = true;
     if (!response.ok) {
-      console.warn("Supabase public report sync skipped.", await response.text());
+      const errorText = await response.text();
+      markSyncError(`Public report sync failed: ${errorText}`);
+      console.warn("Supabase public report sync skipped.", errorText);
       return;
     }
     data = await response.json();
+    markSyncSuccess("publicReports");
   } catch (error) {
     remoteReportsLoading = false;
     remoteReportsLoaded = true;
+    markSyncError(error?.message || "Public report sync failed.");
     console.warn("Supabase public report sync skipped.", error);
     return;
   }
@@ -9060,11 +9133,64 @@ function supabaseAuthFetch(path, options = {}, session = null) {
   return fetch(url, { ...options, headers });
 }
 
+const cloudApi = {
+  rest(path, options = {}) {
+    return supabaseFetch(path, options);
+  },
+  auth(path, options = {}, session = null) {
+    return supabaseAuthFetch(path, options, session);
+  },
+  async uploadFile(file, folder = "uploads", session = null) {
+    if (!file || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+    const cleanFolder = slugifyStoragePath(folder || "uploads");
+    const cleanName = slugifyStoragePath(file.name || "file");
+    const path = `${cleanFolder}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${cleanName}`;
+    const token = session?.access_token || SUPABASE_ANON_KEY;
+    const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_STORAGE_BUCKET}/${path}`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": file.type || "application/octet-stream",
+        "x-upsert": "false"
+      },
+      body: file
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return {
+      name: file.name,
+      type: file.type || "application/octet-stream",
+      size: file.size || 0,
+      bucket: SUPABASE_STORAGE_BUCKET,
+      path,
+      url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`
+    };
+  },
+  async select(path) {
+    const response = await this.rest(path);
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  },
+  async upsert(path, rows, prefer = "resolution=merge-duplicates") {
+    if (!rows?.length) return;
+    const response = await this.rest(path, {
+      method: "POST",
+      headers: { Prefer: prefer },
+      body: JSON.stringify(rows)
+    });
+    if (!response.ok) throw new Error(await response.text());
+  },
+  async delete(path) {
+    const response = await this.rest(path, { method: "DELETE" });
+    if (!response.ok) throw new Error(await response.text());
+  }
+};
+
 async function signInWithSupabase(email, password) {
   lastAuthError = "";
   try {
     const loginEmail = await resolveSupabaseLoginEmail(email);
-    const response = await supabaseAuthFetch("token?grant_type=password", {
+    const response = await cloudApi.auth("token?grant_type=password", {
       method: "POST",
       body: JSON.stringify({ email: loginEmail, password })
     });
@@ -9106,7 +9232,7 @@ async function resolveSupabaseLoginEmail(identifier) {
 
   try {
     const escaped = lower.replace(/[%*_]/g, "\\$&");
-    const response = await supabaseFetch(`profiles?or=(email.ilike.${encodeURIComponent(escaped)},name.ilike.${encodeURIComponent(escaped)})&select=email,name&limit=1`);
+    const response = await cloudApi.rest(`profiles?or=(email.ilike.${encodeURIComponent(escaped)},name.ilike.${encodeURIComponent(escaped)})&select=email,name&limit=1`);
     if (response.ok) {
       const rows = await response.json();
       const email = rows?.[0]?.email || "";
@@ -9146,7 +9272,7 @@ function readableSupabaseError(errorText) {
 async function signUpSupabaseUser(email, password, name, role, customerId, locationId = "") {
   lastAuthError = "";
   try {
-    const response = await supabaseAuthFetch("signup", {
+    const response = await cloudApi.auth("signup", {
       method: "POST",
       body: JSON.stringify({
         email: email.trim().toLowerCase(),
@@ -9191,7 +9317,7 @@ async function loadSupabaseProfiles() {
   if (authProfilesLoading) return;
   authProfilesLoading = true;
   try {
-    const response = await supabaseFetch("profiles?select=*&order=created_at.asc");
+    const response = await cloudApi.rest("profiles?select=*&order=created_at.asc");
     authProfilesLoading = false;
     authProfilesLoaded = true;
     if (!response.ok) {
@@ -9230,7 +9356,7 @@ async function saveSupabaseProfile(profile) {
     location_id: profile.role === "Admin" ? "" : profile.locationId || "",
     updated_at: new Date().toISOString()
   };
-  const response = await supabaseFetch("profiles?on_conflict=id", {
+  const response = await cloudApi.rest("profiles?on_conflict=id", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates" },
     body: JSON.stringify(payload)
@@ -9240,7 +9366,7 @@ async function saveSupabaseProfile(profile) {
     if (errorText.includes("location_id") || errorText.includes("PGRST204")) {
       const fallbackPayload = { ...payload };
       delete fallbackPayload.location_id;
-      const fallbackResponse = await supabaseFetch("profiles?on_conflict=id", {
+      const fallbackResponse = await cloudApi.rest("profiles?on_conflict=id", {
         method: "POST",
         headers: { Prefer: "resolution=merge-duplicates" },
         body: JSON.stringify(fallbackPayload)
@@ -9253,7 +9379,7 @@ async function saveSupabaseProfile(profile) {
 }
 
 async function deleteSupabaseProfile(userId) {
-  const response = await supabaseFetch(`profiles?id=eq.${encodeURIComponent(userId)}`, {
+  const response = await cloudApi.rest(`profiles?id=eq.${encodeURIComponent(userId)}`, {
     method: "DELETE"
   });
   if (!response.ok) console.warn("Supabase profile delete skipped.", await response.text());
@@ -9261,7 +9387,7 @@ async function deleteSupabaseProfile(userId) {
 
 async function getProfileForAuthUser(authUser) {
   if (!authUser?.id) return null;
-  const response = await supabaseFetch(`profiles?id=eq.${encodeURIComponent(authUser.id)}&select=*&limit=1`);
+  const response = await cloudApi.rest(`profiles?id=eq.${encodeURIComponent(authUser.id)}&select=*&limit=1`);
   if (!response.ok) {
     console.warn("Supabase profile lookup failed.", await response.text());
     return null;
@@ -9355,6 +9481,14 @@ async function loadStructuredDataFromSupabase() {
   if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
   structuredDataLoading = true;
   try {
+    const remoteStructuredState = await peekStructuredCloudState();
+    if (remoteStructuredState.hasRows && hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(remoteStructuredState.updatedAt)) {
+      structuredDataLoading = false;
+      structuredDataReady = true;
+      scheduleStructuredDataSync(0);
+      markSyncSuccess("load");
+      return true;
+    }
     const [
       customerRows,
       locationRows,
@@ -9391,25 +9525,59 @@ async function loadStructuredDataFromSupabase() {
     const structuredUpdatedAt = newestStructuredUpdatedAt(structuredRows);
     if (hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(structuredUpdatedAt)) {
       scheduleStructuredDataSync(0);
+      markSyncSuccess("load");
       return true;
     }
     applyStructuredState(structuredRows, structuredUpdatedAt);
+    markSyncSuccess("load");
     return true;
   } catch (error) {
     structuredDataLoading = false;
     structuredDataReady = true;
+    markSyncError(error?.message || "Structured cloud load failed.");
     console.warn("Structured Supabase load skipped.", error);
     return false;
   }
 }
 
 async function fetchStructuredRows(table, order = "updated_at.asc") {
-  const response = await supabaseFetch(`${table}?select=*&order=${encodeURIComponent(order)}`);
-  if (!response.ok) {
-    console.warn(`Structured Supabase load skipped for ${table}.`, await response.text());
-    return [];
+  try {
+    return await cloudApi.select(`${table}?select=*&order=${encodeURIComponent(order)}`);
+  } catch (error) {
+    const message = `Structured cloud load failed for ${table}: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn(`Structured Supabase load skipped for ${table}.`, error);
+    throw new Error(message);
   }
-  return response.json();
+}
+
+async function peekStructuredCloudState() {
+  const tables = [
+    { table: "customers", timestamp: "updated_at" },
+    { table: "locations", timestamp: "updated_at" },
+    { table: "pm_templates", timestamp: "updated_at" },
+    { table: "assets", timestamp: "updated_at" },
+    { table: "work_orders", timestamp: "updated_at" },
+    { table: "service_requests", timestamp: "updated_at" },
+    { table: "pm_history", timestamp: "completed_at" }
+  ];
+  const rows = await Promise.all(tables.map(({ table, timestamp }) => fetchStructuredTimestampRows(table, timestamp)));
+  const flatRows = rows.flat();
+  return {
+    hasRows: flatRows.length > 0,
+    updatedAt: newestTimestampFromRows(flatRows)
+  };
+}
+
+async function fetchStructuredTimestampRows(table, timestampColumn) {
+  try {
+    return await cloudApi.select(`${table}?select=id,${timestampColumn}&order=${encodeURIComponent(`${timestampColumn}.desc`)}&limit=1`);
+  } catch (error) {
+    const message = `Structured cloud change check failed for ${table}: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn(`Structured Supabase change check skipped for ${table}.`, error);
+    throw new Error(message);
+  }
 }
 
 function applyStructuredState(rows, updatedAt = "") {
@@ -9579,7 +9747,7 @@ function groupStructuredHistoryByAsset(historyRows = []) {
 }
 
 function newestStructuredUpdatedAt(rows) {
-  return [
+  return newestTimestampFromRows([
     ...rows.customers,
     ...rows.locations,
     ...rows.templates,
@@ -9587,7 +9755,11 @@ function newestStructuredUpdatedAt(rows) {
     ...rows.workOrders,
     ...rows.serviceRequests,
     ...rows.history
-  ].map((row) => row.updated_at || row.completed_at || row.created_at || "")
+  ]);
+}
+
+function newestTimestampFromRows(rows = []) {
+  return rows.map((row) => row.updated_at || row.completed_at || row.created_at || "")
     .filter(Boolean)
     .sort()
     .at(-1) || new Date().toISOString();
@@ -9599,12 +9771,14 @@ async function loadSharedStateFromSupabase() {
   const localHadSharedData = hasSharedMaintenanceData(state);
 
   try {
-    const response = await supabaseFetch(`app_state?id=eq.${encodeURIComponent(SHARED_APP_STATE_ID)}&select=data,updated_at`);
+    const response = await cloudApi.rest(`app_state?id=eq.${encodeURIComponent(SHARED_APP_STATE_ID)}&select=data,updated_at`);
     sharedStateLoading = false;
     sharedStateReady = true;
 
     if (!response.ok) {
-      console.warn("Supabase shared data sync skipped.", await response.text());
+      const errorText = await response.text();
+      markSyncError(`Shared cloud load failed: ${errorText}`);
+      console.warn("Supabase shared data sync skipped.", errorText);
       return;
     }
 
@@ -9617,11 +9791,14 @@ async function loadSharedStateFromSupabase() {
 
     if (!localHadSharedData || isRemoteSharedStateNewer(remoteRecord.updated_at)) {
       applySharedState(remoteRecord.data, remoteRecord.updated_at);
+      markSyncSuccess("load");
       return;
     }
+    markSyncSuccess("load");
   } catch (error) {
     sharedStateLoading = false;
     sharedStateReady = true;
+    markSyncError(error?.message || "Shared cloud load failed.");
     console.warn("Supabase shared data sync skipped.", error);
   }
 }
@@ -9714,18 +9891,22 @@ async function saveSharedStateToSupabase() {
   };
 
   try {
-    const response = await supabaseFetch("app_state?on_conflict=id", {
+    const response = await cloudApi.rest("app_state?on_conflict=id", {
       method: "POST",
       headers: { Prefer: "resolution=merge-duplicates" },
       body: JSON.stringify(payload)
     });
     if (!response.ok) {
-      console.warn("Supabase shared data save skipped.", await response.text());
+      const errorText = await response.text();
+      markSyncError(`Shared cloud save failed: ${errorText}`);
+      console.warn("Supabase shared data save skipped.", errorText);
       return;
     }
     state.sharedDataUpdatedAt = uploadedAt;
     persistLocalStateOnly();
+    markSyncSuccess("save");
   } catch (error) {
+    markSyncError(error?.message || "Shared cloud save failed.");
     console.warn("Supabase shared data save skipped.", error);
   }
 }
@@ -9765,6 +9946,34 @@ function scheduleStructuredDataSync(delay = 2000) {
   if (applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
   window.clearTimeout(structuredSyncTimer);
   structuredSyncTimer = window.setTimeout(syncStructuredDataToSupabase, delay);
+}
+
+function leanCloudData(value) {
+  if (Array.isArray(value)) return value.map(leanCloudData);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !["dataUrl", "photoDataUrl"].includes(key))
+    .map(([key, item]) => [key, leanCloudData(item)]));
+}
+
+function leanCloudMedia(file) {
+  if (!file || typeof file !== "object") return null;
+  const clean = leanCloudData(file);
+  return clean.url || clean.name ? clean : null;
+}
+
+function leanCloudRecord(record) {
+  const clean = leanCloudData(record);
+  if (clean.photo) clean.photo = leanCloudMedia(clean.photo);
+  if (clean.manualFile) clean.manualFile = leanCloudMedia(clean.manualFile);
+  if (Array.isArray(clean.photos)) clean.photos = clean.photos.map(leanCloudMedia).filter(Boolean);
+  if (Array.isArray(clean.history)) {
+    clean.history = clean.history.map((item) => ({
+      ...item,
+      photo: leanCloudMedia(item.photo)
+    }));
+  }
+  return clean;
 }
 
 async function syncStructuredDataToSupabase() {
@@ -9819,7 +10028,7 @@ async function syncStructuredDataToSupabase() {
       notes: asset.notes || "",
       created_at: asset.createdAt || new Date().toISOString(),
       updated_at: asset.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: asset
+      data: leanCloudRecord(asset)
     })));
 
     await upsertStructuredRows("work_orders", state.workOrders.map((item) => ({
@@ -9840,7 +10049,7 @@ async function syncStructuredDataToSupabase() {
       resolved_at: item.resolvedAt || null,
       created_at: item.createdAt || new Date().toISOString(),
       updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: item
+      data: leanCloudRecord(item)
     })));
 
     await upsertStructuredRows("service_requests", state.serviceRequests.map((item) => ({
@@ -9858,11 +10067,11 @@ async function syncStructuredDataToSupabase() {
       assigned_user_name: item.assignedUserName || "",
       converted_work_order_id: item.convertedWorkOrderId || null,
       notes: item.notes || "",
-      photo_data_url: mediaSource(item.photo) || "",
+      photo_data_url: cloudMediaSource(item.photo),
       photo_name: item.photo?.name || "",
       created_at: item.createdAt || new Date().toISOString(),
       updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: item
+      data: leanCloudRecord(item)
     })));
 
     const historyRows = state.assets.flatMap((asset) => (asset.history || []).map((item) => ({
@@ -9875,12 +10084,14 @@ async function syncStructuredDataToSupabase() {
       notes: item.notes || "",
       completed_checks: item.completedChecks || [],
       completed_at: item.completedAt || new Date().toISOString(),
-      data: item
+      data: leanCloudRecord(item)
     })));
     await upsertStructuredRows("pm_history", historyRows);
     state.sharedDataUpdatedAt = state.updatedAt || new Date().toISOString();
     persistLocalStateOnly(false);
+    markSyncSuccess("save");
   } catch (error) {
+    markSyncError(error?.message || "Structured cloud save failed.");
     console.warn("Structured Supabase sync skipped.", error);
   } finally {
     structuredSyncActive = false;
@@ -9889,13 +10100,13 @@ async function syncStructuredDataToSupabase() {
 
 async function upsertStructuredRows(table, rows) {
   if (!rows.length) return;
-  const response = await supabaseFetch(`${table}?on_conflict=id`, {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates" },
-    body: JSON.stringify(rows)
-  });
-  if (!response.ok) {
-    console.warn(`Structured Supabase sync skipped for ${table}.`, await response.text());
+  try {
+    await cloudApi.upsert(`${table}?on_conflict=id`, rows);
+  } catch (error) {
+    const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn(`Structured Supabase sync skipped for ${table}.`, error);
+    throw new Error(message);
   }
 }
 
@@ -9903,11 +10114,10 @@ async function deleteStructuredRows(table, column, values) {
   const cleanValues = values.filter(Boolean);
   if (!cleanValues.length) return;
   const filter = cleanValues.map((value) => encodeURIComponent(value)).join(",");
-  const response = await supabaseFetch(`${table}?${column}=in.(${filter})`, {
-    method: "DELETE"
-  });
-  if (!response.ok) {
-    console.warn(`Structured Supabase delete skipped for ${table}.`, await response.text());
+  try {
+    await cloudApi.delete(`${table}?${column}=in.(${filter})`);
+  } catch (error) {
+    console.warn(`Structured Supabase delete skipped for ${table}.`, error);
   }
 }
 
@@ -10458,8 +10668,10 @@ function buildLocalFileMigrationSummaryText(summary) {
   return `Found ${summary.total} old browser-stored file${summary.total === 1 ? "" : "s"}: ${parts.join(", ")}.`;
 }
 
-function updateCloudCleanupStatus(message) {
-  if (els.cloudCleanupStatus) els.cloudCleanupStatus.textContent = message;
+function updateCloudCleanupStatus(message, manualMessage = true) {
+  if (!els.cloudCleanupStatus) return;
+  els.cloudCleanupStatus.textContent = message;
+  els.cloudCleanupStatus.dataset.manualMessage = manualMessage ? "true" : "";
 }
 
 function collectLocalFileMigrationItems() {
@@ -10503,6 +10715,63 @@ function collectLocalFileMigrationItems() {
     items.push({ kind: "servicePhoto", folder: "service-requests", name: request.photo.name, get: () => request.photo, set: (file) => { request.photo = file; } });
   });
   return items;
+}
+
+function collectCloudBackedLocalCopies() {
+  const items = [];
+  const addIfCloudBacked = (kind, label, get, set) => {
+    const file = get();
+    if (!file?.dataUrl || !(file.url || file.path)) return;
+    items.push({ kind, label: label || file.name || "file", get, set });
+  };
+  state.assets.forEach((asset) => {
+    addIfCloudBacked("equipmentPhoto", asset.photo?.name || asset.name, () => asset.photo, (file) => { asset.photo = file; });
+    (asset.photos || []).forEach((photo, index) => {
+      addIfCloudBacked("equipmentGallery", photo?.name || asset.name, () => asset.photos[index], (file) => { asset.photos[index] = file; });
+    });
+    addIfCloudBacked("manual", asset.manualFile?.name || asset.name, () => asset.manualFile, (file) => { asset.manualFile = file; });
+    (asset.history || []).forEach((record, index) => {
+      addIfCloudBacked("pmHistory", record.photo?.name || asset.name, () => asset.history[index].photo, (file) => { asset.history[index].photo = file; });
+    });
+    addIfCloudBacked("panelLogo", asset.electricalPanelSchedule?.logo?.name || asset.name, () => asset.electricalPanelSchedule?.logo, (file) => {
+      if (asset.electricalPanelSchedule) asset.electricalPanelSchedule.logo = file;
+    });
+  });
+  state.workOrders.forEach((workOrder) => {
+    addIfCloudBacked("ticketPhoto", workOrder.photo?.name || workOrder.title, () => workOrder.photo, (file) => { workOrder.photo = file; });
+    (workOrder.photos || []).forEach((photo, index) => {
+      addIfCloudBacked("ticketPhoto", photo?.name || workOrder.title, () => workOrder.photos[index], (file) => { workOrder.photos[index] = file; });
+    });
+  });
+  state.serviceRequests.forEach((request) => {
+    addIfCloudBacked("servicePhoto", request.photo?.name || request.title, () => request.photo, (file) => { request.photo = file; });
+  });
+  return items;
+}
+
+function removeCloudBackedLocalCopies() {
+  if (!canManageWorkOrders()) {
+    updateCloudCleanupStatus("Only Admin or Manager logins can remove local browser copies.");
+    return;
+  }
+  const items = collectCloudBackedLocalCopies();
+  if (!items.length) {
+    updateCloudCleanupStatus("No removable local copies found. Cloud-backed files are already lean.");
+    return;
+  }
+  const confirmed = window.confirm(`Remove local browser copies from ${items.length} cloud-backed file${items.length === 1 ? "" : "s"}? A complete backup will download first.`);
+  if (!confirmed) return;
+  exportCompleteBackup();
+  items.forEach((item) => {
+    const file = item.get();
+    if (!file) return;
+    const { dataUrl, photoDataUrl, ...cleanFile } = file;
+    item.set(cleanFile);
+  });
+  addActivity("Local file copies removed", `${items.length} cloud-backed local file cop${items.length === 1 ? "y" : "ies"} removed from browser storage.`);
+  saveState();
+  render();
+  updateCloudCleanupStatus(`Removed local browser copies from ${items.length} cloud-backed file${items.length === 1 ? "" : "s"}.`);
 }
 
 function shouldMigrateLocalFile(file) {
@@ -10809,35 +11078,9 @@ async function storeResizedPhotoFile(file, dataUrl, folder) {
 }
 
 async function uploadFileToSupabaseStorage(file, folder = "uploads") {
-  if (!file || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
-  const cleanFolder = slugifyStoragePath(folder || "uploads");
-  const cleanName = slugifyStoragePath(file.name || "file");
-  const path = `${cleanFolder}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${cleanName}`;
-  const session = getSavedAuthSession();
-  const token = session?.access_token || SUPABASE_ANON_KEY;
+  if (!file) return null;
   try {
-    const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_STORAGE_BUCKET}/${path}`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${token}`,
-        "Content-Type": file.type || "application/octet-stream",
-        "x-upsert": "false"
-      },
-      body: file
-    });
-    if (!response.ok) {
-      console.warn("Supabase Storage upload skipped.", await response.text());
-      return null;
-    }
-    return {
-      name: file.name,
-      type: file.type || "application/octet-stream",
-      size: file.size || 0,
-      bucket: SUPABASE_STORAGE_BUCKET,
-      path,
-      url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`
-    };
+    return await cloudApi.uploadFile(file, folder, getSavedAuthSession());
   } catch (error) {
     console.warn("Supabase Storage upload skipped.", error);
     return null;
@@ -10871,6 +11114,10 @@ function slugifyStoragePath(value) {
 
 function mediaSource(file) {
   return file?.url || file?.dataUrl || "";
+}
+
+function cloudMediaSource(file) {
+  return file?.url || "";
 }
 
 function hasMedia(file) {
