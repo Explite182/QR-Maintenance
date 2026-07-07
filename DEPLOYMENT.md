@@ -74,12 +74,30 @@ The health response should show:
 - `emailConfigured: true`
 - `policyLayer: "enabled"`
 
+You can also run the automated smoke check while the local server is running:
+
+```powershell
+npm run smoke
+```
+
 ## Deployment Verification
 
 After hosting the server, check:
 
 ```text
 https://your-api-host/api/health
+```
+
+Then run:
+
+```powershell
+npm run smoke -- https://your-api-host
+```
+
+For the intended production API subdomain:
+
+```powershell
+npm run smoke -- https://api.sitesworks.info
 ```
 
 Then update `SITEWORKS_API_BASE_URL` in `app.js` only after the health check is clean.

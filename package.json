@@ -10,8 +10,9 @@
   },
   "scripts": {
     "start": "node siteworks-server.js",
-    "check": "node --check siteworks-server.js && node --check siteworks-policies.js && node --check policy-smoke-test.js && node --check pdf-smoke-test.js",
-    "test": "node policy-smoke-test.js && node pdf-smoke-test.js"
+    "check": "node --check siteworks-server.js && node --check siteworks-policies.js && node --check policy-smoke-test.js && node --check pdf-smoke-test.js && node --check deploy-smoke-test.js",
+    "test": "node policy-smoke-test.js && node pdf-smoke-test.js",
+    "smoke": "node deploy-smoke-test.js"
   },
   "dependencies": {}
 }

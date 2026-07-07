@@ -74,6 +74,18 @@ To quickly check server PDF generation:
 node pdf-smoke-test.js
 ```
 
+To check a running local or hosted server:
+
+```powershell
+npm run smoke
+```
+
+or:
+
+```powershell
+npm run smoke -- https://api.sitesworks.info
+```
+
 ## Important
 
 Do not expose the Supabase service role key in `index.html`, `app.js`, GitHub Pages, or any browser file.

@@ -454,7 +454,9 @@ Recommended path: keep Postgres-style tables and avoid a big data model rewrite.
 Started in this repo:
 
 - `server/package.json` provides `npm start`, `npm run check`, and `npm test`
+- `server/package.json` provides `npm run smoke` for API health verification
 - `server/DEPLOYMENT.md` documents the first hosting path
+- `server/deploy-smoke-test.js` checks `/api/health` before frontend cutover
 - Server deployment env vars are listed in one place
 - The recommended DNS shape is `sitesworks.info` for frontend and `api.sitesworks.info` for server
 
