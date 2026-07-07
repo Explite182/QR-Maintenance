@@ -39,6 +39,13 @@ At first, these routes forward to Supabase. Later, the same route names can talk
 From this folder:
 
 ```powershell
+npm run check
+npm test
+```
+
+Then start the server:
+
+```powershell
 $env:SUPABASE_URL="https://your-project.supabase.co"
 $env:SUPABASE_ANON_KEY="your-publishable-anon-key"
 $env:SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
@@ -46,7 +53,7 @@ $env:MAX_UPLOAD_BYTES="10485760"
 $env:RESEND_API_KEY="your-resend-api-key"
 $env:ISSUE_EMAIL_FROM="SiteWorks <service@sitesworks.info>"
 $env:ISSUE_EMAIL_REPLY_TO="your-email@example.com"
-node siteworks-server.js
+npm start
 ```
 
 Then open:
@@ -105,3 +112,7 @@ The frontend still uses the Supabase Edge Function while `SITEWORKS_API_BASE_URL
 The server attaches a generated PDF summary to each ticket, service request, or assignment email.
 
 Current limitation: the PDF is a clean text-based server PDF. A richer production PDF can replace this builder later without changing the route names.
+
+## Deployment
+
+See `DEPLOYMENT.md` for the production hosting checklist.

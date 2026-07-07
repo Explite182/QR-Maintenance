@@ -1,0 +1,17 @@
+{
+  "name": "siteworks-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SiteWorks API shim for moving browser-owned backend work onto a private server.",
+  "main": "siteworks-server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node siteworks-server.js",
+    "check": "node --check siteworks-server.js && node --check siteworks-policies.js && node --check policy-smoke-test.js && node --check pdf-smoke-test.js",
+    "test": "node policy-smoke-test.js && node pdf-smoke-test.js"
+  },
+  "dependencies": {}
+}

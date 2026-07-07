@@ -451,6 +451,13 @@ Recommended path: keep Postgres-style tables and avoid a big data model rewrite.
 - Customer data export
 - Admin audit logs
 
+Started in this repo:
+
+- `server/package.json` provides `npm start`, `npm run check`, and `npm test`
+- `server/DEPLOYMENT.md` documents the first hosting path
+- Server deployment env vars are listed in one place
+- The recommended DNS shape is `sitesworks.info` for frontend and `api.sitesworks.info` for server
+
 ## Immediate Next Coding Step
 
 The next code phase should be an API facade inside `app.js` with business-named methods:
