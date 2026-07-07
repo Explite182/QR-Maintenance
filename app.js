@@ -4249,40 +4249,45 @@ function exportPmCalendarCsv() {
 }
 
 function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues }) {
-  const dueNowAssets = dueInfos
+  const scopedDueInfos = dueInfos.filter((item) => item?.asset && isCurrentViewAsset(item.asset));
+  const scopedActiveIssues = activeIssues.filter(isCurrentViewWorkOrder);
+  const scopedServiceRequests = activeServiceRequests.filter(isCurrentViewServiceRequest);
+  const dueNowAssets = scopedDueInfos
     .filter((item) => item.daysUntil <= 0)
     .sort((a, b) => a.daysUntil - b.daysUntil)
     .map((item) => item.asset);
-  const overdueAssets = dueInfos
+  const overdueAssets = scopedDueInfos
     .filter((item) => item.daysUntil < 0)
     .sort((a, b) => a.daysUntil - b.daysUntil)
     .map((item) => item.asset);
-  const highPriorityIssues = activeIssues.filter((item) => item.priority === "High");
-  const waitingPartsIssues = activeIssues.filter((item) => item.status === "Waiting parts");
-  const customerReports = activeIssues.filter(isCustomerReportedIssue);
-  const failedPmIssues = activeIssues.filter(isFailedPmIssue);
-  const assignedTickets = activeIssues.filter((item) => item.assignedUserId === currentUser?.id);
+  const highPriorityIssues = scopedActiveIssues.filter((item) => item.priority === "High");
+  const waitingPartsIssues = scopedActiveIssues.filter((item) => item.status === "Waiting parts");
+  const customerReports = scopedActiveIssues.filter(isCustomerReportedIssue);
+  const failedPmIssues = scopedActiveIssues.filter(isFailedPmIssue);
+  const assignedTickets = scopedActiveIssues.filter((item) => item.assignedUserId === currentUser?.id);
   const menuData = {
     dueNow: dashboardAssetItems(dueNowAssets, "No equipment is due now."),
     overdue: dashboardAssetItems(overdueAssets, "No equipment is overdue."),
-    workOrders: dashboardIssueItems(activeIssues, "No open tickets for this view."),
+    workOrders: dashboardIssueItems(scopedActiveIssues, "No open tickets for this view."),
     reportedIssues: dashboardIssueItems(customerReports, "No customer reports for this view."),
     failedPmIssues: dashboardIssueItems(failedPmIssues, "No failed PM follow-ups for this view."),
-    serviceRequests: dashboardServiceRequestItems(activeServiceRequests, "No service requests for this view."),
+    serviceRequests: dashboardServiceRequestItems(scopedServiceRequests, "No service requests for this view."),
     highPriority: dashboardIssueItems(highPriorityIssues, "No high priority tickets for this view."),
     waitingParts: dashboardIssueItems(waitingPartsIssues, "No waiting parts tickets for this view."),
     assignedToMe: dashboardIssueItems(assignedTickets, "No tickets assigned to you for this view.")
   };
 
   Object.entries(menuData).forEach(([filter, html]) => {
-    const menu = document.querySelector(`[data-dashboard-menu="${filter}"]`);
-    if (menu) menu.innerHTML = html;
+    document.querySelectorAll(`[data-dashboard-menu="${filter}"]`).forEach((menu) => {
+      menu.innerHTML = html;
+    });
   });
 }
 
 function dashboardAssetItems(assets, emptyText) {
-  return assets.length
-    ? assets.slice(0, 6).map((asset) => {
+  const scopedAssets = assets.filter(isCurrentViewAsset);
+  return scopedAssets.length
+    ? scopedAssets.slice(0, 6).map((asset) => {
         const due = getDueInfo(asset);
         return renderDashboardMenuItem({
           type: "asset",
@@ -4291,13 +4296,14 @@ function dashboardAssetItems(assets, emptyText) {
           meta: `${getCustomer(asset.customerId)?.name || "Unknown customer"} | ${getLocation(asset.locationId)?.name || "Unknown location"} | ${due.label}`,
           badge: "Equipment"
         });
-      }).join("") + renderDashboardMoreCount(assets.length)
+      }).join("") + renderDashboardMoreCount(scopedAssets.length)
     : renderDashboardEmpty(emptyText);
 }
 
 function dashboardIssueItems(tickets, emptyText) {
-  return tickets.length
-    ? tickets.slice(0, 6).map((ticket) => {
+  const scopedTickets = tickets.filter(isCurrentViewWorkOrder);
+  return scopedTickets.length
+    ? scopedTickets.slice(0, 6).map((ticket) => {
         const ageLabel = formatOpenTicketAge(ticket);
         return renderDashboardMenuItem({
           type: ticket.status === "Closed" ? "completed" : "ticket",
@@ -4311,19 +4317,20 @@ function dashboardIssueItems(tickets, emptyText) {
           ].filter(Boolean).join(" | "),
           badge: ticket.priority || "Ticket"
         });
-      }).join("") + renderDashboardMoreCount(tickets.length)
+      }).join("") + renderDashboardMoreCount(scopedTickets.length)
     : renderDashboardEmpty(emptyText);
 }
 
 function dashboardServiceRequestItems(requests, emptyText) {
-  return requests.length
-    ? requests.slice(0, 6).map((request) => renderDashboardMenuItem({
+  const scopedRequests = requests.filter(isCurrentViewServiceRequest);
+  return scopedRequests.length
+    ? scopedRequests.slice(0, 6).map((request) => renderDashboardMenuItem({
         type: "service",
         id: request.id,
         label: `${formatServiceRequestNumber(request)} - ${request.title || "Service request"}`,
         meta: `${getCustomer(request.customerId)?.name || "Unknown customer"} | ${getLocation(request.locationId)?.name || "Unknown location"} | ${request.status || "New"}`,
         badge: "Service"
-      })).join("") + renderDashboardMoreCount(requests.length)
+      })).join("") + renderDashboardMoreCount(scopedRequests.length)
     : renderDashboardEmpty(emptyText);
 }
 
@@ -4362,6 +4369,24 @@ function renderDashboardMoreCount(total) {
 
 function renderDashboardEmpty(message) {
   return `<p class="metric-dropdown-empty">${escapeHtml(message)}</p>`;
+}
+
+function isCurrentViewAsset(asset) {
+  if (!asset || !canSeeAsset(asset)) return false;
+  if (asset.customerId !== selectedCustomerId) return false;
+  return selectedLocationId === "all" || asset.locationId === selectedLocationId;
+}
+
+function isCurrentViewWorkOrder(ticket) {
+  if (!ticket || !canSeeWorkOrder(ticket) || !canSeeCustomer(ticket.customerId)) return false;
+  if (ticket.customerId !== selectedCustomerId) return false;
+  return selectedLocationId === "all" || ticket.locationId === selectedLocationId;
+}
+
+function isCurrentViewServiceRequest(request) {
+  if (!request || !canSeeServiceRequest(request) || !canSeeCustomer(request.customerId)) return false;
+  if (request.customerId !== selectedCustomerId) return false;
+  return selectedLocationId === "all" || request.locationId === selectedLocationId;
 }
 
 function renderGlobalSearchResults() {
@@ -5217,6 +5242,8 @@ function runDashboardAction(filter) {
 
 function openDashboardResult(type, id) {
   if (type === "asset") {
+    const asset = getAsset(id);
+    if (!isCurrentViewAsset(asset)) return;
     focusedWorkOrderId = "";
     focusedServiceRequestId = "";
     focusedCompletedRecordId = "";
@@ -5228,6 +5255,7 @@ function openDashboardResult(type, id) {
     openPanel("assetPanel");
   } else if (type === "ticket") {
     const ticket = state.workOrders.find((item) => item.id === id);
+    if (!isCurrentViewWorkOrder(ticket)) return;
     focusedWorkOrderId = id;
     workOrderNumberFilter = getWorkOrderNumberFilterForTicket(ticket);
     focusedServiceRequestId = "";
@@ -5235,6 +5263,8 @@ function openDashboardResult(type, id) {
     workOrderViewFilter = "active";
     openPanel("workOrdersPanel");
   } else if (type === "service") {
+    const request = state.serviceRequests.find((item) => item.id === id);
+    if (!isCurrentViewServiceRequest(request)) return;
     focusedWorkOrderId = "";
     workOrderNumberFilter = "all";
     focusedServiceRequestId = id;
@@ -5242,6 +5272,11 @@ function openDashboardResult(type, id) {
     serviceRequestDrawerTab = "notes";
     openPanel("serviceRequestsPanel");
   } else if (type === "completed") {
+    const completedTicket = state.workOrders.find((item) => item.id === id);
+    const completedPm = completedPmRecords().find((record) => record.history?.id === id || record.asset?.id === id);
+    if (completedTicket && !isCurrentViewWorkOrder(completedTicket)) return;
+    if (!completedTicket && completedPm && !isCurrentViewAsset(completedPm.asset)) return;
+    if (!completedTicket && !completedPm) return;
     focusedWorkOrderId = "";
     focusedServiceRequestId = "";
     focusedCompletedRecordId = id;
