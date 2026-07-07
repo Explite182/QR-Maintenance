@@ -7320,15 +7320,11 @@ async function sendIssuePdfEmail(item, button) {
   button.disabled = true;
   button.textContent = "Sending...";
   try {
-    const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
-      method: "POST",
-      headers: supabaseFunctionHeaders(),
-      body: JSON.stringify({
-        to: recipient.trim(),
-        ticket: reportDetails,
-        issue: reportDetails,
-        serviceRequest: reportDetails
-      })
+    const response = await sendSiteWorksEmail("ticket", {
+      to: recipient.trim(),
+      ticket: reportDetails,
+      issue: reportDetails,
+      serviceRequest: reportDetails
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -7370,6 +7366,10 @@ function supabaseFunctionHeaders() {
     Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     "Content-Type": "application/json"
   };
+}
+
+function sendSiteWorksEmail(kind, payload) {
+  return siteworksApi.sendEmail(kind, payload);
 }
 
 function getEmailFunctionReportDetails(details) {
@@ -7469,15 +7469,11 @@ async function sendIssueAssignmentEmail(item, user) {
       footerLabel: "Assigned Maintenance Ticket",
       notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
     });
-    const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
-      method: "POST",
-      headers: supabaseFunctionHeaders(),
-      body: JSON.stringify({
-        to: recipient,
-        ticket: reportDetails,
-        issue: reportDetails,
-        serviceRequest: reportDetails
-      })
+    const response = await sendSiteWorksEmail("assignment", {
+      to: recipient,
+      ticket: reportDetails,
+      issue: reportDetails,
+      serviceRequest: reportDetails
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -7513,15 +7509,11 @@ async function sendServiceRequestAssignmentEmail(request, user) {
       footerLabel: "Assigned Service Request",
       notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
     });
-    const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
-      method: "POST",
-      headers: supabaseFunctionHeaders(),
-      body: JSON.stringify({
-        to: recipient,
-        ticket: reportDetails,
-        issue: reportDetails,
-        serviceRequest: reportDetails
-      })
+    const response = await sendSiteWorksEmail("assignment", {
+      to: recipient,
+      ticket: reportDetails,
+      issue: reportDetails,
+      serviceRequest: reportDetails
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -7637,15 +7629,11 @@ async function sendServiceRequestPdfEmail(request, button) {
   button.disabled = true;
   button.textContent = "Sending...";
   try {
-    const response = await fetch(ISSUE_REPORT_FUNCTION_URL, {
-      method: "POST",
-      headers: supabaseFunctionHeaders(),
-      body: JSON.stringify({
-        to: recipient.trim(),
-        ticket: reportDetails,
-        issue: reportDetails,
-        serviceRequest: reportDetails
-      })
+    const response = await sendSiteWorksEmail("service-request", {
+      to: recipient.trim(),
+      ticket: reportDetails,
+      issue: reportDetails,
+      serviceRequest: reportDetails
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -9375,6 +9363,19 @@ const siteworksApi = {
       });
     }
     return cloudApi.uploadFile(file, folder, session);
+  },
+  sendEmail(kind, payload) {
+    if (siteworksServerEnabled()) {
+      return this.server(`/api/email/${encodeURIComponent(kind)}`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    }
+    return fetch(ISSUE_REPORT_FUNCTION_URL, {
+      method: "POST",
+      headers: supabaseFunctionHeaders(),
+      body: JSON.stringify(payload)
+    });
   }
 };
 

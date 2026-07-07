@@ -174,6 +174,20 @@ Server rules:
 - Use private storage with signed URLs for customer data
 - Never store base64 file data in database rows
 
+Started in this repo:
+
+- `POST /api/files` accepts multipart file uploads in `server/siteworks-server.js`
+- The server validates file type before upload
+- The server rejects uploads above `MAX_UPLOAD_BYTES`
+- Approved files are stored in the configured Supabase Storage bucket
+- The route returns file metadata with storage path and URL
+
+Current upload status:
+
+- Good enough for proving server-routed uploads
+- Still needs production-grade image resizing/compression
+- Still needs private storage or signed URL behavior before real customer data
+
 ### QR Public Reports
 
 Current behavior:
@@ -213,6 +227,20 @@ Server rules:
 - Email API keys live only on the server
 - Sender domain verification handled outside the app
 - Generate PDFs server-side or accept a structured report payload and build PDF/email centrally
+
+Started in this repo:
+
+- `POST /api/email/ticket` is scaffolded in `server/siteworks-server.js`
+- `POST /api/email/service-request` is scaffolded in `server/siteworks-server.js`
+- `POST /api/email/assignment` is scaffolded in `server/siteworks-server.js`
+- Resend configuration is stored in server environment variables
+- Frontend email calls are routed through `siteworksApi.sendEmail(...)` so server mode can use these routes later
+
+Current email status:
+
+- Good enough to prove server-owned email sending
+- Keeps the Resend API key out of browser files
+- Server-side PDF attachment generation is still planned
 
 ## Data Model Notes
 
@@ -350,6 +378,12 @@ Before real customer use, the server must enforce:
 
 Create a lightweight server that initially forwards to Supabase.
 
+Started in this repo:
+
+- `server/siteworks-server.js`
+- `server/.env.example`
+- `server/README.md`
+
 The browser calls:
 
 - `/api/auth/login`
@@ -361,6 +395,15 @@ The server talks to Supabase behind the scenes.
 
 This proves the API shape without migrating the database yet.
 
+Current shim status:
+
+- Health check route is available at `/api/health`
+- Login route is available at `/api/auth/login`
+- User/profile routes are scaffolded
+- Public report routes are scaffolded
+- Structured data batch routes are scaffolded
+- File upload route is intentionally reserved for the production implementation
+
 ### Phase C: Move Business Rules Server-Side
 
 Move these rules off the browser:
@@ -371,6 +414,20 @@ Move these rules off the browser:
 - Service request numbering
 - File upload validation
 - Public QR report validation
+
+Started in this repo:
+
+- `server/siteworks-policies.js`
+- `server/policy-smoke-test.js`
+
+Current policy status:
+
+- Admin, Manager, Facility Manager, Technician, and Customer roles are represented
+- User creation role limits are represented
+- Customer/location visibility rules are represented
+- Equipment create/delete permissions are represented
+- Ticket work permissions are represented
+- Structured table read/write/delete guards are scaffolded in the server shim
 
 ### Phase D: Move Database Ownership
 
