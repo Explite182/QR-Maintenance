@@ -9634,6 +9634,7 @@ async function signInWithSupabase(email, password) {
     const session = await response.json();
     saveAuthSession(session);
     let profile = await getProfileForAuthUser(session.user);
+    if (!profile) profile = await getProfileForAuthEmail(session.user?.email);
     if (!profile) {
       profile = await createMissingAuthProfile(session.user);
       if (!profile) {
@@ -9836,6 +9837,22 @@ async function getProfileForAuthUser(authUser) {
   }
   const rows = await response.json();
   return rows?.[0] ? profileFromSupabase(rows[0]) : null;
+}
+
+async function getProfileForAuthEmail(email) {
+  if (!isEmailAddress(email)) return null;
+  try {
+    const response = await cloudApi.rest(`profiles?email=eq.${encodeURIComponent(email.trim().toLowerCase())}&select=*&limit=1`);
+    if (!response.ok) {
+      console.warn("Supabase profile email lookup failed.", await response.text());
+      return null;
+    }
+    const rows = await response.json();
+    return rows?.[0] ? profileFromSupabase(rows[0]) : null;
+  } catch (error) {
+    console.warn("Supabase profile email lookup skipped.", error);
+    return null;
+  }
 }
 
 function profileFromSupabase(profile) {
