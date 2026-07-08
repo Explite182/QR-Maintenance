@@ -13,6 +13,7 @@ const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
+const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const PUBLIC_REPORT_SYNC_INTERVAL_MS = 2 * 60 * 1000;
 const CLOUD_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
@@ -42,6 +43,7 @@ const ASSET_DETAIL_FIELDS = [
 
 let state = normalizeState(loadState());
 applyForcedLogoutFromUrl();
+rememberScannedQrContext();
 hydrateAssetFromHash();
 let selectedId = getAssetIdFromUrl() || null;
 let selectedCustomerId = state.customers[0]?.id || "";
@@ -8156,7 +8158,7 @@ function getScannedAssetFromUrl(scannedAssetId = getAssetIdFromUrl()) {
 }
 
 function findScannedAssetFallback() {
-  const params = new URLSearchParams(location.search);
+  const params = scannedQrParams();
   const scannedName = normalizedName(params.get("n"));
   if (!scannedName) return null;
   const scannedCustomerId = params.get("cid") || "";
@@ -9067,6 +9069,34 @@ function clearSelectedAssetUrl() {
   history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}`);
 }
 
+function rememberScannedQrContext() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("qr") !== "1" && !params.get("a")) return;
+  try {
+    sessionStorage.setItem(SCANNED_QR_CONTEXT_KEY, params.toString());
+  } catch (error) {
+    console.warn("Scanned QR context could not be remembered.", error);
+  }
+}
+
+function getRememberedScannedQrParams() {
+  try {
+    return new URLSearchParams(sessionStorage.getItem(SCANNED_QR_CONTEXT_KEY) || "");
+  } catch {
+    return new URLSearchParams();
+  }
+}
+
+function getRememberedScannedQrParam(name) {
+  return getRememberedScannedQrParams().get(name);
+}
+
+function scannedQrParams() {
+  const currentParams = new URLSearchParams(location.search);
+  if (currentParams.get("qr") === "1" || currentParams.get("a") || currentParams.get("n")) return currentParams;
+  return getRememberedScannedQrParams();
+}
+
 function normalizeBaseUrl(value) {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -9088,11 +9118,12 @@ function getAssetIdFromUrl() {
   const queryId = new URLSearchParams(location.search).get("a");
   if (queryId) return queryId;
   const match = location.hash.match(/^#asset\/([^?]+)/);
-  return match ? match[1] : null;
+  if (match) return match[1];
+  return getRememberedScannedQrParam("a");
 }
 
 function isQrAccessUrl() {
-  return new URLSearchParams(location.search).get("qr") === "1";
+  return new URLSearchParams(location.search).get("qr") === "1" || getRememberedScannedQrParam("qr") === "1";
 }
 
 function isPublicReportUrl() {
@@ -10613,7 +10644,13 @@ function createIssueFromRemoteReport(report) {
 
 function getCompactAssetSnapshot(id) {
   const hashParamsText = location.hash.split("?")[1];
-  const params = new URLSearchParams(location.search || hashParamsText || "");
+  const params = scannedQrParams();
+  if (![...params.keys()].length && hashParamsText) {
+    hashParamsText.split("&").forEach((part) => {
+      const [key, value = ""] = part.split("=");
+      if (key) params.set(key, value);
+    });
+  }
   const name = params.get("n");
   if (!name) return null;
   const customerName = params.get("c") || "Scanned Customer";
