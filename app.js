@@ -1058,7 +1058,7 @@ els.editAssetCustomer.addEventListener("change", () => {
 
 els.editAssetPhoto.addEventListener("change", async () => {
   const asset = getSelectedAsset();
-  if (!asset || !canCompletePm() || !els.editAssetPhoto.files[0]) return;
+  if (!asset || !canEditEquipment() || !els.editAssetPhoto.files[0]) return;
 
   const previousPhoto = asset.photo || null;
   const replacementPhoto = await readPhoto(els.editAssetPhoto.files[0]);
@@ -1080,7 +1080,7 @@ els.editAssetPhoto.addEventListener("change", async () => {
 
 els.editAssetGalleryPhotos.addEventListener("change", async () => {
   const asset = getSelectedAsset();
-  if (!asset || !canCompletePm() || !els.editAssetGalleryPhotos.files.length) return;
+  if (!asset || !canEditEquipment() || !els.editAssetGalleryPhotos.files.length) return;
 
   const previousPhotos = [...(asset.photos || [])];
   try {
@@ -1106,7 +1106,7 @@ els.editAssetGalleryPhotos.addEventListener("change", async () => {
 
 els.editAssetManualFile.addEventListener("change", async () => {
   const asset = getSelectedAsset();
-  if (!asset || !canCompletePm() || !els.editAssetManualFile.files[0]) return;
+  if (!asset || !canEditEquipment() || !els.editAssetManualFile.files[0]) return;
 
   const previousManual = asset.manualFile || null;
   try {
@@ -1188,6 +1188,7 @@ els.photoSideBayImage?.addEventListener("click", (event) => {
 });
 
 els.addPanelCircuitBtn?.addEventListener("click", () => {
+  if (!canEditEquipment()) return;
   addPanelScheduleEditorRow({ number: getNextPanelCircuitNumber(), load: "", breaker: "", notes: "" });
 });
 
@@ -1212,6 +1213,7 @@ els.printPanelScheduleBtn?.addEventListener("click", () => {
 });
 
 els.panelScheduleLogoInput?.addEventListener("change", async () => {
+  if (!canEditEquipment()) return;
   const logo = await readPhoto(els.panelScheduleLogoInput.files?.[0]);
   if (!logo || !els.panelScheduleForm) return;
   els.panelScheduleForm.dataset.logoUrl = mediaSource(logo);
@@ -1220,6 +1222,7 @@ els.panelScheduleLogoInput?.addEventListener("change", async () => {
 });
 
 els.removePanelScheduleLogoBtn?.addEventListener("click", () => {
+  if (!canEditEquipment()) return;
   if (!els.panelScheduleForm) return;
   delete els.panelScheduleForm.dataset.logoUrl;
   delete els.panelScheduleForm.dataset.logoName;
@@ -1649,7 +1652,7 @@ els.pmForm.addEventListener("submit", async (event) => {
 els.assetInfoForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const asset = getSelectedAsset();
-  if (!asset || !canCompletePm()) return;
+  if (!asset || !canEditEquipment()) return;
   if (!canSeeLocation(els.editAssetLocation.value, els.editAssetCustomer.value)) return;
 
   const replacementPhoto = await readPhoto(els.editAssetPhoto.files[0]);
@@ -2887,7 +2890,7 @@ function renderRole() {
     control.disabled = !canCompletePm();
   });
   els.assetInfoForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
-    control.disabled = !canCompletePm();
+    control.disabled = !canEditEquipment();
   });
   els.nextPmForm.querySelectorAll("input, button").forEach((control) => {
     control.disabled = !canManageWorkOrders();
@@ -3874,7 +3877,7 @@ function renderEditAssetLocationOptions(selectedLocationId = "") {
   if (selectedLocationId && locations.some((locationRecord) => locationRecord.id === selectedLocationId)) {
     els.editAssetLocation.value = selectedLocationId;
   }
-  els.editAssetLocation.disabled = locations.length === 0 || !canCompletePm();
+  els.editAssetLocation.disabled = locations.length === 0 || !canEditEquipment();
 }
 
 function renderDashboard() {
@@ -6106,6 +6109,7 @@ function renderChecklist(template, asset = getSelectedAsset()) {
 }
 
 function addCustomChecklistItem() {
+  if (!canEditEquipment()) return;
   const asset = getSelectedAsset();
   const input = els.pmForm.querySelector("[data-checklist-new-item]");
   const item = input?.value.trim();
@@ -6129,6 +6133,7 @@ function addCustomChecklistItem() {
 }
 
 function removeCustomChecklistItem(index) {
+  if (!canEditEquipment()) return;
   const asset = getSelectedAsset();
   if (!asset || !Array.isArray(asset.extraChecklistItems) || !Number.isInteger(index)) return;
   const removed = asset.extraChecklistItems[index];
@@ -6140,7 +6145,7 @@ function removeCustomChecklistItem(index) {
 }
 
 function renderAssetDetails(asset) {
-  const editable = canManageWorkOrders();
+  const editable = canEditEquipment();
   return ASSET_DETAIL_FIELDS.map((config) => {
     const value = config.field === "equipmentId"
       ? getAssetEquipmentId(asset)
@@ -6278,7 +6283,7 @@ function openPanelScheduleSheet() {
     if (control.matches("[data-close-panel-schedule]")) return;
     if (control.id === "printPanelScheduleBtn") return;
     if (control.id === "removePanelScheduleLogoBtn") return;
-    control.disabled = !canManageWorkOrders();
+    control.disabled = !canEditEquipment();
   });
   els.panelScheduleBackdrop?.classList.remove("hidden");
   els.panelScheduleSheet.classList.remove("hidden");
@@ -6318,7 +6323,7 @@ function removePanelScheduleEditorRow(row) {
 }
 
 async function importPanelScheduleCsv() {
-  if (!canManageWorkOrders() || !els.panelScheduleCsvInput || !els.panelScheduleCircuitRows) return;
+  if (!canEditEquipment() || !els.panelScheduleCsvInput || !els.panelScheduleCircuitRows) return;
   const file = els.panelScheduleCsvInput.files?.[0];
   if (!file) {
     setPanelScheduleImportStatus("Choose a CSV file first.");
@@ -6456,7 +6461,7 @@ function mergePanelCircuitLoad(load, notes) {
 
 function savePanelScheduleEditor() {
   const asset = getSelectedAsset();
-  if (!asset || !els.panelScheduleForm || !canManageWorkOrders()) return;
+  if (!asset || !els.panelScheduleForm || !canEditEquipment()) return;
   const form = els.panelScheduleForm;
   const circuits = [...els.panelScheduleCircuitRows.querySelectorAll("[data-panel-circuit-row]")]
     .map((row) => ({
@@ -6685,7 +6690,7 @@ function renderInlineAssetDetailEditor(config, value) {
 function saveInlineAssetDetail(field, value) {
   const asset = getSelectedAsset();
   const config = ASSET_DETAIL_FIELDS.find((item) => item.field === field);
-  if (!asset || !config || !canManageWorkOrders()) return;
+  if (!asset || !config || !canEditEquipment()) return;
 
   const nextValue = String(value || "").trim();
   if (config.kind === "select" && nextValue && !(config.options || []).includes(nextValue)) return;
@@ -6705,7 +6710,7 @@ function closeInlineAssetDetailEditor() {
 }
 
 function openInlineAssetDetailEditor(field) {
-  if (!canManageWorkOrders()) return;
+  if (!canEditEquipment()) return;
   if (!ASSET_DETAIL_FIELDS.some((item) => item.field === field)) return;
   editingAssetDetailField = field;
   render();
@@ -8837,15 +8842,18 @@ function canAddEquipment() {
   return currentRole === "Admin" || (isManagerRole() && !currentUser?.locationId);
 }
 
+function canEditEquipment() {
+  return currentRole === "Admin" || isManagerRole();
+}
+
 function canDeleteEquipment() {
   return currentRole === "Admin";
 }
 
 function canCompletePm() {
   return currentRole === "Admin" ||
-    (isManagerRole() && !currentUser?.locationId) ||
-    currentRole === "Technician" ||
-    currentRole === "Customer";
+    isManagerRole() ||
+    currentRole === "Technician";
 }
 
 function canManageWorkOrders() {
