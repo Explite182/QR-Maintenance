@@ -1888,7 +1888,12 @@ els.removeLocalCopiesBtn?.addEventListener("click", () => {
 
 els.refreshCloudNowBtn?.addEventListener("click", async () => {
   await refreshCloudDataFromSupabase();
-  await syncPublicReportsFromSupabase(true);
+  const importedReports = await syncPublicReportsFromSupabase(true);
+  if (Number.isFinite(importedReports)) {
+    updateCloudCleanupStatus(importedReports
+      ? `Imported ${importedReports} public QR report${importedReports === 1 ? "" : "s"} from Supabase.`
+      : "Cloud refreshed. No new public QR reports were found.");
+  }
   render();
 });
 
@@ -9161,9 +9166,9 @@ async function savePublicReportToSupabase(report, note, contact, photo) {
 }
 
 async function syncPublicReportsFromSupabase(force = false) {
-  if (remoteReportsLoading || !canManageWorkOrders()) return;
+  if (remoteReportsLoading || !canManageWorkOrders()) return 0;
   const now = Date.now();
-  if (!force && now - lastRemoteReportsSyncAt < PUBLIC_REPORT_SYNC_MIN_AGE_MS) return;
+  if (!force && now - lastRemoteReportsSyncAt < PUBLIC_REPORT_SYNC_MIN_AGE_MS) return 0;
   lastRemoteReportsSyncAt = now;
   remoteReportsLoading = true;
   let data = [];
@@ -9175,7 +9180,7 @@ async function syncPublicReportsFromSupabase(force = false) {
       const errorText = await response.text();
       markSyncError(`Public report sync failed: ${errorText}`);
       console.warn("Supabase public report sync skipped.", errorText);
-      return;
+      return 0;
     }
     data = await response.json();
     markSyncSuccess("publicReports");
@@ -9184,7 +9189,7 @@ async function syncPublicReportsFromSupabase(force = false) {
     remoteReportsLoaded = true;
     markSyncError(error?.message || "Public report sync failed.");
     console.warn("Supabase public report sync skipped.", error);
-    return;
+    return 0;
   }
   const added = (data || []).reduce((count, report) => {
     if (isCodexTestPublicReport(report)) return count;
@@ -9197,6 +9202,7 @@ async function syncPublicReportsFromSupabase(force = false) {
     saveState();
     render();
   }
+  return added;
 }
 
 function supabaseFetch(path, options = {}) {
