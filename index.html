@@ -1279,7 +1279,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260707-server-email-routes"></script>
+  <script src="app.js?v=20260707-security-hardening"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
@@ -1403,7 +1403,7 @@
         const blob = dataUrlToBlob(dataUrl);
         const uploadFile = new File([blob], replaceFileExtension(file.name || "Report photo.jpg", "jpg"), { type: "image/jpeg" });
         const stored = await uploadPublicReportPhoto(uploadFile);
-        return stored || { name: file.name || "Report photo.jpg", dataUrl };
+        return stored || null;
       }
 
       function dataUrlToBlob(dataUrl) {
@@ -1466,6 +1466,9 @@
             return;
           }
           const attachedPhoto = await optionalReportPhoto(photo?.files?.[0]);
+          if (photo?.files?.[0] && !attachedPhoto && message) {
+            message.textContent = "Photo could not upload, so the report will send without it...";
+          }
           if (message) message.textContent = "Sending report...";
           const response = await fetch(`${SUPABASE_URL}/rest/v1/public_reports?select=id`, {
             method: "POST",
@@ -1479,7 +1482,7 @@
               equipment_name: asset.name || params.get("n") || "",
               note: noteText,
               contact: (contact?.value || "").trim(),
-              photo_data_url: attachedPhoto?.url || attachedPhoto?.dataUrl || "",
+              photo_data_url: attachedPhoto?.url || "",
               photo_name: attachedPhoto?.name || ""
             })
           });

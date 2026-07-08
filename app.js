@@ -1869,11 +1869,9 @@ els.restoreBackupBtn.addEventListener("click", () => {
 });
 
 els.scanLocalFilesBtn?.addEventListener("click", () => {
-  const migrationText = buildLocalFileMigrationSummaryText(scanLocalFilesForCloudMigration());
-  const removable = collectCloudBackedLocalCopies().length;
-  updateCloudCleanupStatus(removable
-    ? `${migrationText} ${removable} cloud-backed local cop${removable === 1 ? "y is" : "ies are"} ready to remove.`
-    : migrationText);
+  renderBackupStatus();
+  renderSyncHealth();
+  updateCloudCleanupStatus(buildStorageHealthSummaryText(getStoredFileHealth()));
 });
 
 els.migrateLocalFilesBtn?.addEventListener("click", async () => {
@@ -4878,26 +4876,41 @@ function renderBackupStatus() {
     ? `Last auto backup ${formatDateTime(new Date(latest.createdAt))}`
     : "No auto backup yet";
   els.backupLocation.value = state.backupLocation || defaultBackupLocation();
+  const storageHealth = getStoredFileHealth();
+  const cleanupWorking = els.cloudCleanupBlock?.classList.contains("is-working");
+  if (els.migrateLocalFilesBtn && !cleanupWorking) {
+    els.migrateLocalFilesBtn.disabled = !canManageWorkOrders() || !storageHealth.localOnly;
+  }
+  if (els.removeLocalCopiesBtn && !cleanupWorking) {
+    els.removeLocalCopiesBtn.disabled = !canManageWorkOrders() || !storageHealth.removableLocalCopies;
+  }
   if (!els.cloudCleanupStatus?.dataset.manualMessage) {
-    updateCloudCleanupStatus(buildLocalFileMigrationSummaryText(scanLocalFilesForCloudMigration()), false);
+    updateCloudCleanupStatus(buildStorageHealthSummaryText(storageHealth), false);
   }
 }
 
 function renderSyncHealth() {
   if (!els.syncHealthGrid) return;
   const hasError = Boolean(syncHealth.lastError);
+  const storageHealth = getStoredFileHealth();
   const loadStatus = structuredDataLoading || sharedStateLoading ? "Loading..." : formatSyncTimestamp(syncHealth.lastCloudLoadAt);
   const saveStatus = structuredSyncActive ? "Saving..." : formatSyncTimestamp(syncHealth.lastCloudSaveAt);
   const publicReportStatus = remoteReportsLoading ? "Checking..." : formatSyncTimestamp(syncHealth.lastPublicReportSyncAt);
   els.syncHealthSummary.textContent = hasError
     ? `Last issue: ${syncHealth.lastError}`
-    : "Cloud sync looks healthy.";
+    : storageHealth.localOnly
+      ? `Cloud sync is working. ${storageHealth.localOnly} old browser file${storageHealth.localOnly === 1 ? "" : "s"} should be moved to cloud.`
+      : "Cloud sync looks healthy.";
   els.syncHealthPanel?.classList.toggle("has-sync-error", hasError);
   els.syncHealthGrid.innerHTML = [
     ["Backend mode", siteworksApi.backendLabel()],
     ["Cloud load", loadStatus],
     ["Cloud save", saveStatus],
     ["Public reports", publicReportStatus],
+    ["Old browser files", storageHealth.localOnly ? `${storageHealth.localOnly} (${formatBytes(storageHealth.localBytes)})` : "None"],
+    ["Cloud files", `${storageHealth.cloudBacked}`],
+    ["Removable local copies", storageHealth.removableLocalCopies ? `${storageHealth.removableLocalCopies} (${formatBytes(storageHealth.removableLocalBytes)})` : "None"],
+    ["Broken file references", storageHealth.brokenReferences ? `${storageHealth.brokenReferences}` : "None"],
     ["Last error", hasError ? `${formatSyncTimestamp(syncHealth.lastErrorAt)} - ${syncHealth.lastError}` : "None"]
   ].map(([label, value]) => `
     <div class="sync-health-row">
@@ -9184,13 +9197,16 @@ async function syncPublicReportsFromSupabase(force = false) {
 
 function supabaseFetch(path, options = {}) {
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  const session = getSavedAuthSession();
+  const token = options.forceAnon ? SUPABASE_ANON_KEY : (session?.access_token || SUPABASE_ANON_KEY);
   const headers = {
     apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
     ...(options.headers || {})
   };
-  return fetch(url, { ...options, headers });
+  const { forceAnon, ...fetchOptions } = options;
+  return fetch(url, { ...fetchOptions, headers });
 }
 
 function supabaseAuthFetch(path, options = {}, session = null) {
@@ -10987,6 +11003,97 @@ function buildBackupManifest() {
   };
 }
 
+function storedFileCloudPath(file) {
+  return String(file?.storageKey || file?.storage_key || file?.path || file?.url || file?.publicUrl || file?.public_url || "").trim();
+}
+
+function isCloudBackedFile(file) {
+  return Boolean(storedFileCloudPath(file));
+}
+
+function hasLocalBrowserCopy(file) {
+  return Boolean(file?.dataUrl || file?.photoDataUrl);
+}
+
+function estimateDataUrlBytes(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== "string") return 0;
+  const payload = dataUrl.includes(",") ? dataUrl.split(",").pop() : dataUrl;
+  return Math.round(payload.length * 0.75);
+}
+
+function estimateLocalFileBytes(file) {
+  return estimateDataUrlBytes(file?.dataUrl) + estimateDataUrlBytes(file?.photoDataUrl);
+}
+
+function collectStoredFileEntries() {
+  const items = [];
+  const addFile = (kind, label, file) => {
+    if (!file || typeof file !== "object") return;
+    if (!hasLocalBrowserCopy(file) && !isCloudBackedFile(file) && !file.name && !file.type) return;
+    items.push({ kind, label: label || file.name || "File", file });
+  };
+
+  state.assets.forEach((asset) => {
+    addFile("equipmentPhoto", asset.name, asset.photo);
+    (asset.photos || []).forEach((photo) => addFile("equipmentGallery", asset.name, photo));
+    addFile("manual", asset.name, asset.manualFile);
+    (asset.history || []).forEach((record) => addFile("pmHistory", asset.name, record.photo));
+    addFile("panelLogo", asset.name, asset.electricalPanelSchedule?.logo);
+  });
+
+  state.workOrders.forEach((workOrder) => {
+    addFile("ticketPhoto", workOrder.title || formatIssueNumber(workOrder), workOrder.photo);
+    (workOrder.photos || []).forEach((photo) => addFile("ticketPhoto", workOrder.title || formatIssueNumber(workOrder), photo));
+  });
+
+  state.serviceRequests.forEach((request) => {
+    addFile("servicePhoto", request.title || formatServiceRequestNumber(request), request.photo);
+  });
+
+  return items;
+}
+
+function getStoredFileHealth() {
+  return collectStoredFileEntries().reduce((summary, item) => {
+    const localBytes = estimateLocalFileBytes(item.file);
+    const localCopy = hasLocalBrowserCopy(item.file);
+    const cloudBacked = isCloudBackedFile(item.file);
+    summary.total += 1;
+    summary[item.kind] = (summary[item.kind] || 0) + 1;
+    if (cloudBacked) summary.cloudBacked += 1;
+    if (localCopy && !cloudBacked) {
+      summary.localOnly += 1;
+      summary.localBytes += localBytes;
+    }
+    if (localCopy && cloudBacked) {
+      summary.removableLocalCopies += 1;
+      summary.removableLocalBytes += localBytes;
+    }
+    if (!localCopy && !cloudBacked) summary.brokenReferences += 1;
+    return summary;
+  }, {
+    total: 0,
+    cloudBacked: 0,
+    localOnly: 0,
+    localBytes: 0,
+    removableLocalCopies: 0,
+    removableLocalBytes: 0,
+    brokenReferences: 0
+  });
+}
+
+function buildStorageHealthSummaryText(summary = getStoredFileHealth()) {
+  const migrationText = buildLocalFileMigrationSummaryText(scanLocalFilesForCloudMigration());
+  const notes = [];
+  if (summary.removableLocalCopies) {
+    notes.push(`${summary.removableLocalCopies} cloud-backed local cop${summary.removableLocalCopies === 1 ? "y is" : "ies are"} ready to remove (${formatBytes(summary.removableLocalBytes)}).`);
+  }
+  if (summary.brokenReferences) {
+    notes.push(`${summary.brokenReferences} file reference${summary.brokenReferences === 1 ? "" : "s"} may be missing a browser copy or cloud link.`);
+  }
+  return notes.length ? `${migrationText} ${notes.join(" ")}` : migrationText;
+}
+
 function scanLocalFilesForCloudMigration() {
   const items = collectLocalFileMigrationItems();
   const counts = items.reduce((summary, item) => {
@@ -11064,7 +11171,7 @@ function collectCloudBackedLocalCopies() {
   const items = [];
   const addIfCloudBacked = (kind, label, get, set) => {
     const file = get();
-    if (!file?.dataUrl || !(file.url || file.path)) return;
+    if (!hasLocalBrowserCopy(file) || !isCloudBackedFile(file)) return;
     items.push({ kind, label: label || file.name || "file", get, set });
   };
   state.assets.forEach((asset) => {
@@ -11118,7 +11225,7 @@ function removeCloudBackedLocalCopies() {
 }
 
 function shouldMigrateLocalFile(file) {
-  return Boolean(file?.dataUrl && !file.url && !file.path);
+  return Boolean(hasLocalBrowserCopy(file) && !isCloudBackedFile(file));
 }
 
 async function migrateLocalFilesToCloud() {
