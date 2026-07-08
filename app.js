@@ -449,8 +449,8 @@ els.loginForm.addEventListener("submit", async (event) => {
     currentRole = localUser.role;
     state.currentUserId = localUser.id;
     rememberAdminUserSwitcher(localUser);
-    restoreScannedAssetSelection();
-    closeAssetRegisterDrawer();
+    const openedScannedAsset = focusScannedAssetContext();
+    if (!openedScannedAsset) closeAssetRegisterDrawer();
     saveStateQuietly();
     els.loginForm.reset();
     els.loginError.textContent = "";
@@ -465,8 +465,8 @@ els.loginForm.addEventListener("submit", async (event) => {
   currentRole = user.role;
   state.currentUserId = user.id;
   rememberAdminUserSwitcher(user);
-  restoreScannedAssetSelection();
-  closeAssetRegisterDrawer();
+  const openedScannedAsset = focusScannedAssetContext();
+  if (!openedScannedAsset) closeAssetRegisterDrawer();
   saveStateQuietly();
   els.loginForm.reset();
   els.loginError.textContent = "";
@@ -8120,6 +8120,22 @@ function restoreScannedAssetSelection() {
   selectedLocationId = defaultLocationSelection();
 }
 
+function focusScannedAssetContext() {
+  const scannedAssetId = getAssetIdFromUrl();
+  if (!scannedAssetId || !currentUser) return false;
+  restoreScannedAssetSelection();
+  const asset = getRawAsset(scannedAssetId);
+  if (!asset) return false;
+  if (!canSeeAsset(asset) && !isQrAccessUrl()) return false;
+  selectedId = asset.id;
+  selectedCustomerId = asset.customerId;
+  selectedLocationId = defaultLocationSelection();
+  closeOtherSidebarTargets("assetRegisterDrawer");
+  openAssetRegisterDrawer();
+  setMobileTabState("assetRegisterDrawer");
+  return true;
+}
+
 function filteredAssets() {
   return state.assets.filter((asset) => {
     if (!canSeeAsset(asset)) return false;
@@ -9789,8 +9805,10 @@ function clearAuthSession() {
 async function bootstrapCloudData() {
   const loadedStructuredData = await loadStructuredDataFromSupabase();
   if (!loadedStructuredData) await loadSharedStateFromSupabase();
-  restoreScannedAssetSelection();
-  syncFiltersToSelectedAsset();
+  if (!focusScannedAssetContext()) {
+    restoreScannedAssetSelection();
+    syncFiltersToSelectedAsset();
+  }
   render();
 }
 
