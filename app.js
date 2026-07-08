@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-qr-login-trace";
+const SITEWORKS_APP_VERSION = "20260708-login-button-direct";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -113,6 +113,7 @@ const els = {
   loginForm: document.getElementById("loginForm"),
   loginUsername: document.getElementById("loginUsername"),
   loginPassword: document.getElementById("loginPassword"),
+  loginSubmitBtn: document.getElementById("loginSubmitBtn"),
   scanAccessBtn: document.getElementById("scanAccessBtn"),
   loginError: document.getElementById("loginError"),
   loginQrReportPrompt: document.getElementById("loginQrReportPrompt"),
@@ -432,9 +433,11 @@ window.addEventListener("hashchange", () => {
   render();
 });
 
-els.loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function handleLoginSubmit(event = null) {
+  event?.preventDefault();
+  if (els.loginSubmitBtn?.disabled) return;
   try {
+    if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = true;
     suppressStorageFullWarning = true;
     setQrLoginTrace("Signing in...");
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
@@ -454,6 +457,7 @@ els.loginForm.addEventListener("submit", async (event) => {
       if (!localUser) {
         setQrLoginTrace(lastAuthError || "Login did not finish. Check the connection and try again.");
         suppressStorageFullWarning = false;
+        if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = false;
         return;
       }
       currentUser = localUser;
@@ -470,10 +474,11 @@ els.loginForm.addEventListener("submit", async (event) => {
       els.loginForm.reset();
       els.loginError.textContent = "";
       render();
-      window.setTimeout(() => {
-        suppressStorageFullWarning = false;
-      }, 1500);
-      return;
+    window.setTimeout(() => {
+      suppressStorageFullWarning = false;
+      if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = false;
+    }, 1500);
+    return;
     }
 
     currentUser = user;
@@ -494,13 +499,18 @@ els.loginForm.addEventListener("submit", async (event) => {
     render();
     window.setTimeout(() => {
       suppressStorageFullWarning = false;
+      if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = false;
     }, 1500);
   } catch (error) {
     console.warn("Login submit failed.", error);
     setQrLoginTrace(`Login stopped: ${error?.message || "Unknown error"}`);
     suppressStorageFullWarning = false;
+    if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = false;
   }
-});
+}
+
+els.loginForm.addEventListener("submit", handleLoginSubmit);
+els.loginSubmitBtn?.addEventListener("click", handleLoginSubmit);
 
 function setQrLoginTrace(message) {
   if (!els.loginError) return;
@@ -529,6 +539,7 @@ function finishQrLoginWithoutBlocking(user) {
     console.warn("QR login open failed.", error);
     setQrLoginTrace(`QR open stopped: ${error?.message || "Unknown error"}`);
     suppressStorageFullWarning = false;
+    if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = false;
   }
 }
 

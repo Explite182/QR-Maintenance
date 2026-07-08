@@ -49,7 +49,7 @@
           Password
           <input id="loginPassword" required type="password" autocomplete="current-password" placeholder="Password">
         </label>
-        <button type="submit">Log In</button>
+        <button id="loginSubmitBtn" type="button">Log In</button>
         <p id="loginError" class="login-error"></p>
       </form>
       <div id="loginQrReportPrompt" class="login-qr-report">
@@ -1279,7 +1279,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260708-qr-login-trace"></script>
+  <script src="app.js?v=20260708-login-button-direct"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
