@@ -8141,7 +8141,12 @@ function focusScannedAssetContext() {
   selectedLocationId = defaultLocationSelection();
   closeOtherSidebarTargets("assetRegisterDrawer");
   openAssetRegisterDrawer();
+  openPanel("assetPanel");
   setMobileTabState("assetRegisterDrawer");
+  window.setTimeout(() => {
+    openPanel("assetPanel");
+    els.assetPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
   return true;
 }
 
