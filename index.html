@@ -1279,7 +1279,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260707-security-hardening"></script>
+  <script src="app.js?v=20260707-public-report-photo-fallback"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
@@ -1470,24 +1470,30 @@
             message.textContent = "Photo could not upload, so the report will send without it...";
           }
           if (message) message.textContent = "Sending report...";
-          const response = await fetch(`${SUPABASE_URL}/rest/v1/public_reports?select=id`, {
+          const buildPayload = (reportPhoto) => ({
+            equipment_id: asset.id || null,
+            customer_id: customer.id || null,
+            customer_name: customer.name || params.get("c") || "",
+            location_id: locationRecord.id || null,
+            location_name: locationRecord.name || params.get("l") || "",
+            equipment_name: asset.name || params.get("n") || "",
+            note: noteText,
+            contact: (contact?.value || "").trim(),
+            photo_data_url: reportPhoto?.url || "",
+            photo_name: reportPhoto?.name || ""
+          });
+          const sendReport = (reportPhoto) => fetch(`${SUPABASE_URL}/rest/v1/public_reports?select=id`, {
             method: "POST",
             headers: { ...headers, Prefer: "return=representation" },
-            body: JSON.stringify({
-              equipment_id: asset.id || null,
-              customer_id: customer.id || null,
-              customer_name: customer.name || params.get("c") || "",
-              location_id: locationRecord.id || null,
-              location_name: locationRecord.name || params.get("l") || "",
-              equipment_name: asset.name || params.get("n") || "",
-              note: noteText,
-              contact: (contact?.value || "").trim(),
-              photo_data_url: attachedPhoto?.url || "",
-              photo_name: attachedPhoto?.name || ""
-            })
+            body: JSON.stringify(buildPayload(reportPhoto))
           });
+          let response = await sendReport(attachedPhoto);
+          if (!response.ok && attachedPhoto) {
+            if (message) message.textContent = "Photo could not be attached, so SiteWorks is sending the report without it...";
+            response = await sendReport(null);
+          }
           if (!response.ok) {
-            if (message) message.textContent = "Report was not sent. Please try again with no photo.";
+            if (message) message.textContent = "Report was not sent. Please try again.";
             return;
           }
           form.reset();

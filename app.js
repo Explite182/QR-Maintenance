@@ -556,15 +556,19 @@ els.publicReportForm.addEventListener("submit", async (event) => {
     els.publicReportMessage.textContent = "Sending report...";
     const photo = await safeReadPublicReportPhoto(els.publicReportPhoto.files[0]);
     if (lastPublicReportError) {
-      els.publicReportMessage.textContent = lastPublicReportError;
-      return;
+      els.publicReportMessage.textContent = `${lastPublicReportError} Sending report without the photo...`;
     }
     const note = els.publicReportNote.value.trim();
     const contact = els.publicReportContact.value.trim();
     const ticket = createIssueFromPublicReport(report, note, contact, photo);
-    const remoteId = await savePublicReportToSupabase(report, note, contact, photo);
+    let remoteId = await savePublicReportToSupabase(report, note, contact, photo);
+    if (!remoteId && photo) {
+      els.publicReportMessage.textContent = "Photo could not be attached, so SiteWorks is sending the report without it...";
+      remoteId = await savePublicReportToSupabase(report, note, contact, null);
+      ticket.photo = null;
+    }
     if (!remoteId) {
-      els.publicReportMessage.textContent = lastPublicReportError || "Report was not sent. Please try again with a smaller photo or no photo.";
+      els.publicReportMessage.textContent = lastPublicReportError || "Report was not sent. Please try again.";
       return;
     }
     ticket.remoteReportId = remoteId;
@@ -11484,7 +11488,7 @@ async function safeReadPublicReportPhoto(file) {
     return await readPublicReportPhoto(file);
   } catch (error) {
     console.warn("Public report photo could not be read.", error);
-    lastPublicReportError = "That photo could not be attached. Send the report with no photo first, then try a smaller photo if needed.";
+    lastPublicReportError = "That photo could not be attached.";
     return null;
   }
 }
