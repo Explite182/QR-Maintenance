@@ -414,8 +414,8 @@ render();
 window.setTimeout(syncLoginQrReportPrompt, 0);
 window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
-loadSupabaseProfiles();
-bootstrapCloudData();
+window.setTimeout(loadSupabaseProfiles, 0);
+window.setTimeout(bootstrapCloudData, 0);
 window.setInterval(syncPublicReportsFromSupabase, PUBLIC_REPORT_SYNC_INTERVAL_MS);
 window.setInterval(refreshCloudDataFromSupabase, CLOUD_REFRESH_INTERVAL_MS);
 
