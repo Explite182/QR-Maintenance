@@ -436,11 +436,6 @@ els.loginForm.addEventListener("submit", async (event) => {
   if (!user) {
     const localUser = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
     if (!localUser) {
-      if (authProfilesLoaded && !hasSetupUsers()) {
-        showFirstAdminSetup("If this is a brand-new SiteWorks install, create the first admin below. Otherwise, keep using the Log In form above.");
-        suppressStorageFullWarning = false;
-        return;
-      }
       els.loginError.textContent = lastAuthError || "Login did not work. Check that this manager user exists in Supabase and that the email/password are correct.";
       suppressStorageFullWarning = false;
       return;
@@ -2419,7 +2414,7 @@ function renderAuth() {
   els.userSwitcherWrap?.classList.add("hidden");
   if (!isReport && !isLoggedIn && hasScannedAsset) setLoginQrReportStatus(Boolean(getScannedReportAsset()));
   syncLoginQrReportPrompt();
-  els.firstAdminForm.classList.toggle("hidden", !needsFirstAdmin);
+  els.firstAdminForm.classList.add("hidden");
   els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || !isLoggedIn));
   if (isReport || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
