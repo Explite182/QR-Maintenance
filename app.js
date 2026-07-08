@@ -458,6 +458,10 @@ els.loginForm.addEventListener("submit", async (event) => {
       currentRole = localUser.role;
       state.currentUserId = localUser.id;
       rememberAdminUserSwitcher(localUser);
+      if (isQrAccessUrl() || getAssetIdFromUrl()) {
+        finishQrLoginWithoutBlocking(localUser);
+        return;
+      }
       els.loginError.textContent = "Opening scanned equipment...";
       await runWithTimeout(openScannedAssetAfterLogin(), 5000);
       saveStateQuietly();
@@ -474,6 +478,10 @@ els.loginForm.addEventListener("submit", async (event) => {
     currentRole = user.role;
     state.currentUserId = user.id;
     rememberAdminUserSwitcher(user);
+    if (isQrAccessUrl() || getAssetIdFromUrl()) {
+      finishQrLoginWithoutBlocking(user);
+      return;
+    }
     els.loginError.textContent = "Loading SiteWorks data...";
     await runWithTimeout(bootstrapCloudData(), 7000);
     await runWithTimeout(openScannedAssetAfterLogin(), 5000);
@@ -490,6 +498,26 @@ els.loginForm.addEventListener("submit", async (event) => {
     suppressStorageFullWarning = false;
   }
 });
+
+function finishQrLoginWithoutBlocking(user) {
+  currentUser = user;
+  currentRole = user.role || "Customer";
+  state.currentUserId = user.id;
+  rememberAdminUserSwitcher(user);
+  upsertLocalUser(user);
+  els.loginError.textContent = "Opening scanned equipment...";
+  saveStateQuietly();
+  openScannedAssetAfterLogin();
+  els.loginForm.reset();
+  els.loginError.textContent = "";
+  render();
+  window.setTimeout(async () => {
+    suppressStorageFullWarning = false;
+    await runWithTimeout(bootstrapCloudData(), 7000);
+    await runWithTimeout(openScannedAssetAfterLogin(), 5000);
+    render();
+  }, 100);
+}
 
 function runWithTimeout(promise, timeoutMs, timeoutValue = false) {
   return Promise.race([
