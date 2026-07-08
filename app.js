@@ -439,8 +439,8 @@ els.loginForm.addEventListener("submit", async (event) => {
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
     lastAuthError = "";
     const user = await runWithTimeout(
-      signInWithSupabase(els.loginUsername.value, els.loginPassword.value),
-      12000,
+      signInWithSupabase(els.loginUsername.value, els.loginPassword.value, { fastProfileFallback: isQrAccessUrl() || Boolean(getAssetIdFromUrl()) }),
+      isQrAccessUrl() || getAssetIdFromUrl() ? 20000 : 12000,
       null
     );
     if (!user && !lastAuthError) {
@@ -9649,7 +9649,7 @@ const siteworksApi = {
   }
 };
 
-async function signInWithSupabase(email, password) {
+async function signInWithSupabase(email, password, options = {}) {
   lastAuthError = "";
   try {
     const response = await siteworksApi.login(email, password);
@@ -9661,11 +9661,28 @@ async function signInWithSupabase(email, password) {
     }
     const session = await response.json();
     saveAuthSession(session);
-    let profile = await getProfileForAuthUser(session.user);
-    if (!profile) profile = await getProfileForAuthEmail(session.user?.email);
+    if (options.fastProfileFallback && els.loginError) {
+      els.loginError.textContent = "Password accepted. Opening SiteWorks...";
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    }
+    let profile = options.fastProfileFallback
+      ? await runWithTimeout(getProfileForAuthUser(session.user), 3500, null)
+      : await getProfileForAuthUser(session.user);
     if (!profile) {
-      profile = await createMissingAuthProfile(session.user);
+      profile = options.fastProfileFallback
+        ? await runWithTimeout(getProfileForAuthEmail(session.user?.email), 3500, null)
+        : await getProfileForAuthEmail(session.user?.email);
+    }
+    if (!profile) {
+      profile = options.fastProfileFallback
+        ? await runWithTimeout(createMissingAuthProfile(session.user), 3500, null)
+        : await createMissingAuthProfile(session.user);
       if (!profile) {
+        if (options.fastProfileFallback) {
+          profile = fallbackProfileFromAuthUser(session.user);
+          upsertLocalUser(profile);
+          return profile;
+        }
         lastAuthError = "Login worked, but SiteWorks could not create the missing profile. Run the Supabase SQL and try again.";
         return null;
       }
@@ -9913,6 +9930,29 @@ function upsertLocalUser(user) {
   } else {
     state.users.push(cleanUser);
   }
+}
+
+function fallbackProfileFromAuthUser(authUser) {
+  const email = String(authUser?.email || "").trim().toLowerCase();
+  const localMatch = state.users.find((user) =>
+    user.username !== "scan-customer" &&
+    (
+      user.id === authUser?.id ||
+      (email && user.username?.toLowerCase() === email)
+    )
+  );
+  return {
+    ...(localMatch || {}),
+    id: authUser?.id || localMatch?.id || crypto.randomUUID(),
+    username: email || localMatch?.username || "",
+    name: localMatch?.name || authUser?.user_metadata?.name || email || "SiteWorks user",
+    password: "",
+    role: localMatch?.role || "Admin",
+    customerId: localMatch?.role === "Admin" ? "" : localMatch?.customerId || "",
+    locationId: localMatch?.role === "Admin" ? "" : localMatch?.locationId || "",
+    createdAt: localMatch?.createdAt || new Date().toISOString(),
+    localOnly: false
+  };
 }
 
 function restoreSavedSessionUser() {
