@@ -433,30 +433,49 @@ window.addEventListener("hashchange", () => {
 
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  suppressStorageFullWarning = true;
-  els.loginError.textContent = "Signing in...";
-  lastAuthError = "";
-  const user = await runWithTimeout(
-    signInWithSupabase(els.loginUsername.value, els.loginPassword.value),
-    12000,
-    null
-  );
-  if (!user && !lastAuthError) {
-    lastAuthError = "Login timed out. Check the phone connection and try again.";
-  }
+  try {
+    suppressStorageFullWarning = true;
+    els.loginError.textContent = "Signing in...";
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    lastAuthError = "";
+    const user = await runWithTimeout(
+      signInWithSupabase(els.loginUsername.value, els.loginPassword.value),
+      12000,
+      null
+    );
+    if (!user && !lastAuthError) {
+      lastAuthError = "Login timed out. Check the phone connection and try again.";
+    }
 
-  if (!user) {
-    const localUser = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
-    if (!localUser) {
-      els.loginError.textContent = lastAuthError || "Login did not finish. Check the connection and try again.";
-      suppressStorageFullWarning = false;
+    if (!user) {
+      const localUser = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
+      if (!localUser) {
+        els.loginError.textContent = lastAuthError || "Login did not finish. Check the connection and try again.";
+        suppressStorageFullWarning = false;
+        return;
+      }
+      currentUser = localUser;
+      currentRole = localUser.role;
+      state.currentUserId = localUser.id;
+      rememberAdminUserSwitcher(localUser);
+      els.loginError.textContent = "Opening scanned equipment...";
+      await runWithTimeout(openScannedAssetAfterLogin(), 5000);
+      saveStateQuietly();
+      els.loginForm.reset();
+      els.loginError.textContent = "";
+      render();
+      window.setTimeout(() => {
+        suppressStorageFullWarning = false;
+      }, 1500);
       return;
     }
-    currentUser = localUser;
-    currentRole = localUser.role;
-    state.currentUserId = localUser.id;
-    rememberAdminUserSwitcher(localUser);
-    els.loginError.textContent = "Opening scanned equipment...";
+
+    currentUser = user;
+    currentRole = user.role;
+    state.currentUserId = user.id;
+    rememberAdminUserSwitcher(user);
+    els.loginError.textContent = "Loading SiteWorks data...";
+    await runWithTimeout(bootstrapCloudData(), 7000);
     await runWithTimeout(openScannedAssetAfterLogin(), 5000);
     saveStateQuietly();
     els.loginForm.reset();
@@ -465,23 +484,11 @@ els.loginForm.addEventListener("submit", async (event) => {
     window.setTimeout(() => {
       suppressStorageFullWarning = false;
     }, 1500);
-    return;
-  }
-
-  currentUser = user;
-  currentRole = user.role;
-  state.currentUserId = user.id;
-  rememberAdminUserSwitcher(user);
-  els.loginError.textContent = "Loading SiteWorks data...";
-  await runWithTimeout(bootstrapCloudData(), 7000);
-  await runWithTimeout(openScannedAssetAfterLogin(), 5000);
-  saveStateQuietly();
-  els.loginForm.reset();
-  els.loginError.textContent = "";
-  render();
-  window.setTimeout(() => {
+  } catch (error) {
+    console.warn("Login submit failed.", error);
+    els.loginError.textContent = `Login stopped: ${error?.message || "Unknown error"}`;
     suppressStorageFullWarning = false;
-  }, 1500);
+  }
 });
 
 function runWithTimeout(promise, timeoutMs, timeoutValue = false) {
