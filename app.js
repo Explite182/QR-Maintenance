@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-qr-clean-login";
+const SITEWORKS_APP_VERSION = "20260708-qr-open-active-session";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -418,6 +418,11 @@ const els = {
 
 moveTopActionDrawers();
 render();
+window.setTimeout(() => {
+  if (currentUser && getAssetIdFromUrl()) {
+    focusScannedAssetContext();
+  }
+}, 0);
 window.setTimeout(syncLoginQrReportPrompt, 0);
 window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
