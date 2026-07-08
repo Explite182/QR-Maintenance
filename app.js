@@ -9137,6 +9137,7 @@ function createIssueFromPublicReport(report, note, contact, photo) {
 async function savePublicReportToSupabase(report, note, contact, photo) {
   lastPublicReportError = "";
   const payload = {
+    id: crypto.randomUUID(),
     equipment_id: report.asset?.id || null,
     customer_id: report.customer?.id || null,
     customer_name: report.customer?.name || "",
@@ -9151,8 +9152,7 @@ async function savePublicReportToSupabase(report, note, contact, photo) {
   try {
     const response = await siteworksApi.submitPublicReport(payload);
     if (!response.ok) throw new Error(await response.text());
-    const data = await response.json();
-    return data?.[0]?.id || "";
+    return payload.id;
   } catch (error) {
     lastPublicReportError = "Report was not sent to SiteWorks. Try again with a smaller photo or no photo.";
     console.warn("Supabase public report save skipped.", error);
@@ -9384,9 +9384,9 @@ const siteworksApi = {
         body: JSON.stringify(payload)
       });
     }
-    return cloudApi.rest("public_reports?select=id", {
+    return cloudApi.rest("public_reports", {
       method: "POST",
-      headers: { Prefer: "return=representation" },
+      headers: { Prefer: "return=minimal" },
       body: JSON.stringify(payload)
     });
   },

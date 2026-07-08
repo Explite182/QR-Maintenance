@@ -1279,7 +1279,7 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260707-public-report-photo-fallback"></script>
+  <script src="app.js?v=20260707-public-report-minimal-submit"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
@@ -1470,7 +1470,9 @@
             message.textContent = "Photo could not upload, so the report will send without it...";
           }
           if (message) message.textContent = "Sending report...";
+          const reportId = crypto.randomUUID();
           const buildPayload = (reportPhoto) => ({
+            id: reportId,
             equipment_id: asset.id || null,
             customer_id: customer.id || null,
             customer_name: customer.name || params.get("c") || "",
@@ -1482,9 +1484,9 @@
             photo_data_url: reportPhoto?.url || "",
             photo_name: reportPhoto?.name || ""
           });
-          const sendReport = (reportPhoto) => fetch(`${SUPABASE_URL}/rest/v1/public_reports?select=id`, {
+          const sendReport = (reportPhoto) => fetch(`${SUPABASE_URL}/rest/v1/public_reports`, {
             method: "POST",
-            headers: { ...headers, Prefer: "return=representation" },
+            headers: { ...headers, Prefer: "return=minimal" },
             body: JSON.stringify(buildPayload(reportPhoto))
           });
           let response = await sendReport(attachedPhoto);
