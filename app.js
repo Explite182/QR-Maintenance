@@ -9802,6 +9802,11 @@ function clearAuthSession() {
   }
 }
 
+function hasCloudWriteSession() {
+  if (siteworksServerEnabled()) return true;
+  return Boolean(getSavedAuthSession()?.access_token);
+}
+
 async function bootstrapCloudData() {
   const loadedStructuredData = await loadStructuredDataFromSupabase();
   if (!loadedStructuredData) await loadSharedStateFromSupabase();
@@ -9819,7 +9824,7 @@ async function refreshCloudDataFromSupabase() {
 }
 
 async function loadStructuredDataFromSupabase() {
-  if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !SUPABASE_URL || !SUPABASE_ANON_KEY || !hasCloudWriteSession()) return false;
   structuredDataLoading = true;
   try {
     const remoteStructuredState = await peekStructuredCloudState();
@@ -10151,7 +10156,7 @@ function newestTimestampFromRows(rows = []) {
 }
 
 async function loadSharedStateFromSupabase(forceApplyAssets = false) {
-  if (sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  if (sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY || !hasCloudWriteSession()) return false;
   sharedStateLoading = true;
   const localHadSharedData = hasSharedMaintenanceData(state);
 
@@ -10270,13 +10275,13 @@ function isRemoteSharedStateNewer(remoteUpdatedAt = "") {
 }
 
 function scheduleSharedStateSave(delay = 1200) {
-  if (!sharedStateReady || applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
+  if (!sharedStateReady || applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state) || !hasCloudWriteSession()) return;
   window.clearTimeout(sharedStateSaveTimer);
   sharedStateSaveTimer = window.setTimeout(saveSharedStateToSupabase, delay);
 }
 
 async function saveSharedStateToSupabase() {
-  if (!sharedStateReady || applyingSharedState || !hasSharedMaintenanceData(state)) return;
+  if (!sharedStateReady || applyingSharedState || !hasSharedMaintenanceData(state) || !hasCloudWriteSession()) return;
   const uploadedAt = new Date().toISOString();
   const payload = {
     id: SHARED_APP_STATE_ID,
@@ -10333,7 +10338,7 @@ function hasSharedMaintenanceData(candidate) {
 }
 
 function scheduleStructuredDataSync(delay = 2000) {
-  if (applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
+  if (applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state) || !hasCloudWriteSession()) return;
   window.clearTimeout(structuredSyncTimer);
   structuredSyncTimer = window.setTimeout(syncStructuredDataToSupabase, delay);
 }
@@ -10367,18 +10372,39 @@ function leanCloudRecord(record) {
 }
 
 async function syncStructuredDataToSupabase() {
-  if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
+  if (structuredSyncActive || !hasSharedMaintenanceData(state) || !hasCloudWriteSession()) return;
   structuredSyncActive = true;
   try {
-    await upsertStructuredRows("customers", state.customers.map((customer) => ({
-      id: customer.id,
-      name: customer.name || "",
-      created_at: customer.createdAt || new Date().toISOString(),
-      updated_at: customer.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: customer
-    })));
+    const writableLocations = state.locations.filter((locationRecord) =>
+      currentRole === "Admin" || canManageLocationSetup(locationRecord.id, locationRecord.customerId)
+    );
+    const writableAssets = state.assets.filter((asset) =>
+      currentRole === "Admin" || (isManagerRole() && canSeeAsset(asset))
+    );
+    const writableWorkOrders = state.workOrders.filter(canSeeWorkOrder);
+    const writableServiceRequests = state.serviceRequests.filter(canSeeServiceRequest);
+    const writableAssetIds = new Set(writableAssets.map((asset) => asset.id));
 
-    await upsertStructuredRows("locations", state.locations.map((locationRecord) => ({
+    if (currentRole === "Admin") {
+      await upsertStructuredRows("customers", state.customers.map((customer) => ({
+        id: customer.id,
+        name: customer.name || "",
+        created_at: customer.createdAt || new Date().toISOString(),
+        updated_at: customer.updatedAt || state.updatedAt || new Date().toISOString(),
+        data: customer
+      })));
+
+      await upsertStructuredRows("pm_templates", state.templates.map((template) => ({
+        id: template.id,
+        name: template.name || "",
+        items: template.items || [],
+        created_at: template.createdAt || new Date().toISOString(),
+        updated_at: template.updatedAt || state.updatedAt || new Date().toISOString(),
+        data: template
+      })));
+    }
+
+    await upsertStructuredRows("locations", writableLocations.map((locationRecord) => ({
       id: locationRecord.id,
       customer_id: locationRecord.customerId,
       name: locationRecord.name || "",
@@ -10387,16 +10413,7 @@ async function syncStructuredDataToSupabase() {
       data: locationRecord
     })));
 
-    await upsertStructuredRows("pm_templates", state.templates.map((template) => ({
-      id: template.id,
-      name: template.name || "",
-      items: template.items || [],
-      created_at: template.createdAt || new Date().toISOString(),
-      updated_at: template.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: template
-    })));
-
-    await upsertStructuredRows("assets", state.assets.map((asset) => ({
+    await upsertStructuredRows("assets", writableAssets.map((asset) => ({
       id: asset.id,
       customer_id: asset.customerId,
       location_id: asset.locationId,
@@ -10421,7 +10438,7 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(asset)
     })));
 
-    await upsertStructuredRows("work_orders", state.workOrders.map((item) => ({
+    await upsertStructuredRows("work_orders", writableWorkOrders.map((item) => ({
       id: item.id,
       issue_number: item.issueNumber || null,
       asset_id: item.assetId || null,
@@ -10442,7 +10459,7 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(item)
     })));
 
-    await upsertStructuredRows("service_requests", state.serviceRequests.map((item) => ({
+    await upsertStructuredRows("service_requests", writableServiceRequests.map((item) => ({
       id: item.id,
       service_request_number: item.serviceRequestNumber || null,
       asset_id: item.assetId || null,
@@ -10464,7 +10481,9 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(item)
     })));
 
-    const historyRows = state.assets.flatMap((asset) => (asset.history || []).map((item) => ({
+    const historyRows = state.assets
+      .filter((asset) => writableAssetIds.has(asset.id))
+      .flatMap((asset) => (asset.history || []).map((item) => ({
       id: item.id,
       pm_number: item.pmNumber || null,
       asset_id: asset.id,
