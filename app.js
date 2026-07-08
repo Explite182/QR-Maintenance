@@ -11,6 +11,7 @@ const SUPABASE_STORAGE_BUCKET = "siteworks-files";
 const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
+const STRUCTURED_DATA_SYNC_ENABLED = false;
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const PUBLIC_REPORT_SYNC_INTERVAL_MS = 2 * 60 * 1000;
@@ -9838,6 +9839,7 @@ async function refreshCloudDataFromSupabase() {
 }
 
 async function loadStructuredDataFromSupabase() {
+  if (!STRUCTURED_DATA_SYNC_ENABLED) return false;
   if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
   structuredDataLoading = true;
   try {
@@ -10352,6 +10354,7 @@ function hasSharedMaintenanceData(candidate) {
 }
 
 function scheduleStructuredDataSync(delay = 2000) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED) return;
   if (applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
   window.clearTimeout(structuredSyncTimer);
   structuredSyncTimer = window.setTimeout(syncStructuredDataToSupabase, delay);
@@ -10386,6 +10389,7 @@ function leanCloudRecord(record) {
 }
 
 async function syncStructuredDataToSupabase() {
+  if (!STRUCTURED_DATA_SYNC_ENABLED) return;
   if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
   structuredSyncActive = true;
   try {
