@@ -9782,7 +9782,9 @@ async function loadSupabaseProfiles() {
       user.username === "scan-customer" ||
       user.localOnly ||
       Boolean(user.password) ||
-      !isEmailAddress(user.username)
+      !isEmailAddress(user.username) ||
+      user.id === currentUser?.id ||
+      user.username?.toLowerCase() === currentUser?.username?.toLowerCase()
     );
     const localUsernames = new Set(localUsers.map((user) => user.username.toLowerCase()));
     state.users = [
@@ -9887,14 +9889,22 @@ function upsertLocalUser(user) {
 
 function restoreSavedSessionUser() {
   if (currentUser || isPublicReportUrl()) return;
-  const savedSession = getSavedAuthSession();
-  const sessionUserId = savedSession?.user?.id || "";
-  if (!sessionUserId) return;
-  const user = state.users.find((item) => item.id === sessionUserId);
+  const user = findStateUserForCurrentSession();
   if (!user || user.username === "scan-customer") return;
   currentUser = user;
   currentRole = user.role || "Customer";
   state.currentUserId = user.id;
+}
+
+function findStateUserForCurrentSession() {
+  const savedSession = getSavedAuthSession();
+  const sessionUserId = savedSession?.user?.id || state.currentUserId || "";
+  const sessionEmail = savedSession?.user?.email?.toLowerCase() || currentUser?.username?.toLowerCase() || "";
+  if (!sessionUserId && !sessionEmail) return null;
+  return state.users.find((item) =>
+    item.id === sessionUserId ||
+    (sessionEmail && item.username?.toLowerCase() === sessionEmail)
+  ) || null;
 }
 
 function saveAuthSession(session) {
@@ -10103,7 +10113,7 @@ function applyStructuredState(rows, updatedAt = "") {
     currentUserId: localCurrentUserId,
     sharedDataUpdatedAt: updatedAt || newestStructuredUpdatedAt(rows)
   });
-  currentUser = state.users.find((user) => user.id === state.currentUserId) || currentUser;
+  currentUser = findStateUserForCurrentSession() || currentUser;
   currentRole = currentUser?.role || "Customer";
   selectedCustomerId = selectedCustomerId || state.customers[0]?.id || "";
   selectedLocationId = "all";
@@ -10357,7 +10367,7 @@ function applySharedState(sharedData, updatedAt = "") {
     currentUserId: localCurrentUserId,
     sharedDataUpdatedAt: updatedAt || sharedData.sharedDataUpdatedAt || ""
   });
-  currentUser = state.users.find((user) => user.id === state.currentUserId) || currentUser;
+  currentUser = findStateUserForCurrentSession() || currentUser;
   currentRole = currentUser?.role || "Customer";
   selectedCustomerId = selectedCustomerId || state.customers[0]?.id || "";
   selectedLocationId = "all";
@@ -10383,8 +10393,16 @@ function mergeSharedUsers(sharedUsers = [], localUsers = [], localCurrentUserId 
     merged.push(cleanUser);
   };
   sharedUsers.forEach(addUser);
-  const currentLocalUser = localUsers.find((user) => user.id === localCurrentUserId);
-  if (currentLocalUser && !merged.some((user) => user.id === currentLocalUser.id || user.username?.toLowerCase() === currentLocalUser.username?.toLowerCase())) {
+  const savedSession = getSavedAuthSession();
+  const sessionEmail = savedSession?.user?.email?.toLowerCase() || "";
+  const currentLocalUser = localUsers.find((user) =>
+    user.id === localCurrentUserId ||
+    user.id === savedSession?.user?.id ||
+    (sessionEmail && user.username?.toLowerCase() === sessionEmail) ||
+    user.id === currentUser?.id ||
+    user.username?.toLowerCase() === currentUser?.username?.toLowerCase()
+  );
+  if (currentLocalUser && !merged.some((user) => user.id === currentLocalUser.id)) {
     addUser(currentLocalUser);
   }
   return merged;
