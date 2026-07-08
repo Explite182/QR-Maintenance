@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-qr-open-after-session-restore";
+const SITEWORKS_APP_VERSION = "20260708-qr-login-reload";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -531,16 +531,13 @@ function finishQrLoginWithoutBlocking(user) {
     state.currentUserId = user.id;
     rememberAdminUserSwitcher(user);
     upsertLocalUser(user);
-    setQrLoginTrace("Opening scanned equipment...");
-    saveStateQuietly();
-    openScannedAssetAfterLogin();
-    render();
-    window.setTimeout(async () => {
-      suppressStorageFullWarning = false;
-      await runWithTimeout(bootstrapCloudData(), 7000);
-      await runWithTimeout(openScannedAssetAfterLogin(), 5000);
-      render();
-    }, 100);
+    setQrLoginTrace("Login accepted. Opening scanned equipment...");
+    persistLocalStateOnly(false);
+    const params = scannedQrParams();
+    params.set("qr", "1");
+    params.set("refresh", SITEWORKS_APP_VERSION);
+    params.set("signedin", String(Date.now()));
+    window.location.replace(`${location.pathname}?${params.toString()}`);
   } catch (error) {
     console.warn("QR login open failed.", error);
     setQrLoginTrace(`QR open stopped: ${error?.message || "Unknown error"}`);
