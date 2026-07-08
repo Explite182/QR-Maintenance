@@ -12,6 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
+const SITEWORKS_APP_VERSION = "20260708-qr-login-trace";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -435,12 +436,13 @@ els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     suppressStorageFullWarning = true;
-    els.loginError.textContent = "Signing in...";
+    setQrLoginTrace("Signing in...");
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
     lastAuthError = "";
+    const isQrLogin = isQrAccessUrl() || Boolean(getAssetIdFromUrl());
     const user = await runWithTimeout(
-      signInWithSupabase(els.loginUsername.value, els.loginPassword.value, { fastProfileFallback: isQrAccessUrl() || Boolean(getAssetIdFromUrl()) }),
-      isQrAccessUrl() || getAssetIdFromUrl() ? 20000 : 12000,
+      signInWithSupabase(els.loginUsername.value, els.loginPassword.value, { fastProfileFallback: isQrLogin }),
+      isQrLogin ? 20000 : 12000,
       null
     );
     if (!user && !lastAuthError) {
@@ -450,7 +452,7 @@ els.loginForm.addEventListener("submit", async (event) => {
     if (!user) {
       const localUser = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
       if (!localUser) {
-        els.loginError.textContent = lastAuthError || "Login did not finish. Check the connection and try again.";
+        setQrLoginTrace(lastAuthError || "Login did not finish. Check the connection and try again.");
         suppressStorageFullWarning = false;
         return;
       }
@@ -458,7 +460,7 @@ els.loginForm.addEventListener("submit", async (event) => {
       currentRole = localUser.role;
       state.currentUserId = localUser.id;
       rememberAdminUserSwitcher(localUser);
-      if (isQrAccessUrl() || getAssetIdFromUrl()) {
+      if (isQrLogin) {
         finishQrLoginWithoutBlocking(localUser);
         return;
       }
@@ -478,7 +480,8 @@ els.loginForm.addEventListener("submit", async (event) => {
     currentRole = user.role;
     state.currentUserId = user.id;
     rememberAdminUserSwitcher(user);
-    if (isQrAccessUrl() || getAssetIdFromUrl()) {
+    setQrLoginTrace(`Signed in as ${user.username || user.name || "SiteWorks user"}.`);
+    if (isQrLogin) {
       finishQrLoginWithoutBlocking(user);
       return;
     }
@@ -494,29 +497,39 @@ els.loginForm.addEventListener("submit", async (event) => {
     }, 1500);
   } catch (error) {
     console.warn("Login submit failed.", error);
-    els.loginError.textContent = `Login stopped: ${error?.message || "Unknown error"}`;
+    setQrLoginTrace(`Login stopped: ${error?.message || "Unknown error"}`);
     suppressStorageFullWarning = false;
   }
 });
 
+function setQrLoginTrace(message) {
+  if (!els.loginError) return;
+  const prefix = (isQrAccessUrl() || getAssetIdFromUrl()) ? `QR ${SITEWORKS_APP_VERSION}: ` : "";
+  els.loginError.textContent = `${prefix}${message}`;
+}
+
 function finishQrLoginWithoutBlocking(user) {
-  currentUser = user;
-  currentRole = user.role || "Customer";
-  state.currentUserId = user.id;
-  rememberAdminUserSwitcher(user);
-  upsertLocalUser(user);
-  els.loginError.textContent = "Opening scanned equipment...";
-  saveStateQuietly();
-  openScannedAssetAfterLogin();
-  els.loginForm.reset();
-  els.loginError.textContent = "";
-  render();
-  window.setTimeout(async () => {
-    suppressStorageFullWarning = false;
-    await runWithTimeout(bootstrapCloudData(), 7000);
-    await runWithTimeout(openScannedAssetAfterLogin(), 5000);
+  try {
+    currentUser = user;
+    currentRole = user.role || "Customer";
+    state.currentUserId = user.id;
+    rememberAdminUserSwitcher(user);
+    upsertLocalUser(user);
+    setQrLoginTrace("Opening scanned equipment...");
+    saveStateQuietly();
+    openScannedAssetAfterLogin();
     render();
-  }, 100);
+    window.setTimeout(async () => {
+      suppressStorageFullWarning = false;
+      await runWithTimeout(bootstrapCloudData(), 7000);
+      await runWithTimeout(openScannedAssetAfterLogin(), 5000);
+      render();
+    }, 100);
+  } catch (error) {
+    console.warn("QR login open failed.", error);
+    setQrLoginTrace(`QR open stopped: ${error?.message || "Unknown error"}`);
+    suppressStorageFullWarning = false;
+  }
 }
 
 function runWithTimeout(promise, timeoutMs, timeoutValue = false) {
@@ -9662,7 +9675,7 @@ async function signInWithSupabase(email, password, options = {}) {
     const session = await response.json();
     saveAuthSession(session);
     if (options.fastProfileFallback && els.loginError) {
-      els.loginError.textContent = "Password accepted. Opening SiteWorks...";
+      setQrLoginTrace("Password accepted. Opening SiteWorks...");
       await new Promise((resolve) => window.requestAnimationFrame(resolve));
     }
     let profile = options.fastProfileFallback
