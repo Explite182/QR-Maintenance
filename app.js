@@ -40,6 +40,7 @@ const ASSET_DETAIL_FIELDS = [
 ];
 
 let state = normalizeState(loadState());
+applyForcedLogoutFromUrl();
 hydrateAssetFromHash();
 let selectedId = getAssetIdFromUrl() || null;
 let selectedCustomerId = state.customers[0]?.id || "";
@@ -679,13 +680,14 @@ function checkInactivityLogout() {
 }
 
 function logoutCurrentUser(reason = "manual") {
-  if (!currentUser) return;
   window.clearTimeout(inactivityLogoutTimer);
 
-  addActivity(
-    reason === "manual" ? "User logged out" : "Automatic logout",
-    reason === "manual" ? "Signed out from the logout button." : "No activity for 30 minutes."
-  );
+  if (currentUser) {
+    addActivity(
+      reason === "manual" ? "User logged out" : "Automatic logout",
+      reason === "manual" ? "Signed out from the logout button." : "No activity for 30 minutes."
+    );
+  }
 
   currentUser = null;
   currentRole = "Customer";
@@ -9797,6 +9799,26 @@ function clearAuthSession() {
   } catch (error) {
     console.warn("Auth session could not be cleared.", error);
   }
+}
+
+function applyForcedLogoutFromUrl() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("logout") !== "1") return;
+  state.currentUserId = "";
+  try {
+    sessionStorage.removeItem(USER_SWITCH_ADMIN_KEY);
+  } catch (error) {
+    console.warn("Admin switcher session could not be cleared.", error);
+  }
+  clearAuthSession();
+  try {
+    persistLocalStateOnly(false);
+  } catch (error) {
+    console.warn("Logout state could not be saved locally.", error);
+  }
+  params.delete("logout");
+  const query = params.toString();
+  history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}`);
 }
 
 async function bootstrapCloudData() {
