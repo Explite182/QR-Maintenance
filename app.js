@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-login-button-direct";
+const SITEWORKS_APP_VERSION = "20260708-qr-clean-login";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -52,6 +52,7 @@ let selectedLocationId = "all";
 let selectedContractorCustomerId = selectedCustomerId;
 let currentUser = getInitialUser();
 let currentRole = currentUser?.role || "Customer";
+cleanQrLoginUrlForUnauthenticatedUser();
 let globalQuery = "";
 let focusedWorkOrderId = "";
 let focusedServiceRequestId = "";
@@ -2505,7 +2506,10 @@ function renderAuth() {
   els.loginForm.classList.toggle("hidden", false);
   els.loginQrReportPrompt.classList.toggle("hidden", isReport || isLoggedIn || !hasScannedAsset);
   els.userSwitcherWrap?.classList.add("hidden");
-  if (!isReport && !isLoggedIn && hasScannedAsset) setLoginQrReportStatus(Boolean(getScannedReportAsset()));
+  if (!isReport && !isLoggedIn && hasScannedAsset) {
+    setLoginQrReportStatus(Boolean(getScannedReportAsset()));
+    if (!els.loginError.textContent.trim()) setQrLoginTrace("QR ready. Log in to open equipment.");
+  }
   syncLoginQrReportPrompt();
   els.firstAdminForm.classList.add("hidden");
   els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || !isLoggedIn));
@@ -9155,6 +9159,16 @@ function rememberScannedQrContext() {
   } catch (error) {
     console.warn("Scanned QR context could not be remembered.", error);
   }
+}
+
+function cleanQrLoginUrlForUnauthenticatedUser() {
+  const params = new URLSearchParams(location.search);
+  const isScannedQr = params.get("qr") === "1" || params.get("a");
+  if (!isScannedQr || currentUser || isPublicReportUrl()) return;
+  const cleanParams = new URLSearchParams();
+  cleanParams.set("qrlogin", "1");
+  cleanParams.set("refresh", SITEWORKS_APP_VERSION);
+  history.replaceState(null, "", `${location.pathname}?${cleanParams.toString()}`);
 }
 
 function getRememberedScannedQrParams() {
