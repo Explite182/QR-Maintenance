@@ -437,7 +437,7 @@ els.loginForm.addEventListener("submit", async (event) => {
     const localUser = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
     if (!localUser) {
       if (authProfilesLoaded && !hasSetupUsers()) {
-        showFirstAdminSetup("No SiteWorks admin account exists yet. Create the first admin below.");
+        showFirstAdminSetup("If this is a brand-new SiteWorks install, create the first admin below. Otherwise, keep using the Log In form above.");
         suppressStorageFullWarning = false;
         return;
       }
@@ -2414,7 +2414,7 @@ function renderAuth() {
   const needsFirstAdmin = !isReport && !isLoggedIn && !hasSetupUsers();
   els.publicReportScreen.classList.toggle("hidden", !isReport);
   els.loginScreen.classList.toggle("hidden", isReport || isLoggedIn);
-  els.loginForm.classList.toggle("hidden", needsFirstAdmin);
+  els.loginForm.classList.toggle("hidden", false);
   els.loginQrReportPrompt.classList.toggle("hidden", isReport || isLoggedIn || !hasScannedAsset);
   els.userSwitcherWrap?.classList.add("hidden");
   if (!isReport && !isLoggedIn && hasScannedAsset) setLoginQrReportStatus(Boolean(getScannedReportAsset()));
@@ -2747,7 +2747,7 @@ function setLoginQrReportStatus(isReady) {
 }
 
 function showFirstAdminSetup(message = "") {
-  els.loginForm.classList.add("hidden");
+  els.loginForm.classList.remove("hidden");
   els.firstAdminForm.classList.remove("hidden");
   els.firstAdminMessage.textContent = message;
 }
