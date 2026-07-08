@@ -435,12 +435,20 @@ els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   suppressStorageFullWarning = true;
   els.loginError.textContent = "Signing in...";
-  const user = await signInWithSupabase(els.loginUsername.value, els.loginPassword.value);
+  lastAuthError = "";
+  const user = await runWithTimeout(
+    signInWithSupabase(els.loginUsername.value, els.loginPassword.value),
+    12000,
+    null
+  );
+  if (!user && !lastAuthError) {
+    lastAuthError = "Login timed out. Check the phone connection and try again.";
+  }
 
   if (!user) {
     const localUser = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
     if (!localUser) {
-      els.loginError.textContent = lastAuthError || "Login did not work. Check that this manager user exists in Supabase and that the email/password are correct.";
+      els.loginError.textContent = lastAuthError || "Login did not finish. Check the connection and try again.";
       suppressStorageFullWarning = false;
       return;
     }
@@ -476,13 +484,13 @@ els.loginForm.addEventListener("submit", async (event) => {
   }, 1500);
 });
 
-function runWithTimeout(promise, timeoutMs) {
+function runWithTimeout(promise, timeoutMs, timeoutValue = false) {
   return Promise.race([
     promise.catch((error) => {
       console.warn("Login follow-up step skipped.", error);
-      return false;
+      return timeoutValue;
     }),
-    new Promise((resolve) => window.setTimeout(() => resolve(false), timeoutMs))
+    new Promise((resolve) => window.setTimeout(() => resolve(timeoutValue), timeoutMs))
   ]);
 }
 
