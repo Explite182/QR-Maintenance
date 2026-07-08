@@ -11341,6 +11341,7 @@ async function importDataBackup(file) {
     selectedId = getAssetIdFromUrl() || null;
     addActivity("Data imported", file.name || "Backup file");
     saveState();
+    await publishRestoredDataToCloud();
     if (selectedId) location.hash = `asset/${selectedId}`;
     render();
   } catch {
@@ -11348,7 +11349,7 @@ async function importDataBackup(file) {
   }
 }
 
-function restoreLatestAutoBackup() {
+async function restoreLatestAutoBackup() {
   const latest = getAutoBackups()[0];
   if (!latest) return;
   state = normalizeState(latest.state);
@@ -11359,8 +11360,17 @@ function restoreLatestAutoBackup() {
   selectedId = getAssetIdFromUrl() || null;
   addActivity("Latest auto backup restored", formatDateTime(new Date(latest.createdAt)));
   saveState();
+  await publishRestoredDataToCloud();
   if (selectedId) location.hash = `asset/${selectedId}`;
   render();
+}
+
+async function publishRestoredDataToCloud() {
+  if (!hasSharedMaintenanceData(state) || isPublicReportUrl()) return;
+  sharedStateReady = true;
+  sharedStateLoading = false;
+  await saveSharedStateToSupabase();
+  await syncStructuredDataToSupabase();
 }
 
 function seedTemplates() {
