@@ -9074,6 +9074,7 @@ function rememberScannedQrContext() {
   if (params.get("qr") !== "1" && !params.get("a")) return;
   try {
     sessionStorage.setItem(SCANNED_QR_CONTEXT_KEY, params.toString());
+    localStorage.setItem(SCANNED_QR_CONTEXT_KEY, params.toString());
   } catch (error) {
     console.warn("Scanned QR context could not be remembered.", error);
   }
@@ -9081,7 +9082,11 @@ function rememberScannedQrContext() {
 
 function getRememberedScannedQrParams() {
   try {
-    return new URLSearchParams(sessionStorage.getItem(SCANNED_QR_CONTEXT_KEY) || "");
+    return new URLSearchParams(
+      sessionStorage.getItem(SCANNED_QR_CONTEXT_KEY) ||
+      localStorage.getItem(SCANNED_QR_CONTEXT_KEY) ||
+      ""
+    );
   } catch {
     return new URLSearchParams();
   }
