@@ -460,6 +460,8 @@ els.loginForm.addEventListener("submit", async (event) => {
   currentRole = user.role;
   state.currentUserId = user.id;
   rememberAdminUserSwitcher(user);
+  els.loginError.textContent = "Loading SiteWorks data...";
+  await bootstrapCloudData();
   const openedScannedAsset = focusScannedAssetContext();
   if (!openedScannedAsset) closeAssetRegisterDrawer();
   saveStateQuietly();
