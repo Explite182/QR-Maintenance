@@ -449,7 +449,7 @@ els.loginForm.addEventListener("submit", async (event) => {
     state.currentUserId = localUser.id;
     rememberAdminUserSwitcher(localUser);
     els.loginError.textContent = "Opening scanned equipment...";
-    await openScannedAssetAfterLogin();
+    await runWithTimeout(openScannedAssetAfterLogin(), 5000);
     saveStateQuietly();
     els.loginForm.reset();
     els.loginError.textContent = "";
@@ -465,8 +465,8 @@ els.loginForm.addEventListener("submit", async (event) => {
   state.currentUserId = user.id;
   rememberAdminUserSwitcher(user);
   els.loginError.textContent = "Loading SiteWorks data...";
-  await bootstrapCloudData();
-  await openScannedAssetAfterLogin();
+  await runWithTimeout(bootstrapCloudData(), 7000);
+  await runWithTimeout(openScannedAssetAfterLogin(), 5000);
   saveStateQuietly();
   els.loginForm.reset();
   els.loginError.textContent = "";
@@ -476,10 +476,20 @@ els.loginForm.addEventListener("submit", async (event) => {
   }, 1500);
 });
 
+function runWithTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise.catch((error) => {
+      console.warn("Login follow-up step skipped.", error);
+      return false;
+    }),
+    new Promise((resolve) => window.setTimeout(() => resolve(false), timeoutMs))
+  ]);
+}
+
 async function openScannedAssetAfterLogin() {
   let openedScannedAsset = focusScannedAssetContext();
   if (!openedScannedAsset && getAssetIdFromUrl()) {
-    await refreshCloudDataFromSupabase();
+    await runWithTimeout(refreshCloudDataFromSupabase(), 5000);
     openedScannedAsset = focusScannedAssetContext();
   }
   if (!openedScannedAsset) closeAssetRegisterDrawer();
