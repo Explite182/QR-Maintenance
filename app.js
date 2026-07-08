@@ -446,8 +446,8 @@ els.loginForm.addEventListener("submit", async (event) => {
     currentRole = localUser.role;
     state.currentUserId = localUser.id;
     rememberAdminUserSwitcher(localUser);
-    const openedScannedAsset = focusScannedAssetContext();
-    if (!openedScannedAsset) closeAssetRegisterDrawer();
+    els.loginError.textContent = "Opening scanned equipment...";
+    await openScannedAssetAfterLogin();
     saveStateQuietly();
     els.loginForm.reset();
     els.loginError.textContent = "";
@@ -464,8 +464,7 @@ els.loginForm.addEventListener("submit", async (event) => {
   rememberAdminUserSwitcher(user);
   els.loginError.textContent = "Loading SiteWorks data...";
   await bootstrapCloudData();
-  const openedScannedAsset = focusScannedAssetContext();
-  if (!openedScannedAsset) closeAssetRegisterDrawer();
+  await openScannedAssetAfterLogin();
   saveStateQuietly();
   els.loginForm.reset();
   els.loginError.textContent = "";
@@ -474,6 +473,16 @@ els.loginForm.addEventListener("submit", async (event) => {
     suppressStorageFullWarning = false;
   }, 1500);
 });
+
+async function openScannedAssetAfterLogin() {
+  let openedScannedAsset = focusScannedAssetContext();
+  if (!openedScannedAsset && getAssetIdFromUrl()) {
+    await refreshCloudDataFromSupabase();
+    openedScannedAsset = focusScannedAssetContext();
+  }
+  if (!openedScannedAsset) closeAssetRegisterDrawer();
+  return openedScannedAsset;
+}
 
 els.firstAdminForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -8112,7 +8121,7 @@ function restoreScannedAssetSelection() {
   const scannedAssetId = getAssetIdFromUrl();
   if (!scannedAssetId) return;
   hydrateAssetFromHash();
-  const asset = getRawAsset(scannedAssetId);
+  const asset = getScannedAssetFromUrl(scannedAssetId);
   if (!asset) return;
   if (!canSeeAsset(asset) && !isQrAccessUrl()) return;
   selectedId = asset.id;
@@ -8124,7 +8133,7 @@ function focusScannedAssetContext() {
   const scannedAssetId = getAssetIdFromUrl();
   if (!scannedAssetId || !currentUser) return false;
   restoreScannedAssetSelection();
-  const asset = getRawAsset(scannedAssetId);
+  const asset = getScannedAssetFromUrl(scannedAssetId);
   if (!asset) return false;
   if (!canSeeAsset(asset) && !isQrAccessUrl()) return false;
   selectedId = asset.id;
@@ -8134,6 +8143,34 @@ function focusScannedAssetContext() {
   openAssetRegisterDrawer();
   setMobileTabState("assetRegisterDrawer");
   return true;
+}
+
+function getScannedAssetFromUrl(scannedAssetId = getAssetIdFromUrl()) {
+  if (!scannedAssetId) return null;
+  return getRawAsset(scannedAssetId) || findScannedAssetFallback();
+}
+
+function findScannedAssetFallback() {
+  const params = new URLSearchParams(location.search);
+  const scannedName = normalizedName(params.get("n"));
+  if (!scannedName) return null;
+  const scannedCustomerId = params.get("cid") || "";
+  const scannedLocationId = params.get("lid") || "";
+  const scannedCustomerName = normalizedName(params.get("c"));
+  const scannedLocationName = normalizedName(params.get("l"));
+
+  return state.assets.find((asset) => {
+    if (normalizedName(asset.name) !== scannedName) return false;
+    const customer = getCustomer(asset.customerId);
+    const locationRecord = getLocation(asset.locationId);
+    const matchesCustomer = scannedCustomerId
+      ? asset.customerId === scannedCustomerId
+      : !scannedCustomerName || normalizedName(customer?.name) === scannedCustomerName;
+    const matchesLocation = scannedLocationId
+      ? asset.locationId === scannedLocationId
+      : !scannedLocationName || normalizedName(locationRecord?.name) === scannedLocationName;
+    return matchesCustomer && matchesLocation;
+  }) || null;
 }
 
 function filteredAssets() {
