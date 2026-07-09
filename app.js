@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-qr-deferred-startup";
+const SITEWORKS_APP_VERSION = "20260708-qr-close-logout";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -786,9 +786,8 @@ function logoutCurrentUser(reason = "manual") {
   state.currentUserId = "";
   sessionStorage.removeItem(USER_SWITCH_ADMIN_KEY);
   clearAuthSession();
-  if (!isQrAccessUrl()) {
-    history.replaceState(null, "", getCurrentPageUrl());
-  }
+  clearRememberedScannedQrContext();
+  history.replaceState(null, "", getCurrentPageUrl());
   saveState();
   render();
 }
@@ -9145,11 +9144,21 @@ function getCurrentPageUrl() {
 }
 
 function clearSelectedAssetUrl() {
+  clearRememberedScannedQrContext();
   const params = new URLSearchParams(location.search);
   params.delete("a");
   params.delete("qr");
   const query = params.toString();
   history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}`);
+}
+
+function clearRememberedScannedQrContext() {
+  try {
+    sessionStorage.removeItem(SCANNED_QR_CONTEXT_KEY);
+    localStorage.removeItem(SCANNED_QR_CONTEXT_KEY);
+  } catch (error) {
+    console.warn("Scanned QR context could not be cleared.", error);
+  }
 }
 
 function rememberScannedQrContext() {
