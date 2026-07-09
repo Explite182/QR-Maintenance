@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-admin-delete-service-request";
+const SITEWORKS_APP_VERSION = "20260708-deleted-reports-stay-deleted";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -3086,6 +3086,9 @@ async function deleteWorkOrder(workOrderId) {
   if (!workOrder || !canDeleteWorkOrders()) return;
   const ticketLabel = `${formatIssueNumber(workOrder)} - ${workOrder.title || "Ticket"}`;
   if (!confirm(`Delete ${ticketLabel}? This cannot be undone.`)) return;
+  if (workOrder.remoteReportId && !state.dismissedPublicReportIds.includes(workOrder.remoteReportId)) {
+    state.dismissedPublicReportIds.push(workOrder.remoteReportId);
+  }
   state.workOrders = state.workOrders.filter((item) => item.id !== workOrder.id);
   if (focusedWorkOrderId === workOrder.id) focusedWorkOrderId = "";
   if (focusedCompletedRecordId === workOrder.id) focusedCompletedRecordId = "";
@@ -9430,6 +9433,7 @@ async function syncPublicReportsFromSupabase(force = false) {
   }
   const added = (data || []).reduce((count, report) => {
     if (isCodexTestPublicReport(report)) return count;
+    if (state.dismissedPublicReportIds.includes(report.id)) return count;
     if (state.workOrders.some((item) => item.remoteReportId === report.id)) return count;
     state.workOrders.unshift(createIssueFromRemoteReport(report));
     return count + 1;
@@ -10633,6 +10637,7 @@ function buildSharedStatePayload(uploadedAt) {
     users: (state.users || []).map(sanitizeSharedUser),
     accessRequests: state.accessRequests || [],
     activityLog: state.activityLog || [],
+    dismissedPublicReportIds: state.dismissedPublicReportIds || [],
     backupLocation: state.backupLocation || defaultBackupLocation(),
     qrBaseUrl: getQrBaseUrl(),
     sharedDataUpdatedAt: uploadedAt
@@ -11000,6 +11005,7 @@ function normalizeState(input) {
     users: input.users || [],
     accessRequests: input.accessRequests || [],
     activityLog: input.activityLog || [],
+    dismissedPublicReportIds: Array.isArray(input.dismissedPublicReportIds) ? input.dismissedPublicReportIds : [],
     currentUserId: input.currentUserId || "",
     backupLocation: input.backupLocation || defaultBackupLocation(),
     qrBaseUrl: normalizeQrBaseUrl(input.qrBaseUrl || guessNetworkQrUrl()),
@@ -11173,6 +11179,7 @@ function emptyState() {
     users: [],
     accessRequests: [],
     activityLog: [],
+    dismissedPublicReportIds: [],
     currentUserId: "",
     backupLocation: defaultBackupLocation(),
     qrBaseUrl: guessNetworkQrUrl(),
