@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-direct-ticket-open";
+const SITEWORKS_APP_VERSION = "20260708-signed-ticket-photos";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -11919,13 +11919,12 @@ function hasMedia(file) {
 }
 
 function signedMediaKey(file) {
-  const path = file?.storageKey || file?.storage_key || file?.path || "";
+  const path = getSupabaseStoragePath(file);
   if (!path) return "";
   return `${file.bucket || file.storageBucket || SUPABASE_STORAGE_BUCKET}:${path}`;
 }
 
 function signedMediaSource(file) {
-  if (!siteworksServerEnabled()) return "";
   const key = signedMediaKey(file);
   if (!key) return "";
   const cached = signedMediaUrlCache.get(key);
@@ -11937,19 +11936,61 @@ function signedMediaSource(file) {
 function requestSignedMediaUrl(file, key = signedMediaKey(file)) {
   if (!key || signedMediaUrlPending.has(key)) return;
   signedMediaUrlPending.add(key);
-  siteworksApi.getSignedFileUrl(file)
+  const request = siteworksServerEnabled()
+    ? siteworksApi.getSignedFileUrl(file)
+    : getSupabaseSignedFileUrl(file);
+  request
     .then(async (response) => {
       if (!response?.ok) return;
       const data = await response.json();
-      if (!data?.signedUrl) return;
+      const signedUrl = data?.signedUrl || data?.signedURL;
+      if (!signedUrl) return;
       signedMediaUrlCache.set(key, {
-        url: data.signedUrl,
+        url: signedUrl.startsWith("http") ? signedUrl : `${SUPABASE_URL}${signedUrl}`,
         expiresAt: Date.now() + Number(data.expiresIn || 600) * 1000
       });
       window.setTimeout(render, 0);
     })
     .catch((error) => console.warn("Signed file link skipped.", error))
     .finally(() => signedMediaUrlPending.delete(key));
+}
+
+function getSupabaseStoragePath(file) {
+  const directPath = file?.storageKey || file?.storage_key || file?.path || "";
+  if (directPath) return directPath;
+  const url = String(file?.url || file?.publicUrl || file?.public_url || "");
+  const marker = `/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/`;
+  const authenticatedMarker = `/storage/v1/object/authenticated/${SUPABASE_STORAGE_BUCKET}/`;
+  const markerIndex = url.indexOf(marker);
+  const authenticatedIndex = url.indexOf(authenticatedMarker);
+  const encodedPath = markerIndex >= 0
+    ? url.slice(markerIndex + marker.length)
+    : authenticatedIndex >= 0
+      ? url.slice(authenticatedIndex + authenticatedMarker.length)
+      : "";
+  if (!encodedPath) return "";
+  try {
+    return decodeURIComponent(encodedPath.split(/[?#]/)[0]);
+  } catch {
+    return encodedPath.split(/[?#]/)[0];
+  }
+}
+
+function getSupabaseSignedFileUrl(file) {
+  const path = getSupabaseStoragePath(file);
+  const session = getSavedAuthSession();
+  if (!path || !session?.access_token) return Promise.resolve(null);
+  const bucket = file?.bucket || file?.storageBucket || SUPABASE_STORAGE_BUCKET;
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  return fetch(`${SUPABASE_URL}/storage/v1/object/sign/${encodeURIComponent(bucket)}/${encodedPath}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${session.access_token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ expiresIn: 3600 })
+  });
 }
 
 function fileToDataUrl(file) {

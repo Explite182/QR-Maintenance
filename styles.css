@@ -5358,6 +5358,13 @@ button.asset-detail-card {
 
   .work-order-drawer[open]:not(.completed-pm-item) {
     width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    scroll-padding-bottom: calc(108px + env(safe-area-inset-bottom));
+  }
+
+  .work-order-drawer[open]:not(.completed-pm-item) .ticket-drawer-body {
+    padding-bottom: calc(108px + env(safe-area-inset-bottom));
   }
 
   .work-order-drawer[open]:not(.completed-pm-item) > summary {
