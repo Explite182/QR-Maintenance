@@ -5048,6 +5048,9 @@ button.asset-detail-card {
 @media (max-width: 1120px) and (orientation: portrait) {
   .app-shell {
     grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     min-height: auto;
   }
 
@@ -5461,8 +5464,19 @@ button.asset-detail-card {
   }
 
   .workspace {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     gap: 12px;
     padding: 12px 12px 92px;
+  }
+
+  .workspace > *,
+  .dashboard-panel,
+  .dashboard {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .filters {
