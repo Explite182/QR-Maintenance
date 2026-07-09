@@ -5479,6 +5479,40 @@ button.asset-detail-card {
     min-width: 0;
   }
 
+  .asset-table-panel,
+  .asset-tools,
+  .asset-tools > *,
+  .asset-tools label,
+  .asset-tools input,
+  .asset-tools select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .asset-subnav {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .asset-subnav-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .table-wrap {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .filters {
     gap: 10px;
     padding: 10px;
