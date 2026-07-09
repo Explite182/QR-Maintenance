@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-single-ticket-open";
+const SITEWORKS_APP_VERSION = "20260708-direct-ticket-open";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -1480,6 +1480,20 @@ document.querySelectorAll("[data-dashboard-filter]").forEach((button) => {
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     toggleMetricMenu(button.dataset.dashboardFilter);
+  });
+});
+
+document.querySelectorAll("[data-dashboard-menu]").forEach((menu) => {
+  menu.addEventListener("click", (event) => {
+    const result = event.target.closest("[data-dashboard-result-type]");
+    if (!result) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    const type = result.dataset.dashboardResultType;
+    const id = result.dataset.dashboardResultId;
+    closeMetricMenus();
+    openDashboardResult(type, id);
   });
 });
 
