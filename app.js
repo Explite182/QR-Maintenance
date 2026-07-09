@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-signed-ticket-photos";
+const SITEWORKS_APP_VERSION = "20260708-admin-delete-service-request";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -2208,6 +2208,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const serviceDeleteButton = event.target.closest("[data-service-request-delete]");
+  if (serviceDeleteButton) {
+    deleteServiceRequest(serviceDeleteButton.dataset.serviceRequestDelete);
+    return;
+  }
+
   const workOrderConvertButton = event.target.closest("[data-work-order-convert-service]");
   if (workOrderConvertButton && canManageWorkOrders()) {
     convertOpenIssueToServiceRequest(workOrderConvertButton.dataset.workOrderConvertService);
@@ -3086,6 +3092,19 @@ async function deleteWorkOrder(workOrderId) {
   addActivity("Ticket deleted", ticketLabel);
   saveState();
   await deleteStructuredRows("work_orders", "id", [workOrder.id]);
+  render();
+}
+
+async function deleteServiceRequest(requestId) {
+  const request = getServiceRequest(requestId);
+  if (!request || !canDeleteServiceRequests()) return;
+  const requestLabel = `${formatServiceRequestNumber(request)} - ${request.title || "Service request"}`;
+  if (!confirm(`Delete ${requestLabel}? This cannot be undone.`)) return;
+  state.serviceRequests = state.serviceRequests.filter((item) => item.id !== request.id);
+  if (focusedServiceRequestId === request.id) focusedServiceRequestId = "";
+  addActivity("Service request deleted", requestLabel);
+  saveState();
+  await deleteStructuredRows("service_requests", "id", [request.id]);
   render();
 }
 
@@ -5695,6 +5714,7 @@ function renderServiceRequestItem(request) {
     ${request.status !== "Scheduled" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Scheduled">Schedule</button>` : ""}
     ${request.status !== "Declined" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Declined">Decline</button>` : ""}
     ${!request.convertedWorkOrderId ? `<button class="secondary mini" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Ticket</button>` : `<span class="status-badge badge-ok">Converted</span>`}
+    ${canDeleteServiceRequests() ? `<button class="secondary mini danger-action" data-service-request-delete="${escapeAttribute(request.id)}">Delete</button>` : ""}
   ` : "";
   return `
     <details class="work-order-item work-order-drawer service-request-item" ${request.id === focusedServiceRequestId ? "open" : ""}>
@@ -9042,6 +9062,10 @@ function canManageWorkOrders() {
 }
 
 function canDeleteWorkOrders() {
+  return currentRole === "Admin";
+}
+
+function canDeleteServiceRequests() {
   return currentRole === "Admin";
 }
 
