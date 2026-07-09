@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-mobile-equipment-scroll";
+const SITEWORKS_APP_VERSION = "20260708-single-ticket-open";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -1418,8 +1418,8 @@ document.addEventListener("click", (event) => {
   const result = event.target.closest("[data-dashboard-result-type]");
   if (!result) return;
   event.stopPropagation();
-  openDashboardResult(result.dataset.dashboardResultType, result.dataset.dashboardResultId);
   closeMetricMenus();
+  openDashboardResult(result.dataset.dashboardResultType, result.dataset.dashboardResultId);
 });
 
 document.addEventListener("click", () => {
@@ -5400,12 +5400,15 @@ function openDashboardResult(type, id) {
   } else if (type === "ticket") {
     const ticket = state.workOrders.find((item) => item.id === id);
     if (!isCurrentViewWorkOrder(ticket)) return;
+    closeMetricMenus();
+    closeOtherSidebarTargets("workOrdersPanel");
     focusedWorkOrderId = id;
     workOrderNumberFilter = getWorkOrderNumberFilterForTicket(ticket);
     focusedServiceRequestId = "";
     focusedCompletedRecordId = "";
     workOrderViewFilter = "active";
     openPanel("workOrdersPanel");
+    setMobileTabState("workOrdersPanel");
   } else if (type === "service") {
     const request = state.serviceRequests.find((item) => item.id === id);
     if (!isCurrentViewServiceRequest(request)) return;
