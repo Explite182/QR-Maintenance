@@ -2031,10 +2031,11 @@ textarea {
   grid-template-rows: auto minmax(0, 1fr);
   width: min(620px, 100vw);
   height: 100vh;
+  height: 100dvh;
   max-height: none;
   gap: 0;
   padding: 0;
-  overflow-y: auto;
+  overflow: hidden;
   border: 0;
   border-left: 1px solid #d7e1e4;
   border-radius: 0;
@@ -2071,8 +2072,11 @@ textarea {
 .asset-side-sheet .asset-panel-body {
   min-height: 0;
   padding: 18px 24px 26px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .asset-side-sheet .asset-heading,
@@ -5573,7 +5577,7 @@ button.asset-detail-card {
   }
 
   .asset-side-sheet .asset-panel-body {
-    padding: 14px 16px 22px;
+    padding: 14px 16px calc(104px + env(safe-area-inset-bottom));
   }
 
   .dashboard-panel {
