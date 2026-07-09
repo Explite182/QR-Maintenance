@@ -1279,7 +1279,15 @@
     <p id="photoViewerCaption"></p>
   </div>
 
-  <script src="app.js?v=20260708-qr-login-reload"></script>
+  <script>
+    window.addEventListener("error", (event) => {
+      const message = document.getElementById("loginError");
+      if (message) {
+        message.textContent = `SiteWorks startup error: ${event.message} (${event.lineno || "?"}:${event.colno || "?"})`;
+      }
+    });
+  </script>
+  <script src="app.js?v=20260708-qr-deferred-startup"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

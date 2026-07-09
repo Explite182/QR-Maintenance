@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-qr-login-reload";
+const SITEWORKS_APP_VERSION = "20260708-qr-deferred-startup";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -45,13 +45,13 @@ const ASSET_DETAIL_FIELDS = [
 let state = normalizeState(loadState());
 applyForcedLogoutFromUrl();
 rememberScannedQrContext();
-hydrateAssetFromHash();
+let currentUser = getInitialUser();
+let currentRole = currentUser?.role || "Customer";
+hydrateAssetFromHash(false);
 let selectedId = getAssetIdFromUrl() || null;
 let selectedCustomerId = state.customers[0]?.id || "";
 let selectedLocationId = "all";
 let selectedContractorCustomerId = selectedCustomerId;
-let currentUser = getInitialUser();
-let currentRole = currentUser?.role || "Customer";
 cleanQrLoginUrlForUnauthenticatedUser();
 let globalQuery = "";
 let focusedWorkOrderId = "";
@@ -417,8 +417,8 @@ const els = {
 };
 
 moveTopActionDrawers();
-render();
 window.setTimeout(() => {
+  render();
   if (currentUser && getAssetIdFromUrl()) {
     focusScannedAssetContext();
   }
@@ -9228,7 +9228,7 @@ function isPublicReportUrl() {
   return new URLSearchParams(location.search).get("report") === "1";
 }
 
-function hydrateAssetFromHash() {
+function hydrateAssetFromHash(shouldPersist = true) {
   const id = getAssetIdFromUrl();
   if (!id || getAsset(id)) return;
 
@@ -9246,7 +9246,7 @@ function hydrateAssetFromHash() {
   }
 
   state.assets.push(snapshot.asset);
-  saveState();
+  if (shouldPersist) saveState();
 }
 
 function getReportContext() {
