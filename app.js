@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-deleted-reports-stay-deleted";
+const SITEWORKS_APP_VERSION = "20260708-signed-photo-url-fix";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -11977,7 +11977,9 @@ function requestSignedMediaUrl(file, key = signedMediaKey(file)) {
       const signedUrl = data?.signedUrl || data?.signedURL;
       if (!signedUrl) return;
       signedMediaUrlCache.set(key, {
-        url: signedUrl.startsWith("http") ? signedUrl : `${SUPABASE_URL}${signedUrl}`,
+        url: signedUrl.startsWith("http")
+          ? signedUrl
+          : `${SUPABASE_URL}${signedUrl.startsWith("/storage/v1/") ? "" : "/storage/v1"}${signedUrl}`,
         expiresAt: Date.now() + Number(data.expiresIn || 600) * 1000
       });
       window.setTimeout(render, 0);
