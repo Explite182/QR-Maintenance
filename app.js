@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260710-mobile-create-drawer-fix";
+const SITEWORKS_APP_VERSION = "20260710-mobile-create-body-drawer";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -5260,9 +5260,17 @@ function closeTopActionDrawers(except = null) {
   getTopActionDrawers().forEach((drawer) => {
     if (drawer !== except) {
       drawer.open = false;
-      drawer.classList.remove("mobile-create-drawer-open");
+      restoreTopActionDrawer(drawer);
     }
   });
+}
+
+function restoreTopActionDrawer(drawer) {
+  if (!drawer) return;
+  drawer.classList.remove("mobile-create-drawer-open");
+  if (els.newActionBar && drawer.parentElement !== els.newActionBar) {
+    els.newActionBar.appendChild(drawer);
+  }
 }
 
 function toggleCreateNewMenu() {
@@ -5326,6 +5334,7 @@ function openMobileCreateDrawer(drawer) {
   if (!drawer) return;
   closeCreateNewMenu();
   closeTopActionDrawers(drawer);
+  document.body.appendChild(drawer);
   drawer.classList.add("mobile-create-drawer-open");
   drawer.classList.remove("hidden");
   drawer.open = true;
