@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260710-disable-legacy-app-state-save";
+const SITEWORKS_APP_VERSION = "20260710-mobile-create-drawer-fix";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -726,8 +726,9 @@ els.mobileCreateMenu?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-mobile-create-action]");
   if (!button) return;
   event.preventDefault();
+  event.stopPropagation();
   closeMobileCreateMenu();
-  runCommandPaletteAction(button.dataset.mobileCreateAction);
+  runMobileCreateAction(button.dataset.mobileCreateAction);
 });
 
 els.userSwitcher?.addEventListener("change", () => {
@@ -5257,7 +5258,10 @@ function getTopActionDrawers() {
 
 function closeTopActionDrawers(except = null) {
   getTopActionDrawers().forEach((drawer) => {
-    if (drawer !== except) drawer.open = false;
+    if (drawer !== except) {
+      drawer.open = false;
+      drawer.classList.remove("mobile-create-drawer-open");
+    }
   });
 }
 
@@ -5300,6 +5304,36 @@ function renderMobileCreateActions() {
   els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newServiceRequest']")
     ?.classList.toggle("hidden", !canCreateServiceRequests());
   els.mobileCreateBtn?.classList.toggle("hidden", !(canAddEquipment() || canCreateWorkOrders() || canCreateServiceRequests()));
+}
+
+function runMobileCreateAction(action) {
+  if (action === "newEquipment" && canAddEquipment()) {
+    openMobileCreateDrawer(els.quickAddDrawer);
+    return;
+  }
+  if (action === "newTicket" && canCreateWorkOrders()) {
+    renderNewIssueFormOptions();
+    openMobileCreateDrawer(els.newIssueDrawer);
+    return;
+  }
+  if (action === "newServiceRequest" && canCreateServiceRequests()) {
+    renderServiceRequestFormOptions();
+    openMobileCreateDrawer(els.serviceRequestCreateDrawer);
+  }
+}
+
+function openMobileCreateDrawer(drawer) {
+  if (!drawer) return;
+  closeCreateNewMenu();
+  closeTopActionDrawers(drawer);
+  drawer.classList.add("mobile-create-drawer-open");
+  drawer.classList.remove("hidden");
+  drawer.open = true;
+  requestAnimationFrame(() => {
+    drawer.scrollIntoView({ behavior: "smooth", block: "start" });
+    const firstField = drawer.querySelector("input:not([type='hidden']), select, textarea");
+    firstField?.focus({ preventScroll: true });
+  });
 }
 
 function toggleTopActionDrawer(drawer) {
