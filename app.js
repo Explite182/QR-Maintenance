@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260708-signed-photo-url-fix";
+const SITEWORKS_APP_VERSION = "20260710-disable-legacy-app-state-save";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -321,6 +321,7 @@ const els = {
   panelScheduleLogoInput: document.getElementById("panelScheduleLogoInput"),
   panelScheduleLogoPreview: document.getElementById("panelScheduleLogoPreview"),
   removePanelScheduleLogoBtn: document.getElementById("removePanelScheduleLogoBtn"),
+  viewPanelScheduleBtn: document.getElementById("viewPanelScheduleBtn"),
   printPanelScheduleBtn: document.getElementById("printPanelScheduleBtn"),
   exportSelectedAssetBtn: document.getElementById("exportSelectedAssetBtn"),
   deleteSelectedAssetBtn: document.getElementById("deleteSelectedAssetBtn"),
@@ -1302,8 +1303,12 @@ els.importPanelScheduleCsvBtn?.addEventListener("click", async () => {
   await importPanelScheduleCsv();
 });
 
+els.viewPanelScheduleBtn?.addEventListener("click", () => {
+  openPanelScheduleView(false);
+});
+
 els.printPanelScheduleBtn?.addEventListener("click", () => {
-  printPanelSchedule();
+  openPanelScheduleView(true);
 });
 
 els.panelScheduleLogoInput?.addEventListener("change", async () => {
@@ -2120,6 +2125,7 @@ document.addEventListener("click", (event) => {
   const mobileTabButton = event.target.closest("[data-mobile-tab]");
   if (mobileTabButton) {
     event.preventDefault();
+    closePanelScheduleSheet();
     openMobileTab(mobileTabButton.dataset.mobileTab);
     return;
   }
@@ -6442,11 +6448,23 @@ function openPanelScheduleSheet() {
   });
   els.panelScheduleBackdrop?.classList.remove("hidden");
   els.panelScheduleSheet.classList.remove("hidden");
+  document.body.classList.add("panel-schedule-open");
+  setPanelScheduleNavHidden(true);
+  els.panelScheduleForm.scrollTop = 0;
 }
 
 function closePanelScheduleSheet() {
   els.panelScheduleBackdrop?.classList.add("hidden");
   els.panelScheduleSheet?.classList.add("hidden");
+  document.body.classList.remove("panel-schedule-open");
+  setPanelScheduleNavHidden(false);
+}
+
+function setPanelScheduleNavHidden(hidden) {
+  document.querySelectorAll(".mobile-tab-bar").forEach((nav) => {
+    nav.hidden = hidden;
+    nav.style.display = hidden ? "none" : "";
+  });
 }
 
 function addPanelScheduleEditorRow(circuit = {}) {
@@ -6655,6 +6673,10 @@ function renderPanelScheduleLogoPreview(logo) {
 }
 
 function printPanelSchedule() {
+  openPanelScheduleView(true);
+}
+
+function openPanelScheduleView(autoPrint = false) {
   const asset = getSelectedAsset();
   if (!asset || !isElectricalPanelAsset(asset)) return;
   const schedule = getCurrentPanelScheduleForPrint(asset);
@@ -6712,13 +6734,17 @@ function printPanelSchedule() {
           .footer div { min-height: 34px; padding: 6px 8px; border-right: 1px solid #111; font-size: 9px; }
           .footer div:last-child { border-right: 0; }
           .footer span { display: block; font-weight: 800; text-transform: uppercase; }
-          .no-print { margin: 0 0 10px; }
+          .no-print { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; margin: 0 0 10px; padding: 8px 0; background: #fff; }
           .no-print button { padding: 9px 12px; border: 1px solid #111; background: #fff; font-weight: 800; cursor: pointer; }
+          .no-print .primary { background: #08705f; color: #fff; border-color: #08705f; }
           @media print { .no-print { display: none; } }
         </style>
       </head>
       <body>
-        <div class="no-print"><button onclick="window.print()">Print / Save PDF</button></div>
+        <div class="no-print">
+          <button class="primary" onclick="window.print()">Print / Save PDF</button>
+          <button onclick="window.close()">Close</button>
+        </div>
         <section class="sheet">
           <div class="title">
             ${logoHtml}
@@ -6766,7 +6792,7 @@ function printPanelSchedule() {
   `);
   printWindow.document.close();
   printWindow.focus();
-  printWindow.print();
+  if (autoPrint) printWindow.print();
 }
 
 function getCurrentPanelScheduleForPrint(asset) {
@@ -9449,6 +9475,9 @@ async function syncPublicReportsFromSupabase(force = false) {
 function supabaseFetch(path, options = {}) {
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   const session = getSavedAuthSession();
+  if (options.requireAuth && !hasAuthenticatedCloudSession()) {
+    return Promise.resolve(new Response("Missing authenticated Supabase session.", { status: 401 }));
+  }
   const token = options.forceAnon ? SUPABASE_ANON_KEY : (session?.access_token || SUPABASE_ANON_KEY);
   const headers = {
     apikey: SUPABASE_ANON_KEY,
@@ -9456,7 +9485,7 @@ function supabaseFetch(path, options = {}) {
     "Content-Type": "application/json",
     ...(options.headers || {})
   };
-  const { forceAnon, ...fetchOptions } = options;
+  const { forceAnon, requireAuth, ...fetchOptions } = options;
   return fetch(url, { ...fetchOptions, headers });
 }
 
@@ -9654,6 +9683,7 @@ const siteworksApi = {
     }
     return cloudApi.rest("app_state?on_conflict=id", {
       method: "POST",
+      requireAuth: true,
       headers: { Prefer: "resolution=merge-duplicates" },
       body: JSON.stringify(payload)
     });
@@ -10594,13 +10624,15 @@ function isRemoteSharedStateNewer(remoteUpdatedAt = "") {
 }
 
 function scheduleSharedStateSave(delay = 1200) {
-  if (!sharedStateReady || applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
+  return;
+  if (!sharedStateReady || applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state) || !hasAuthenticatedCloudSession()) return;
   window.clearTimeout(sharedStateSaveTimer);
   sharedStateSaveTimer = window.setTimeout(saveSharedStateToSupabase, delay);
 }
 
 async function saveSharedStateToSupabase() {
-  if (!sharedStateReady || applyingSharedState || !hasSharedMaintenanceData(state)) return;
+  return;
+  if (!sharedStateReady || applyingSharedState || !hasSharedMaintenanceData(state) || !hasAuthenticatedCloudSession()) return;
   const uploadedAt = new Date().toISOString();
   const payload = {
     id: SHARED_APP_STATE_ID,
@@ -10623,6 +10655,14 @@ async function saveSharedStateToSupabase() {
     markSyncError(error?.message || "Shared cloud save failed.");
     console.warn("Supabase shared data save skipped.", error);
   }
+}
+
+function hasAuthenticatedCloudSession() {
+  const session = getSavedAuthSession();
+  if (!session?.access_token || !session?.user?.id) return false;
+  if (session.expires_at && Number(session.expires_at) <= Math.floor(Date.now() / 1000) + 60) return false;
+  if (session.expires_in && session.created_at && Number(session.created_at) + Number(session.expires_in) <= Math.floor(Date.now() / 1000) + 60) return false;
+  return true;
 }
 
 function buildSharedStatePayload(uploadedAt) {

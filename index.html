@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260708-mobile-ticket-bottom-space">
+    <link rel="stylesheet" href="styles.css?v=20260710-disable-legacy-app-state-save">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -1254,6 +1254,7 @@
       </div>
       <div id="panelScheduleCircuitRows" class="panel-schedule-editor-rows"></div>
       <div class="panel-schedule-actions">
+        <button id="viewPanelScheduleBtn" type="button" class="secondary">View Full Schedule</button>
         <button id="printPanelScheduleBtn" type="button" class="secondary">Print Schedule</button>
         <button type="submit" class="primary">Save Schedule</button>
         <button type="button" class="secondary" data-close-panel-schedule>Cancel</button>
@@ -1287,7 +1288,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260708-signed-photo-url-fix"></script>
+  <script src="app.js?v=20260710-disable-legacy-app-state-save"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
