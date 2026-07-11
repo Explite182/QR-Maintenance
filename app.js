@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260710-mobile-create-body-drawer";
+const SITEWORKS_APP_VERSION = "20260711-mobile-hide-empty-kpis";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -4050,7 +4050,15 @@ function renderDashboard() {
   if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
   if (els.globalSearch) els.globalSearch.value = globalQuery;
   renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues });
+  syncMobileMetricVisibility();
   renderGlobalSearchResults();
+}
+
+function syncMobileMetricVisibility() {
+  document.querySelectorAll(".metric-menu-wrap").forEach((wrap) => {
+    const value = Number(wrap.querySelector(".metric-card span")?.textContent?.trim() || "0");
+    wrap.classList.toggle("mobile-empty-metric", value === 0);
+  });
 }
 
 function renderPmCalendar() {

@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260710-mobile-create-body-drawer */
+/* SiteWorks styles version: 20260711-mobile-hide-empty-kpis */
 
 :root {
   --ink: #172126;
@@ -5739,6 +5739,10 @@ body.panel-schedule-open {
 
   .metric-card p {
     font-size: 14px;
+  }
+
+  .metric-menu-wrap.mobile-empty-metric {
+    display: none;
   }
 
   .panel-heading,
