@@ -11,8 +11,8 @@ const SUPABASE_STORAGE_BUCKET = "siteworks-files";
 const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
-const STRUCTURED_DATA_SYNC_ENABLED = false;
-const SITEWORKS_APP_VERSION = "20260711-mobile-hide-empty-kpis";
+const STRUCTURED_DATA_SYNC_ENABLED = true;
+const SITEWORKS_APP_VERSION = "20260711-structured-equipment-sync";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -1669,6 +1669,7 @@ els.assetForm.addEventListener("submit", async (event) => {
   selectedLocationId = defaultLocationSelection();
   try {
     saveState();
+    scheduleStructuredDataSync(0);
   } catch (error) {
     state.assets = state.assets.filter((item) => item.id !== asset.id);
     state.activityLog = state.activityLog.filter((entry) =>
