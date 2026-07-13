@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260711-structured-equipment-sync";
+const SITEWORKS_APP_VERSION = "20260712-mobile-create-confirmation";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -5313,6 +5313,25 @@ function closeMobileCreateMenu() {
   els.mobileCreateBtn?.setAttribute("aria-expanded", "false");
 }
 
+function showCreationConfirmation(message) {
+  if (!message) return;
+  let notice = document.getElementById("creationConfirmation");
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = "creationConfirmation";
+    notice.className = "creation-confirmation";
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    document.body.appendChild(notice);
+  }
+  notice.textContent = message;
+  notice.classList.add("is-visible");
+  window.clearTimeout(showCreationConfirmation.timer);
+  showCreationConfirmation.timer = window.setTimeout(() => {
+    notice.classList.remove("is-visible");
+  }, 3200);
+}
+
 function renderMobileCreateActions() {
   els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newEquipment']")
     ?.classList.toggle("hidden", !canAddEquipment());
@@ -8671,6 +8690,7 @@ function createManualIssueForAsset(asset, ticketData = {}) {
   openPanel("workOrdersPanel");
   render();
   document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  return ticket;
 }
 
 function createManualIssueForArea(customerId, locationId, areaName, ticketData = {}) {
@@ -8708,6 +8728,7 @@ function createManualIssueForArea(customerId, locationId, areaName, ticketData =
   openPanel("workOrdersPanel");
   render();
   document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  return ticket;
 }
 
 async function createIssueFromTopAction() {
@@ -8739,12 +8760,13 @@ async function createIssueFromTopAction() {
       notes: els.newIssueNotes?.value.trim(),
       photo
     };
-    els.newIssueDrawer.open = false;
     els.newIssueForm.reset();
-    if (isAreaTicket) {
-      createManualIssueForArea(customerId, locationId, areaName, ticketData);
-    } else {
-      createManualIssueForAsset(asset, ticketData);
+    const createdTicket = isAreaTicket
+      ? createManualIssueForArea(customerId, locationId, areaName, ticketData)
+      : createManualIssueForAsset(asset, ticketData);
+    if (createdTicket) {
+      closeTopActionDrawers();
+      showCreationConfirmation(`${formatIssueNumber(createdTicket)} created.`);
     }
   } catch (error) {
     console.warn("Top action ticket creation failed.", error);
@@ -8820,10 +8842,11 @@ async function createServiceRequest() {
   }
   els.serviceRequestForm.reset();
   const successMessage = `${formatServiceRequestNumber(request)} created.`;
-  document.getElementById("serviceRequestCreateDrawer")?.removeAttribute("open");
+  closeTopActionDrawers();
   openPanel("serviceRequestsPanel");
   render();
   setServiceRequestStatus(successMessage);
+  showCreationConfirmation(successMessage);
   document.getElementById("serviceRequestsPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
