@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260712-mobile-create-confirmation */
+/* SiteWorks styles version: 20260715-mobile-equipment-cards */
 
 :root {
   --ink: #172126;
@@ -5815,6 +5815,118 @@ body.panel-schedule-open {
   .asset-subnav-tab {
     flex: 0 0 auto;
     font-size: 13px;
+  }
+
+  .asset-table-panel .table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .asset-table {
+    display: block;
+    min-width: 0;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .asset-table thead {
+    display: none;
+  }
+
+  .asset-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .asset-table tbody tr,
+  .asset-table tbody tr:hover,
+  .asset-table .selected-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 14px;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  }
+
+  .asset-table .selected-row {
+    background: #f0f8f5;
+    border-color: rgba(8, 112, 95, 0.28);
+  }
+
+  .asset-table td {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    width: auto !important;
+    padding: 0;
+    border: 0;
+    text-align: left !important;
+  }
+
+  .asset-table td::before {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .asset-table td:nth-child(1)::before { content: "Equipment"; }
+  .asset-table td:nth-child(2)::before { content: "Name"; }
+  .asset-table td:nth-child(3)::before { content: "Location"; }
+  .asset-table td:nth-child(4)::before { content: "Model"; }
+  .asset-table td:nth-child(5)::before { content: "Make"; }
+  .asset-table td:nth-child(6)::before { content: "Condition"; }
+  .asset-table td:nth-child(7)::before { content: "Status"; }
+  .asset-table td:nth-child(8)::before { content: "Actions"; }
+
+  .asset-table td:nth-child(4),
+  .asset-table td:nth-child(5) {
+    display: none;
+  }
+
+  .equipment-id-wrap {
+    justify-content: flex-start;
+  }
+
+  .equipment-id-wrap strong {
+    white-space: normal;
+  }
+
+  .asset-table td strong,
+  .asset-table td span {
+    display: inline;
+  }
+
+  .asset-table td:nth-child(2) {
+    grid-template-columns: 92px minmax(0, 1fr);
+  }
+
+  .asset-table td:nth-child(2) strong,
+  .asset-table td:nth-child(2) span {
+    display: block;
+  }
+
+  .asset-table td:nth-child(3) {
+    font-weight: 800;
+  }
+
+  .table-row-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .table-row-actions button {
+    width: 100%;
   }
 
   .asset-photo-card {
