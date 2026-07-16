@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260715-mobile-equipment-cards */
+/* SiteWorks styles version: 20260715-mobile-equipment-card-polish */
 
 :root {
   --ink: #172126;
@@ -5535,6 +5535,11 @@ body.panel-schedule-open {
     min-width: 0;
   }
 
+  .asset-tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .asset-subnav {
     width: 100%;
     max-width: 100%;
@@ -5817,6 +5822,19 @@ body.panel-schedule-open {
     font-size: 13px;
   }
 
+  .asset-tools .table-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .asset-tools .table-actions button {
+    min-width: 0;
+    width: 100%;
+    white-space: normal;
+  }
+
   .asset-table-panel .table-wrap {
     overflow: visible;
     border: 0;
@@ -5860,10 +5878,7 @@ body.panel-schedule-open {
   }
 
   .asset-table td {
-    display: grid;
-    grid-template-columns: 92px minmax(0, 1fr);
-    gap: 12px;
-    align-items: start;
+    display: block;
     width: auto !important;
     padding: 0;
     border: 0;
@@ -5871,6 +5886,8 @@ body.panel-schedule-open {
   }
 
   .asset-table td::before {
+    display: block;
+    margin-bottom: 5px;
     color: var(--muted);
     font-size: 11px;
     font-weight: 900;
@@ -5892,7 +5909,14 @@ body.panel-schedule-open {
     display: none;
   }
 
+  .asset-table td:nth-child(1)::before {
+    display: none;
+  }
+
   .equipment-id-wrap {
+    display: flex;
+    gap: 12px;
+    align-items: center;
     justify-content: flex-start;
   }
 
@@ -5902,11 +5926,11 @@ body.panel-schedule-open {
 
   .asset-table td strong,
   .asset-table td span {
-    display: inline;
+    display: block;
   }
 
   .asset-table td:nth-child(2) {
-    grid-template-columns: 92px minmax(0, 1fr);
+    display: block;
   }
 
   .asset-table td:nth-child(2) strong,
@@ -5914,18 +5938,37 @@ body.panel-schedule-open {
     display: block;
   }
 
+  .asset-table td:nth-child(2) strong {
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
   .asset-table td:nth-child(3) {
     font-weight: 800;
   }
 
+  .asset-table td:nth-child(6),
+  .asset-table td:nth-child(7) {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .asset-table td:nth-child(6)::before,
+  .asset-table td:nth-child(7)::before {
+    margin-bottom: 0;
+  }
+
   .table-row-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     width: 100%;
   }
 
   .table-row-actions button {
+    min-width: 0;
     width: 100%;
   }
 
