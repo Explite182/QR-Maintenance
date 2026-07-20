@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-mobile-tab-toggle";
+const SITEWORKS_APP_VERSION = "20260720-tiny-desktop-equipment-thumb";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -4956,7 +4956,7 @@ function renderAssetTableThumbnail(asset) {
     const initial = String(asset.name || "?").trim().charAt(0).toUpperCase() || "?";
     return `<span class="asset-table-thumb asset-table-thumb-empty" aria-hidden="true">${escapeHtml(initial)}</span>`;
   }
-  return `<span class="asset-table-thumb"><img alt="" src="${escapeAttribute(photoSrc)}"></span>`;
+  return `<span class="asset-table-thumb"><img alt="" width="22" height="22" style="width:22px;max-width:22px;height:22px;max-height:22px;object-fit:cover;" src="${escapeAttribute(photoSrc)}"></span>`;
 }
 
 function renderAssetBadges(asset, due = getDueInfo(asset)) {
