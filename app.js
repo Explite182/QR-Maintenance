@@ -1,6 +1,8 @@
 const STORAGE_KEY = "qr-pm-prototype-v3";
 const AUTO_BACKUP_KEY = "qr-pm-prototype-auto-backups-v1";
 const MAX_AUTO_BACKUPS = 5;
+const MAX_ACTIVITY_LOG_ENTRIES = 1000;
+const ACTIVITY_LOG_VISIBLE_ENTRIES = 100;
 const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
 const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
@@ -12,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-kpi-trend-cleanup";
+const SITEWORKS_APP_VERSION = "20260720-longer-activity-log";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -3302,7 +3304,7 @@ function findUserByRequest(request) {
 }
 
 function renderActivityLog() {
-  const items = (state.activityLog || []).slice(0, 30);
+  const items = (state.activityLog || []).slice(0, ACTIVITY_LOG_VISIBLE_ENTRIES);
   els.activityLogCount.textContent = state.activityLog?.length || 0;
   els.activityLogList.innerHTML = items.length
     ? items.map(renderActivityLogItem).join("")
@@ -11473,7 +11475,7 @@ function addActivity(action, details = "") {
       createdAt: new Date().toISOString()
     },
     ...(state.activityLog || [])
-  ].slice(0, 200);
+  ].slice(0, MAX_ACTIVITY_LOG_ENTRIES);
 }
 
 function createAutoBackup() {
