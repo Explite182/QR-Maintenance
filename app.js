@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-admin-only-activity-log";
+const SITEWORKS_APP_VERSION = "20260720-login-activity-log";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -487,6 +487,7 @@ async function handleLoginSubmit(event = null) {
       currentRole = localUser.role;
       state.currentUserId = localUser.id;
       rememberAdminUserSwitcher(localUser);
+      recordUserLoginActivity(localUser, isQrLogin ? "QR login" : "Login screen");
       if (isQrLogin) {
         finishQrLoginWithoutBlocking(localUser);
         return;
@@ -508,6 +509,7 @@ async function handleLoginSubmit(event = null) {
     currentRole = user.role;
     state.currentUserId = user.id;
     rememberAdminUserSwitcher(user);
+    recordUserLoginActivity(user, isQrLogin ? "QR login" : "Login screen");
     setQrLoginTrace(`Signed in as ${user.username || user.name || "SiteWorks user"}.`);
     if (isQrLogin) {
       finishQrLoginWithoutBlocking(user);
@@ -615,6 +617,11 @@ function finishQrLoginWithoutBlocking(user) {
     suppressStorageFullWarning = false;
     if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = false;
   }
+}
+
+function recordUserLoginActivity(user, source = "Login screen") {
+  if (!user) return;
+  addActivity("User logged in", `${source}.`);
 }
 
 function runWithTimeout(promise, timeoutMs, timeoutValue = false) {
