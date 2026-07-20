@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260720-cloud-user-refresh">
+    <link rel="stylesheet" href="styles.css?v=20260720-password-reset-login">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -50,7 +50,21 @@
           <input id="loginPassword" required type="password" autocomplete="current-password" placeholder="Password">
         </label>
         <button id="loginSubmitBtn" type="submit">Log In</button>
+        <button id="forgotPasswordBtn" type="button" class="secondary">Forgot password?</button>
         <p id="loginError" class="login-error"></p>
+      </form>
+      <form id="passwordResetForm" class="stack hidden">
+        <p class="login-message">Enter a new password for this SiteWorks login.</p>
+        <label>
+          New password
+          <input id="resetPassword" required type="password" autocomplete="new-password" placeholder="New password">
+        </label>
+        <label>
+          Confirm password
+          <input id="resetPasswordConfirm" required type="password" autocomplete="new-password" placeholder="Confirm password">
+        </label>
+        <button id="resetPasswordSubmitBtn" type="submit">Save New Password</button>
+        <p id="resetPasswordMessage" class="login-error"></p>
       </form>
       <div id="loginQrReportPrompt" class="login-qr-report">
         <strong>Opening a ticket?</strong>
@@ -1297,7 +1311,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260720-cloud-user-refresh"></script>
+  <script src="app.js?v=20260720-password-reset-login"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

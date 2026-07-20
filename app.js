@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-cloud-user-refresh";
+const SITEWORKS_APP_VERSION = "20260720-password-reset-login";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -49,6 +49,7 @@ applyForcedLogoutFromUrl();
 rememberScannedQrContext();
 let currentUser = getInitialUser();
 let currentRole = currentUser?.role || "Customer";
+let passwordRecoveryMode = false;
 hydrateAssetFromHash(false);
 let selectedId = getAssetIdFromUrl() || null;
 let selectedCustomerId = state.customers[0]?.id || "";
@@ -117,8 +118,14 @@ const els = {
   loginUsername: document.getElementById("loginUsername"),
   loginPassword: document.getElementById("loginPassword"),
   loginSubmitBtn: document.getElementById("loginSubmitBtn"),
+  forgotPasswordBtn: document.getElementById("forgotPasswordBtn"),
   scanAccessBtn: document.getElementById("scanAccessBtn"),
   loginError: document.getElementById("loginError"),
+  passwordResetForm: document.getElementById("passwordResetForm"),
+  resetPassword: document.getElementById("resetPassword"),
+  resetPasswordConfirm: document.getElementById("resetPasswordConfirm"),
+  resetPasswordSubmitBtn: document.getElementById("resetPasswordSubmitBtn"),
+  resetPasswordMessage: document.getElementById("resetPasswordMessage"),
   loginQrReportPrompt: document.getElementById("loginQrReportPrompt"),
   loginQrReportMessage: document.getElementById("loginQrReportMessage"),
   loginQrReportBtn: document.getElementById("loginQrReportBtn"),
@@ -438,6 +445,7 @@ window.setTimeout(loadSupabaseProfiles, 0);
 window.setTimeout(bootstrapCloudData, 0);
 window.setInterval(syncPublicReportsFromSupabase, PUBLIC_REPORT_SYNC_INTERVAL_MS);
 window.setInterval(refreshCloudDataFromSupabase, CLOUD_REFRESH_INTERVAL_MS);
+initPasswordRecoveryFromUrl();
 
 window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();
@@ -525,6 +533,46 @@ async function handleLoginSubmit(event = null) {
 
 els.loginForm.addEventListener("submit", handleLoginSubmit);
 
+els.forgotPasswordBtn?.addEventListener("click", async () => {
+  const email = String(els.loginUsername.value || "").trim().toLowerCase();
+  if (!isEmailAddress(email)) {
+    setQrLoginTrace("Enter the user's email address first, then tap Forgot password.");
+    return;
+  }
+  els.forgotPasswordBtn.disabled = true;
+  setQrLoginTrace("Sending password reset email...");
+  const result = await sendPasswordResetEmail(email);
+  els.forgotPasswordBtn.disabled = false;
+  setQrLoginTrace(result.ok
+    ? `Password reset email sent to ${email}.`
+    : result.message || "Password reset email could not be sent.");
+});
+
+els.passwordResetForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const password = els.resetPassword.value;
+  const confirmPassword = els.resetPasswordConfirm.value;
+  if (!password.trim() || password !== confirmPassword) {
+    els.resetPasswordMessage.textContent = "Enter matching passwords.";
+    return;
+  }
+  els.resetPasswordSubmitBtn.disabled = true;
+  els.resetPasswordMessage.textContent = "Saving new password...";
+  const result = await updateRecoveredPassword(password);
+  els.resetPasswordSubmitBtn.disabled = false;
+  if (!result.ok) {
+    els.resetPasswordMessage.textContent = result.message || "Password could not be updated.";
+    return;
+  }
+  els.resetPasswordMessage.textContent = "Password updated. You can log in now.";
+  els.passwordResetForm.reset();
+  passwordRecoveryMode = false;
+  els.passwordResetForm.classList.add("hidden");
+  els.loginForm.classList.remove("hidden");
+  clearAuthSession();
+  history.replaceState(null, "", location.pathname + location.search);
+});
+
 els.refreshCloudUsersBtn?.addEventListener("click", async () => {
   if (!canManageUsers()) return;
   els.cloudUsersStatus.textContent = "Checking Supabase users...";
@@ -576,6 +624,78 @@ function runWithTimeout(promise, timeoutMs, timeoutValue = false) {
     }),
     new Promise((resolve) => window.setTimeout(() => resolve(timeoutValue), timeoutMs))
   ]);
+}
+
+function recoveryRedirectUrl() {
+  if (/sitesworks\.info$/i.test(location.hostname)) return PRODUCTION_SITE_URL;
+  return `${location.origin}${location.pathname}`;
+}
+
+async function sendPasswordResetEmail(email) {
+  try {
+    const response = await cloudApi.auth(`recover?redirect_to=${encodeURIComponent(recoveryRedirectUrl())}`, {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+    if (!response.ok) {
+      return { ok: false, message: readableSupabaseError(await response.text()) || "Supabase could not send the reset email." };
+    }
+    addActivity("Password reset email sent", email);
+    saveStateQuietly();
+    return { ok: true };
+  } catch (error) {
+    console.warn("Password reset email failed.", error);
+    return { ok: false, message: error?.message || "Password reset email failed." };
+  }
+}
+
+function passwordRecoverySessionFromUrl() {
+  const hashText = String(location.hash || "").replace(/^#/, "");
+  if (!hashText) return null;
+  const params = new URLSearchParams(hashText);
+  if (params.get("type") !== "recovery" || !params.get("access_token")) return null;
+  return {
+    access_token: params.get("access_token"),
+    refresh_token: params.get("refresh_token") || "",
+    token_type: params.get("token_type") || "bearer",
+    expires_in: Number(params.get("expires_in") || 0),
+    expires_at: Number(params.get("expires_at") || 0),
+    user: {}
+  };
+}
+
+function initPasswordRecoveryFromUrl() {
+  const session = passwordRecoverySessionFromUrl();
+  if (!session) return;
+  passwordRecoveryMode = true;
+  saveAuthSession(session);
+  currentUser = null;
+  currentRole = "Customer";
+  state.currentUserId = "";
+  els.loginForm?.classList.add("hidden");
+  els.loginQrReportPrompt?.classList.add("hidden");
+  els.passwordResetForm?.classList.remove("hidden");
+  if (els.resetPasswordMessage) els.resetPasswordMessage.textContent = "Choose a new password to finish the reset.";
+}
+
+async function updateRecoveredPassword(password) {
+  const session = getSavedAuthSession();
+  if (!session?.access_token) return { ok: false, message: "The password reset link is missing or expired." };
+  try {
+    const response = await cloudApi.auth("user", {
+      method: "PUT",
+      body: JSON.stringify({ password })
+    }, session);
+    if (!response.ok) {
+      return { ok: false, message: readableSupabaseError(await response.text()) || "Supabase could not update the password." };
+    }
+    addActivity("Password updated", session.user?.email || "Recovery login");
+    saveStateQuietly();
+    return { ok: true };
+  } catch (error) {
+    console.warn("Password update failed.", error);
+    return { ok: false, message: error?.message || "Password update failed." };
+  }
 }
 
 async function openScannedAssetAfterLogin() {
@@ -2572,8 +2692,9 @@ function renderAuth() {
   const needsFirstAdmin = !isReport && !isLoggedIn && !hasSetupUsers();
   els.publicReportScreen.classList.toggle("hidden", !isReport);
   els.loginScreen.classList.toggle("hidden", isReport || isLoggedIn);
-  els.loginForm.classList.toggle("hidden", false);
-  els.loginQrReportPrompt.classList.toggle("hidden", isReport || isLoggedIn || !hasScannedAsset);
+  els.loginForm.classList.toggle("hidden", passwordRecoveryMode);
+  els.passwordResetForm?.classList.toggle("hidden", !passwordRecoveryMode);
+  els.loginQrReportPrompt.classList.toggle("hidden", passwordRecoveryMode || isReport || isLoggedIn || !hasScannedAsset);
   els.userSwitcherWrap?.classList.add("hidden");
   if (!isReport && !isLoggedIn && hasScannedAsset) {
     setLoginQrReportStatus(Boolean(getScannedReportAsset()));
@@ -3333,10 +3454,11 @@ function renderActivityLog() {
 }
 
 function renderActivityLogItem(item) {
+  const deviceLabel = item.deviceLabel ? ` | ${item.deviceLabel}` : "";
   return `
     <div class="activity-log-item">
       <strong>${escapeHtml(item.action || "Activity")}</strong>
-      <span>${escapeHtml(formatDateTime(new Date(item.createdAt)))} | ${escapeHtml(item.userName || "Unknown user")} | ${escapeHtml(item.userRole || "Unknown role")}</span>
+      <span>${escapeHtml(formatDateTime(new Date(item.createdAt)))} | ${escapeHtml(item.userName || "Unknown user")} | ${escapeHtml(item.userRole || "Unknown role")}${escapeHtml(deviceLabel)}</span>
       <p>${escapeHtml(item.details || "")}</p>
     </div>
   `;
@@ -11587,10 +11709,41 @@ function addActivity(action, details = "") {
       userId: currentUser?.id || "",
       userName: currentUser?.name || currentUser?.username || "System",
       userRole: currentRole || "System",
+      deviceLabel: currentDeviceLabel(),
       createdAt: new Date().toISOString()
     },
     ...(state.activityLog || [])
   ].slice(0, MAX_ACTIVITY_LOG_ENTRIES);
+}
+
+function currentDeviceLabel() {
+  const userAgent = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const maxTouchPoints = navigator.maxTouchPoints || 0;
+  const isIpad = /iPad/i.test(userAgent) || (platform === "MacIntel" && maxTouchPoints > 1);
+  const isIphone = /iPhone|iPod/i.test(userAgent);
+  const isAndroid = /Android/i.test(userAgent);
+  const device = isIpad
+    ? "iPad"
+    : isIphone
+      ? "iPhone"
+      : isAndroid
+        ? "Android"
+        : /Windows/i.test(userAgent)
+          ? "Windows"
+          : /Macintosh|Mac OS X/i.test(userAgent)
+            ? "Mac"
+            : "Device";
+  const browser = /Edg\//i.test(userAgent)
+    ? "Edge"
+    : /CriOS|Chrome\//i.test(userAgent) && !/Edg\//i.test(userAgent)
+      ? "Chrome"
+      : /FxiOS|Firefox\//i.test(userAgent)
+        ? "Firefox"
+        : /Safari\//i.test(userAgent)
+          ? "Safari"
+          : "Browser";
+  return `${browser} on ${device}`;
 }
 
 function createAutoBackup() {
