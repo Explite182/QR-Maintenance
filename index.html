@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260720-preferred-contacts-sync">
+    <link rel="stylesheet" href="styles.css?v=20260720-login-enter-submit">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -49,7 +49,7 @@
           Password
           <input id="loginPassword" required type="password" autocomplete="current-password" placeholder="Password">
         </label>
-        <button id="loginSubmitBtn" type="button">Log In</button>
+        <button id="loginSubmitBtn" type="submit">Log In</button>
         <p id="loginError" class="login-error"></p>
       </form>
       <div id="loginQrReportPrompt" class="login-qr-report">
@@ -1293,7 +1293,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260720-preferred-contacts-sync"></script>
+  <script src="app.js?v=20260720-login-enter-submit"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

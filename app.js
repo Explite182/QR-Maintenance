@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-preferred-contacts-sync";
+const SITEWORKS_APP_VERSION = "20260720-login-enter-submit";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -522,7 +522,6 @@ async function handleLoginSubmit(event = null) {
 }
 
 els.loginForm.addEventListener("submit", handleLoginSubmit);
-els.loginSubmitBtn?.addEventListener("click", handleLoginSubmit);
 
 function setQrLoginTrace(message) {
   if (!els.loginError) return;
