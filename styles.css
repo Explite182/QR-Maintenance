@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260715-mobile-equipment-card-polish */
+/* SiteWorks styles version: 20260720-mobile-equipment-card-overflow-fix */
 
 :root {
   --ink: #172126;
@@ -5535,6 +5535,10 @@ body.panel-schedule-open {
     min-width: 0;
   }
 
+  .asset-table-panel {
+    overflow-x: hidden;
+  }
+
   .asset-tools {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -5836,7 +5840,7 @@ body.panel-schedule-open {
   }
 
   .asset-table-panel .table-wrap {
-    overflow: visible;
+    overflow: hidden;
     border: 0;
     background: transparent;
     box-shadow: none;
@@ -5865,6 +5869,9 @@ body.panel-schedule-open {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
     padding: 14px;
     background: #ffffff;
     border: 1px solid var(--line);
@@ -5879,7 +5886,11 @@ body.panel-schedule-open {
 
   .asset-table td {
     display: block;
+    box-sizing: border-box;
     width: auto !important;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
     padding: 0;
     border: 0;
     text-align: left !important;
@@ -5926,6 +5937,8 @@ body.panel-schedule-open {
 
   .asset-table td strong,
   .asset-table td span {
+    max-width: 100%;
+    overflow-wrap: anywhere;
     display: block;
   }
 
@@ -5949,15 +5962,22 @@ body.panel-schedule-open {
 
   .asset-table td:nth-child(6),
   .asset-table td:nth-child(7) {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    justify-content: space-between;
+    display: block;
   }
 
   .asset-table td:nth-child(6)::before,
   .asset-table td:nth-child(7)::before {
-    margin-bottom: 0;
+    margin-bottom: 6px;
+  }
+
+  .asset-table td:nth-child(6) .status-badge,
+  .asset-table td:nth-child(7) .status-badge,
+  .asset-table td:nth-child(6) [class*="badge"],
+  .asset-table td:nth-child(7) [class*="badge"] {
+    display: inline-flex;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .table-row-actions {
