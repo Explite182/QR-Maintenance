@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-tiny-desktop-equipment-thumb";
+const SITEWORKS_APP_VERSION = "20260720-access-request-history";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -223,6 +223,8 @@ const els = {
   userList: document.getElementById("userList"),
   accessRequestCount: document.getElementById("accessRequestCount"),
   accessRequestList: document.getElementById("accessRequestList"),
+  accessRequestHistoryCount: document.getElementById("accessRequestHistoryCount"),
+  accessRequestHistoryList: document.getElementById("accessRequestHistoryList"),
   contractorForm: document.getElementById("contractorForm"),
   contractorCustomer: document.getElementById("contractorCustomer"),
   contractorName: document.getElementById("contractorName"),
@@ -923,6 +925,11 @@ els.userForm.addEventListener("submit", async (event) => {
   const sourceRequest = state.accessRequests.find((request) => request.id === els.userForm.dataset.requestId);
   if (sourceRequest) {
     sourceRequest.status = "Approved";
+    sourceRequest.approvedUserId = newUser.id;
+    sourceRequest.approvedUsername = newUser.username;
+    sourceRequest.approvedUserRole = newUser.role;
+    sourceRequest.approvedCustomerId = newUser.customerId || "";
+    sourceRequest.approvedLocationId = newUser.locationId || "";
     sourceRequest.updatedAt = new Date().toISOString();
     addActivity("Access request approved", sourceRequest.email);
   }
@@ -3220,6 +3227,7 @@ function renderAccessRequests() {
   els.accessRequestList.innerHTML = pendingRequests.length
     ? pendingRequests.map(renderAccessRequestItem).join("")
     : `<p class="muted">No pending access requests.</p>`;
+  renderAccessRequestHistory();
 }
 
 function renderAccessRequestItem(request) {
@@ -3236,6 +3244,61 @@ function renderAccessRequestItem(request) {
       </div>
     </div>
   `;
+}
+
+function renderAccessRequestHistory() {
+  if (!els.accessRequestHistoryCount || !els.accessRequestHistoryList) return;
+  const requests = [...(state.accessRequests || [])].sort((a, b) =>
+    String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || ""))
+  );
+  els.accessRequestHistoryCount.textContent = requests.length;
+  els.accessRequestHistoryList.innerHTML = requests.length
+    ? requests.map(renderAccessRequestHistoryItem).join("")
+    : `<p class="muted">No access requests recorded yet.</p>`;
+}
+
+function renderAccessRequestHistoryItem(request) {
+  const status = request.status || "Pending";
+  const statusClass = status === "Approved"
+    ? "badge-ok"
+    : status === "Dismissed"
+      ? "badge-muted"
+      : "badge-warn";
+  const matchedUser = findUserByRequest(request);
+  const requestedAt = request.createdAt ? formatDateTime(new Date(request.createdAt)) : "Unknown request date";
+  const updatedAt = request.updatedAt ? formatDateTime(new Date(request.updatedAt)) : "";
+  const approvedCustomer = getCustomer(request.approvedCustomerId || matchedUser?.customerId);
+  const approvedLocation = getLocation(request.approvedLocationId || matchedUser?.locationId);
+  const customerText = approvedCustomer
+    ? `${approvedCustomer.name}${approvedLocation ? ` | ${approvedLocation.name}` : " | All locations"}`
+    : request.company || "No assigned customer found";
+  const userText = matchedUser
+    ? `${matchedUser.username} | ${matchedUser.role}${matchedUser.localOnly ? " | Local only" : " | Cloud login"}`
+    : status === "Approved"
+      ? "Approved request, but matching current user was not found"
+      : "No user created yet";
+  return `
+    <div class="user-list-item access-request-history-item">
+      <div>
+        <strong>${escapeHtml(request.name || request.email || "Access request")}</strong>
+        <span>${escapeHtml(request.email || "No email")} | ${escapeHtml(request.role || "No role requested")}</span>
+        <span>${escapeHtml(customerText)}</span>
+        <span>Requested ${escapeHtml(requestedAt)}${updatedAt ? ` | Updated ${escapeHtml(updatedAt)}` : ""}</span>
+        <span>${escapeHtml(userText)}</span>
+        ${request.notes ? `<p>${escapeHtml(request.notes)}</p>` : ""}
+      </div>
+      <span class="status-badge ${statusClass}">${escapeHtml(status)}</span>
+    </div>
+  `;
+}
+
+function findUserByRequest(request) {
+  if (!request) return null;
+  const email = String(request.email || request.approvedUsername || "").trim().toLowerCase();
+  return state.users.find((user) =>
+    user.id === request.approvedUserId ||
+    String(user.username || "").trim().toLowerCase() === email
+  ) || null;
 }
 
 function renderActivityLog() {
