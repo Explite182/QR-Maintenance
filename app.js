@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-login-activity-log";
+const SITEWORKS_APP_VERSION = "20260720-login-greeting";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -130,6 +130,7 @@ const els = {
   loginQrReportMessage: document.getElementById("loginQrReportMessage"),
   loginQrReportBtn: document.getElementById("loginQrReportBtn"),
   loginQrAreaReportBtn: document.getElementById("loginQrAreaReportBtn"),
+  loginGreetingToast: document.getElementById("loginGreetingToast"),
   firstAdminForm: document.getElementById("firstAdminForm"),
   firstAdminUsername: document.getElementById("firstAdminUsername"),
   firstAdminName: document.getElementById("firstAdminName"),
@@ -498,6 +499,7 @@ async function handleLoginSubmit(event = null) {
       els.loginForm.reset();
       els.loginError.textContent = "";
       render();
+      showLoginGreeting(localUser);
     window.setTimeout(() => {
       suppressStorageFullWarning = false;
       if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = false;
@@ -522,6 +524,7 @@ async function handleLoginSubmit(event = null) {
     els.loginForm.reset();
     els.loginError.textContent = "";
     render();
+    showLoginGreeting(user);
     window.setTimeout(() => {
       suppressStorageFullWarning = false;
       if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = false;
@@ -622,6 +625,21 @@ function finishQrLoginWithoutBlocking(user) {
 function recordUserLoginActivity(user, source = "Login screen") {
   if (!user) return;
   addActivity("User logged in", `${source}.`);
+}
+
+function showLoginGreeting(user) {
+  if (!els.loginGreetingToast || !user) return;
+  const name = user.name || user.username || "there";
+  const role = user.role || "SiteWorks user";
+  els.loginGreetingToast.innerHTML = `
+    <strong>Welcome, ${escapeHtml(name)}</strong>
+    <span>${escapeHtml(role)}</span>
+  `;
+  els.loginGreetingToast.classList.remove("hidden");
+  window.clearTimeout(showLoginGreeting.timer);
+  showLoginGreeting.timer = window.setTimeout(() => {
+    els.loginGreetingToast?.classList.add("hidden");
+  }, 4200);
 }
 
 function runWithTimeout(promise, timeoutMs, timeoutValue = false) {

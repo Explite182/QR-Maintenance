@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260720-login-activity-log">
+    <link rel="stylesheet" href="styles.css?v=20260720-login-greeting">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -144,6 +144,8 @@
       <input id="importDataInput" class="hidden-input" type="file" accept="application/json,.json">
     </div>
   </header>
+
+  <div id="loginGreetingToast" class="login-greeting-toast hidden" role="status" aria-live="polite"></div>
 
   <main class="app-shell app-only hidden">
     <aside id="appSidebar" class="sidebar">
@@ -1311,7 +1313,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260720-login-activity-log"></script>
+  <script src="app.js?v=20260720-login-greeting"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
