@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-password-reset-login";
+const SITEWORKS_APP_VERSION = "20260720-admin-only-activity-log";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -181,6 +181,7 @@ const els = {
   userDrawer: document.getElementById("userDrawer"),
   contractorDrawer: document.getElementById("contractorDrawer"),
   backupDrawer: document.getElementById("backupDrawer"),
+  activityLogDrawer: document.getElementById("activityLogDrawer"),
   dashboardPanel: document.querySelector(".dashboard-panel"),
   userSwitcherWrap: document.getElementById("userSwitcherWrap"),
   userSwitcher: document.getElementById("userSwitcher"),
@@ -3148,6 +3149,8 @@ function renderRole() {
   if (!contractorManagementAllowed) els.contractorDrawer.open = false;
   els.userDrawer.classList.toggle("hidden", !userManagementAllowed);
   if (!userManagementAllowed) els.userDrawer.open = false;
+  els.activityLogDrawer?.classList.toggle("hidden", !isAdmin);
+  if (!isAdmin && els.activityLogDrawer) els.activityLogDrawer.open = false;
   els.backupLocationBlock.classList.toggle("hidden", currentRole !== "Admin");
   els.backupLocationForm.querySelectorAll("input, button").forEach((control) => {
     control.disabled = currentRole !== "Admin";
