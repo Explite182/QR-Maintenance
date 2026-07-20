@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-nfc-link-button";
+const SITEWORKS_APP_VERSION = "20260720-mobile-equipment-thumb-overflow-fix";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -4910,6 +4910,7 @@ function renderAssetTableRow(asset) {
   const locationRecord = getLocation(asset.locationId);
   const active = asset.id === selectedId ? " selected-row" : "";
   const equipmentId = getAssetEquipmentId(asset);
+  const thumbnail = renderAssetTableThumbnail(asset);
   const deleteButton = canDeleteEquipment()
     ? `<button type="button" class="secondary mini danger-action table-delete-btn" data-delete-asset="${escapeAttribute(asset.id)}">Delete</button>`
     : "";
@@ -4918,6 +4919,7 @@ function renderAssetTableRow(asset) {
       <td class="equipment-id-cell">
         <div class="equipment-id-wrap">
           <input type="checkbox" data-print-select value="${escapeAttribute(asset.id)}" ${selectedPrintAssetIds.has(asset.id) ? "checked" : ""} aria-label="Select ${escapeAttribute(asset.name)} for QR printing">
+          ${thumbnail}
           <strong>${escapeHtml(equipmentId)}</strong>
         </div>
       </td>
@@ -4938,6 +4940,15 @@ function renderAssetTableRow(asset) {
       </td>
     </tr>
   `;
+}
+
+function renderAssetTableThumbnail(asset) {
+  const photoSrc = mediaSource(asset.photo);
+  if (!photoSrc) {
+    const initial = String(asset.name || "?").trim().charAt(0).toUpperCase() || "?";
+    return `<span class="asset-table-thumb asset-table-thumb-empty" aria-hidden="true">${escapeHtml(initial)}</span>`;
+  }
+  return `<span class="asset-table-thumb"><img alt="" src="${escapeAttribute(photoSrc)}"></span>`;
 }
 
 function renderAssetBadges(asset, due = getDueInfo(asset)) {
