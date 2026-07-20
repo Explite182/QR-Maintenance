@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-login-enter-submit";
+const SITEWORKS_APP_VERSION = "20260720-cloud-user-refresh";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -214,6 +214,8 @@ const els = {
   templateItems: document.getElementById("templateItems"),
   templateCount: document.getElementById("templateCount"),
   userForm: document.getElementById("userForm"),
+  refreshCloudUsersBtn: document.getElementById("refreshCloudUsersBtn"),
+  cloudUsersStatus: document.getElementById("cloudUsersStatus"),
   newUsername: document.getElementById("newUsername"),
   newUserName: document.getElementById("newUserName"),
   newUserPassword: document.getElementById("newUserPassword"),
@@ -522,6 +524,21 @@ async function handleLoginSubmit(event = null) {
 }
 
 els.loginForm.addEventListener("submit", handleLoginSubmit);
+
+els.refreshCloudUsersBtn?.addEventListener("click", async () => {
+  if (!canManageUsers()) return;
+  els.cloudUsersStatus.textContent = "Checking Supabase users...";
+  els.cloudUsersStatus.classList.remove("is-error");
+  els.cloudUsersStatus.classList.remove("is-ok");
+  const result = await loadSupabaseProfiles({ renderAfter: true });
+  if (!result.ok) {
+    els.cloudUsersStatus.textContent = result.message || "Could not load cloud users.";
+    els.cloudUsersStatus.classList.add("is-error");
+    return;
+  }
+  els.cloudUsersStatus.textContent = `Loaded ${result.cloudCount} cloud user${result.cloudCount === 1 ? "" : "s"} from Supabase. Showing ${visibleManagedUsers().length} user${visibleManagedUsers().length === 1 ? "" : "s"} for your access.`;
+  els.cloudUsersStatus.classList.add("is-ok");
+});
 
 function setQrLoginTrace(message) {
   if (!els.loginError) return;
@@ -10113,29 +10130,32 @@ async function signUpSupabaseUser(email, password, name, role, customerId, locat
   }
 }
 
-async function loadSupabaseProfiles() {
-  if (authProfilesLoading) return;
+async function loadSupabaseProfiles(options = {}) {
+  if (authProfilesLoading) return { ok: false, message: "Cloud users are already refreshing.", cloudCount: 0 };
   authProfilesLoading = true;
   try {
     const response = await siteworksApi.loadProfiles();
     authProfilesLoading = false;
     authProfilesLoaded = true;
     if (!response.ok) {
-      console.warn("Supabase profiles sync skipped.", await response.text());
-      return;
+      const errorText = await response.text();
+      console.warn("Supabase profiles sync skipped.", errorText);
+      return { ok: false, message: `Supabase profiles sync skipped: ${errorText}`, cloudCount: 0 };
     }
     const profiles = await response.json();
     state.users = mergeProfileUsers(profiles.map(profileFromSupabase), state.users || []);
     restoreSavedSessionUser();
     persistLocalStateOnly();
-    render();
+    if (options.renderAfter !== false) render();
     if (currentUser && getAssetIdFromUrl()) {
       window.setTimeout(() => focusScannedAssetContext(), 0);
     }
+    return { ok: true, cloudCount: profiles.length };
   } catch (error) {
     authProfilesLoading = false;
     authProfilesLoaded = true;
     console.warn("Supabase profiles sync skipped.", error);
+    return { ok: false, message: error?.message || "Could not load cloud users.", cloudCount: 0 };
   }
 }
 
