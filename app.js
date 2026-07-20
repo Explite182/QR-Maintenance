@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-mobile-equipment-thumb-overflow-fix";
+const SITEWORKS_APP_VERSION = "20260720-mobile-tab-toggle";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -2710,7 +2710,15 @@ function openMobileTab(targetId) {
     : target?.classList.contains("collapsible-panel")
       && !target.classList.contains("hidden")
       && !target.classList.contains("is-collapsed");
-  if (!isOpen) openSidebarTarget(targetId);
+
+  if (isOpen) {
+    closeSidebarTarget(targetId);
+    setMobileTabState("dashboardPanel");
+    document.getElementById("dashboardPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  openSidebarTarget(targetId);
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   setMobileTabState(targetId);
 }
