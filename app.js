@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-longer-activity-log";
+const SITEWORKS_APP_VERSION = "20260720-user-profile-merge";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -939,7 +939,10 @@ els.userForm.addEventListener("submit", async (event) => {
   els.userForm.reset();
   delete els.userForm.dataset.requestId;
   render();
-  setUserFormStatus(`Cloud user created for ${newUser.username}.`);
+  window.setTimeout(() => loadSupabaseProfiles(), 500);
+  setUserFormStatus(newUser.profileSyncFailed
+    ? `User kept locally, but the cloud profile did not save. Check Supabase profiles policy for ${newUser.username}.`
+    : `Cloud user created for ${newUser.username}.`);
 });
 
 els.userList.addEventListener("submit", async (event) => {
@@ -10095,7 +10098,11 @@ async function signUpSupabaseUser(email, password, name, role, customerId, locat
       createdAt: new Date().toISOString(),
       session
     };
-    await saveSupabaseProfile(profile);
+    const profileSaved = await saveSupabaseProfile(profile);
+    if (!profileSaved) {
+      profile.profileSyncFailed = true;
+      lastAuthError = "Supabase created the login, but SiteWorks could not save its user profile.";
+    }
     upsertLocalUser(profile);
     return profile;
   } catch (error) {
@@ -10117,19 +10124,7 @@ async function loadSupabaseProfiles() {
       return;
     }
     const profiles = await response.json();
-    const localUsers = state.users.filter((user) =>
-      user.username === "scan-customer" ||
-      user.localOnly ||
-      Boolean(user.password) ||
-      !isEmailAddress(user.username) ||
-      user.id === currentUser?.id ||
-      user.username?.toLowerCase() === currentUser?.username?.toLowerCase()
-    );
-    const localUsernames = new Set(localUsers.map((user) => user.username.toLowerCase()));
-    state.users = [
-      ...localUsers,
-      ...profiles.map(profileFromSupabase).filter((user) => !localUsernames.has(user.username.toLowerCase()))
-    ];
+    state.users = mergeProfileUsers(profiles.map(profileFromSupabase), state.users || []);
     restoreSavedSessionUser();
     persistLocalStateOnly();
     render();
@@ -10154,17 +10149,21 @@ async function saveSupabaseProfile(profile) {
     updated_at: new Date().toISOString()
   };
   const response = await siteworksApi.saveProfile(payload);
+  if (response.ok) return true;
   if (!response.ok) {
     const errorText = await response.text();
     if (errorText.includes("location_id") || errorText.includes("PGRST204")) {
       const fallbackPayload = { ...payload };
       delete fallbackPayload.location_id;
       const fallbackResponse = await siteworksApi.saveProfile(fallbackPayload);
-      if (!fallbackResponse.ok) console.warn("Supabase profile save skipped.", await fallbackResponse.text());
-      return;
+      if (fallbackResponse.ok) return true;
+      console.warn("Supabase profile save skipped.", await fallbackResponse.text());
+      return false;
     }
     console.warn("Supabase profile save skipped.", errorText);
+    return false;
   }
+  return false;
 }
 
 async function deleteSupabaseProfile(userId) {
@@ -10227,6 +10226,24 @@ function upsertLocalUser(user) {
   } else {
     state.users.push(cleanUser);
   }
+}
+
+function mergeProfileUsers(profileUsers = [], localUsers = []) {
+  const merged = localUsers.map(sanitizeSharedUser);
+  profileUsers.forEach((profileUser) => {
+    if (!profileUser?.id && !profileUser?.username) return;
+    const cleanUser = sanitizeSharedUser(profileUser);
+    const index = merged.findIndex((user) =>
+      (cleanUser.id && user.id === cleanUser.id) ||
+      (cleanUser.username && user.username?.toLowerCase() === cleanUser.username.toLowerCase())
+    );
+    if (index >= 0) {
+      merged[index] = { ...merged[index], ...cleanUser };
+    } else {
+      merged.push(cleanUser);
+    }
+  });
+  return merged;
 }
 
 function fallbackProfileFromAuthUser(authUser) {
