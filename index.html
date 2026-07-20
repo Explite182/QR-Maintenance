@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260720-access-request-history">
+    <link rel="stylesheet" href="styles.css?v=20260720-kpi-trend-cleanup">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -643,7 +643,6 @@
           </div>
           <div class="metric-menu-wrap">
             <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
-              <em class="metric-trend metric-trend-warn">▲ 5% this week</em>
               <span id="openWorkOrders">0</span>
               <p>Open tickets</p>
             </button>
@@ -680,7 +679,6 @@
           </div>
           <div class="metric-menu-wrap">
             <button type="button" class="metric-card metric-danger" data-dashboard-filter="highPriority">
-              <em class="metric-trend metric-trend-danger">▲ 2</em>
               <span id="highPriorityIssues">0</span>
               <p>High priority</p>
             </button>
@@ -690,7 +688,6 @@
           </div>
           <div class="metric-menu-wrap">
             <button type="button" class="metric-card metric-warn" data-dashboard-filter="waitingParts">
-              <em class="metric-trend metric-trend-ok">▼ 1</em>
               <span id="waitingPartsIssues">0</span>
               <p>Waiting parts</p>
             </button>
@@ -1296,7 +1293,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260720-access-request-history"></script>
+  <script src="app.js?v=20260720-kpi-trend-cleanup"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
