@@ -12,7 +12,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260712-mobile-create-confirmation";
+const SITEWORKS_APP_VERSION = "20260720-nfc-link-button";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -355,6 +355,7 @@ const els = {
   clearNextPmBtn: document.getElementById("clearNextPmBtn"),
   pmStatus: document.getElementById("pmStatus"),
   copyLinkBtn: document.getElementById("copyLinkBtn"),
+  copyNfcLinkBtn: document.getElementById("copyNfcLinkBtn"),
   reportIssueBtn: document.getElementById("reportIssueBtn"),
   pmForm: document.getElementById("pmForm"),
   checklistFields: document.getElementById("checklistFields"),
@@ -1826,6 +1827,16 @@ els.copyLinkBtn.addEventListener("click", async () => {
   setTimeout(() => {
     els.copyLinkBtn.textContent = "Copy Scan Link";
   }, 1200);
+});
+
+els.copyNfcLinkBtn?.addEventListener("click", async () => {
+  const asset = getSelectedAsset();
+  if (!asset) return;
+  await copyText(getAssetUrl(asset.id));
+  els.copyNfcLinkBtn.textContent = "NFC Link Copied";
+  setTimeout(() => {
+    els.copyNfcLinkBtn.textContent = "Copy NFC Link";
+  }, 1400);
 });
 
 els.reportIssueBtn?.addEventListener("click", () => {
