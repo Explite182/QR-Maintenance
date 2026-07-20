@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-login-greeting";
+const SITEWORKS_APP_VERSION = "20260720-inventory-tab";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -407,6 +407,20 @@ const els = {
   completedPmList: document.getElementById("completedPmList"),
   serviceRequestCount: document.getElementById("serviceRequestCount"),
   serviceRequestList: document.getElementById("serviceRequestList"),
+  inventoryPanel: document.getElementById("inventoryPanel"),
+  inventoryCreateDrawer: document.getElementById("inventoryCreateDrawer"),
+  inventoryForm: document.getElementById("inventoryForm"),
+  inventoryCustomer: document.getElementById("inventoryCustomer"),
+  inventoryCategory: document.getElementById("inventoryCategory"),
+  inventoryName: document.getElementById("inventoryName"),
+  inventoryQuantity: document.getElementById("inventoryQuantity"),
+  inventoryMinStock: document.getElementById("inventoryMinStock"),
+  inventoryBin: document.getElementById("inventoryBin"),
+  inventorySupplier: document.getElementById("inventorySupplier"),
+  inventoryNotes: document.getElementById("inventoryNotes"),
+  inventoryStatus: document.getElementById("inventoryStatus"),
+  inventoryCount: document.getElementById("inventoryCount"),
+  inventoryList: document.getElementById("inventoryList"),
   serviceRequestCreateDrawer: document.getElementById("serviceRequestCreateDrawer"),
   serviceRequestForm: document.getElementById("serviceRequestForm"),
   serviceRequestCustomer: document.getElementById("serviceRequestCustomer"),
@@ -1617,6 +1631,34 @@ document.addEventListener("click", (event) => {
   closeOpenTicketActionMenus(event.target.closest(".ticket-action-menu"));
 });
 
+document.addEventListener("click", async (event) => {
+  const adjustButton = event.target.closest("[data-adjust-inventory-item]");
+  if (adjustButton) {
+    if (!canManageInventory()) return;
+    const item = getInventoryItem(adjustButton.dataset.adjustInventoryItem);
+    if (!item || !canManageInventoryCustomer(item.customerId)) return;
+    const delta = Number(adjustButton.dataset.delta || 0);
+    item.quantity = Math.max(0, Number(item.quantity || 0) + delta);
+    item.updatedAt = new Date().toISOString();
+    addActivity("Inventory quantity updated", `${item.name}: ${item.quantity} on hand`);
+    saveState();
+    render();
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-delete-inventory-item]");
+  if (!deleteButton) return;
+  if (!canManageInventory()) return;
+  const item = getInventoryItem(deleteButton.dataset.deleteInventoryItem);
+  if (!item || !canManageInventoryCustomer(item.customerId)) return;
+  if (!confirm(`Delete ${item.name} from inventory? This cannot be undone.`)) return;
+  state.inventoryItems = state.inventoryItems.filter((inventoryItem) => inventoryItem.id !== item.id);
+  addActivity("Inventory item deleted", item.name);
+  saveState();
+  await deleteStructuredRows("inventory_items", "id", [item.id]);
+  render();
+});
+
 els.workOrderNumberFilter?.addEventListener("change", () => {
   workOrderNumberFilter = els.workOrderNumberFilter.value || "all";
   focusedWorkOrderId = "";
@@ -2111,6 +2153,42 @@ els.contractorCustomer?.addEventListener("change", () => {
   selectedContractorCustomerId = els.contractorCustomer.value;
   updateContractorCustomerHint();
   renderPreferredContractors();
+});
+
+els.inventoryForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!canManageInventory()) return;
+  const name = els.inventoryName.value.trim();
+  const customerId = currentRole === "Admin" ? els.inventoryCustomer.value : currentUser?.customerId || selectedCustomerId || "";
+  if (!name) {
+    alert("Enter an inventory item name.");
+    return;
+  }
+  if (!canManageInventoryCustomer(customerId)) {
+    alert("Managers can only add inventory for their assigned customer.");
+    return;
+  }
+  const now = new Date().toISOString();
+  const item = {
+    id: crypto.randomUUID(),
+    customerId,
+    category: els.inventoryCategory.value || "Parts",
+    name,
+    quantity: Math.max(0, Number(els.inventoryQuantity.value || 0)),
+    minStock: Math.max(0, Number(els.inventoryMinStock.value || 0)),
+    bin: els.inventoryBin.value.trim(),
+    supplier: els.inventorySupplier.value.trim(),
+    notes: els.inventoryNotes.value.trim(),
+    createdAt: now,
+    updatedAt: now
+  };
+  state.inventoryItems.push(item);
+  addActivity("Inventory item added", `${item.name} (${item.quantity} on hand)`);
+  saveState();
+  els.inventoryForm.reset();
+  els.inventoryQuantity.value = "0";
+  els.inventoryMinStock.value = "0";
+  render();
 });
 
 els.pmCalendarRange?.addEventListener("change", () => {
@@ -2653,6 +2731,7 @@ function render() {
   renderAssetTable();
   renderWorkOrders();
   renderServiceRequests();
+  renderInventory();
   syncWorkDrawerBackdrop();
   renderServiceRequestFormOptions();
   renderNewIssueFormOptions();
@@ -3130,6 +3209,7 @@ function renderRole() {
   const setupDisabled = !canManageSetup();
   const userManagementAllowed = canManageUsers();
   const contractorManagementAllowed = canManageContractors();
+  const inventoryManagementAllowed = canManageInventory();
   const isAdmin = currentRole === "Admin";
   const canCreateCustomerRecords = canCreateCustomers();
   const canManageTemplates = canManageTemplateSetup();
@@ -3166,6 +3246,8 @@ function renderRole() {
   if (!canCreateTickets && els.newIssueDrawer) els.newIssueDrawer.open = false;
   els.serviceRequestCreateDrawer?.classList.toggle("hidden", !canCreateServiceRequests());
   if (!canCreateServiceRequests() && els.serviceRequestCreateDrawer) els.serviceRequestCreateDrawer.open = false;
+  els.inventoryCreateDrawer?.classList.toggle("hidden", !inventoryManagementAllowed);
+  if (!inventoryManagementAllowed && els.inventoryCreateDrawer) els.inventoryCreateDrawer.open = false;
   els.setupDrawer.classList.toggle("hidden", setupDisabled);
   if (setupDisabled) els.setupDrawer.open = false;
   els.backupDrawer.classList.toggle("hidden", !isAdmin);
@@ -3202,7 +3284,11 @@ function renderRole() {
   els.contractorForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !contractorManagementAllowed;
   });
+  els.inventoryForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !inventoryManagementAllowed;
+  });
   if (els.contractorCustomer) els.contractorCustomer.disabled = currentRole !== "Admin";
+  if (els.inventoryCustomer) els.inventoryCustomer.disabled = currentRole !== "Admin";
   els.assetForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canAddAssets;
   });
@@ -3285,6 +3371,72 @@ function deletePreferredContractor(contractorId) {
   saveState();
   deleteStructuredRows("preferred_contractors", "id", [contractor.id]);
   render();
+}
+
+function renderInventory() {
+  if (!els.inventoryList) return;
+  const customers = manageableInventoryCustomers();
+  const selectedInventoryCustomerId = currentRole === "Admin" && customers.some((customer) => customer.id === selectedCustomerId)
+    ? selectedCustomerId
+    : customers[0]?.id || "";
+  if (els.inventoryCustomer) {
+    els.inventoryCustomer.innerHTML = customers.map((customer) =>
+      `<option value="${escapeAttribute(customer.id)}">${escapeHtml(customer.name)}</option>`
+    ).join("");
+    els.inventoryCustomer.value = selectedInventoryCustomerId;
+    els.inventoryCustomer.disabled = currentRole !== "Admin" || !canManageInventory();
+  }
+  if (els.inventoryCreateDrawer) {
+    els.inventoryCreateDrawer.classList.toggle("hidden", !canManageInventory());
+    if (!canManageInventory()) els.inventoryCreateDrawer.open = false;
+  }
+  els.inventoryForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !canManageInventory();
+  });
+  const items = visibleInventoryItems();
+  if (els.inventoryCount) els.inventoryCount.textContent = items.length;
+  els.inventoryList.innerHTML = items.length
+    ? items.map(renderInventoryItem).join("")
+    : `<p class="muted">No inventory items for this view yet.</p>`;
+}
+
+function renderInventoryItem(item) {
+  const customer = getCustomer(item.customerId);
+  const lowStock = Number(item.minStock || 0) > 0 && Number(item.quantity || 0) <= Number(item.minStock || 0);
+  const canManage = canManageInventoryCustomer(item.customerId);
+  const customerLabel = currentRole === "Admin" ? `${customer?.name || "No customer"} | ` : "";
+  const stockBadge = lowStock
+    ? `<span class="status-badge badge-warn">Low stock</span>`
+    : `<span class="status-badge badge-ok">In stock</span>`;
+  return `
+    <article class="inventory-item">
+      <div class="inventory-main">
+        <strong>${escapeHtml(item.name)}</strong>
+        <small>${escapeHtml(customerLabel)}${escapeHtml(item.category || "Parts")}${item.bin ? ` | ${escapeHtml(item.bin)}` : ""}</small>
+        ${item.supplier ? `<span>${escapeHtml(item.supplier)}</span>` : ""}
+        ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
+      </div>
+      <div class="inventory-stock">
+        <span>${stockBadge}</span>
+        <strong>${escapeHtml(formatInventoryNumber(item.quantity))}</strong>
+        <small>Min ${escapeHtml(formatInventoryNumber(item.minStock))}</small>
+      </div>
+      <div class="inventory-actions">
+        <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="-1" ${canManage ? "" : "disabled"}>-</button>
+        <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="1" ${canManage ? "" : "disabled"}>+</button>
+        <button type="button" class="secondary mini danger-action" data-delete-inventory-item="${escapeAttribute(item.id)}" ${canManage ? "" : "disabled"}>Delete</button>
+      </div>
+    </article>
+  `;
+}
+
+function formatInventoryNumber(value) {
+  const number = Number(value || 0);
+  return Number.isInteger(number) ? String(number) : number.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function getInventoryItem(id) {
+  return (state.inventoryItems || []).find((item) => item.id === id);
 }
 
 async function deleteWorkOrder(workOrderId) {
@@ -9316,6 +9468,38 @@ function canManageContractorRecord(contractor) {
   return canManageContractorCustomer(contractor.customerId);
 }
 
+function canManageInventory() {
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
+}
+
+function canManageInventoryCustomer(customerId) {
+  if (currentRole === "Admin") return true;
+  return isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
+}
+
+function manageableInventoryCustomers() {
+  if (currentRole === "Admin") {
+    const selectedCustomer = getCustomer(selectedCustomerId);
+    return selectedCustomer ? [selectedCustomer] : [...state.customers];
+  }
+  if (isManagerRole() && currentUser?.customerId) {
+    return state.customers.filter((customer) => customer.id === currentUser.customerId);
+  }
+  return visibleCustomers();
+}
+
+function visibleInventoryItems(customerId = selectedCustomerId) {
+  return (state.inventoryItems || [])
+    .filter((item) => canSeeCustomer(item.customerId))
+    .filter((item) => !customerId || item.customerId === customerId || (currentRole === "Admin" && !getCustomer(customerId)))
+    .sort((a, b) => {
+      const lowA = Number(a.minStock || 0) > 0 && Number(a.quantity || 0) <= Number(a.minStock || 0);
+      const lowB = Number(b.minStock || 0) > 0 && Number(b.quantity || 0) <= Number(b.minStock || 0);
+      if (lowA !== lowB) return lowA ? -1 : 1;
+      return `${a.category || ""} ${a.name || ""}`.localeCompare(`${b.category || ""} ${b.name || ""}`);
+    });
+}
+
 function visiblePreferredContractors(customerId = "") {
   if (currentRole === "Admin") {
     return state.preferredContractors.filter((contractor) => !customerId || contractor.customerId === customerId);
@@ -10542,7 +10726,8 @@ async function loadStructuredDataFromSupabase() {
       workOrderRows,
       serviceRequestRows,
       historyRows,
-      preferredContractorRows
+      preferredContractorRows,
+      inventoryItemRows
     ] = await Promise.all([
       fetchStructuredRows("customers", "updated_at.asc"),
       fetchStructuredRows("locations", "updated_at.asc"),
@@ -10551,11 +10736,12 @@ async function loadStructuredDataFromSupabase() {
       fetchStructuredRows("work_orders", "updated_at.asc"),
       fetchStructuredRows("service_requests", "updated_at.asc"),
       fetchStructuredRows("pm_history", "completed_at.asc"),
-      fetchOptionalStructuredRows("preferred_contractors", "updated_at.asc")
+      fetchOptionalStructuredRows("preferred_contractors", "updated_at.asc"),
+      fetchOptionalStructuredRows("inventory_items", "updated_at.asc")
     ]);
     structuredDataLoading = false;
     structuredDataReady = true;
-    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length;
+    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length || inventoryItemRows.length;
     if (!hasRows) {
       if (hasSharedMaintenanceData(state)) scheduleStructuredDataSync(0);
       return false;
@@ -10568,7 +10754,8 @@ async function loadStructuredDataFromSupabase() {
       workOrders: workOrderRows,
       serviceRequests: serviceRequestRows,
       history: historyRows,
-      preferredContractors: preferredContractorRows
+      preferredContractors: preferredContractorRows,
+      inventoryItems: inventoryItemRows
     };
     if (structuredRowsMissingAssets(structuredRows)) {
       markSyncError("Structured cloud load returned related records but no equipment. Keeping/restoring the last known equipment list.");
@@ -10633,7 +10820,8 @@ async function peekStructuredCloudState() {
     { table: "work_orders", timestamp: "updated_at" },
     { table: "service_requests", timestamp: "updated_at" },
     { table: "pm_history", timestamp: "completed_at" },
-    { table: "preferred_contractors", timestamp: "updated_at", optional: true }
+    { table: "preferred_contractors", timestamp: "updated_at", optional: true },
+    { table: "inventory_items", timestamp: "updated_at", optional: true }
   ];
   const rows = await Promise.all(tables.map(({ table, timestamp, optional }) =>
     optional ? fetchOptionalStructuredTimestampRows(table, timestamp) : fetchStructuredTimestampRows(table, timestamp)
@@ -10686,6 +10874,7 @@ function applyStructuredState(rows, updatedAt = "") {
     workOrders: rows.workOrders.map(workOrderFromStructuredRow),
     serviceRequests: rows.serviceRequests.map(serviceRequestFromStructuredRow),
     preferredContractors: rows.preferredContractors.map(preferredContractorFromStructuredRow),
+    inventoryItems: (rows.inventoryItems || []).map(inventoryItemFromStructuredRow),
     users: localUsers,
     accessRequests: localAccessRequests,
     currentUserId: localCurrentUserId,
@@ -10851,6 +11040,23 @@ function preferredContractorFromStructuredRow(row) {
   };
 }
 
+function inventoryItemFromStructuredRow(row) {
+  return {
+    id: row.id,
+    customerId: row.customer_id || "",
+    category: row.category || "Parts",
+    name: row.name || "",
+    quantity: Number(row.quantity_on_hand || 0),
+    minStock: Number(row.min_stock || 0),
+    bin: row.bin || "",
+    supplier: row.supplier || "",
+    notes: row.notes || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
 function groupStructuredHistoryByAsset(historyRows = []) {
   const grouped = new Map();
   historyRows.forEach((row) => {
@@ -10882,7 +11088,8 @@ function newestStructuredUpdatedAt(rows) {
     ...rows.workOrders,
     ...rows.serviceRequests,
     ...rows.history,
-    ...(rows.preferredContractors || [])
+    ...(rows.preferredContractors || []),
+    ...(rows.inventoryItems || [])
   ]);
 }
 
@@ -11071,6 +11278,7 @@ function buildSharedStatePayload(uploadedAt) {
     workOrders: state.workOrders || [],
     serviceRequests: state.serviceRequests || [],
     preferredContractors: state.preferredContractors || [],
+    inventoryItems: state.inventoryItems || [],
     users: (state.users || []).map(sanitizeSharedUser),
     accessRequests: state.accessRequests || [],
     activityLog: state.activityLog || [],
@@ -11089,6 +11297,7 @@ function hasSharedMaintenanceData(candidate) {
     candidate?.workOrders?.length ||
     candidate?.serviceRequests?.length ||
     candidate?.preferredContractors?.length ||
+    candidate?.inventoryItems?.length ||
     candidate?.users?.some((user) => user.username !== "scan-customer") ||
     candidate?.accessRequests?.length
   );
@@ -11263,6 +11472,29 @@ async function syncStructuredDataToSupabase() {
       created_at: contractor.createdAt || new Date().toISOString(),
       updated_at: contractor.updatedAt || state.updatedAt || new Date().toISOString(),
       data: leanCloudRecord(contractor)
+    })));
+
+    const cloudReadyInventoryItems = (state.inventoryItems || []).filter((item) =>
+      !item.customerId || cloudCustomerIds.has(item.customerId)
+    );
+    const skippedInventoryItems = (state.inventoryItems || []).length - cloudReadyInventoryItems.length;
+    if (skippedInventoryItems > 0) {
+      console.warn(`Skipped ${skippedInventoryItems} inventory sync row(s) because their linked customer is missing locally.`);
+    }
+
+    await upsertStructuredRows("inventory_items", cloudReadyInventoryItems.map((item) => ({
+      id: item.id,
+      customer_id: item.customerId || null,
+      category: item.category || "Parts",
+      name: item.name || "",
+      quantity_on_hand: Number(item.quantity || 0),
+      min_stock: Number(item.minStock || 0),
+      bin: item.bin || "",
+      supplier: item.supplier || "",
+      notes: item.notes || "",
+      created_at: item.createdAt || new Date().toISOString(),
+      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: leanCloudRecord(item)
     })));
 
     const historyRows = state.assets.flatMap((asset) => (asset.history || []).map((item) => ({
@@ -11476,6 +11708,7 @@ function normalizeState(input) {
     workOrders: input.workOrders || [],
     serviceRequests: input.serviceRequests || [],
     preferredContractors: input.preferredContractors || [],
+    inventoryItems: input.inventoryItems || [],
     users: input.users || [],
     accessRequests: input.accessRequests || [],
     activityLog: input.activityLog || [],
@@ -11640,6 +11873,21 @@ function normalizeState(input) {
     ...contractor
   })).filter((contractor) => contractor.name && isEmailAddress(contractor.email));
 
+  normalized.inventoryItems = normalized.inventoryItems.map((item) => ({
+    ...item,
+    id: item.id || crypto.randomUUID(),
+    customerId: item.customerId || normalized.customers[0]?.id || "",
+    category: item.category || "Parts",
+    name: item.name || "",
+    quantity: Math.max(0, Number(item.quantity ?? item.quantityOnHand ?? 0)),
+    minStock: Math.max(0, Number(item.minStock ?? 0)),
+    bin: item.bin || "",
+    supplier: item.supplier || "",
+    notes: item.notes || "",
+    createdAt: item.createdAt || new Date().toISOString(),
+    updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
+  })).filter((item) => item.name);
+
   return normalized;
 }
 
@@ -11650,7 +11898,9 @@ function emptyState() {
     templates: seedTemplates(),
     assets: [],
     workOrders: [],
+    serviceRequests: [],
     preferredContractors: [],
+    inventoryItems: [],
     users: [],
     accessRequests: [],
     activityLog: [],

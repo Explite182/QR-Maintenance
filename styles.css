@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260720-login-greeting */
+/* SiteWorks styles version: 20260720-inventory-tab */
 
 :root {
   --ink: #172126;
@@ -4522,6 +4522,69 @@ button.asset-detail-card {
   gap: 10px;
 }
 
+.inventory-list {
+  display: grid;
+  gap: 10px;
+}
+
+.inventory-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.inventory-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.inventory-main strong,
+.inventory-main small,
+.inventory-main span,
+.inventory-main p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inventory-main small,
+.inventory-main span,
+.inventory-main p,
+.inventory-stock small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.inventory-main p {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+
+.inventory-stock {
+  display: grid;
+  gap: 4px;
+  min-width: 92px;
+  text-align: right;
+}
+
+.inventory-stock strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.inventory-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .ticket-filter-bar {
   display: flex;
   align-items: end;
@@ -6210,6 +6273,27 @@ body.panel-schedule-open {
     color: white;
     background: var(--accent);
     border-color: var(--accent);
+  }
+
+  .inventory-item {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .inventory-stock {
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .inventory-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.5fr;
+  }
+
+  .inventory-actions .mini {
+    width: 100%;
   }
 
   .mobile-tab-dashboard::before {

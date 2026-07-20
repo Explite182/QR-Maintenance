@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260720-login-greeting">
+    <link rel="stylesheet" href="styles.css?v=20260720-inventory-tab">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -162,6 +162,9 @@
           <button type="button" class="sidebar-nav-btn" data-open-target="serviceRequestsPanel" aria-expanded="false">
             <span>Service Requests</span>
           </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="inventoryPanel" aria-expanded="false">
+            <span>Inventory</span>
+          </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
             <span>Completed Tickets</span>
           </button>
@@ -172,7 +175,7 @@
         </summary>
       <details id="setupDrawer" class="sidebar-section setup-drawer">
         <summary>Setup</summary>
-        <details id="activityLogDrawer" class="setup-subdrawer">
+        <details class="setup-subdrawer">
           <summary>
             <span>Customers</span>
             <span id="customerCount">0</span>
@@ -205,7 +208,7 @@
           </section>
         </details>
 
-        <details class="setup-subdrawer">
+        <details id="activityLogDrawer" class="setup-subdrawer">
           <summary>
             <span>Locations</span>
             <span id="locationCount">0</span>
@@ -926,6 +929,68 @@
         </div>
       </section>
 
+        <section id="inventoryPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="inventoryPanel">
+          <h2>Inventory</h2>
+          <div class="panel-title-actions">
+            <span id="inventoryCount">0</span>
+          </div>
+        </div>
+        <div data-panel-body>
+          <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
+            <summary>Add Inventory Item</summary>
+            <form id="inventoryForm" class="stack compact-form">
+              <div class="form-grid">
+                <label>
+                  Customer
+                  <select id="inventoryCustomer"></select>
+                </label>
+                <label>
+                  Category
+                  <select id="inventoryCategory">
+                    <option>Parts</option>
+                    <option>Material</option>
+                    <option>Tool</option>
+                    <option>Consumable</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Item name
+                <input id="inventoryName" required placeholder="Filter, belt, breaker, cleaner">
+              </label>
+              <div class="form-grid">
+                <label>
+                  Quantity on hand
+                  <input id="inventoryQuantity" type="number" min="0" step="1" value="0">
+                </label>
+                <label>
+                  Minimum stock
+                  <input id="inventoryMinStock" type="number" min="0" step="1" value="0">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Location / bin
+                  <input id="inventoryBin" placeholder="Shop shelf A3">
+                </label>
+                <label>
+                  Supplier
+                  <input id="inventorySupplier" placeholder="Supplier or preferred contact">
+                </label>
+              </div>
+              <label>
+                Notes
+                <textarea id="inventoryNotes" rows="3" placeholder="Part numbers, equipment used on, reorder notes"></textarea>
+              </label>
+              <button type="submit" class="primary">Add Inventory Item</button>
+              <p id="inventoryStatus" class="inline-status"></p>
+            </form>
+          </details>
+          <div id="inventoryList" class="inventory-list"></div>
+        </div>
+      </section>
+
         <section id="completedPmPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="completedPmPanel">
           <h2>Completed Tickets</h2>
@@ -1313,7 +1378,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260720-login-greeting"></script>
+  <script src="app.js?v=20260720-inventory-tab"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
