@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-user-profile-merge";
+const SITEWORKS_APP_VERSION = "20260720-preferred-contacts-sync";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -1935,7 +1935,8 @@ els.contractorForm?.addEventListener("submit", (event) => {
     name,
     email,
     trade,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   });
   addActivity("Contractor added", `${name} | ${email}`);
   saveState();
@@ -3117,6 +3118,7 @@ function deletePreferredContractor(contractorId) {
   state.preferredContractors = state.preferredContractors.filter((item) => item.id !== contractorId);
   addActivity("Preferred contact deleted", contractor.name);
   saveState();
+  deleteStructuredRows("preferred_contractors", "id", [contractor.id]);
   render();
 }
 
@@ -10370,7 +10372,8 @@ async function loadStructuredDataFromSupabase() {
       assetRows,
       workOrderRows,
       serviceRequestRows,
-      historyRows
+      historyRows,
+      preferredContractorRows
     ] = await Promise.all([
       fetchStructuredRows("customers", "updated_at.asc"),
       fetchStructuredRows("locations", "updated_at.asc"),
@@ -10378,11 +10381,12 @@ async function loadStructuredDataFromSupabase() {
       fetchStructuredRows("assets", "updated_at.asc"),
       fetchStructuredRows("work_orders", "updated_at.asc"),
       fetchStructuredRows("service_requests", "updated_at.asc"),
-      fetchStructuredRows("pm_history", "completed_at.asc")
+      fetchStructuredRows("pm_history", "completed_at.asc"),
+      fetchOptionalStructuredRows("preferred_contractors", "updated_at.asc")
     ]);
     structuredDataLoading = false;
     structuredDataReady = true;
-    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length;
+    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length;
     if (!hasRows) {
       if (hasSharedMaintenanceData(state)) scheduleStructuredDataSync(0);
       return false;
@@ -10394,7 +10398,8 @@ async function loadStructuredDataFromSupabase() {
       assets: assetRows,
       workOrders: workOrderRows,
       serviceRequests: serviceRequestRows,
-      history: historyRows
+      history: historyRows,
+      preferredContractors: preferredContractorRows
     };
     if (structuredRowsMissingAssets(structuredRows)) {
       markSyncError("Structured cloud load returned related records but no equipment. Keeping/restoring the last known equipment list.");
@@ -10441,6 +10446,15 @@ async function fetchStructuredRows(table, order = "updated_at.asc") {
   }
 }
 
+async function fetchOptionalStructuredRows(table, order = "updated_at.asc") {
+  try {
+    return await siteworksApi.loadRows(table, order);
+  } catch (error) {
+    console.warn(`Optional Supabase table ${table} is not available yet.`, error);
+    return [];
+  }
+}
+
 async function peekStructuredCloudState() {
   const tables = [
     { table: "customers", timestamp: "updated_at" },
@@ -10449,9 +10463,12 @@ async function peekStructuredCloudState() {
     { table: "assets", timestamp: "updated_at" },
     { table: "work_orders", timestamp: "updated_at" },
     { table: "service_requests", timestamp: "updated_at" },
-    { table: "pm_history", timestamp: "completed_at" }
+    { table: "pm_history", timestamp: "completed_at" },
+    { table: "preferred_contractors", timestamp: "updated_at", optional: true }
   ];
-  const rows = await Promise.all(tables.map(({ table, timestamp }) => fetchStructuredTimestampRows(table, timestamp)));
+  const rows = await Promise.all(tables.map(({ table, timestamp, optional }) =>
+    optional ? fetchOptionalStructuredTimestampRows(table, timestamp) : fetchStructuredTimestampRows(table, timestamp)
+  ));
   const flatRows = rows.flat();
   return {
     hasRows: flatRows.length > 0,
@@ -10467,6 +10484,15 @@ async function fetchStructuredTimestampRows(table, timestampColumn) {
     markSyncError(message);
     console.warn(`Structured Supabase change check skipped for ${table}.`, error);
     throw new Error(message);
+  }
+}
+
+async function fetchOptionalStructuredTimestampRows(table, timestampColumn) {
+  try {
+    return await siteworksApi.peekRows(table, timestampColumn);
+  } catch (error) {
+    console.warn(`Optional Supabase table ${table} is not available yet.`, error);
+    return [];
   }
 }
 
@@ -10490,6 +10516,7 @@ function applyStructuredState(rows, updatedAt = "") {
     assets: nextAssets,
     workOrders: rows.workOrders.map(workOrderFromStructuredRow),
     serviceRequests: rows.serviceRequests.map(serviceRequestFromStructuredRow),
+    preferredContractors: rows.preferredContractors.map(preferredContractorFromStructuredRow),
     users: localUsers,
     accessRequests: localAccessRequests,
     currentUserId: localCurrentUserId,
@@ -10642,6 +10669,19 @@ function serviceRequestFromStructuredRow(row) {
   return withRecordMediaScope(request, request);
 }
 
+function preferredContractorFromStructuredRow(row) {
+  return {
+    id: row.id,
+    customerId: row.customer_id || "",
+    name: row.name || "",
+    email: row.email || "",
+    trade: row.trade || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
 function groupStructuredHistoryByAsset(historyRows = []) {
   const grouped = new Map();
   historyRows.forEach((row) => {
@@ -10672,7 +10712,8 @@ function newestStructuredUpdatedAt(rows) {
     ...rows.assets,
     ...rows.workOrders,
     ...rows.serviceRequests,
-    ...rows.history
+    ...rows.history,
+    ...(rows.preferredContractors || [])
   ]);
 }
 
@@ -10975,7 +11016,16 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(asset)
     })));
 
-    await upsertStructuredRows("work_orders", state.workOrders.map((item) => ({
+    const cloudAssetIds = new Set((state.assets || []).map((asset) => asset.id).filter(Boolean));
+    const cloudReadyWorkOrders = (state.workOrders || []).filter((item) =>
+      !item.assetId || cloudAssetIds.has(item.assetId)
+    );
+    const skippedWorkOrders = (state.workOrders || []).length - cloudReadyWorkOrders.length;
+    if (skippedWorkOrders > 0) {
+      console.warn(`Skipped ${skippedWorkOrders} ticket sync row(s) because their linked equipment is missing locally.`);
+    }
+
+    await upsertStructuredRows("work_orders", cloudReadyWorkOrders.map((item) => ({
       id: item.id,
       issue_number: item.issueNumber || null,
       asset_id: item.assetId || null,
@@ -10996,7 +11046,15 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(item)
     })));
 
-    await upsertStructuredRows("service_requests", state.serviceRequests.map((item) => ({
+    const cloudReadyServiceRequests = (state.serviceRequests || []).filter((item) =>
+      !item.assetId || cloudAssetIds.has(item.assetId)
+    );
+    const skippedServiceRequests = (state.serviceRequests || []).length - cloudReadyServiceRequests.length;
+    if (skippedServiceRequests > 0) {
+      console.warn(`Skipped ${skippedServiceRequests} service request sync row(s) because their linked equipment is missing locally.`);
+    }
+
+    await upsertStructuredRows("service_requests", cloudReadyServiceRequests.map((item) => ({
       id: item.id,
       service_request_number: item.serviceRequestNumber || null,
       asset_id: item.assetId || null,
@@ -11016,6 +11074,26 @@ async function syncStructuredDataToSupabase() {
       created_at: item.createdAt || new Date().toISOString(),
       updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
       data: leanCloudRecord(item)
+    })));
+
+    const cloudCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
+    const cloudReadyPreferredContractors = (state.preferredContractors || []).filter((contractor) =>
+      !contractor.customerId || cloudCustomerIds.has(contractor.customerId)
+    );
+    const skippedPreferredContractors = (state.preferredContractors || []).length - cloudReadyPreferredContractors.length;
+    if (skippedPreferredContractors > 0) {
+      console.warn(`Skipped ${skippedPreferredContractors} preferred contact sync row(s) because their linked customer is missing locally.`);
+    }
+
+    await upsertStructuredRows("preferred_contractors", cloudReadyPreferredContractors.map((contractor) => ({
+      id: contractor.id,
+      customer_id: contractor.customerId || null,
+      name: contractor.name || "",
+      email: contractor.email || "",
+      trade: contractor.trade || "",
+      created_at: contractor.createdAt || new Date().toISOString(),
+      updated_at: contractor.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: leanCloudRecord(contractor)
     })));
 
     const historyRows = state.assets.flatMap((asset) => (asset.history || []).map((item) => ({
@@ -11389,6 +11467,7 @@ function normalizeState(input) {
     email: contractor.email || "",
     trade: contractor.trade || "",
     createdAt: contractor.createdAt || new Date().toISOString(),
+    updatedAt: contractor.updatedAt || contractor.createdAt || new Date().toISOString(),
     ...contractor
   })).filter((contractor) => contractor.name && isEmailAddress(contractor.email));
 
