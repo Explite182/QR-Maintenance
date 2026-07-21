@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260721-template-routes */
+/* SiteWorks styles version: 20260721-template-route-dark */
 
 :root {
   --ink: #172126;
@@ -922,8 +922,10 @@ textarea:disabled {
 
 .sidebar .user-list-item,
 .sidebar .location-editor,
+.sidebar .template-editor,
 .sidebar .activity-log-item {
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(20, 30, 37, 0.88);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .sidebar .location-list {
@@ -952,18 +954,59 @@ textarea:disabled {
 .sidebar .location-editor,
 .sidebar .location-editor strong,
 .sidebar .location-editor small,
+.sidebar .template-editor,
+.sidebar .template-editor strong,
+.sidebar .template-editor small,
+.sidebar .template-editor span,
+.sidebar .template-editor label,
+.sidebar .template-editor summary,
 .sidebar .activity-log-item,
 .sidebar .activity-log-item strong,
 .sidebar .activity-log-item p,
 .sidebar .activity-log-item span {
-  color: var(--ink);
+  color: var(--sidebar-text);
 }
 
 .sidebar .user-list-item small,
 .sidebar .location-editor small,
+.sidebar .template-editor small,
+.sidebar .template-editor .muted,
 .sidebar .activity-log-item p,
 .sidebar .activity-log-item span {
-  color: #5f6f76;
+  color: var(--sidebar-muted);
+}
+
+.sidebar .template-editor input,
+.sidebar .template-editor select,
+.sidebar .template-editor textarea {
+  background: #f8fbfa;
+  color: var(--ink);
+}
+
+.sidebar .template-route-box,
+.sidebar .route-complete-form {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.sidebar .template-route-box summary,
+.sidebar .route-complete-form strong,
+.sidebar .route-asset-picker strong,
+.sidebar .inline-check {
+  color: var(--sidebar-text);
+}
+
+.sidebar .route-asset-option {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.sidebar .route-asset-option strong {
+  color: var(--sidebar-text);
+}
+
+.sidebar .route-asset-option small {
+  color: var(--sidebar-muted);
 }
 
 .sidebar .current-user-label {
