@@ -14,9 +14,10 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260721-template-route-dark";
+const SITEWORKS_APP_VERSION = "20260721-template-fm-templates-log";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
+const THEME_STORAGE_KEY = "siteworks-theme-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const PUBLIC_REPORT_SYNC_INTERVAL_MS = 2 * 60 * 1000;
 const CLOUD_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
@@ -45,6 +46,7 @@ const ASSET_DETAIL_FIELDS = [
 ];
 
 let state = normalizeState(loadState());
+applyThemePreference(loadThemePreference());
 applyForcedLogoutFromUrl();
 rememberScannedQrContext();
 let currentUser = getInitialUser();
@@ -188,6 +190,7 @@ const els = {
   dashboardPanel: document.querySelector(".dashboard-panel"),
   userSwitcherWrap: document.getElementById("userSwitcherWrap"),
   userSwitcher: document.getElementById("userSwitcher"),
+  themeSelect: document.getElementById("themeSelect"),
   currentUserName: document.getElementById("currentUserName"),
   currentUserRole: document.getElementById("currentUserRole"),
   logoutBtn: document.getElementById("logoutBtn"),
@@ -225,6 +228,7 @@ const els = {
   templateItems: document.getElementById("templateItems"),
   templateCount: document.getElementById("templateCount"),
   templateList: document.getElementById("templateList"),
+  templatesPanel: document.getElementById("templatesPanel"),
   userForm: document.getElementById("userForm"),
   refreshCloudUsersBtn: document.getElementById("refreshCloudUsersBtn"),
   cloudUsersStatus: document.getElementById("cloudUsersStatus"),
@@ -932,6 +936,16 @@ els.userSwitcher?.addEventListener("change", () => {
   render();
 });
 
+els.themeSelect?.addEventListener("change", () => {
+  const theme = els.themeSelect.value === "dark" ? "dark" : "light";
+  applyThemePreference(theme);
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch (error) {
+    console.warn("Theme preference could not be saved.", error);
+  }
+});
+
 function setupInactivityLogout() {
   ["pointerdown", "keydown", "input", "scroll", "touchstart"].forEach((eventName) => {
     document.addEventListener(eventName, resetInactivityLogoutTimer, { passive: true });
@@ -947,6 +961,22 @@ function resetInactivityLogoutTimer() {
   window.clearTimeout(inactivityLogoutTimer);
   if (!currentUser || isPublicReportUrl()) return;
   inactivityLogoutTimer = window.setTimeout(checkInactivityLogout, INACTIVITY_LOGOUT_MS);
+}
+
+function loadThemePreference() {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
+  } catch (error) {
+    return "light";
+  }
+}
+
+function applyThemePreference(theme = "light") {
+  const normalizedTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = normalizedTheme;
+  document.body?.setAttribute("data-theme", normalizedTheme);
+  const themeSelect = document.getElementById("themeSelect");
+  if (themeSelect) themeSelect.value = normalizedTheme;
 }
 
 function checkInactivityLogout() {
@@ -1079,6 +1109,12 @@ els.templateList?.addEventListener("click", async (event) => {
   saveState();
   await deleteStructuredRows("pm_templates", "id", [template.id]);
   render();
+});
+
+els.templateList?.addEventListener("input", (event) => {
+  const searchInput = event.target.closest("[data-route-equipment-search]");
+  if (!searchInput) return;
+  filterTemplateRouteEquipment(searchInput);
 });
 
 els.customerList?.addEventListener("submit", (event) => {
@@ -3381,6 +3417,11 @@ function renderRole() {
   els.newIssueBtn?.classList.toggle("hidden", !canCreateTickets);
   els.newServiceRequestBtn?.classList.toggle("hidden", !canCreateServiceRequests());
   els.newInventoryBtn?.classList.toggle("hidden", !canCreateInventory);
+  document.querySelectorAll("[data-template-nav]").forEach((button) => {
+    button.classList.toggle("hidden", !canManageTemplates);
+  });
+  els.templatesPanel?.classList.toggle("hidden", !canManageTemplates || els.templatesPanel.classList.contains("is-collapsed"));
+  if (!canManageTemplates) closeSidebarTarget("templatesPanel");
   if (els.createNewBtn) els.createNewBtn.disabled = !canUseNewActions;
   if (els.newEquipmentBtn) els.newEquipmentBtn.disabled = !canAddAssets;
   if (els.newIssueBtn) els.newIssueBtn.disabled = !canCreateTickets;
@@ -3420,7 +3461,7 @@ function renderRole() {
   els.customerForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canCreateCustomerRecords;
   });
-  els.templateForm.closest(".setup-subdrawer")?.classList.toggle("hidden", !canManageTemplates);
+  els.templatesPanel?.classList.toggle("hidden", !canManageTemplates || els.templatesPanel.classList.contains("is-collapsed"));
   els.templateForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canManageTemplates;
   });
@@ -4076,8 +4117,7 @@ function openTemplateRouteEditor(templateId) {
     alert("Ask an admin to open this scheduled route in Maintenance Templates.");
     return;
   }
-  openPanel("setupDrawer");
-  if (els.setupDrawer) els.setupDrawer.open = true;
+  openPanel("templatesPanel");
   render();
   window.setTimeout(() => {
     const editor = [...document.querySelectorAll("[data-template-editor]")]
@@ -4118,7 +4158,7 @@ function renderTemplateEditor(template) {
             <input name="routeEnabled" type="checkbox" ${routeEnabled ? "checked" : ""}>
             Show this template as one scheduled PM route on the calendar
           </label>
-          <div class="form-grid">
+          <div class="route-schedule-grid">
             <label>
               Frequency days
               <input name="routeFrequencyDays" type="number" min="1" value="${escapeAttribute(route.frequencyDays)}">
@@ -4175,9 +4215,13 @@ function renderTemplateRouteAssetPicker(selectedAssetIds = []) {
   }
 
   return `
+    <label class="route-equipment-search">
+      Search route equipment
+      <input type="search" data-route-equipment-search placeholder="Name, location, equipment ID">
+    </label>
     <div class="route-asset-list">
       ${assets.map((asset) => `
-        <label class="route-asset-option">
+        <label class="route-asset-option" data-route-equipment-search-text="${escapeAttribute(routeEquipmentSearchText(asset))}">
           <input name="routeAssetIds" type="checkbox" value="${escapeAttribute(asset.id)}" ${selectedIds.has(asset.id) ? "checked" : ""}>
           <span>
             <strong>${escapeHtml(asset.name)}</strong>
@@ -4186,7 +4230,35 @@ function renderTemplateRouteAssetPicker(selectedAssetIds = []) {
         </label>
       `).join("")}
     </div>
+    <p class="muted hidden" data-route-equipment-empty>No equipment matches that search.</p>
   `;
+}
+
+function routeEquipmentSearchText(asset) {
+  return [
+    asset.name,
+    getLocation(asset.locationId)?.name,
+    getCustomer(asset.customerId)?.name,
+    getAssetEquipmentId(asset),
+    asset.type,
+    asset.model,
+    asset.serial,
+    asset.manufacturer
+  ].join(" ").toLowerCase();
+}
+
+function filterTemplateRouteEquipment(searchInput) {
+  const query = searchInput.value.trim().toLowerCase();
+  const picker = searchInput.closest(".route-asset-picker");
+  const options = [...(picker?.querySelectorAll("[data-route-equipment-search-text]") || [])];
+  let visibleCount = 0;
+  options.forEach((option) => {
+    const matches = !query || option.dataset.routeEquipmentSearchText.includes(query);
+    option.classList.toggle("hidden", !matches);
+    if (matches) visibleCount += 1;
+  });
+  const empty = picker?.querySelector("[data-route-equipment-empty]");
+  if (empty) empty.classList.toggle("hidden", visibleCount > 0);
 }
 
 function renderTemplateRouteCompletionForm(template, route = normalizeTemplateRoute(template), assets = templateRouteAssets(template)) {
@@ -10030,7 +10102,7 @@ function canCreateLocations() {
 }
 
 function canManageTemplateSetup() {
-  return currentRole === "Admin";
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
 }
 
 function canManageCustomerSetup(customerId) {

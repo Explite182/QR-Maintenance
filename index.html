@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260721-template-route-dark">
+    <link rel="stylesheet" href="styles.css?v=20260721-template-fm-templates-log">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -140,6 +140,13 @@
         <span id="currentUserName"></span>
         <strong id="currentUserRole"></strong>
       </div>
+      <label class="theme-switcher">
+        Theme
+        <select id="themeSelect">
+          <option value="light">Regular</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
       <button id="logoutBtn" class="secondary">Log Out</button>
       <input id="importDataInput" class="hidden-input" type="file" accept="application/json,.json">
     </div>
@@ -164,6 +171,9 @@
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="inventoryPanel" aria-expanded="false">
             <span>Inventory</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="templatesPanel" data-template-nav aria-expanded="false">
+            <span>Templates</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
             <span>Completed Tickets</span>
@@ -208,7 +218,7 @@
           </section>
         </details>
 
-        <details id="activityLogDrawer" class="setup-subdrawer">
+        <details class="setup-subdrawer">
           <summary>
             <span>Locations</span>
             <span id="locationCount">0</span>
@@ -245,29 +255,7 @@
           </section>
         </details>
 
-        <details class="setup-subdrawer">
-          <summary>
-            <span>Maintenance Templates</span>
-            <span id="templateCount">0</span>
-          </summary>
-          <section>
-            <form id="templateForm" class="stack compact-form">
-              <label>
-                Template name
-                <input id="templateName" required placeholder="HVAC Monthly PM">
-              </label>
-              <label>
-                Checklist items
-                <textarea id="templateItems" rows="4" required placeholder="Inspect belts&#10;Check filter condition&#10;Record temperature"></textarea>
-              </label>
-              <p class="muted">After adding a template, open it below to optionally schedule it as a multi-equipment PM route.</p>
-              <button type="submit">Add Template</button>
-            </form>
-            <div id="templateList" class="template-list"></div>
-          </section>
-        </details>
-
-        <details class="setup-subdrawer">
+        <details id="activityLogDrawer" class="setup-subdrawer">
           <summary>
             <span>Activity Log</span>
             <span id="activityLogCount">0</span>
@@ -932,6 +920,33 @@
         </div>
       </section>
 
+      <section id="templatesPanel" class="work-orders-panel templates-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="templatesPanel">
+          <h2>Maintenance Templates</h2>
+          <div class="panel-title-actions">
+            <span id="templateCount">0</span>
+          </div>
+        </div>
+        <div class="templates-panel-body" data-panel-body>
+          <details class="asset-import-drawer templates-create-drawer">
+            <summary>Add Maintenance Template</summary>
+            <form id="templateForm" class="stack compact-form">
+              <label>
+                Template name
+                <input id="templateName" required placeholder="HVAC Monthly PM">
+              </label>
+              <label>
+                Checklist items
+                <textarea id="templateItems" rows="4" required placeholder="Inspect belts&#10;Check filter condition&#10;Record temperature"></textarea>
+              </label>
+              <p class="muted">After adding a template, open it below to optionally schedule it as a multi-equipment PM route.</p>
+              <button type="submit">Add Template</button>
+            </form>
+          </details>
+          <div id="templateList" class="template-list"></div>
+        </div>
+      </section>
+
         <section id="inventoryPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="inventoryPanel">
           <h2>Inventory</h2>
@@ -1386,7 +1401,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260721-template-route-dark"></script>
+  <script src="app.js?v=20260721-template-fm-templates-log"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

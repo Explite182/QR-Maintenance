@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260721-template-route-dark */
+/* SiteWorks styles version: 20260721-template-fm-templates-log */
 
 :root {
   --ink: #172126;
@@ -23,6 +23,24 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
 }
 
+html[data-theme="dark"] {
+  --ink: #eef5f4;
+  --muted: #aebdc2;
+  --line: rgba(255, 255, 255, 0.14);
+  --paper: #101820;
+  --panel: #17222a;
+  --accent: #2fc8aa;
+  --accent-dark: #8ee6d8;
+  --accent-soft: rgba(47, 200, 170, 0.16);
+  --sidebar-bg: #101820;
+  --sidebar-panel: #17222a;
+  --sidebar-line: rgba(255, 255, 255, 0.13);
+  --sidebar-text: #f5fbfa;
+  --sidebar-muted: #aebdc2;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22), 0 10px 28px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 16px 48px rgba(0, 0, 0, 0.32);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -31,6 +49,10 @@ body {
   margin: 0;
   color: var(--ink);
   background: var(--paper);
+}
+
+html[data-theme="dark"] body {
+  color-scheme: dark;
 }
 
 .login-screen,
@@ -335,6 +357,20 @@ textarea:disabled {
   white-space: nowrap;
 }
 
+.theme-switcher {
+  display: grid;
+  gap: 5px;
+  flex: 0 0 116px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.theme-switcher select {
+  min-height: 40px;
+  padding: 0 34px 0 12px;
+}
+
 .user-chip {
   display: inline-flex;
   align-items: center;
@@ -571,6 +607,27 @@ textarea:disabled {
   display: grid;
   gap: 8px;
   margin-top: 10px;
+}
+
+.templates-panel-body {
+  display: grid;
+  gap: 12px;
+}
+
+.templates-panel .template-list {
+  gap: 12px;
+}
+
+.templates-create-drawer {
+  margin: 0;
+}
+
+.templates-create-drawer form {
+  padding: 0 12px 12px;
+}
+
+.templates-panel .template-editor {
+  padding: 14px;
 }
 
 .template-editor {
@@ -843,6 +900,22 @@ textarea:disabled {
     rgba(255, 255, 255, 0.08);
 }
 
+.sidebar-nav-btn:nth-child(6)::before {
+  background:
+    linear-gradient(#eaf0f2, #eaf0f2) 8px 8px / 12px 2px no-repeat,
+    linear-gradient(#eaf0f2, #eaf0f2) 8px 13px / 12px 2px no-repeat,
+    linear-gradient(#eaf0f2, #eaf0f2) 8px 18px / 8px 2px no-repeat,
+    linear-gradient(90deg, #eaf0f2, #eaf0f2) 18px 18px / 2px 2px no-repeat,
+    rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-nav-btn:nth-child(7)::before {
+  background:
+    linear-gradient(#eaf0f2, #eaf0f2) 8px 10px / 12px 2px no-repeat,
+    linear-gradient(#eaf0f2, #eaf0f2) 8px 16px / 12px 2px no-repeat,
+    rgba(255, 255, 255, 0.08);
+}
+
 .sidebar-nav-btn span:first-child {
   flex: 1 1 auto;
 }
@@ -924,8 +997,8 @@ textarea:disabled {
 .sidebar .location-editor,
 .sidebar .template-editor,
 .sidebar .activity-log-item {
-  background: rgba(20, 30, 37, 0.88);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.96);
+  border-color: var(--line);
 }
 
 .sidebar .location-list {
@@ -964,7 +1037,7 @@ textarea:disabled {
 .sidebar .activity-log-item strong,
 .sidebar .activity-log-item p,
 .sidebar .activity-log-item span {
-  color: var(--sidebar-text);
+  color: var(--ink);
 }
 
 .sidebar .user-list-item small,
@@ -973,7 +1046,7 @@ textarea:disabled {
 .sidebar .template-editor .muted,
 .sidebar .activity-log-item p,
 .sidebar .activity-log-item span {
-  color: var(--sidebar-muted);
+  color: #5f6f76;
 }
 
 .sidebar .template-editor input,
@@ -985,28 +1058,28 @@ textarea:disabled {
 
 .sidebar .template-route-box,
 .sidebar .route-complete-form {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.65);
+  border-color: var(--line);
 }
 
 .sidebar .template-route-box summary,
 .sidebar .route-complete-form strong,
 .sidebar .route-asset-picker strong,
 .sidebar .inline-check {
-  color: var(--sidebar-text);
+  color: var(--ink);
 }
 
 .sidebar .route-asset-option {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: #fff;
+  border-color: var(--line);
 }
 
 .sidebar .route-asset-option strong {
-  color: var(--sidebar-text);
+  color: var(--ink);
 }
 
 .sidebar .route-asset-option small {
-  color: var(--sidebar-muted);
+  color: var(--muted);
 }
 
 .sidebar .current-user-label {
@@ -1022,6 +1095,174 @@ textarea:disabled {
 .sidebar .sidebar-sub-drawer > summary span:last-child {
   background: #dfeee9;
   color: #24433a;
+}
+
+html[data-theme="dark"] .app-header,
+html[data-theme="dark"] .login-card,
+html[data-theme="dark"] .report-card,
+html[data-theme="dark"] .workspace > section,
+html[data-theme="dark"] .work-orders-panel,
+html[data-theme="dark"] .asset-table-panel,
+html[data-theme="dark"] .asset-panel,
+html[data-theme="dark"] .selected-card,
+html[data-theme="dark"] .metric-card,
+html[data-theme="dark"] .table-wrap,
+html[data-theme="dark"] .setup-drawer,
+html[data-theme="dark"] .setup-subdrawer,
+html[data-theme="dark"] .template-editor,
+html[data-theme="dark"] .user-list-item,
+html[data-theme="dark"] .location-editor,
+html[data-theme="dark"] .activity-log-item,
+html[data-theme="dark"] .inventory-card,
+html[data-theme="dark"] .inventory-item,
+html[data-theme="dark"] .work-order-card,
+html[data-theme="dark"] .service-request-card,
+html[data-theme="dark"] .completed-card,
+html[data-theme="dark"] .create-new-menu,
+html[data-theme="dark"] .work-create-drawer,
+html[data-theme="dark"] .asset-import-drawer,
+html[data-theme="dark"] .metric-dropdown,
+html[data-theme="dark"] .command-palette,
+html[data-theme="dark"] .modal,
+html[data-theme="dark"] .panel-schedule-sheet,
+html[data-theme="dark"] .route-asset-option,
+html[data-theme="dark"] .template-route-box,
+html[data-theme="dark"] .route-complete-form {
+  background-color: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .login-screen,
+html[data-theme="dark"] .report-screen {
+  background:
+    radial-gradient(circle at 18% 15%, rgba(47, 200, 170, 0.12), transparent 28rem),
+    radial-gradient(circle at 80% 10%, rgba(143, 230, 216, 0.08), transparent 24rem),
+    var(--paper);
+}
+
+html[data-theme="dark"] .app-header {
+  background: rgba(23, 34, 42, 0.94);
+  border-bottom-color: var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+html[data-theme="dark"] .user-chip,
+html[data-theme="dark"] .status-card,
+html[data-theme="dark"] .asset-detail-card,
+html[data-theme="dark"] .check-row,
+html[data-theme="dark"] .panel-schedule-overview > *,
+html[data-theme="dark"] .pm-calendar-day,
+html[data-theme="dark"] .pm-calendar-item,
+html[data-theme="dark"] .pm-calendar-equipment-card,
+html[data-theme="dark"] .pm-calendar-cell,
+html[data-theme="dark"] .dashboard-filter-bar,
+html[data-theme="dark"] .global-search-results,
+html[data-theme="dark"] .record-card {
+  background: #1c2932;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background: #101820;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #81949a;
+}
+
+html[data-theme="dark"] .muted,
+html[data-theme="dark"] small,
+html[data-theme="dark"] .user-chip span,
+html[data-theme="dark"] .role-picker,
+html[data-theme="dark"] .user-switcher,
+html[data-theme="dark"] .theme-switcher,
+html[data-theme="dark"] .report-context,
+html[data-theme="dark"] .report-note {
+  color: var(--muted);
+}
+
+html[data-theme="dark"] .asset-table th,
+html[data-theme="dark"] .asset-table td,
+html[data-theme="dark"] table th,
+html[data-theme="dark"] table td {
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .asset-table th,
+html[data-theme="dark"] table th,
+html[data-theme="dark"] .work-create-drawer summary {
+  background: #142029;
+  color: var(--muted);
+}
+
+html[data-theme="dark"] .asset-table tbody tr:hover,
+html[data-theme="dark"] .asset-table .selected-row,
+html[data-theme="dark"] .route-asset-option:hover {
+  background: rgba(47, 200, 170, 0.12);
+}
+
+html[data-theme="dark"] button.secondary,
+html[data-theme="dark"] a.secondary {
+  background: #17222a;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] button.secondary:hover,
+html[data-theme="dark"] a.secondary:hover {
+  background: var(--accent-soft);
+  border-color: rgba(47, 200, 170, 0.38);
+}
+
+html[data-theme="dark"] .sidebar .user-list-item,
+html[data-theme="dark"] .sidebar .location-editor,
+html[data-theme="dark"] .sidebar .template-editor,
+html[data-theme="dark"] .sidebar .activity-log-item,
+html[data-theme="dark"] .sidebar .template-route-box,
+html[data-theme="dark"] .sidebar .route-complete-form,
+html[data-theme="dark"] .sidebar .route-asset-option {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+html[data-theme="dark"] .sidebar .user-list-item,
+html[data-theme="dark"] .sidebar .user-list-item strong,
+html[data-theme="dark"] .sidebar .location-editor,
+html[data-theme="dark"] .sidebar .location-editor strong,
+html[data-theme="dark"] .sidebar .template-editor,
+html[data-theme="dark"] .sidebar .template-editor strong,
+html[data-theme="dark"] .sidebar .template-editor label,
+html[data-theme="dark"] .sidebar .template-editor summary,
+html[data-theme="dark"] .sidebar .template-route-box summary,
+html[data-theme="dark"] .sidebar .route-complete-form strong,
+html[data-theme="dark"] .sidebar .route-asset-picker strong,
+html[data-theme="dark"] .sidebar .route-asset-option strong,
+html[data-theme="dark"] .sidebar .inline-check {
+  color: var(--sidebar-text);
+}
+
+html[data-theme="dark"] .sidebar .user-list-item small,
+html[data-theme="dark"] .sidebar .location-editor small,
+html[data-theme="dark"] .sidebar .template-editor small,
+html[data-theme="dark"] .sidebar .template-editor .muted,
+html[data-theme="dark"] .sidebar .route-asset-option small,
+html[data-theme="dark"] .sidebar .activity-log-item p,
+html[data-theme="dark"] .sidebar .activity-log-item span {
+  color: var(--sidebar-muted);
+}
+
+html[data-theme="dark"] .sidebar .template-editor input,
+html[data-theme="dark"] .sidebar .template-editor select,
+html[data-theme="dark"] .sidebar .template-editor textarea {
+  background: #101820;
+  color: var(--ink);
 }
 
 .quick-add,
@@ -1515,7 +1756,7 @@ textarea {
 .template-route-box,
 .route-complete-form {
   margin-top: 8px;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.5);
@@ -1528,13 +1769,28 @@ textarea {
 
 .route-asset-picker {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+}
+
+.route-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.route-equipment-search {
+  display: grid;
+  gap: 6px;
+}
+
+.route-equipment-search input {
+  min-height: 38px;
 }
 
 .route-asset-list {
   display: grid;
-  gap: 6px;
-  max-height: 240px;
+  gap: 8px;
+  max-height: 320px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -1544,7 +1800,7 @@ textarea {
   grid-template-columns: auto 1fr;
   gap: 8px;
   align-items: start;
-  padding: 8px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -1565,6 +1821,28 @@ textarea {
 .route-asset-option small {
   color: var(--muted);
   line-height: 1.35;
+}
+
+.sidebar .template-route-box {
+  margin-right: -8px;
+  margin-left: -8px;
+}
+
+.sidebar .route-schedule-grid {
+  grid-template-columns: 1fr;
+}
+
+.sidebar .route-asset-option {
+  grid-template-columns: 20px minmax(0, 1fr);
+}
+
+.sidebar .route-asset-option span {
+  min-width: 0;
+}
+
+.sidebar .route-asset-option strong,
+.sidebar .route-asset-option small {
+  overflow-wrap: anywhere;
 }
 
 .asset-import-body {
@@ -5659,6 +5937,19 @@ body.panel-schedule-open {
     display: none;
   }
 
+  .theme-switcher {
+    flex: 0 0 92px;
+    min-width: 0;
+    font-size: 10px;
+  }
+
+  .theme-switcher select {
+    min-height: 38px;
+    padding: 0 24px 0 9px;
+    font-size: 11px;
+    border-radius: 999px;
+  }
+
   .user-chip {
     flex: 1 1 auto;
     min-width: 0;
@@ -5714,6 +6005,12 @@ body.panel-schedule-open {
     box-shadow: none;
     font-size: 11px;
     backdrop-filter: blur(12px);
+  }
+
+  html[data-theme="dark"] #logoutBtn {
+    color: var(--ink);
+    background: #17222a;
+    border-color: var(--line);
   }
 
   .app-shell {
@@ -6674,4 +6971,53 @@ body.panel-schedule-open {
   .print-label span {
     font-size: 10px;
   }
+}
+
+html[data-theme="dark"] .workspace,
+html[data-theme="dark"] .app-shell,
+html[data-theme="dark"] .asset-table-panel,
+html[data-theme="dark"] .work-orders-panel,
+html[data-theme="dark"] .service-request-panel,
+html[data-theme="dark"] .completed-pm-panel,
+html[data-theme="dark"] .inventory-panel,
+html[data-theme="dark"] .metric-card,
+html[data-theme="dark"] .selected-card,
+html[data-theme="dark"] .table-wrap,
+html[data-theme="dark"] .asset-table tbody tr,
+html[data-theme="dark"] .inventory-item,
+html[data-theme="dark"] .inventory-item-drawer,
+html[data-theme="dark"] .inventory-detail-panel,
+html[data-theme="dark"] .work-order-card,
+html[data-theme="dark"] .service-request-card,
+html[data-theme="dark"] .completed-card,
+html[data-theme="dark"] .panel-card,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .pm-calendar-day,
+html[data-theme="dark"] .pm-calendar-item,
+html[data-theme="dark"] .pm-calendar-equipment-card,
+html[data-theme="dark"] .pm-calendar-cell,
+html[data-theme="dark"] .route-asset-option {
+  background-color: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .metric-warn,
+html[data-theme="dark"] .metric-danger,
+html[data-theme="dark"] .metric-card {
+  background: #1c2932;
+}
+
+html[data-theme="dark"] .metric-card span,
+html[data-theme="dark"] .metric-card p,
+html[data-theme="dark"] .inventory-main strong,
+html[data-theme="dark"] .inventory-main small,
+html[data-theme="dark"] .inventory-main span,
+html[data-theme="dark"] .inventory-main p {
+  color: inherit;
+}
+
+html[data-theme="dark"] .status-badge,
+html[data-theme="dark"] [class*="badge"] {
+  border-color: rgba(255, 255, 255, 0.18);
 }
