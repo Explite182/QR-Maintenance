@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260720-inventory-edit-qr-nfc">
+    <link rel="stylesheet" href="styles.css?v=20260720-inventory-create-menu">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -451,6 +451,7 @@
             <button id="newEquipmentBtn" type="button">New Equipment</button>
             <button id="newIssueBtn" type="button" class="secondary">New Ticket</button>
             <button id="newServiceRequestBtn" type="button" class="secondary">New Service Request</button>
+            <button id="newInventoryBtn" type="button" class="secondary">New Inventory Item</button>
           </div>
         </div>
       </section>
@@ -933,12 +934,11 @@
         <div class="section-title clickable-panel-title" data-panel-toggle="inventoryPanel">
           <h2>Inventory</h2>
           <div class="panel-title-actions">
-            <button id="inventoryOpenFormBtn" type="button" class="secondary mini" data-open-inventory-form>+ Add Item</button>
             <span id="inventoryCount">0</span>
           </div>
         </div>
         <div data-panel-body>
-          <details id="inventoryCreateDrawer" class="service-request-create-drawer inventory-create-drawer">
+          <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
             <summary>Add Inventory Item</summary>
             <form id="inventoryForm" class="stack compact-form">
               <div class="form-grid">
@@ -1281,6 +1281,7 @@
       <button type="button" data-mobile-create-action="newEquipment">Add Equipment</button>
       <button type="button" data-mobile-create-action="newTicket">Create Ticket</button>
       <button type="button" data-mobile-create-action="newServiceRequest">Create Service Call</button>
+      <button type="button" data-mobile-create-action="newInventory">Add Inventory Item</button>
     </div>
   </nav>
 
@@ -1379,7 +1380,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260720-inventory-edit-qr-nfc"></script>
+  <script src="app.js?v=20260720-inventory-create-menu"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

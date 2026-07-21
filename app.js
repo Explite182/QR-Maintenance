@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-inventory-edit-qr-nfc";
+const SITEWORKS_APP_VERSION = "20260720-inventory-create-menu";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -158,6 +158,7 @@ const els = {
   newEquipmentBtn: document.getElementById("newEquipmentBtn"),
   newIssueBtn: document.getElementById("newIssueBtn"),
   newServiceRequestBtn: document.getElementById("newServiceRequestBtn"),
+  newInventoryBtn: document.getElementById("newInventoryBtn"),
   mobileCreateBtn: document.getElementById("mobileCreateBtn"),
   mobileCreateMenu: document.getElementById("mobileCreateMenu"),
   newIssueDrawer: document.getElementById("newIssueDrawer"),
@@ -1640,8 +1641,8 @@ document.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
   if (!canManageInventory() || !els.inventoryCreateDrawer) return;
-  els.inventoryCreateDrawer.open = true;
-  els.inventoryCreateDrawer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  closeCreateNewMenu();
+  openTopActionDrawer(els.inventoryCreateDrawer);
   window.setTimeout(() => els.inventoryName?.focus(), 120);
 });
 
@@ -1806,7 +1807,7 @@ els.createNewBtn?.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #createNewBtn, #createNewMenu, #mobileCreateBtn, #mobileCreateMenu")) return;
+  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #inventoryCreateDrawer, #createNewBtn, #createNewMenu, #mobileCreateBtn, #mobileCreateMenu")) return;
   closeTopActionDrawers();
   closeMetricMenus();
   closeCreateNewMenu();
@@ -1825,6 +1826,12 @@ els.newServiceRequestBtn?.addEventListener("click", () => {
   closeCreateNewMenu();
   renderServiceRequestFormOptions();
   openTopActionDrawer(els.serviceRequestCreateDrawer);
+});
+
+els.newInventoryBtn?.addEventListener("click", () => {
+  if (!canManageInventory()) return;
+  closeCreateNewMenu();
+  openTopActionDrawer(els.inventoryCreateDrawer);
 });
 
 els.prevAssetPageBtn.addEventListener("click", () => {
@@ -2266,6 +2273,8 @@ els.inventoryForm?.addEventListener("submit", (event) => {
     els.inventoryStatus.textContent = `Added ${item.name}.`;
     els.inventoryStatus.className = "inline-status is-ok";
   }
+  closeTopActionDrawers();
+  showCreationConfirmation(`Inventory item created: ${item.name}`);
   render();
 });
 
@@ -3294,7 +3303,8 @@ function renderRole() {
   const canManageTemplates = canManageTemplateSetup();
   const canAddAssets = canAddEquipment();
   const canCreateTickets = canCreateWorkOrders();
-  const canUseNewActions = canAddAssets || canCreateTickets || canCreateServiceRequests();
+  const canCreateInventory = canManageInventory();
+  const canUseNewActions = canAddAssets || canCreateTickets || canCreateServiceRequests() || canCreateInventory;
   const isCustomer = currentRole === "Customer";
   const hasAdminToolsAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed;
   const canUseWorkNav = !isCustomer;
@@ -3312,10 +3322,12 @@ function renderRole() {
   els.newEquipmentBtn?.classList.toggle("hidden", !canAddAssets);
   els.newIssueBtn?.classList.toggle("hidden", !canCreateTickets);
   els.newServiceRequestBtn?.classList.toggle("hidden", !canCreateServiceRequests());
+  els.newInventoryBtn?.classList.toggle("hidden", !canCreateInventory);
   if (els.createNewBtn) els.createNewBtn.disabled = !canUseNewActions;
   if (els.newEquipmentBtn) els.newEquipmentBtn.disabled = !canAddAssets;
   if (els.newIssueBtn) els.newIssueBtn.disabled = !canCreateTickets;
   if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canCreateServiceRequests();
+  if (els.newInventoryBtn) els.newInventoryBtn.disabled = !canCreateInventory;
   renderMobileCreateActions();
   els.adminToolsDrawer.classList.toggle("hidden", !hasAdminToolsAccess);
   if (!hasAdminToolsAccess) els.adminToolsDrawer.open = false;
@@ -5822,13 +5834,13 @@ function renderCompletedTicketItem(record) {
 
 function moveTopActionDrawers() {
   if (!els.newActionBar) return;
-  [els.quickAddDrawer, els.newIssueDrawer, els.serviceRequestCreateDrawer].filter(Boolean).forEach((drawer) => {
+  [els.quickAddDrawer, els.newIssueDrawer, els.serviceRequestCreateDrawer, els.inventoryCreateDrawer].filter(Boolean).forEach((drawer) => {
     els.newActionBar.appendChild(drawer);
   });
 }
 
 function getTopActionDrawers() {
-  return [els.quickAddDrawer, els.newIssueDrawer, els.serviceRequestCreateDrawer].filter(Boolean);
+  return [els.quickAddDrawer, els.newIssueDrawer, els.serviceRequestCreateDrawer, els.inventoryCreateDrawer].filter(Boolean);
 }
 
 function closeTopActionDrawers(except = null) {
@@ -5905,7 +5917,9 @@ function renderMobileCreateActions() {
     ?.classList.toggle("hidden", !canCreateWorkOrders());
   els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newServiceRequest']")
     ?.classList.toggle("hidden", !canCreateServiceRequests());
-  els.mobileCreateBtn?.classList.toggle("hidden", !(canAddEquipment() || canCreateWorkOrders() || canCreateServiceRequests()));
+  els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newInventory']")
+    ?.classList.toggle("hidden", !canManageInventory());
+  els.mobileCreateBtn?.classList.toggle("hidden", !(canAddEquipment() || canCreateWorkOrders() || canCreateServiceRequests() || canManageInventory()));
 }
 
 function runMobileCreateAction(action) {
@@ -5921,6 +5935,10 @@ function runMobileCreateAction(action) {
   if (action === "newServiceRequest" && canCreateServiceRequests()) {
     renderServiceRequestFormOptions();
     openMobileCreateDrawer(els.serviceRequestCreateDrawer);
+    return;
+  }
+  if (action === "newInventory" && canManageInventory()) {
+    openMobileCreateDrawer(els.inventoryCreateDrawer);
   }
 }
 
