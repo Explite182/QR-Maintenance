@@ -420,6 +420,7 @@ const els = {
   inventoryNotes: document.getElementById("inventoryNotes"),
   inventoryStatus: document.getElementById("inventoryStatus"),
   inventoryCount: document.getElementById("inventoryCount"),
+  inventoryOpenFormBtn: document.getElementById("inventoryOpenFormBtn"),
   inventoryList: document.getElementById("inventoryList"),
   serviceRequestCreateDrawer: document.getElementById("serviceRequestCreateDrawer"),
   serviceRequestForm: document.getElementById("serviceRequestForm"),
@@ -1631,6 +1632,17 @@ document.addEventListener("click", (event) => {
   closeOpenTicketActionMenus(event.target.closest(".ticket-action-menu"));
 });
 
+document.addEventListener("click", (event) => {
+  const openInventoryButton = event.target.closest("[data-open-inventory-form]");
+  if (!openInventoryButton) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!canManageInventory() || !els.inventoryCreateDrawer) return;
+  els.inventoryCreateDrawer.open = true;
+  els.inventoryCreateDrawer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  window.setTimeout(() => els.inventoryName?.focus(), 120);
+});
+
 document.addEventListener("click", async (event) => {
   const adjustButton = event.target.closest("[data-adjust-inventory-item]");
   if (adjustButton) {
@@ -2188,6 +2200,10 @@ els.inventoryForm?.addEventListener("submit", (event) => {
   els.inventoryForm.reset();
   els.inventoryQuantity.value = "0";
   els.inventoryMinStock.value = "0";
+  if (els.inventoryStatus) {
+    els.inventoryStatus.textContent = `Added ${item.name}.`;
+    els.inventoryStatus.className = "inline-status is-ok";
+  }
   render();
 });
 
@@ -3390,6 +3406,8 @@ function renderInventory() {
     els.inventoryCreateDrawer.classList.toggle("hidden", !canManageInventory());
     if (!canManageInventory()) els.inventoryCreateDrawer.open = false;
   }
+  els.inventoryOpenFormBtn?.classList.toggle("hidden", !canManageInventory());
+  if (els.inventoryOpenFormBtn) els.inventoryOpenFormBtn.disabled = !canManageInventory();
   els.inventoryForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canManageInventory();
   });
