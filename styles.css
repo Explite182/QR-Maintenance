@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260720-inventory-create-menu */
+/* SiteWorks styles version: 20260720-mobile-inventory-tab */
 
 :root {
   --ink: #172126;
@@ -6268,7 +6268,7 @@ body.panel-schedule-open {
     left: 0;
     z-index: 90;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 2px;
     padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
     background: rgba(255, 255, 255, 0.96);
@@ -6288,7 +6288,7 @@ body.panel-schedule-open {
     border: 0;
     border-radius: 14px;
     box-shadow: none;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 800;
   }
 
@@ -6319,6 +6319,8 @@ body.panel-schedule-open {
   .mobile-tab-dashboard::after,
   .mobile-tab-equipment::before,
   .mobile-tab-equipment::after,
+  .mobile-tab-inventory::before,
+  .mobile-tab-inventory::after,
   .mobile-tab-tickets::before,
   .mobile-tab-tickets::after,
   .mobile-tab-settings::before,
@@ -6419,6 +6421,20 @@ body.panel-schedule-open {
     left: 7px;
     height: 6px;
     border-width: 2px 0;
+  }
+
+  .mobile-tab-inventory::before {
+    inset: 4px 3px;
+    border-radius: 3px;
+  }
+
+  .mobile-tab-inventory::after {
+    top: 9px;
+    right: 6px;
+    left: 6px;
+    height: 0;
+    border-width: 2px 0 0;
+    box-shadow: 0 5px 0 currentColor;
   }
 
   .mobile-tab-tickets::before {
