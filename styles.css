@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260720-inventory-tab */
+/* SiteWorks styles version: 20260720-inventory-edit-qr-nfc */
 
 :root {
   --ink: #172126;
@@ -4564,6 +4564,66 @@ button.asset-detail-card {
   background: rgba(255, 255, 255, 0.78);
 }
 
+.inventory-item-drawer {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.inventory-item-drawer > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.inventory-item-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.inventory-detail-panel {
+  display: grid;
+  gap: 14px;
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.inventory-qr-card {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfa;
+}
+
+.inventory-qr-card img {
+  width: 92px;
+  height: 92px;
+}
+
+.inventory-qr-card div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.inventory-qr-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.inventory-edit-form {
+  padding: 0;
+}
+
 .inventory-main {
   display: grid;
   gap: 4px;
@@ -6304,6 +6364,20 @@ body.panel-schedule-open {
   .inventory-item {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+
+  .inventory-item-drawer > summary {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .inventory-qr-card {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .inventory-qr-card img {
+    width: 76px;
+    height: 76px;
   }
 
   .inventory-stock {

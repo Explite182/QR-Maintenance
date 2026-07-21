@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-inventory-tab";
+const SITEWORKS_APP_VERSION = "20260720-inventory-edit-qr-nfc";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -60,6 +60,7 @@ let globalQuery = "";
 let focusedWorkOrderId = "";
 let focusedServiceRequestId = "";
 let focusedCompletedRecordId = "";
+let focusedInventoryItemId = getInventoryItemIdFromUrl() || "";
 let serviceRequestDrawerTab = "notes";
 let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
@@ -451,8 +452,8 @@ const els = {
 moveTopActionDrawers();
 window.setTimeout(() => {
   render();
-  if (currentUser && getAssetIdFromUrl()) {
-    focusScannedAssetContext();
+  if (currentUser && isScannedItemUrl()) {
+    focusScannedAssetContext() || focusScannedInventoryContext();
   }
 }, 0);
 window.setTimeout(syncLoginQrReportPrompt, 0);
@@ -467,6 +468,7 @@ initPasswordRecoveryFromUrl();
 window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();
   restoreScannedAssetSelection();
+  restoreScannedInventorySelection();
   selectedId = getAssetIdFromUrl() || selectedId;
   syncFiltersToSelectedAsset();
   render();
@@ -481,7 +483,7 @@ async function handleLoginSubmit(event = null) {
     setQrLoginTrace("Signing in...");
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
     lastAuthError = "";
-    const isQrLogin = isQrAccessUrl() || Boolean(getAssetIdFromUrl());
+    const isQrLogin = isScannedItemUrl();
     const user = await runWithTimeout(
       signInWithSupabase(els.loginUsername.value, els.loginPassword.value, { fastProfileFallback: isQrLogin }),
       isQrLogin ? 20000 : 12000,
@@ -508,7 +510,7 @@ async function handleLoginSubmit(event = null) {
         finishQrLoginWithoutBlocking(localUser);
         return;
       }
-      els.loginError.textContent = "Opening scanned equipment...";
+      els.loginError.textContent = "Opening scanned item...";
       await runWithTimeout(openScannedAssetAfterLogin(), 5000);
       saveStateQuietly();
       els.loginForm.reset();
@@ -611,7 +613,7 @@ els.refreshCloudUsersBtn?.addEventListener("click", async () => {
 
 function setQrLoginTrace(message) {
   if (!els.loginError) return;
-  const prefix = (isQrAccessUrl() || getAssetIdFromUrl()) ? `QR ${SITEWORKS_APP_VERSION}: ` : "";
+  const prefix = isScannedItemUrl() ? `QR ${SITEWORKS_APP_VERSION}: ` : "";
   els.loginError.textContent = `${prefix}${message}`;
 }
 
@@ -622,7 +624,7 @@ function finishQrLoginWithoutBlocking(user) {
     state.currentUserId = user.id;
     rememberAdminUserSwitcher(user);
     upsertLocalUser(user);
-    setQrLoginTrace("Login accepted. Opening scanned equipment...");
+    setQrLoginTrace("Login accepted. Opening scanned item...");
     persistLocalStateOnly(false);
     const params = scannedQrParams();
     params.set("qr", "1");
@@ -740,10 +742,10 @@ async function updateRecoveredPassword(password) {
 }
 
 async function openScannedAssetAfterLogin() {
-  let openedScannedAsset = focusScannedAssetContext();
-  if (!openedScannedAsset && getAssetIdFromUrl()) {
+  let openedScannedAsset = focusScannedAssetContext() || focusScannedInventoryContext();
+  if (!openedScannedAsset && isScannedItemUrl()) {
     await runWithTimeout(refreshCloudDataFromSupabase(), 5000);
-    openedScannedAsset = focusScannedAssetContext();
+    openedScannedAsset = focusScannedAssetContext() || focusScannedInventoryContext();
   }
   if (!openedScannedAsset) closeAssetRegisterDrawer();
   return openedScannedAsset;
@@ -1643,9 +1645,18 @@ document.addEventListener("click", (event) => {
   window.setTimeout(() => els.inventoryName?.focus(), 120);
 });
 
+document.addEventListener("click", (event) => {
+  if (event.target.closest("button, input, select, textarea, a")) return;
+  const summary = event.target.closest("[data-inventory-item-summary]");
+  if (!summary) return;
+  focusedInventoryItemId = summary.dataset.inventoryItemSummary || "";
+});
+
 document.addEventListener("click", async (event) => {
   const adjustButton = event.target.closest("[data-adjust-inventory-item]");
   if (adjustButton) {
+    event.preventDefault();
+    event.stopPropagation();
     if (!canManageInventory()) return;
     const item = getInventoryItem(adjustButton.dataset.adjustInventoryItem);
     if (!item || !canManageInventoryCustomer(item.customerId)) return;
@@ -1659,15 +1670,66 @@ document.addEventListener("click", async (event) => {
   }
 
   const deleteButton = event.target.closest("[data-delete-inventory-item]");
-  if (!deleteButton) return;
+  if (deleteButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageInventory()) return;
+    const item = getInventoryItem(deleteButton.dataset.deleteInventoryItem);
+    if (!item || !canManageInventoryCustomer(item.customerId)) return;
+    if (!confirm(`Delete ${item.name} from inventory? This cannot be undone.`)) return;
+    state.inventoryItems = state.inventoryItems.filter((inventoryItem) => inventoryItem.id !== item.id);
+    addActivity("Inventory item deleted", item.name);
+    saveState();
+    await deleteStructuredRows("inventory_items", "id", [item.id]);
+    render();
+    return;
+  }
+
+  const copyButton = event.target.closest("[data-copy-inventory-link]");
+  if (copyButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const item = getInventoryItem(copyButton.dataset.copyInventoryLink);
+    if (!item || !canSeeCustomer(item.customerId)) return;
+    await copyText(getInventoryItemUrl(item.id));
+    copyButton.textContent = "Copied";
+    window.setTimeout(() => {
+      copyButton.textContent = copyButton.dataset.linkLabel || "Copy QR Link";
+    }, 1200);
+    return;
+  }
+
+  const printButton = event.target.closest("[data-print-inventory-qr]");
+  if (printButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const item = getInventoryItem(printButton.dataset.printInventoryQr);
+    if (!item || !canSeeCustomer(item.customerId)) return;
+    renderInventoryLabel(item);
+    window.print();
+    return;
+  }
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-inventory-edit-form]");
+  if (!form) return;
+  event.preventDefault();
   if (!canManageInventory()) return;
-  const item = getInventoryItem(deleteButton.dataset.deleteInventoryItem);
+  const item = getInventoryItem(form.dataset.inventoryEditForm);
   if (!item || !canManageInventoryCustomer(item.customerId)) return;
-  if (!confirm(`Delete ${item.name} from inventory? This cannot be undone.`)) return;
-  state.inventoryItems = state.inventoryItems.filter((inventoryItem) => inventoryItem.id !== item.id);
-  addActivity("Inventory item deleted", item.name);
+  const formData = new FormData(form);
+  item.category = String(formData.get("category") || "Parts");
+  item.name = String(formData.get("name") || "").trim() || item.name;
+  item.quantity = Math.max(0, Number(formData.get("quantity") || 0));
+  item.minStock = Math.max(0, Number(formData.get("minStock") || 0));
+  item.bin = String(formData.get("bin") || "").trim();
+  item.supplier = String(formData.get("supplier") || "").trim();
+  item.nfcTag = String(formData.get("nfcTag") || "").trim();
+  item.notes = String(formData.get("notes") || "").trim();
+  item.updatedAt = new Date().toISOString();
+  addActivity("Inventory item edited", item.name);
   saveState();
-  await deleteStructuredRows("inventory_items", "id", [item.id]);
   render();
 });
 
@@ -2726,6 +2788,7 @@ function render() {
   if (!currentUser) return;
   resetInactivityLogoutTimer();
   restoreScannedAssetSelection();
+  restoreScannedInventorySelection();
   syncPublicReportsFromSupabase();
   ensureSelection();
   renderUsers();
@@ -3412,6 +3475,7 @@ function renderInventory() {
     control.disabled = !canManageInventory();
   });
   const items = visibleInventoryItems();
+  if (focusedInventoryItemId && !items.some((item) => item.id === focusedInventoryItemId)) focusedInventoryItemId = "";
   if (els.inventoryCount) els.inventoryCount.textContent = items.length;
   els.inventoryList.innerHTML = items.length
     ? items.map(renderInventoryItem).join("")
@@ -3423,28 +3487,94 @@ function renderInventoryItem(item) {
   const lowStock = Number(item.minStock || 0) > 0 && Number(item.quantity || 0) <= Number(item.minStock || 0);
   const canManage = canManageInventoryCustomer(item.customerId);
   const customerLabel = currentRole === "Admin" ? `${customer?.name || "No customer"} | ` : "";
+  const inventoryUrl = getInventoryItemUrl(item.id);
   const stockBadge = lowStock
     ? `<span class="status-badge badge-warn">Low stock</span>`
     : `<span class="status-badge badge-ok">In stock</span>`;
   return `
-    <article class="inventory-item">
-      <div class="inventory-main">
-        <strong>${escapeHtml(item.name)}</strong>
-        <small>${escapeHtml(customerLabel)}${escapeHtml(item.category || "Parts")}${item.bin ? ` | ${escapeHtml(item.bin)}` : ""}</small>
-        ${item.supplier ? `<span>${escapeHtml(item.supplier)}</span>` : ""}
-        ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
+    <details class="inventory-item inventory-item-drawer" ${item.id === focusedInventoryItemId ? "open" : ""}>
+      <summary data-inventory-item-summary="${escapeAttribute(item.id)}">
+        <div class="inventory-main">
+          <strong>${escapeHtml(item.name)}</strong>
+          <small>${escapeHtml(customerLabel)}${escapeHtml(item.category || "Parts")}${item.bin ? ` | ${escapeHtml(item.bin)}` : ""}</small>
+          ${item.supplier ? `<span>${escapeHtml(item.supplier)}</span>` : ""}
+          ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
+        </div>
+        <div class="inventory-stock">
+          <span>${stockBadge}</span>
+          <strong>${escapeHtml(formatInventoryNumber(item.quantity))}</strong>
+          <small>Min ${escapeHtml(formatInventoryNumber(item.minStock))}</small>
+        </div>
+        <div class="inventory-actions">
+          <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="-1" ${canManage ? "" : "disabled"}>-</button>
+          <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="1" ${canManage ? "" : "disabled"}>+</button>
+          <button type="button" class="secondary mini" data-copy-inventory-link="${escapeAttribute(item.id)}" data-link-label="Copy QR Link">Copy QR Link</button>
+          <button type="button" class="secondary mini" data-print-inventory-qr="${escapeAttribute(item.id)}">Print QR</button>
+          <button type="button" class="secondary mini danger-action" data-delete-inventory-item="${escapeAttribute(item.id)}" ${canManage ? "" : "disabled"}>Delete</button>
+        </div>
+      </summary>
+      <div class="inventory-detail-panel">
+        <div class="inventory-qr-card">
+          <img alt="Inventory QR code for ${escapeAttribute(item.name)}" src="${qrUrl(inventoryUrl)}">
+          <div>
+            <strong>QR / NFC link</strong>
+            <span>${escapeHtml(inventoryUrl)}</span>
+            <button type="button" class="secondary mini" data-copy-inventory-link="${escapeAttribute(item.id)}" data-link-label="Copy NFC Link">Copy NFC Link</button>
+          </div>
+        </div>
+        ${canManage ? renderInventoryEditForm(item) : `<p class="muted">Inventory can be edited by Admin or Manager users.</p>`}
       </div>
-      <div class="inventory-stock">
-        <span>${stockBadge}</span>
-        <strong>${escapeHtml(formatInventoryNumber(item.quantity))}</strong>
-        <small>Min ${escapeHtml(formatInventoryNumber(item.minStock))}</small>
+    </details>
+  `;
+}
+
+function renderInventoryEditForm(item) {
+  return `
+    <form class="stack compact-form inventory-edit-form" data-inventory-edit-form="${escapeAttribute(item.id)}">
+      <div class="form-grid">
+        <label>
+          Category
+          <select name="category">
+            ${["Parts", "Material", "Tool", "Consumable"].map((category) =>
+              `<option ${item.category === category ? "selected" : ""}>${escapeHtml(category)}</option>`
+            ).join("")}
+          </select>
+        </label>
+        <label>
+          Item name
+          <input name="name" required value="${escapeAttribute(item.name)}">
+        </label>
       </div>
-      <div class="inventory-actions">
-        <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="-1" ${canManage ? "" : "disabled"}>-</button>
-        <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="1" ${canManage ? "" : "disabled"}>+</button>
-        <button type="button" class="secondary mini danger-action" data-delete-inventory-item="${escapeAttribute(item.id)}" ${canManage ? "" : "disabled"}>Delete</button>
+      <div class="form-grid">
+        <label>
+          Quantity on hand
+          <input name="quantity" type="number" min="0" step="1" value="${escapeAttribute(item.quantity)}">
+        </label>
+        <label>
+          Minimum stock
+          <input name="minStock" type="number" min="0" step="1" value="${escapeAttribute(item.minStock)}">
+        </label>
       </div>
-    </article>
+      <div class="form-grid">
+        <label>
+          Location / bin
+          <input name="bin" value="${escapeAttribute(item.bin || "")}">
+        </label>
+        <label>
+          Supplier
+          <input name="supplier" value="${escapeAttribute(item.supplier || "")}">
+        </label>
+      </div>
+      <label>
+        NFC tag
+        <input name="nfcTag" value="${escapeAttribute(item.nfcTag || "")}" placeholder="Tag ID, label number, or written URL note">
+      </label>
+      <label>
+        Notes
+        <textarea name="notes" rows="3">${escapeHtml(item.notes || "")}</textarea>
+      </label>
+      <button type="submit" class="primary">Save Inventory Item</button>
+    </form>
   `;
 }
 
@@ -8678,6 +8808,22 @@ function renderLabels(assets = filteredAssets()) {
   }).join("");
 }
 
+function renderInventoryLabel(item) {
+  const customer = getCustomer(item.customerId);
+  els.labelSheet.innerHTML = `
+    <div class="print-label">
+      <img alt="" src="${qrUrl(getInventoryItemUrl(item.id))}">
+      <div>
+        <span class="label-brand">SiteWorks Inventory</span>
+        <strong>${escapeHtml(item.name)}</strong>
+        <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
+        <span>${escapeHtml(item.category || "Parts")}${item.bin ? ` | ${escapeHtml(item.bin)}` : ""}</span>
+        <span>Scan for inventory count and notes</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderReportLabels(assets = filteredAssets()) {
   const assetLabels = assets.map((asset) => {
     const customer = getCustomer(asset.customerId);
@@ -8786,6 +8932,17 @@ function restoreScannedAssetSelection() {
   selectedLocationId = defaultLocationSelection();
 }
 
+function restoreScannedInventorySelection() {
+  const inventoryItemId = getInventoryItemIdFromUrl();
+  if (!inventoryItemId) return;
+  const item = getInventoryItem(inventoryItemId);
+  if (!item || !canSeeCustomer(item.customerId)) return;
+  focusedInventoryItemId = item.id;
+  selectedCustomerId = item.customerId || selectedCustomerId;
+  selectedLocationId = "all";
+  openPanel("inventoryPanel");
+}
+
 function focusScannedAssetContext() {
   const scannedAssetId = getAssetIdFromUrl();
   if (!scannedAssetId || !currentUser) return false;
@@ -8803,6 +8960,22 @@ function focusScannedAssetContext() {
   window.setTimeout(() => {
     openPanel("assetPanel");
     els.assetPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
+  return true;
+}
+
+function focusScannedInventoryContext() {
+  const inventoryItemId = getInventoryItemIdFromUrl();
+  if (!inventoryItemId || !currentUser) return false;
+  restoreScannedInventorySelection();
+  const item = getInventoryItem(inventoryItemId);
+  if (!item || !canSeeCustomer(item.customerId)) return false;
+  closeOtherSidebarTargets("inventoryPanel");
+  openPanel("inventoryPanel");
+  setMobileTabState("inventoryPanel");
+  window.setTimeout(() => {
+    openPanel("inventoryPanel");
+    els.inventoryPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 0);
   return true;
 }
@@ -9734,6 +9907,20 @@ function getAssetUrl(id) {
   return `${base}?qr=1&a=${encodeURIComponent(id)}${params ? `&${params}` : ""}`;
 }
 
+function getInventoryItemUrl(id) {
+  const base = getQrBaseUrl();
+  const item = getInventoryItem(id);
+  const params = new URLSearchParams();
+  params.set("qr", "1");
+  params.set("inventory", "1");
+  params.set("i", id);
+  if (item?.name) params.set("n", item.name);
+  if (item?.customerId) params.set("cid", item.customerId);
+  const customer = getCustomer(item?.customerId);
+  if (customer?.name) params.set("c", customer.name);
+  return `${base}?${params.toString()}`;
+}
+
 function getReportAssetUrl(id) {
   const base = getQrBaseUrl();
   const params = getCompactAssetParams(id);
@@ -9760,6 +9947,8 @@ function clearSelectedAssetUrl() {
   clearRememberedScannedQrContext();
   const params = new URLSearchParams(location.search);
   params.delete("a");
+  params.delete("i");
+  params.delete("inventory");
   params.delete("qr");
   const query = params.toString();
   history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}`);
@@ -9776,7 +9965,7 @@ function clearRememberedScannedQrContext() {
 
 function rememberScannedQrContext() {
   const params = new URLSearchParams(location.search);
-  if (params.get("qr") !== "1" && !params.get("a")) return;
+  if (params.get("qr") !== "1" && !params.get("a") && !params.get("i")) return;
   try {
     sessionStorage.setItem(SCANNED_QR_CONTEXT_KEY, params.toString());
     localStorage.setItem(SCANNED_QR_CONTEXT_KEY, params.toString());
@@ -9787,7 +9976,7 @@ function rememberScannedQrContext() {
 
 function cleanQrLoginUrlForUnauthenticatedUser() {
   const params = new URLSearchParams(location.search);
-  const isScannedQr = params.get("qr") === "1" || params.get("a");
+  const isScannedQr = params.get("qr") === "1" || params.get("a") || params.get("i");
   if (!isScannedQr || currentUser || isPublicReportUrl()) return;
   const cleanParams = new URLSearchParams();
   cleanParams.set("qrlogin", "1");
@@ -9813,7 +10002,7 @@ function getRememberedScannedQrParam(name) {
 
 function scannedQrParams() {
   const currentParams = new URLSearchParams(location.search);
-  if (currentParams.get("qr") === "1" || currentParams.get("a") || currentParams.get("n")) return currentParams;
+  if (currentParams.get("qr") === "1" || currentParams.get("a") || currentParams.get("i") || currentParams.get("n")) return currentParams;
   return getRememberedScannedQrParams();
 }
 
@@ -9842,8 +10031,21 @@ function getAssetIdFromUrl() {
   return getRememberedScannedQrParam("a");
 }
 
+function getInventoryItemIdFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const queryId = params.get("i") || params.get("inventoryId");
+  if (queryId) return queryId;
+  const match = location.hash.match(/^#inventory\/([^?]+)/);
+  if (match) return match[1];
+  return getRememberedScannedQrParam("i") || getRememberedScannedQrParam("inventoryId");
+}
+
 function isQrAccessUrl() {
   return new URLSearchParams(location.search).get("qr") === "1" || getRememberedScannedQrParam("qr") === "1";
+}
+
+function isScannedItemUrl() {
+  return isQrAccessUrl() || Boolean(getAssetIdFromUrl()) || Boolean(getInventoryItemIdFromUrl());
 }
 
 function isPublicReportUrl() {
@@ -11068,6 +11270,7 @@ function inventoryItemFromStructuredRow(row) {
     minStock: Number(row.min_stock || 0),
     bin: row.bin || "",
     supplier: row.supplier || "",
+    nfcTag: row.nfc_tag || "",
     notes: row.notes || "",
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
@@ -11509,6 +11712,7 @@ async function syncStructuredDataToSupabase() {
       min_stock: Number(item.minStock || 0),
       bin: item.bin || "",
       supplier: item.supplier || "",
+      nfc_tag: item.nfcTag || "",
       notes: item.notes || "",
       created_at: item.createdAt || new Date().toISOString(),
       updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
@@ -11901,6 +12105,7 @@ function normalizeState(input) {
     minStock: Math.max(0, Number(item.minStock ?? 0)),
     bin: item.bin || "",
     supplier: item.supplier || "",
+    nfcTag: item.nfcTag || "",
     notes: item.notes || "",
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
