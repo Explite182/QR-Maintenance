@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260721-pm-route */
+/* SiteWorks styles version: 20260721-template-routes */
 
 :root {
   --ink: #172126;
@@ -1469,8 +1469,59 @@ textarea {
   cursor: pointer;
 }
 
-.pm-route-drawer form {
-  padding: 0 12px 12px;
+.template-route-box,
+.route-complete-form {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.template-route-box summary {
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.route-asset-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.route-asset-list {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.route-asset-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.route-asset-option input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.route-asset-option span,
+.route-asset-option small {
+  display: block;
+}
+
+.route-asset-option small {
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 .asset-import-body {

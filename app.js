@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260721-pm-route";
+const SITEWORKS_APP_VERSION = "20260721-template-routes";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -298,18 +298,6 @@ const els = {
   selectPageAssetsBtn: document.getElementById("selectPageAssetsBtn"),
   clearSelectedAssetsBtn: document.getElementById("clearSelectedAssetsBtn"),
   printSelectedLabelsBtn: document.getElementById("printSelectedLabelsBtn"),
-  pmRouteBtn: document.getElementById("pmRouteBtn"),
-  pmRouteDrawer: document.getElementById("pmRouteDrawer"),
-  pmRouteForm: document.getElementById("pmRouteForm"),
-  pmRouteSummary: document.getElementById("pmRouteSummary"),
-  pmRouteTechnician: document.getElementById("pmRouteTechnician"),
-  pmRouteDate: document.getElementById("pmRouteDate"),
-  pmRouteReading: document.getElementById("pmRouteReading"),
-  pmRouteNotes: document.getElementById("pmRouteNotes"),
-  pmRoutePhoto: document.getElementById("pmRoutePhoto"),
-  pmRouteResult: document.getElementById("pmRouteResult"),
-  pmRouteCompleteChecklist: document.getElementById("pmRouteCompleteChecklist"),
-  pmRouteStatus: document.getElementById("pmRouteStatus"),
   exportAssetRegisterBtn: document.getElementById("exportAssetRegisterBtn"),
   assetRegisterDrawer: document.getElementById("assetRegisterDrawer"),
   customerFilterField: document.getElementById("customerFilterField"),
@@ -1033,9 +1021,14 @@ els.templateForm.addEventListener("submit", (event) => {
   render();
 });
 
-els.templateList?.addEventListener("submit", (event) => {
+els.templateList?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageTemplateSetup()) return;
+  const routeForm = event.target.closest("form[data-route-complete-template-id]");
+  if (routeForm) {
+    await completeTemplateRoute(routeForm);
+    return;
+  }
   const form = event.target.closest("form[data-template-id]");
   if (!form) return;
   const template = state.templates.find((item) => item.id === form.dataset.templateId);
@@ -1043,12 +1036,26 @@ els.templateList?.addEventListener("submit", (event) => {
   const formData = new FormData(form);
   const nextName = String(formData.get("name") || "").trim();
   const nextItems = parseTemplateItems(String(formData.get("items") || ""));
+  const routeEnabled = formData.get("routeEnabled") === "on";
+  const routeAssetIds = formData.getAll("routeAssetIds").map(String).filter(Boolean);
   if (!nextName || !nextItems.length) {
     alert("Enter a template name and at least one checklist item.");
     return;
   }
+  if (routeEnabled && !routeAssetIds.length) {
+    alert("Choose at least one equipment record for this scheduled route.");
+    return;
+  }
   template.name = nextName;
   template.items = nextItems;
+  template.route = {
+    ...(template.route || {}),
+    enabled: routeEnabled,
+    frequencyDays: Math.max(1, Number(formData.get("routeFrequencyDays") || 30)),
+    nextDueDate: String(formData.get("routeNextDueDate") || toDateInputValue(today)),
+    assignedTechnician: String(formData.get("routeTechnician") || "").trim(),
+    assetIds: routeAssetIds
+  };
   template.updatedAt = new Date().toISOString();
   addActivity("Maintenance template edited", template.name);
   saveState();
@@ -2225,66 +2232,6 @@ els.printReportLabelsBtn.addEventListener("click", () => {
   window.print();
 });
 
-els.pmRouteBtn?.addEventListener("click", () => {
-  const selectedAssets = selectedAssetsForRoute();
-  if (!selectedAssets.length) {
-    alert("Select at least one equipment row for a PM route.");
-    return;
-  }
-  if (els.pmRouteDate && !els.pmRouteDate.value) els.pmRouteDate.value = toDateInputValue(today);
-  setPmRouteStatus("");
-  if (els.pmRouteSummary) els.pmRouteSummary.textContent = pmRouteSummaryText(selectedAssets.length);
-  if (els.pmRouteDrawer) {
-    els.pmRouteDrawer.open = true;
-    els.pmRouteDrawer.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-});
-
-els.pmRouteForm?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!canCompletePm()) return;
-
-  const selectedAssets = selectedAssetsForRoute();
-  if (!selectedAssets.length) {
-    setPmRouteStatus("Select at least one equipment row first.", true);
-    return;
-  }
-
-  const technician = els.pmRouteTechnician?.value.trim() || "";
-  if (!technician) {
-    setPmRouteStatus("Enter a technician.", true);
-    return;
-  }
-
-  const photo = await readPhoto(els.pmRoutePhoto?.files?.[0]);
-  const completedAt = routeCompletedAtIso(els.pmRouteDate?.value);
-  const details = {
-    completedAt,
-    technician,
-    reading: els.pmRouteReading?.value.trim() || "",
-    notes: els.pmRouteNotes?.value.trim() || "",
-    result: els.pmRouteResult?.value || "Passed",
-    photo
-  };
-  const markChecklistComplete = Boolean(els.pmRouteCompleteChecklist?.checked);
-
-  selectedAssets.forEach((asset) => {
-    completePmForAsset(asset, {
-      ...details,
-      completedChecks: markChecklistComplete ? routeChecklistItemsForAsset(asset) : []
-    });
-  });
-
-  addActivity("PM route completed", `${selectedAssets.length} equipment record${selectedAssets.length === 1 ? "" : "s"} - ${details.result}`);
-  saveState();
-  selectedPrintAssetIds.clear();
-  els.pmRouteForm.reset();
-  if (els.pmRouteDate) els.pmRouteDate.value = toDateInputValue(today);
-  if (els.pmRouteDrawer) els.pmRouteDrawer.open = false;
-  showCreationConfirmation(`PM route completed for ${selectedAssets.length} equipment record${selectedAssets.length === 1 ? "" : "s"}.`);
-  render();
-});
-
 els.qrBaseUrlForm.addEventListener("submit", (event) => {
   event.preventDefault();
   state.qrBaseUrl = normalizeBaseUrl(els.qrBaseUrl.value);
@@ -2656,6 +2603,12 @@ document.addEventListener("click", (event) => {
     location.hash = `asset/${selectedId}`;
     render();
     document.getElementById("assetPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const pmCalendarRouteButton = event.target.closest("[data-pm-calendar-route]");
+  if (pmCalendarRouteButton) {
+    openTemplateRouteEditor(pmCalendarRouteButton.dataset.pmCalendarRoute);
     return;
   }
 
@@ -3496,11 +3449,6 @@ function renderRole() {
   els.pmForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canCompletePm();
   });
-  els.pmRouteForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
-    control.disabled = !canCompletePm();
-  });
-  if (els.pmRouteBtn) els.pmRouteBtn.disabled = selectedPrintAssetIds.size === 0 || !canCompletePm();
-  if (els.pmRouteDrawer && !canCompletePm()) els.pmRouteDrawer.open = false;
   els.assetInfoForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canEditEquipment();
   });
@@ -4122,15 +4070,37 @@ function renderTemplates() {
     : `<p class="muted">No maintenance templates added yet.</p>`;
 }
 
+function openTemplateRouteEditor(templateId) {
+  if (!templateId) return;
+  if (!canManageTemplateSetup()) {
+    alert("Ask an admin to open this scheduled route in Maintenance Templates.");
+    return;
+  }
+  openPanel("setupDrawer");
+  if (els.setupDrawer) els.setupDrawer.open = true;
+  render();
+  window.setTimeout(() => {
+    const editor = [...document.querySelectorAll("[data-template-editor]")]
+      .find((item) => item.dataset.templateEditor === templateId);
+    if (!editor) return;
+    editor.open = true;
+    editor.querySelector(".template-route-box")?.setAttribute("open", "");
+    editor.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
+}
+
 function renderTemplateEditor(template) {
   const usedCount = state.assets.filter((asset) => asset.templateId === template.id).length;
   const itemsText = (template.items || []).join("\n");
+  const route = normalizeTemplateRoute(template);
+  const routeAssets = templateRouteAssets(template);
+  const routeEnabled = Boolean(route.enabled);
   return `
-    <details class="template-editor setup-editor">
+    <details class="template-editor setup-editor" data-template-editor="${escapeAttribute(template.id)}">
       <summary>
         <span>
           <strong>${escapeHtml(template.name)}</strong>
-          <small>${usedCount} equipment record${usedCount === 1 ? "" : "s"} | ${(template.items || []).length} checklist item${(template.items || []).length === 1 ? "" : "s"}</small>
+          <small>${usedCount} equipment record${usedCount === 1 ? "" : "s"} | ${(template.items || []).length} checklist item${(template.items || []).length === 1 ? "" : "s"}${routeEnabled ? ` | Route: ${routeAssets.length} equipment` : ""}</small>
         </span>
       </summary>
       <form class="stack compact-form" data-template-id="${escapeAttribute(template.id)}">
@@ -4142,13 +4112,122 @@ function renderTemplateEditor(template) {
           Checklist items
           <textarea name="items" rows="5" required>${escapeHtml(itemsText)}</textarea>
         </label>
+        <details class="template-route-box" ${routeEnabled ? "open" : ""}>
+          <summary>Scheduled multi-equipment PM route</summary>
+          <label class="inline-check">
+            <input name="routeEnabled" type="checkbox" ${routeEnabled ? "checked" : ""}>
+            Show this template as one scheduled PM route on the calendar
+          </label>
+          <div class="form-grid">
+            <label>
+              Frequency days
+              <input name="routeFrequencyDays" type="number" min="1" value="${escapeAttribute(route.frequencyDays)}">
+            </label>
+            <label>
+              Next due date
+              <input name="routeNextDueDate" type="date" value="${escapeAttribute(route.nextDueDate)}">
+            </label>
+          </div>
+          <label>
+            Assigned technician
+            <input name="routeTechnician" value="${escapeAttribute(route.assignedTechnician)}" placeholder="Optional">
+          </label>
+          <div class="route-asset-picker">
+            <strong>Route equipment</strong>
+            ${renderTemplateRouteAssetPicker(route.assetIds)}
+          </div>
+          <p class="muted">When this route is completed, SiteWorks writes one completed PM record to each checked equipment record.</p>
+        </details>
         <div class="record-actions">
           <button type="submit" class="primary">Save Template</button>
           <button type="button" class="secondary danger-action" data-delete-template="${escapeAttribute(template.id)}" ${usedCount ? "disabled" : ""}>Delete</button>
         </div>
         ${usedCount ? `<p class="muted">Delete is disabled while equipment records use this template.</p>` : ""}
       </form>
+      ${routeEnabled ? renderTemplateRouteCompletionForm(template, route, routeAssets) : ""}
     </details>
+  `;
+}
+
+function normalizeTemplateRoute(template) {
+  const route = template?.route || {};
+  const nextDueDate = route.nextDueDate || toDateInputValue(today);
+  return {
+    enabled: Boolean(route.enabled),
+    frequencyDays: Math.max(1, Number(route.frequencyDays || 30)),
+    nextDueDate,
+    assignedTechnician: route.assignedTechnician || "",
+    assetIds: Array.isArray(route.assetIds) ? route.assetIds.filter(Boolean) : []
+  };
+}
+
+function renderTemplateRouteAssetPicker(selectedAssetIds = []) {
+  const selectedIds = new Set(selectedAssetIds);
+  const assets = state.assets
+    .filter((asset) => canSeeAsset(asset) && asset.customerId === selectedCustomerId)
+    .sort((a, b) => {
+      const locationCompare = (getLocation(a.locationId)?.name || "").localeCompare(getLocation(b.locationId)?.name || "");
+      return locationCompare || a.name.localeCompare(b.name);
+    });
+
+  if (!assets.length) {
+    return `<p class="muted">No equipment available for this customer.</p>`;
+  }
+
+  return `
+    <div class="route-asset-list">
+      ${assets.map((asset) => `
+        <label class="route-asset-option">
+          <input name="routeAssetIds" type="checkbox" value="${escapeAttribute(asset.id)}" ${selectedIds.has(asset.id) ? "checked" : ""}>
+          <span>
+            <strong>${escapeHtml(asset.name)}</strong>
+            <small>${escapeHtml(getLocation(asset.locationId)?.name || "No location")} | ${escapeHtml(getAssetEquipmentId(asset))}</small>
+          </span>
+        </label>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderTemplateRouteCompletionForm(template, route = normalizeTemplateRoute(template), assets = templateRouteAssets(template)) {
+  if (!canCompletePm()) return "";
+  const defaultTech = route.assignedTechnician || getCurrentUserLabel();
+  return `
+    <form class="stack compact-form route-complete-form" data-route-complete-template-id="${escapeAttribute(template.id)}">
+      <strong>Complete Route PM</strong>
+      <p class="muted">${assets.length} linked equipment record${assets.length === 1 ? "" : "s"} | Next due ${escapeHtml(formatDate(parseLocalDate(route.nextDueDate)))}</p>
+      <div class="form-grid">
+        <label>
+          Technician
+          <input name="technician" required value="${escapeAttribute(defaultTech)}">
+        </label>
+        <label>
+          Completed date
+          <input name="completedDate" type="date" required value="${escapeAttribute(toDateInputValue(today))}">
+        </label>
+      </div>
+      <label>
+        Result
+        <select name="result">
+          <option value="Passed">Passed</option>
+          <option value="Needs attention">Needs attention</option>
+          <option value="Failed">Failed</option>
+        </select>
+      </label>
+      <label>
+        Shared notes
+        <textarea name="notes" rows="3" placeholder="Findings, parts needed, or follow-up work"></textarea>
+      </label>
+      <label>
+        Shared photo evidence
+        <input name="photo" type="file" accept="image/*">
+      </label>
+      <label class="inline-check">
+        <input name="completeChecklist" type="checkbox" checked>
+        Mark this template checklist complete for each linked equipment
+      </label>
+      <button type="submit" class="primary" ${assets.length ? "" : "disabled"}>Complete Route Now</button>
+    </form>
   `;
 }
 
@@ -4840,10 +4919,11 @@ function startOfWeek(date) {
 }
 
 function pmCalendarRecords(windowInfo = pmCalendarWindow()) {
-  return filteredAssets()
+  const assetRecords = filteredAssets()
     .map((asset) => {
       const due = getDueInfo(asset);
       return {
+        kind: "asset",
         asset,
         due,
         dueDate: startOfDay(due.nextDate),
@@ -4852,8 +4932,65 @@ function pmCalendarRecords(windowInfo = pmCalendarWindow()) {
         template: getTemplate(asset.templateId)
       };
     })
-    .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end)
-    .sort((a, b) => a.dueDate - b.dueDate || a.asset.name.localeCompare(b.asset.name));
+    .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end);
+  const routeRecords = scheduledRouteCalendarRecords(windowInfo);
+  return [...assetRecords, ...routeRecords]
+    .sort((a, b) => a.dueDate - b.dueDate || pmCalendarRecordName(a).localeCompare(pmCalendarRecordName(b)));
+}
+
+function scheduledRouteCalendarRecords(windowInfo = pmCalendarWindow()) {
+  return state.templates
+    .map((template) => {
+      const route = normalizeTemplateRoute(template);
+      if (!route.enabled || !route.nextDueDate) return null;
+      const routeAssets = templateRouteAssets(template)
+        .filter((asset) => asset.customerId === selectedCustomerId)
+        .filter((asset) => selectedLocationId === "all" || asset.locationId === selectedLocationId)
+        .filter(matchesAssetGlobalSearch);
+      if (!routeAssets.length) return null;
+      const dueDate = startOfDay(parseLocalDate(route.nextDueDate));
+      const daysUntil = Math.ceil((dueDate - startOfDay(today)) / 86400000);
+      const customerIds = [...new Set(routeAssets.map((asset) => asset.customerId).filter(Boolean))];
+      const locationIds = [...new Set(routeAssets.map((asset) => asset.locationId).filter(Boolean))];
+      return {
+        kind: "route",
+        template,
+        route,
+        routeAssets,
+        dueDate,
+        due: {
+          nextDate: dueDate,
+          daysUntil,
+          label: daysUntil < 0 ? `${Math.abs(daysUntil)} days overdue` : daysUntil === 0 ? "Due today" : `Due in ${daysUntil} days`,
+          className: daysUntil < 0 ? "status-danger" : daysUntil === 0 ? "status-warning" : "status-ok"
+        },
+        customer: customerIds.length === 1 ? getCustomer(customerIds[0]) : null,
+        location: locationIds.length === 1 ? getLocation(locationIds[0]) : null
+      };
+    })
+    .filter(Boolean)
+    .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end);
+}
+
+function pmCalendarRecordName(record) {
+  return record.kind === "route" ? record.template?.name || "PM route" : record.asset?.name || "PM";
+}
+
+function pmCalendarRecordEquipmentLabel(record) {
+  if (record.kind === "route") {
+    return `${record.template?.name || "PM route"} (${record.routeAssets?.length || 0} equipment)`;
+  }
+  return record.asset?.name || "";
+}
+
+function pmCalendarRecordCriticality(record) {
+  if (record.kind === "route") return "Route";
+  return record.asset?.criticality || "Low";
+}
+
+function pmCalendarRecordStatus(record) {
+  if (record.kind === "route") return `${record.routeAssets?.length || 0} equipment`;
+  return openWorkOrdersForAsset(record.asset.id).length ? "Open ticket" : "Clear";
 }
 
 function renderPmCalendarGroups(records) {
@@ -4922,6 +5059,13 @@ function renderPmCalendarMonthGrid(records, windowInfo) {
 
 function renderPmCalendarTask(record) {
   const tone = pmCalendarTone(record);
+  if (record.kind === "route") {
+    return `
+      <button type="button" class="pm-calendar-task pm-calendar-task-${tone}" data-pm-calendar-route="${escapeAttribute(record.template.id)}">
+        ${escapeHtml(record.template.name || "PM route")}
+      </button>
+    `;
+  }
   return `
     <button type="button" class="pm-calendar-task pm-calendar-task-${tone}" data-pm-calendar-asset="${escapeAttribute(record.asset.id)}">
       ${escapeHtml(record.asset.name || record.template?.name || "PM")}
@@ -4930,6 +5074,12 @@ function renderPmCalendarTask(record) {
 }
 
 function pmCalendarTone(record) {
+  if (record.kind === "route") {
+    const text = `${record.template?.name || ""}`.toLowerCase();
+    if (record.due.daysUntil < 0) return "danger";
+    if (text.includes("fire") || text.includes("life") || text.includes("safety") || text.includes("emergency")) return "warning";
+    return "info";
+  }
   const text = `${record.asset.name || ""} ${record.asset.type || ""} ${record.template?.name || ""}`.toLowerCase();
   const criticality = String(record.asset.criticality || "").toLowerCase();
   if (record.due.daysUntil < 0 || criticality === "high") return "danger";
@@ -4940,11 +5090,12 @@ function pmCalendarTone(record) {
 
 function renderPmCalendarKeyEquipment(records) {
   const seen = new Set();
-  const uniqueRecords = records.filter((record) => {
+  const uniqueRecords = records.filter((record) => record.kind !== "route" && record.asset).filter((record) => {
     if (seen.has(record.asset.id)) return false;
     seen.add(record.asset.id);
     return true;
   }).slice(0, 12);
+  if (!uniqueRecords.length) return "";
   const rangeLabel = pmCalendarRange === "week" ? "week" : pmCalendarRange === "year" ? "year" : "month";
   return `
     <section class="pm-calendar-key-section">
@@ -4981,6 +5132,21 @@ function renderPmCalendarEquipmentCard(record) {
 }
 
 function renderPmCalendarItem(record) {
+  if (record.kind === "route") {
+    return `
+      <button type="button" class="pm-calendar-item pm-calendar-route-item" data-pm-calendar-route="${escapeAttribute(record.template.id)}">
+        <span>
+          <strong>${escapeHtml(record.template.name || "PM route")}</strong>
+          <small>${escapeHtml(record.customer?.name || "Multiple customers")} | ${escapeHtml(record.location?.name || "Multiple/all locations")}</small>
+        </span>
+        <span>
+          <small>Scheduled route</small>
+          <small>${record.routeAssets.length} equipment record${record.routeAssets.length === 1 ? "" : "s"} | Every ${escapeHtml(record.route.frequencyDays)} days</small>
+        </span>
+        <em>${escapeHtml(record.due.label)}</em>
+      </button>
+    `;
+  }
   const openTickets = openWorkOrdersForAsset(record.asset.id).length;
   const lastPm = record.asset.history?.[0]?.completedAt ? formatDate(new Date(record.asset.history[0].completedAt)) : "No completed PM";
   return `
@@ -5015,12 +5181,12 @@ function printPmCalendar() {
   const rows = records.map((record) => `
     <tr>
       <td>${escapeHtml(formatDate(record.dueDate))}</td>
-      <td>${escapeHtml(record.asset.name)}</td>
+      <td>${escapeHtml(pmCalendarRecordEquipmentLabel(record))}</td>
       <td>${escapeHtml(record.customer?.name || "")}</td>
       <td>${escapeHtml(record.location?.name || "")}</td>
       <td>${escapeHtml(record.template?.name || "")}</td>
-      <td>${escapeHtml(record.asset.criticality || "Low")}</td>
-      <td>${escapeHtml(openWorkOrdersForAsset(record.asset.id).length ? "Open ticket" : "Clear")}</td>
+      <td>${escapeHtml(pmCalendarRecordCriticality(record))}</td>
+      <td>${escapeHtml(pmCalendarRecordStatus(record))}</td>
     </tr>
   `).join("");
   printWindow.document.write(`
@@ -5083,9 +5249,9 @@ function emailPmCalendarList() {
     `${records.length} upcoming PM${records.length === 1 ? "" : "s"}`,
     "",
     ...records.map((record) => {
-      const openTicketCount = openWorkOrdersForAsset(record.asset.id).length;
+      const openTicketCount = record.kind === "route" ? 0 : openWorkOrdersForAsset(record.asset.id).length;
       const ticketText = openTicketCount ? ` | ${openTicketCount} open ticket${openTicketCount === 1 ? "" : "s"}` : "";
-      return `${toDateInputValue(record.dueDate)} - ${record.asset.name} - ${record.location?.name || "No location"} - ${record.template?.name || "No template"} - ${record.asset.criticality || "Low"} criticality${ticketText}`;
+      return `${toDateInputValue(record.dueDate)} - ${pmCalendarRecordEquipmentLabel(record)} - ${record.location?.name || "No location"} - ${record.template?.name || "No template"} - ${pmCalendarRecordCriticality(record)}${ticketText}`;
     })
   ];
   addActivity("PM calendar email draft opened", `${windowInfo.label} | ${records.length} PMs`);
@@ -5102,12 +5268,12 @@ function exportPmCalendarCsv() {
       toDateInputValue(record.dueDate),
       record.customer?.name || "",
       record.location?.name || "",
-      record.asset.name,
+      pmCalendarRecordEquipmentLabel(record),
       record.template?.name || "",
-      record.asset.criticality || "",
-      record.asset.frequencyDays,
-      record.asset.history?.[0]?.completedAt || "",
-      openWorkOrdersForAsset(record.asset.id).length
+      pmCalendarRecordCriticality(record),
+      record.kind === "route" ? record.route.frequencyDays : record.asset.frequencyDays,
+      record.kind === "route" ? "" : record.asset.history?.[0]?.completedAt || "",
+      record.kind === "route" ? "" : openWorkOrdersForAsset(record.asset.id).length
     ])
   ];
   const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
@@ -5514,18 +5680,6 @@ function renderAssetTableControls() {
     ? `Print Selected (${selectedPrintAssetIds.size})`
     : "Print Selected";
   els.clearSelectedAssetsBtn.disabled = selectedPrintAssetIds.size === 0;
-  if (els.pmRouteBtn) {
-    els.pmRouteBtn.textContent = selectedPrintAssetIds.size
-      ? `PM Route (${selectedPrintAssetIds.size})`
-      : "PM Route";
-    els.pmRouteBtn.disabled = selectedPrintAssetIds.size === 0 || !canCompletePm();
-  }
-  if (els.pmRouteSummary) {
-    els.pmRouteSummary.textContent = pmRouteSummaryText(selectedAssetsForRoute().length);
-  }
-  if (els.pmRouteDate && !els.pmRouteDate.value) {
-    els.pmRouteDate.value = toDateInputValue(today);
-  }
   els.templateFilter.innerHTML = [
     `<option value="all">All templates</option>`,
     ...state.templates.map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`)
@@ -5543,17 +5697,6 @@ function getCurrentAssetTablePageAssets(assets = assetTableAssets()) {
 function selectedAssetsForPrinting() {
   const selectedIds = new Set(selectedPrintAssetIds);
   return assetTableAssets().filter((asset) => selectedIds.has(asset.id));
-}
-
-function selectedAssetsForRoute() {
-  const selectedIds = new Set(selectedPrintAssetIds);
-  return assetTableAssets().filter((asset) => selectedIds.has(asset.id));
-}
-
-function pmRouteSummaryText(count) {
-  return count
-    ? `${count} selected equipment record${count === 1 ? "" : "s"} will receive this PM record.`
-    : "Select equipment rows to complete a PM route.";
 }
 
 function renderAssetTable() {
@@ -7155,11 +7298,47 @@ function completePmForAsset(asset, details = {}) {
   return historyItem;
 }
 
-function routeChecklistItemsForAsset(asset) {
-  return [
-    ...getTemplateItems(asset.templateId),
-    ...(Array.isArray(asset.extraChecklistItems) ? asset.extraChecklistItems : [])
-  ];
+async function completeTemplateRoute(form) {
+  if (!canCompletePm()) return;
+  const template = state.templates.find((item) => item.id === form.dataset.routeCompleteTemplateId);
+  if (!template) return;
+  const assets = templateRouteAssets(template);
+  if (!assets.length) {
+    alert("This route has no linked equipment.");
+    return;
+  }
+
+  const formData = new FormData(form);
+  const completedDate = String(formData.get("completedDate") || toDateInputValue(today));
+  const completedAt = routeCompletedAtIso(completedDate);
+  const photoInput = form.querySelector("input[name='photo']");
+  const photo = await readPhoto(photoInput?.files?.[0]);
+  const result = String(formData.get("result") || "Passed");
+  const technician = String(formData.get("technician") || "").trim();
+  const notes = String(formData.get("notes") || "").trim();
+  const completeChecklist = formData.get("completeChecklist") === "on";
+
+  assets.forEach((asset) => {
+    completePmForAsset(asset, {
+      completedAt,
+      technician,
+      notes,
+      result,
+      completedChecks: completeChecklist ? getTemplateItems(template.id) : [],
+      photo
+    });
+  });
+
+  const route = normalizeTemplateRoute(template);
+  template.route = {
+    ...route,
+    nextDueDate: toDateInputValue(addDays(parseLocalDate(completedDate), route.frequencyDays))
+  };
+  template.updatedAt = new Date().toISOString();
+  addActivity("Scheduled PM route completed", `${template.name} - ${assets.length} equipment record${assets.length === 1 ? "" : "s"}`);
+  saveState();
+  showCreationConfirmation(`${template.name} completed for ${assets.length} equipment record${assets.length === 1 ? "" : "s"}.`);
+  render();
 }
 
 function routeCompletedAtIso(value) {
@@ -7170,10 +7349,10 @@ function routeCompletedAtIso(value) {
   return date.toISOString();
 }
 
-function setPmRouteStatus(message, isError = false) {
-  if (!els.pmRouteStatus) return;
-  els.pmRouteStatus.textContent = message;
-  els.pmRouteStatus.className = `inline-status ${isError ? "is-error" : "is-ok"}`;
+function templateRouteAssets(template) {
+  const route = normalizeTemplateRoute(template);
+  const selectedIds = new Set(route.assetIds);
+  return state.assets.filter((asset) => selectedIds.has(asset.id) && canSeeAsset(asset));
 }
 
 function renderAssetDetails(asset) {
