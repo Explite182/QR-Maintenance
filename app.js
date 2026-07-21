@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260720-mobile-inventory-tab";
+const SITEWORKS_APP_VERSION = "20260721-pm-route";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
@@ -224,6 +224,7 @@ const els = {
   templateName: document.getElementById("templateName"),
   templateItems: document.getElementById("templateItems"),
   templateCount: document.getElementById("templateCount"),
+  templateList: document.getElementById("templateList"),
   userForm: document.getElementById("userForm"),
   refreshCloudUsersBtn: document.getElementById("refreshCloudUsersBtn"),
   cloudUsersStatus: document.getElementById("cloudUsersStatus"),
@@ -297,6 +298,18 @@ const els = {
   selectPageAssetsBtn: document.getElementById("selectPageAssetsBtn"),
   clearSelectedAssetsBtn: document.getElementById("clearSelectedAssetsBtn"),
   printSelectedLabelsBtn: document.getElementById("printSelectedLabelsBtn"),
+  pmRouteBtn: document.getElementById("pmRouteBtn"),
+  pmRouteDrawer: document.getElementById("pmRouteDrawer"),
+  pmRouteForm: document.getElementById("pmRouteForm"),
+  pmRouteSummary: document.getElementById("pmRouteSummary"),
+  pmRouteTechnician: document.getElementById("pmRouteTechnician"),
+  pmRouteDate: document.getElementById("pmRouteDate"),
+  pmRouteReading: document.getElementById("pmRouteReading"),
+  pmRouteNotes: document.getElementById("pmRouteNotes"),
+  pmRoutePhoto: document.getElementById("pmRoutePhoto"),
+  pmRouteResult: document.getElementById("pmRouteResult"),
+  pmRouteCompleteChecklist: document.getElementById("pmRouteCompleteChecklist"),
+  pmRouteStatus: document.getElementById("pmRouteStatus"),
   exportAssetRegisterBtn: document.getElementById("exportAssetRegisterBtn"),
   assetRegisterDrawer: document.getElementById("assetRegisterDrawer"),
   customerFilterField: document.getElementById("customerFilterField"),
@@ -1017,6 +1030,47 @@ els.templateForm.addEventListener("submit", (event) => {
   addActivity("Maintenance template added", template.name);
   saveState();
   els.templateForm.reset();
+  render();
+});
+
+els.templateList?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!canManageTemplateSetup()) return;
+  const form = event.target.closest("form[data-template-id]");
+  if (!form) return;
+  const template = state.templates.find((item) => item.id === form.dataset.templateId);
+  if (!template) return;
+  const formData = new FormData(form);
+  const nextName = String(formData.get("name") || "").trim();
+  const nextItems = parseTemplateItems(String(formData.get("items") || ""));
+  if (!nextName || !nextItems.length) {
+    alert("Enter a template name and at least one checklist item.");
+    return;
+  }
+  template.name = nextName;
+  template.items = nextItems;
+  template.updatedAt = new Date().toISOString();
+  addActivity("Maintenance template edited", template.name);
+  saveState();
+  render();
+});
+
+els.templateList?.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest("[data-delete-template]");
+  if (!deleteButton) return;
+  if (!canManageTemplateSetup()) return;
+  const template = state.templates.find((item) => item.id === deleteButton.dataset.deleteTemplate);
+  if (!template) return;
+  const usedCount = state.assets.filter((asset) => asset.templateId === template.id).length;
+  if (usedCount > 0) {
+    alert(`${template.name} is used by ${usedCount} equipment record${usedCount === 1 ? "" : "s"}. Change those equipment records to another template before deleting it.`);
+    return;
+  }
+  if (!confirm(`Delete maintenance template "${template.name}"?`)) return;
+  state.templates = state.templates.filter((item) => item.id !== template.id);
+  addActivity("Maintenance template deleted", template.name);
+  saveState();
+  await deleteStructuredRows("pm_templates", "id", [template.id]);
   render();
 });
 
@@ -2037,25 +2091,14 @@ els.pmForm.addEventListener("submit", async (event) => {
   const completedChecks = [...els.pmForm.querySelectorAll("input[name='checklist']:checked")]
     .map((input) => input.value);
   const photo = await readPhoto(els.photoInput.files[0]);
-  const historyItem = {
-    id: crypto.randomUUID(),
-    pmNumber: nextPmNumber(),
-    completedAt: new Date().toISOString(),
+  completePmForAsset(asset, {
     technician: els.technician.value.trim(),
     reading: els.reading.value.trim(),
     notes: els.notes.value.trim(),
     result: els.result.value,
     completedChecks,
     photo
-  };
-
-  asset.history.unshift(historyItem);
-  addActivity("PM completed", `${formatPmNumber(historyItem)} - ${asset.name} - ${historyItem.result}`);
-
-  if (historyItem.result !== "Passed") {
-    state.workOrders.unshift(createWorkOrderFromPm(asset, historyItem));
-    addActivity("Work order created", `${asset.name} - ${historyItem.result}`);
-  }
+  });
 
   saveState();
   els.pmForm.reset();
@@ -2180,6 +2223,66 @@ els.printReportLabelsBtn.addEventListener("click", () => {
   }
   renderReportLabels(selectedAssets);
   window.print();
+});
+
+els.pmRouteBtn?.addEventListener("click", () => {
+  const selectedAssets = selectedAssetsForRoute();
+  if (!selectedAssets.length) {
+    alert("Select at least one equipment row for a PM route.");
+    return;
+  }
+  if (els.pmRouteDate && !els.pmRouteDate.value) els.pmRouteDate.value = toDateInputValue(today);
+  setPmRouteStatus("");
+  if (els.pmRouteSummary) els.pmRouteSummary.textContent = pmRouteSummaryText(selectedAssets.length);
+  if (els.pmRouteDrawer) {
+    els.pmRouteDrawer.open = true;
+    els.pmRouteDrawer.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+});
+
+els.pmRouteForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!canCompletePm()) return;
+
+  const selectedAssets = selectedAssetsForRoute();
+  if (!selectedAssets.length) {
+    setPmRouteStatus("Select at least one equipment row first.", true);
+    return;
+  }
+
+  const technician = els.pmRouteTechnician?.value.trim() || "";
+  if (!technician) {
+    setPmRouteStatus("Enter a technician.", true);
+    return;
+  }
+
+  const photo = await readPhoto(els.pmRoutePhoto?.files?.[0]);
+  const completedAt = routeCompletedAtIso(els.pmRouteDate?.value);
+  const details = {
+    completedAt,
+    technician,
+    reading: els.pmRouteReading?.value.trim() || "",
+    notes: els.pmRouteNotes?.value.trim() || "",
+    result: els.pmRouteResult?.value || "Passed",
+    photo
+  };
+  const markChecklistComplete = Boolean(els.pmRouteCompleteChecklist?.checked);
+
+  selectedAssets.forEach((asset) => {
+    completePmForAsset(asset, {
+      ...details,
+      completedChecks: markChecklistComplete ? routeChecklistItemsForAsset(asset) : []
+    });
+  });
+
+  addActivity("PM route completed", `${selectedAssets.length} equipment record${selectedAssets.length === 1 ? "" : "s"} - ${details.result}`);
+  saveState();
+  selectedPrintAssetIds.clear();
+  els.pmRouteForm.reset();
+  if (els.pmRouteDate) els.pmRouteDate.value = toDateInputValue(today);
+  if (els.pmRouteDrawer) els.pmRouteDrawer.open = false;
+  showCreationConfirmation(`PM route completed for ${selectedAssets.length} equipment record${selectedAssets.length === 1 ? "" : "s"}.`);
+  render();
 });
 
 els.qrBaseUrlForm.addEventListener("submit", (event) => {
@@ -2805,6 +2908,7 @@ function render() {
   renderPreferredContractors();
   renderAccessRequests();
   renderActivityLog();
+  renderTemplates();
   renderCustomers();
   renderLocations();
   renderCustomerOptions();
@@ -3392,6 +3496,11 @@ function renderRole() {
   els.pmForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canCompletePm();
   });
+  els.pmRouteForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !canCompletePm();
+  });
+  if (els.pmRouteBtn) els.pmRouteBtn.disabled = selectedPrintAssetIds.size === 0 || !canCompletePm();
+  if (els.pmRouteDrawer && !canCompletePm()) els.pmRouteDrawer.open = false;
   els.assetInfoForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canEditEquipment();
   });
@@ -4004,6 +4113,43 @@ function renderTemplateOptions() {
   if (!els.assetTemplate.value && state.templates[0]) {
     els.assetTemplate.value = state.templates[0].id;
   }
+}
+
+function renderTemplates() {
+  if (!els.templateList) return;
+  els.templateList.innerHTML = state.templates.length
+    ? state.templates.map(renderTemplateEditor).join("")
+    : `<p class="muted">No maintenance templates added yet.</p>`;
+}
+
+function renderTemplateEditor(template) {
+  const usedCount = state.assets.filter((asset) => asset.templateId === template.id).length;
+  const itemsText = (template.items || []).join("\n");
+  return `
+    <details class="template-editor setup-editor">
+      <summary>
+        <span>
+          <strong>${escapeHtml(template.name)}</strong>
+          <small>${usedCount} equipment record${usedCount === 1 ? "" : "s"} | ${(template.items || []).length} checklist item${(template.items || []).length === 1 ? "" : "s"}</small>
+        </span>
+      </summary>
+      <form class="stack compact-form" data-template-id="${escapeAttribute(template.id)}">
+        <label>
+          Template name
+          <input name="name" required value="${escapeAttribute(template.name)}">
+        </label>
+        <label>
+          Checklist items
+          <textarea name="items" rows="5" required>${escapeHtml(itemsText)}</textarea>
+        </label>
+        <div class="record-actions">
+          <button type="submit" class="primary">Save Template</button>
+          <button type="button" class="secondary danger-action" data-delete-template="${escapeAttribute(template.id)}" ${usedCount ? "disabled" : ""}>Delete</button>
+        </div>
+        ${usedCount ? `<p class="muted">Delete is disabled while equipment records use this template.</p>` : ""}
+      </form>
+    </details>
+  `;
 }
 
 function renderLocationOptions() {
@@ -5368,6 +5514,18 @@ function renderAssetTableControls() {
     ? `Print Selected (${selectedPrintAssetIds.size})`
     : "Print Selected";
   els.clearSelectedAssetsBtn.disabled = selectedPrintAssetIds.size === 0;
+  if (els.pmRouteBtn) {
+    els.pmRouteBtn.textContent = selectedPrintAssetIds.size
+      ? `PM Route (${selectedPrintAssetIds.size})`
+      : "PM Route";
+    els.pmRouteBtn.disabled = selectedPrintAssetIds.size === 0 || !canCompletePm();
+  }
+  if (els.pmRouteSummary) {
+    els.pmRouteSummary.textContent = pmRouteSummaryText(selectedAssetsForRoute().length);
+  }
+  if (els.pmRouteDate && !els.pmRouteDate.value) {
+    els.pmRouteDate.value = toDateInputValue(today);
+  }
   els.templateFilter.innerHTML = [
     `<option value="all">All templates</option>`,
     ...state.templates.map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`)
@@ -5385,6 +5543,17 @@ function getCurrentAssetTablePageAssets(assets = assetTableAssets()) {
 function selectedAssetsForPrinting() {
   const selectedIds = new Set(selectedPrintAssetIds);
   return assetTableAssets().filter((asset) => selectedIds.has(asset.id));
+}
+
+function selectedAssetsForRoute() {
+  const selectedIds = new Set(selectedPrintAssetIds);
+  return assetTableAssets().filter((asset) => selectedIds.has(asset.id));
+}
+
+function pmRouteSummaryText(count) {
+  return count
+    ? `${count} selected equipment record${count === 1 ? "" : "s"} will receive this PM record.`
+    : "Select equipment rows to complete a PM route.";
 }
 
 function renderAssetTable() {
@@ -6959,6 +7128,52 @@ function removeCustomChecklistItem(index) {
   if (removed) addActivity("Checklist item removed", `${asset.name} - ${removed}`);
   saveState();
   renderChecklist(getTemplate(asset.templateId), asset);
+}
+
+function completePmForAsset(asset, details = {}) {
+  if (!Array.isArray(asset.history)) asset.history = [];
+  const historyItem = {
+    id: crypto.randomUUID(),
+    pmNumber: nextPmNumber(),
+    completedAt: details.completedAt || new Date().toISOString(),
+    technician: details.technician || "",
+    reading: details.reading || "",
+    notes: details.notes || "",
+    result: details.result || "Passed",
+    completedChecks: Array.isArray(details.completedChecks) ? details.completedChecks : [],
+    photo: details.photo || null
+  };
+
+  asset.history.unshift(historyItem);
+  addActivity("PM completed", `${formatPmNumber(historyItem)} - ${asset.name} - ${historyItem.result}`);
+
+  if (historyItem.result !== "Passed") {
+    state.workOrders.unshift(createWorkOrderFromPm(asset, historyItem));
+    addActivity("Work order created", `${asset.name} - ${historyItem.result}`);
+  }
+
+  return historyItem;
+}
+
+function routeChecklistItemsForAsset(asset) {
+  return [
+    ...getTemplateItems(asset.templateId),
+    ...(Array.isArray(asset.extraChecklistItems) ? asset.extraChecklistItems : [])
+  ];
+}
+
+function routeCompletedAtIso(value) {
+  if (!value) return new Date().toISOString();
+  const date = parseLocalDate(value);
+  const now = new Date();
+  date.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+  return date.toISOString();
+}
+
+function setPmRouteStatus(message, isError = false) {
+  if (!els.pmRouteStatus) return;
+  els.pmRouteStatus.textContent = message;
+  els.pmRouteStatus.className = `inline-status ${isError ? "is-error" : "is-ok"}`;
 }
 
 function renderAssetDetails(asset) {

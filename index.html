@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260720-mobile-inventory-tab">
+    <link rel="stylesheet" href="styles.css?v=20260721-pm-route">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -262,6 +262,7 @@
               </label>
               <button type="submit">Add Template</button>
             </form>
+            <div id="templateList" class="template-list"></div>
           </section>
         </details>
 
@@ -813,9 +814,52 @@
             <button id="selectPageAssetsBtn" class="secondary mini" type="button">Select Page</button>
             <button id="clearSelectedAssetsBtn" class="secondary mini" type="button">Clear</button>
             <button id="printSelectedLabelsBtn" class="secondary mini" type="button">Print Selected</button>
+            <button id="pmRouteBtn" class="secondary mini" type="button">PM Route</button>
             <button id="exportAssetRegisterBtn" class="secondary mini">Export CSV</button>
           </div>
         </div>
+        <details id="pmRouteDrawer" class="asset-import-drawer pm-route-drawer">
+          <summary>Multi-Equipment PM Route</summary>
+          <form id="pmRouteForm" class="stack compact-form">
+            <p id="pmRouteSummary" class="muted">Select equipment rows to complete a PM route.</p>
+            <div class="form-grid">
+              <label>
+                Technician
+                <input id="pmRouteTechnician" required placeholder="Name">
+              </label>
+              <label>
+                Completed date
+                <input id="pmRouteDate" type="date" required>
+              </label>
+            </div>
+            <label>
+              Shared meter / reading
+              <input id="pmRouteReading" placeholder="Optional">
+            </label>
+            <label>
+              Shared notes
+              <textarea id="pmRouteNotes" rows="4" placeholder="Findings, parts needed, or follow-up work"></textarea>
+            </label>
+            <label>
+              Shared photo evidence
+              <input id="pmRoutePhoto" type="file" accept="image/*">
+            </label>
+            <label>
+              Result for selected equipment
+              <select id="pmRouteResult">
+                <option value="Passed">Passed</option>
+                <option value="Needs attention">Needs attention</option>
+                <option value="Failed">Failed</option>
+              </select>
+            </label>
+            <label class="inline-check">
+              <input id="pmRouteCompleteChecklist" type="checkbox" checked>
+              Mark each equipment template checklist complete
+            </label>
+            <button type="submit" class="primary">Complete PM Route</button>
+            <p id="pmRouteStatus" class="inline-status"></p>
+          </form>
+        </details>
         <div class="asset-subnav" aria-label="Equipment register views">
           <button type="button" class="asset-subnav-tab is-active" data-asset-register-tab="active">Active Inventory</button>
           <button type="button" class="asset-subnav-tab" data-asset-register-tab="upcoming">Upcoming Schedules</button>
@@ -1384,7 +1428,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260720-mobile-inventory-tab"></script>
+  <script src="app.js?v=20260721-pm-route"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

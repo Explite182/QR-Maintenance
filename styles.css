@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260720-mobile-inventory-tab */
+/* SiteWorks styles version: 20260721-pm-route */
 
 :root {
   --ink: #172126;
@@ -565,6 +565,44 @@ textarea:disabled {
 .user-list-item span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.template-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.template-editor {
+  padding: 9px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.template-editor summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.template-editor summary span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.template-editor summary small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.template-editor form {
+  margin-top: 10px;
 }
 
 .user-editor summary {
@@ -1429,6 +1467,10 @@ textarea {
   font-size: 13px;
   font-weight: 900;
   cursor: pointer;
+}
+
+.pm-route-drawer form {
+  padding: 0 12px 12px;
 }
 
 .asset-import-body {
