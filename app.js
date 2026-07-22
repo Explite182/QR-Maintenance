@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260722-general-request-qr";
+const SITEWORKS_APP_VERSION = "20260722-faster-sync-delete-status";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -26,9 +26,9 @@ const NFC_BRIDGE_BASE_URLS = [
 ];
 const NFC_BRIDGE_TIMEOUT_MS = 30000;
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
-const PUBLIC_REPORT_SYNC_INTERVAL_MS = 2 * 60 * 1000;
-const CLOUD_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
-const PUBLIC_REPORT_SYNC_MIN_AGE_MS = 60 * 1000;
+const PUBLIC_REPORT_SYNC_INTERVAL_MS = 30 * 1000;
+const CLOUD_REFRESH_INTERVAL_MS = 45 * 1000;
+const PUBLIC_REPORT_SYNC_MIN_AGE_MS = 10 * 1000;
 const MANAGER_ROLES = ["Manager", "Facility Manager"];
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
@@ -1135,7 +1135,7 @@ els.templateList?.addEventListener("click", async (event) => {
   state.templates = state.templates.filter((item) => item.id !== template.id);
   addActivity("Maintenance template deleted", template.name);
   saveState();
-  await deleteStructuredRows("pm_templates", "id", [template.id]);
+  await finishCloudDelete("Maintenance template", deleteStructuredRows("pm_templates", "id", [template.id]));
   render();
 });
 
@@ -1854,7 +1854,7 @@ document.addEventListener("click", async (event) => {
     state.inventoryItems = state.inventoryItems.filter((inventoryItem) => inventoryItem.id !== item.id);
     addActivity("Inventory item deleted", item.name);
     saveState();
-    await deleteStructuredRows("inventory_items", "id", [item.id]);
+    await finishCloudDelete("Inventory item", deleteStructuredRows("inventory_items", "id", [item.id]));
     render();
     return;
   }
@@ -3656,7 +3656,7 @@ function deletePreferredContractor(contractorId) {
   state.preferredContractors = state.preferredContractors.filter((item) => item.id !== contractorId);
   addActivity("Preferred contact deleted", contractor.name);
   saveState();
-  deleteStructuredRows("preferred_contractors", "id", [contractor.id]);
+  finishCloudDelete("Preferred contact", deleteStructuredRows("preferred_contractors", "id", [contractor.id]));
   render();
 }
 
@@ -3808,7 +3808,7 @@ async function deleteWorkOrder(workOrderId) {
   if (focusedCompletedRecordId === workOrder.id) focusedCompletedRecordId = "";
   addActivity("Ticket deleted", ticketLabel);
   saveState();
-  await deleteStructuredRows("work_orders", "id", [workOrder.id]);
+  await finishCloudDelete("Ticket", deleteStructuredRows("work_orders", "id", [workOrder.id]));
   render();
 }
 
@@ -3821,7 +3821,7 @@ async function deleteServiceRequest(requestId) {
   if (focusedServiceRequestId === request.id) focusedServiceRequestId = "";
   addActivity("Service request deleted", requestLabel);
   saveState();
-  await deleteStructuredRows("service_requests", "id", [request.id]);
+  await finishCloudDelete("Service request", deleteStructuredRows("service_requests", "id", [request.id]));
   render();
 }
 
@@ -4276,6 +4276,21 @@ function templateOptionLabel(template) {
   return templateCustomerId(template) ? template.name : `${template.name} (Shared)`;
 }
 
+function templateUsageAssetsForCurrentView(template) {
+  const templateId = template?.id || "";
+  const scopedCustomerId = templateCustomerId(template) || selectedCustomerId;
+  return state.assets.filter((asset) =>
+    asset.templateId === templateId &&
+    canSeeAsset(asset) &&
+    (!scopedCustomerId || asset.customerId === scopedCustomerId) &&
+    (selectedLocationId === "all" || asset.locationId === selectedLocationId)
+  );
+}
+
+function templateGlobalUsageCount(template) {
+  return state.assets.filter((asset) => asset.templateId === template?.id).length;
+}
+
 function openTemplateRouteEditor(templateId) {
   if (!templateId) return;
   if (!canManageTemplateSetup()) {
@@ -4295,7 +4310,8 @@ function openTemplateRouteEditor(templateId) {
 }
 
 function renderTemplateEditor(template) {
-  const usedCount = state.assets.filter((asset) => asset.templateId === template.id).length;
+  const usedCount = templateUsageAssetsForCurrentView(template).length;
+  const globalUsedCount = templateGlobalUsageCount(template);
   const itemsText = (template.items || []).join("\n");
   const route = normalizeTemplateRoute(template);
   const routeAssets = templateRouteAssets(template);
@@ -4350,9 +4366,9 @@ function renderTemplateEditor(template) {
         </details>
         <div class="record-actions">
           <button type="submit" class="primary">Save Template</button>
-          <button type="button" class="secondary danger-action" data-delete-template="${escapeAttribute(template.id)}" ${usedCount ? "disabled" : ""}>Delete</button>
+          <button type="button" class="secondary danger-action" data-delete-template="${escapeAttribute(template.id)}" ${globalUsedCount ? "disabled" : ""}>Delete</button>
         </div>
-        ${usedCount ? `<p class="muted">Delete is disabled while equipment records use this template.</p>` : ""}
+        ${globalUsedCount ? `<p class="muted">Delete is disabled while equipment records use this template.</p>` : ""}
       </form>
       ${routeEnabled ? renderTemplateRouteCompletionForm(template, route, routeAssets) : ""}
     </details>
@@ -7600,7 +7616,7 @@ function routeCompletedAtIso(value) {
 function templateRouteAssets(template) {
   const route = normalizeTemplateRoute(template);
   const selectedIds = new Set(route.assetIds);
-  const customerId = templateCustomerId(template);
+  const customerId = templateCustomerId(template) || selectedCustomerId;
   return state.assets.filter((asset) => selectedIds.has(asset.id) && canSeeAsset(asset) && (!customerId || asset.customerId === customerId));
 }
 
@@ -10203,7 +10219,12 @@ async function deleteLocation(locationId) {
     `${locationRecord.name}: ${removedAssetCount} equipment record(s), ${removedWorkOrderCount} ticket(s)`
   );
   saveState();
-  await deleteStructuredRows("locations", "id", [locationId]);
+  await finishCloudDelete("Location", Promise.all([
+    deleteStructuredRows("locations", "id", [locationId]),
+    deleteStructuredRows("assets", "location_id", [locationId]),
+    deleteStructuredRows("work_orders", "location_id", [locationId]),
+    deleteStructuredRows("service_requests", "location_id", [locationId])
+  ]));
   if (selectedId) {
     location.hash = `asset/${selectedId}`;
   } else {
@@ -10232,12 +10253,12 @@ async function deleteSelectedEquipment() {
   if (selectedId === asset.id) selectedId = null;
   addActivity("Equipment deleted", `${asset.name}: ${relatedWorkOrders.length} ticket(s), ${relatedServiceRequests.length} service request(s)`);
   saveState();
-  await Promise.all([
+  await finishCloudDelete("Equipment", Promise.all([
     deleteStructuredRows("assets", "id", [asset.id]),
     deleteStructuredRows("work_orders", "asset_id", [asset.id]),
     deleteStructuredRows("service_requests", "asset_id", [asset.id]),
     deleteStructuredRows("pm_history", "asset_id", [asset.id])
-  ]);
+  ]));
   clearSelectedAssetUrl();
   closeSelectedAssetPanel();
   render();
@@ -12832,9 +12853,25 @@ async function upsertStructuredRows(table, rows) {
 async function deleteStructuredRows(table, column, values) {
   try {
     await siteworksApi.deleteRows(table, column, values);
+    return true;
   } catch (error) {
+    const message = `Cloud delete failed for ${table}: ${error?.message || error}`;
+    markSyncError(message);
     console.warn(`Structured Supabase delete skipped for ${table}.`, error);
+    return false;
   }
+}
+
+async function finishCloudDelete(label, deleteResultPromise) {
+  const result = await deleteResultPromise;
+  const results = Array.isArray(result) ? result : [result];
+  const failed = results.some((item) => item === false);
+  if (failed) {
+    alert(`${label} was removed on this device, but Supabase did not accept the cloud delete. It may come back on refresh until the delete policy is fixed.`);
+    return false;
+  }
+  await syncStructuredDataToSupabase();
+  return true;
 }
 
 function isCodexTestPublicReport(report) {
