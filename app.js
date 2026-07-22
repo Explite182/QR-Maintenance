@@ -14,10 +14,12 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260721-template-fm-templates-log";
+const SITEWORKS_APP_VERSION = "20260721-equipment-nfc-writer";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
+const NFC_BRIDGE_BASE_URL = "http://127.0.0.1:8765";
+const NFC_BRIDGE_TIMEOUT_MS = 30000;
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const PUBLIC_REPORT_SYNC_INTERVAL_MS = 2 * 60 * 1000;
 const CLOUD_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
@@ -378,6 +380,7 @@ const els = {
   pmStatus: document.getElementById("pmStatus"),
   copyLinkBtn: document.getElementById("copyLinkBtn"),
   copyNfcLinkBtn: document.getElementById("copyNfcLinkBtn"),
+  assetNfcPanel: document.getElementById("assetNfcPanel"),
   reportIssueBtn: document.getElementById("reportIssueBtn"),
   pmForm: document.getElementById("pmForm"),
   checklistFields: document.getElementById("checklistFields"),
@@ -2222,6 +2225,16 @@ els.copyNfcLinkBtn?.addEventListener("click", async () => {
   }, 1400);
 });
 
+els.assetNfcPanel?.addEventListener("click", async (event) => {
+  const writeButton = event.target.closest("[data-write-asset-nfc]");
+  const verifyButton = event.target.closest("[data-verify-asset-nfc]");
+  if (!writeButton && !verifyButton) return;
+  const asset = getSelectedAsset();
+  if (!asset || !canEditEquipment()) return;
+  if (writeButton) await writeAssetNfcTag(asset);
+  if (verifyButton) await verifyAssetNfcTag(asset);
+});
+
 els.reportIssueBtn?.addEventListener("click", () => {
   const asset = getSelectedAsset();
   if (!asset) return;
@@ -2955,6 +2968,7 @@ function render() {
   els.assetPhotoPanel.innerHTML = renderAssetPhoto(asset);
   els.assetManualPanel.innerHTML = renderAssetManual(asset);
   els.assetDetailsGrid.innerHTML = renderAssetDetails(asset);
+  if (els.assetNfcPanel) els.assetNfcPanel.innerHTML = renderAssetNfcPanel(asset);
   renderElectricalPanelSchedule(asset);
   if (els.deleteSelectedAssetBtn) {
     els.deleteSelectedAssetBtn.classList.toggle("hidden", !canDeleteEquipment());
@@ -7447,6 +7461,206 @@ function renderAssetDetails(asset) {
       </${tag}>
     `;
   }).join("");
+}
+
+function renderAssetNfcPanel(asset) {
+  const tag = normalizeAssetNfcTag(asset?.nfcTag);
+  const recordUrl = getAssetUrl(asset.id);
+  const status = getAssetNfcStatus(tag, recordUrl);
+  const canWrite = canEditEquipment();
+  const uid = tag.uid || "Not assigned";
+  const written = tag.lastWrittenAt ? formatDateTime(new Date(tag.lastWrittenAt)) : "Not written";
+  const verified = tag.lastVerifiedAt ? formatDateTime(new Date(tag.lastVerifiedAt)) : "Not verified";
+  return `
+    <div class="asset-nfc-card" data-nfc-status="${escapeAttribute(status.key)}">
+      <div>
+        <span class="label">NFC tag</span>
+        <strong>${escapeHtml(status.label)}</strong>
+        <small>UID: ${escapeHtml(uid)}</small>
+        <small>Last written: ${escapeHtml(written)}</small>
+        <small>Last verified: ${escapeHtml(verified)}</small>
+      </div>
+      <div class="asset-nfc-actions">
+        <button type="button" class="secondary mini" data-write-asset-nfc ${canWrite ? "" : "disabled"}>Write NFC Tag</button>
+        <button type="button" class="secondary mini" data-verify-asset-nfc ${canWrite ? "" : "disabled"}>Read / Verify Tag</button>
+      </div>
+      <p>${escapeHtml(tag.message || `Writes ${recordUrl}`)}</p>
+    </div>
+  `;
+}
+
+function getAssetNfcStatus(tag, recordUrl) {
+  if (!tag.uid) return { key: "unassigned", label: "Unassigned" };
+  const urlMatches = normalizeUrlForNfcCompare(tag.url) === normalizeUrlForNfcCompare(recordUrl);
+  if (tag.status === "verified" && urlMatches) return { key: "written", label: "Written and verified" };
+  if (tag.status === "written" && urlMatches) return { key: "written", label: "Written" };
+  if (tag.url && !urlMatches) return { key: "mismatch", label: "Assigned to another URL" };
+  return { key: "assigned", label: "Assigned" };
+}
+
+function normalizeAssetNfcTag(value) {
+  if (!value) return {};
+  if (typeof value === "string") return value.trim() ? { uid: value.trim(), status: "assigned" } : {};
+  return {
+    uid: String(value.uid || value.tagUid || value.id || "").trim(),
+    url: String(value.url || value.ndefUrl || value.recordUrl || "").trim(),
+    status: value.status || "",
+    lastWrittenAt: value.lastWrittenAt || value.writtenAt || "",
+    lastVerifiedAt: value.lastVerifiedAt || value.verifiedAt || "",
+    message: value.message || ""
+  };
+}
+
+async function writeAssetNfcTag(asset) {
+  const recordUrl = getAssetUrl(asset.id);
+  setAssetNfcBusy("Hold an NTAG tag on the ACR122U reader...");
+  try {
+    const result = await callNfcBridge("/nfc/write", {
+      url: recordUrl,
+      recordType: "equipment",
+      recordId: asset.id,
+      name: asset.name
+    });
+    const uid = getNfcResponseUid(result);
+    const writtenUrl = getNfcResponseUrl(result) || recordUrl;
+    if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
+    if (normalizeUrlForNfcCompare(writtenUrl) !== normalizeUrlForNfcCompare(recordUrl)) {
+      throw new Error("The bridge wrote a different URL than SiteWorks requested.");
+    }
+    asset.nfcTag = {
+      uid,
+      url: recordUrl,
+      status: "written",
+      lastWrittenAt: new Date().toISOString(),
+      lastVerifiedAt: "",
+      message: "Tag written from local ACR122U bridge."
+    };
+    addActivity("NFC tag written", `${asset.name} | ${uid}`);
+    saveState();
+    render();
+  } catch (error) {
+    console.warn("NFC write failed.", error);
+    setAssetNfcMessage(asset, `NFC write failed: ${error.message || "Bridge unavailable."}`);
+    render();
+  }
+}
+
+async function verifyAssetNfcTag(asset) {
+  const expected = normalizeAssetNfcTag(asset.nfcTag);
+  const recordUrl = getAssetUrl(asset.id);
+  setAssetNfcBusy("Hold the written tag on the ACR122U reader...");
+  try {
+    const payload = {
+      expectedUid: expected.uid || "",
+      expectedUrl: recordUrl,
+      recordType: "equipment",
+      recordId: asset.id
+    };
+    const result = await callNfcBridgeWithFallback(["/nfc/verify", "/nfc/read"], payload);
+    const uid = getNfcResponseUid(result);
+    const tagUrl = getNfcResponseUrl(result);
+    if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
+    if (expected.uid && uid !== expected.uid) throw new Error(`UID mismatch. Expected ${expected.uid}, read ${uid}.`);
+    if (tagUrl && normalizeUrlForNfcCompare(tagUrl) !== normalizeUrlForNfcCompare(recordUrl)) {
+      throw new Error("URL mismatch. The tag opens a different SiteWorks record.");
+    }
+    asset.nfcTag = {
+      ...expected,
+      uid,
+      url: recordUrl,
+      status: "verified",
+      lastVerifiedAt: new Date().toISOString(),
+      message: "Tag UID and URL match this equipment record."
+    };
+    addActivity("NFC tag verified", `${asset.name} | ${uid}`);
+    saveState();
+    render();
+  } catch (error) {
+    console.warn("NFC verify failed.", error);
+    setAssetNfcMessage(asset, `NFC verify failed: ${error.message || "Bridge unavailable."}`);
+    render();
+  }
+}
+
+async function callNfcBridge(path, payload) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), NFC_BRIDGE_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${NFC_BRIDGE_BASE_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { uid: text.trim() };
+      }
+    }
+    if (!response.ok || data.ok === false || data.success === false) {
+      throw new Error(data.error || data.message || `Bridge returned ${response.status}`);
+    }
+    return data;
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("Timed out waiting for the local NFC bridge.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callNfcBridgeWithFallback(paths, payload) {
+  let lastError = null;
+  for (const path of paths) {
+    try {
+      return await callNfcBridge(path, payload);
+    } catch (error) {
+      lastError = error;
+      if (!String(error.message || "").includes("404")) throw error;
+    }
+  }
+  throw lastError || new Error("NFC bridge endpoint was not available.");
+}
+
+function getNfcResponseUid(result = {}) {
+  return String(result.uid || result.tagUid || result.serial || result.id || result.tag?.uid || "").trim();
+}
+
+function getNfcResponseUrl(result = {}) {
+  return String(result.url || result.ndefUrl || result.writtenUrl || result.recordUrl || result.tag?.url || "").trim();
+}
+
+function normalizeUrlForNfcCompare(value) {
+  try {
+    const url = new URL(value);
+    url.searchParams.delete("refresh");
+    return url.toString();
+  } catch {
+    return String(value || "").trim();
+  }
+}
+
+function setAssetNfcBusy(message) {
+  if (!els.assetNfcPanel) return;
+  const card = els.assetNfcPanel.querySelector(".asset-nfc-card");
+  if (!card) return;
+  card.classList.add("is-busy");
+  card.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+  const messageEl = card.querySelector("p");
+  if (messageEl) messageEl.textContent = message;
+}
+
+function setAssetNfcMessage(asset, message) {
+  const current = normalizeAssetNfcTag(asset.nfcTag);
+  asset.nfcTag = {
+    ...current,
+    status: current.status || (current.uid ? "assigned" : ""),
+    message
+  };
 }
 
 function renderElectricalPanelSchedule(asset) {

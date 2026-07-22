@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260721-template-fm-templates-log */
+/* SiteWorks styles version: 20260721-equipment-nfc-writer */
 
 :root {
   --ink: #172126;
@@ -1127,7 +1127,9 @@ html[data-theme="dark"] .modal,
 html[data-theme="dark"] .panel-schedule-sheet,
 html[data-theme="dark"] .route-asset-option,
 html[data-theme="dark"] .template-route-box,
-html[data-theme="dark"] .route-complete-form {
+html[data-theme="dark"] .route-complete-form,
+html[data-theme="dark"] .asset-nfc-card,
+html[data-theme="dark"] .next-maintenance-card {
   background-color: var(--panel);
   border-color: var(--line);
   color: var(--ink);
@@ -3387,6 +3389,70 @@ textarea {
 
 .status-tile {
   min-width: 120px;
+}
+
+.asset-nfc-panel {
+  flex: 1 1 320px;
+  min-width: 280px;
+}
+
+.asset-nfc-card {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) auto;
+  gap: 10px 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.asset-nfc-card strong,
+.asset-nfc-card small {
+  display: block;
+}
+
+.asset-nfc-card small,
+.asset-nfc-card p {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.asset-nfc-card p {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.asset-nfc-card[data-nfc-status="written"] {
+  border-color: #9ddbcf;
+  background: #f0fffb;
+}
+
+.asset-nfc-card[data-nfc-status="mismatch"] {
+  border-color: #efb7b7;
+  background: #fff5f5;
+}
+
+html[data-theme="dark"] .asset-nfc-card[data-nfc-status="written"] {
+  border-color: #1f8f7f;
+  background: #0f2a27;
+}
+
+html[data-theme="dark"] .asset-nfc-card[data-nfc-status="mismatch"] {
+  border-color: #8f3131;
+  background: #2a1717;
+}
+
+.asset-nfc-card.is-busy {
+  opacity: 0.78;
+}
+
+.asset-nfc-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .next-pm-form {
@@ -6142,6 +6208,7 @@ body.panel-schedule-open {
   .asset-heading,
   .asset-drawer-row,
   .asset-primary-grid,
+  .asset-nfc-card,
   .form-grid,
   .next-pm-form,
   .panel-schedule-form-grid,
@@ -6160,6 +6227,19 @@ body.panel-schedule-open {
   .pm-calendar-item,
   .filters {
     grid-template-columns: 1fr;
+  }
+
+  .asset-nfc-panel {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .asset-nfc-actions {
+    justify-content: stretch;
+  }
+
+  .asset-nfc-actions button {
+    flex: 1 1 150px;
   }
 
   .pm-calendar-month-grid {

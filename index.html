@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260721-template-fm-templates-log">
+    <link rel="stylesheet" href="styles.css?v=20260721-equipment-nfc-writer">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -1066,6 +1066,7 @@
           <button id="reportIssueBtn" class="primary" type="button">Report Issue</button>
           <button id="copyLinkBtn" class="secondary">Copy Scan Link</button>
           <button id="copyNfcLinkBtn" class="secondary">Copy NFC Link</button>
+          <div id="assetNfcPanel" class="asset-nfc-panel"></div>
         </div>
 
         <div class="asset-drawer-row">
@@ -1401,7 +1402,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260721-template-fm-templates-log"></script>
+  <script src="app.js?v=20260721-equipment-nfc-writer"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
