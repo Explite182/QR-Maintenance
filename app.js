@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260722-nfc-status-save";
+const SITEWORKS_APP_VERSION = "20260722-general-request-qr";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -228,9 +228,12 @@ const els = {
   customerContactEmail: document.getElementById("customerContactEmail"),
   customerContactPhone: document.getElementById("customerContactPhone"),
   customerContactNotes: document.getElementById("customerContactNotes"),
+  customerReportEmailEnabled: document.getElementById("customerReportEmailEnabled"),
+  customerReportEmailTo: document.getElementById("customerReportEmailTo"),
   customerCount: document.getElementById("customerCount"),
   customerList: document.getElementById("customerList"),
   templateForm: document.getElementById("templateForm"),
+  templateCustomer: document.getElementById("templateCustomer"),
   templateName: document.getElementById("templateName"),
   templateItems: document.getElementById("templateItems"),
   templateCount: document.getElementById("templateCount"),
@@ -309,6 +312,7 @@ const els = {
   selectPageAssetsBtn: document.getElementById("selectPageAssetsBtn"),
   clearSelectedAssetsBtn: document.getElementById("clearSelectedAssetsBtn"),
   printSelectedLabelsBtn: document.getElementById("printSelectedLabelsBtn"),
+  printSelectedNfcLabelsBtn: document.getElementById("printSelectedNfcLabelsBtn"),
   exportAssetRegisterBtn: document.getElementById("exportAssetRegisterBtn"),
   assetRegisterDrawer: document.getElementById("assetRegisterDrawer"),
   customerFilterField: document.getElementById("customerFilterField"),
@@ -865,6 +869,7 @@ els.publicReportForm.addEventListener("submit", async (event) => {
     state.workOrders.unshift(ticket);
     addActivity("Public ticket reported", ticket.title);
     saveState();
+    notifyCustomerReportCreated(ticket);
     els.publicReportForm.reset();
     els.publicReportMessage.textContent = "Report sent to SiteWorks. Thank you.";
   } catch (error) {
@@ -1028,6 +1033,8 @@ els.customerForm.addEventListener("submit", (event) => {
     contactEmail: els.customerContactEmail?.value.trim() || "",
     contactPhone: els.customerContactPhone?.value.trim() || "",
     contactNotes: els.customerContactNotes?.value.trim() || "",
+    reportEmailEnabled: Boolean(els.customerReportEmailEnabled?.checked),
+    reportEmailTo: els.customerReportEmailTo?.value.trim() || "",
     createdAt: new Date().toISOString()
   };
 
@@ -1045,11 +1052,14 @@ els.customerForm.addEventListener("submit", (event) => {
 els.templateForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!canManageSetup()) return;
+  const now = new Date().toISOString();
   const template = {
     id: crypto.randomUUID(),
+    customerId: els.templateCustomer?.value || "",
     name: els.templateName.value.trim(),
     items: parseTemplateItems(els.templateItems.value),
-    createdAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
   state.templates.push(template);
@@ -1073,17 +1083,27 @@ els.templateList?.addEventListener("submit", async (event) => {
   if (!template) return;
   const formData = new FormData(form);
   const nextName = String(formData.get("name") || "").trim();
+  const nextCustomerId = String(formData.get("customerId") || "").trim();
   const nextItems = parseTemplateItems(String(formData.get("items") || ""));
   const routeEnabled = formData.get("routeEnabled") === "on";
   const routeAssetIds = formData.getAll("routeAssetIds").map(String).filter(Boolean);
+  const scopedRouteAssetIds = routeAssetIds.filter((assetId) => {
+    const asset = getAsset(assetId);
+    return asset && (!nextCustomerId || asset.customerId === nextCustomerId);
+  });
   if (!nextName || !nextItems.length) {
     alert("Enter a template name and at least one checklist item.");
     return;
   }
-  if (routeEnabled && !routeAssetIds.length) {
+  if (nextCustomerId && state.assets.some((asset) => asset.templateId === template.id && asset.customerId !== nextCustomerId)) {
+    alert("This template is used by equipment for another customer. Remove those equipment assignments before making it customer-specific.");
+    return;
+  }
+  if (routeEnabled && !scopedRouteAssetIds.length) {
     alert("Choose at least one equipment record for this scheduled route.");
     return;
   }
+  template.customerId = nextCustomerId;
   template.name = nextName;
   template.items = nextItems;
   template.route = {
@@ -1092,7 +1112,7 @@ els.templateList?.addEventListener("submit", async (event) => {
     frequencyDays: Math.max(1, Number(formData.get("routeFrequencyDays") || 30)),
     nextDueDate: String(formData.get("routeNextDueDate") || toDateInputValue(today)),
     assignedTechnician: String(formData.get("routeTechnician") || "").trim(),
-    assetIds: routeAssetIds
+    assetIds: scopedRouteAssetIds
   };
   template.updatedAt = new Date().toISOString();
   addActivity("Maintenance template edited", template.name);
@@ -1142,10 +1162,34 @@ els.customerList?.addEventListener("submit", (event) => {
   customer.contactEmail = String(formData.get("contactEmail") || "").trim();
   customer.contactPhone = String(formData.get("contactPhone") || "").trim();
   customer.contactNotes = String(formData.get("contactNotes") || "").trim();
+  customer.reportEmailEnabled = formData.get("reportEmailEnabled") === "on";
+  customer.reportEmailTo = String(formData.get("reportEmailTo") || "").trim();
   customer.updatedAt = new Date().toISOString();
   addActivity("Customer updated", customer.name);
   saveState();
   render();
+});
+
+els.customerList?.addEventListener("click", async (event) => {
+  const copyButton = event.target.closest("[data-copy-customer-request-link]");
+  const printButton = event.target.closest("[data-print-customer-request-label]");
+  if (!copyButton && !printButton) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const customerId = copyButton?.dataset.copyCustomerRequestLink || printButton?.dataset.printCustomerRequestLabel || "";
+  const customer = getCustomer(customerId);
+  if (!customer || !canManageCustomerSetup(customer.id)) return;
+  if (copyButton) {
+    await copyText(getReportCustomerUrl(customer.id));
+    const originalLabel = copyButton.dataset.linkLabel || copyButton.textContent || "Copy Request Link";
+    copyButton.textContent = "Copied";
+    window.setTimeout(() => {
+      copyButton.textContent = originalLabel;
+    }, 1200);
+    return;
+  }
+  renderGeneralRequestLabels([{ type: "customer", customer }], true);
+  window.print();
 });
 
 function setUserFormStatus(message = "", isError = false) {
@@ -1423,6 +1467,28 @@ els.locationList.addEventListener("submit", (event) => {
 });
 
 els.locationList.addEventListener("click", async (event) => {
+  const copyButton = event.target.closest("[data-copy-location-request-link]");
+  const printButton = event.target.closest("[data-print-location-request-label]");
+  if (copyButton || printButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const locationId = copyButton?.dataset.copyLocationRequestLink || printButton?.dataset.printLocationRequestLabel || "";
+    const locationRecord = getLocation(locationId);
+    if (!locationRecord || !canManageLocationSetup(locationRecord.id, locationRecord.customerId)) return;
+    if (copyButton) {
+      await copyText(getReportLocationUrl(locationRecord.id));
+      const originalLabel = copyButton.dataset.linkLabel || copyButton.textContent || "Copy Request Link";
+      copyButton.textContent = "Copied";
+      window.setTimeout(() => {
+        copyButton.textContent = originalLabel;
+      }, 1200);
+      return;
+    }
+    renderGeneralRequestLabels([{ type: "location", locationRecord }], true);
+    window.print();
+    return;
+  }
+
   const button = event.target.closest("button[data-location-action='delete']");
   if (!button || !canManageSetup()) return;
   const locationRecord = getLocation(button.dataset.locationId);
@@ -1444,10 +1510,12 @@ els.locationList.addEventListener("click", async (event) => {
 
 els.assetCustomer.addEventListener("change", () => {
   renderAssetLocationOptions();
+  renderTemplateOptions();
 });
 
 els.editAssetCustomer.addEventListener("change", () => {
   renderEditAssetLocationOptions();
+  renderEditAssetTemplateOptions(els.editAssetCustomer.value, "");
 });
 
 els.editAssetPhoto.addEventListener("change", async () => {
@@ -2276,6 +2344,16 @@ els.printSelectedLabelsBtn.addEventListener("click", () => {
   window.print();
 });
 
+els.printSelectedNfcLabelsBtn?.addEventListener("click", () => {
+  const selectedAssets = selectedAssetsForPrinting();
+  if (!selectedAssets.length) {
+    alert("Select at least one equipment row to print QR + NFC labels.");
+    return;
+  }
+  renderNfcLabels(selectedAssets);
+  window.print();
+});
+
 els.printReportLabelsBtn.addEventListener("click", () => {
   const selectedAssets = selectedAssetsForPrinting();
   if (!selectedAssets.length) {
@@ -2940,7 +3018,7 @@ function render() {
 
   const asset = getSelectedAsset();
   els.customerCount.textContent = manageableSetupCustomers().length;
-  els.templateCount.textContent = state.templates.length;
+  els.templateCount.textContent = visibleTemplatesForCurrentView().length;
   els.locationCount.textContent = state.locations.filter((locationRecord) =>
     manageableSetupCustomers().some((customer) => customer.id === locationRecord.customerId)
   ).length;
@@ -3966,8 +4044,19 @@ function renderCustomerEditor(customer) {
           Contact notes
           <textarea name="contactNotes" rows="2" ${disabled}>${escapeHtml(customer.contactNotes || "")}</textarea>
         </label>
+        <label class="inline-check">
+          <input name="reportEmailEnabled" type="checkbox" ${customer.reportEmailEnabled ? "checked" : ""} ${disabled}>
+          Email customer reported issues
+        </label>
+        <label>
+          Report email recipient
+          <input name="reportEmailTo" type="email" value="${escapeAttribute(customer.reportEmailTo || "")}" placeholder="${escapeAttribute(customer.contactEmail || "service@example.com")}" ${disabled}>
+        </label>
         <div class="record-actions">
           <button type="submit" class="secondary mini" ${disabled}>Save Customer</button>
+          <button type="button" class="secondary mini" data-copy-customer-request-link="${escapeAttribute(customer.id)}" data-link-label="Copy Request QR Link" ${disabled}>Copy Request QR Link</button>
+          <button type="button" class="secondary mini" data-copy-customer-request-link="${escapeAttribute(customer.id)}" data-link-label="Copy Request NFC Link" ${disabled}>Copy Request NFC Link</button>
+          <button type="button" class="secondary mini" data-print-customer-request-label="${escapeAttribute(customer.id)}" ${disabled}>Print Request QR + NFC</button>
         </div>
       </form>
     </details>
@@ -4036,6 +4125,9 @@ function renderLocationEditor(locationRecord) {
         </label>
         <div class="record-actions">
           <button type="submit" class="secondary mini" ${disabled}>Save Location</button>
+          <button type="button" class="secondary mini" data-copy-location-request-link="${escapeAttribute(locationRecord.id)}" data-link-label="Copy Request QR Link" ${disabled}>Copy Request QR Link</button>
+          <button type="button" class="secondary mini" data-copy-location-request-link="${escapeAttribute(locationRecord.id)}" data-link-label="Copy Request NFC Link" ${disabled}>Copy Request NFC Link</button>
+          <button type="button" class="secondary mini" data-print-location-request-label="${escapeAttribute(locationRecord.id)}" ${disabled}>Print Request QR + NFC</button>
           <button type="button" class="secondary mini danger-action" data-location-action="delete" data-location-id="${escapeAttribute(locationRecord.id)}" ${disabled}>Delete</button>
         </div>
       </form>
@@ -4115,19 +4207,73 @@ function userLocationOptions(customerId, selectedLocationId = "") {
 }
 
 function renderTemplateOptions() {
-  els.assetTemplate.innerHTML = state.templates.map((template) =>
-    `<option value="${template.id}">${escapeHtml(template.name)}</option>`
+  const customerId = els.assetCustomer?.value || selectedCustomerId || "";
+  const templates = templatesForCustomer(customerId);
+  els.assetTemplate.innerHTML = templates.map((template) =>
+    `<option value="${escapeAttribute(template.id)}">${escapeHtml(templateOptionLabel(template))}</option>`
   ).join("");
-  if (!els.assetTemplate.value && state.templates[0]) {
-    els.assetTemplate.value = state.templates[0].id;
+  if (!templates.some((template) => template.id === els.assetTemplate.value)) {
+    els.assetTemplate.value = templates[0]?.id || "";
   }
 }
 
 function renderTemplates() {
   if (!els.templateList) return;
-  els.templateList.innerHTML = state.templates.length
-    ? state.templates.map(renderTemplateEditor).join("")
+  renderTemplateCustomerSelect();
+  const templates = visibleTemplatesForCurrentView();
+  els.templateList.innerHTML = templates.length
+    ? templates.map(renderTemplateEditor).join("")
     : `<p class="muted">No maintenance templates added yet.</p>`;
+}
+
+function renderTemplateCustomerSelect() {
+  if (!els.templateCustomer) return;
+  const preferredValue = els.templateCustomer.value || selectedCustomerId || "";
+  els.templateCustomer.innerHTML = templateCustomerOptions(preferredValue);
+  els.templateCustomer.value = [...els.templateCustomer.options].some((option) => option.value === preferredValue)
+    ? preferredValue
+    : "";
+}
+
+function templateCustomerId(template) {
+  return String(template?.customerId || "").trim();
+}
+
+function canSeeTemplate(template) {
+  const customerId = templateCustomerId(template);
+  return !customerId || visibleCustomers().some((customer) => customer.id === customerId);
+}
+
+function templateMatchesCurrentCustomer(template) {
+  const customerId = templateCustomerId(template);
+  return !customerId || !selectedCustomerId || customerId === selectedCustomerId;
+}
+
+function visibleTemplatesForCurrentView() {
+  return state.templates.filter((template) => canSeeTemplate(template) && templateMatchesCurrentCustomer(template));
+}
+
+function templatesForCustomer(customerId) {
+  return state.templates.filter((template) => canSeeTemplate(template) && (!templateCustomerId(template) || templateCustomerId(template) === customerId));
+}
+
+function templateCustomerOptions(selectedId = "") {
+  return [
+    `<option value="" ${!selectedId ? "selected" : ""}>General/shared template</option>`,
+    ...visibleCustomers().map((customer) =>
+      `<option value="${escapeAttribute(customer.id)}" ${selectedId === customer.id ? "selected" : ""}>${escapeHtml(customer.name)}</option>`
+    )
+  ].join("");
+}
+
+function templateScopeLabel(template) {
+  const customerId = templateCustomerId(template);
+  if (!customerId) return "General/shared";
+  return getCustomer(customerId)?.name || "Unknown customer";
+}
+
+function templateOptionLabel(template) {
+  return templateCustomerId(template) ? template.name : `${template.name} (Shared)`;
 }
 
 function openTemplateRouteEditor(templateId) {
@@ -4154,15 +4300,20 @@ function renderTemplateEditor(template) {
   const route = normalizeTemplateRoute(template);
   const routeAssets = templateRouteAssets(template);
   const routeEnabled = Boolean(route.enabled);
+  const scope = templateScopeLabel(template);
   return `
     <details class="template-editor setup-editor" data-template-editor="${escapeAttribute(template.id)}">
       <summary>
         <span>
           <strong>${escapeHtml(template.name)}</strong>
-          <small>${usedCount} equipment record${usedCount === 1 ? "" : "s"} | ${(template.items || []).length} checklist item${(template.items || []).length === 1 ? "" : "s"}${routeEnabled ? ` | Route: ${routeAssets.length} equipment` : ""}</small>
+          <small>${escapeHtml(scope)} | ${usedCount} equipment record${usedCount === 1 ? "" : "s"} | ${(template.items || []).length} checklist item${(template.items || []).length === 1 ? "" : "s"}${routeEnabled ? ` | Route: ${routeAssets.length} equipment` : ""}</small>
         </span>
       </summary>
       <form class="stack compact-form" data-template-id="${escapeAttribute(template.id)}">
+        <label>
+          Template scope
+          <select name="customerId">${templateCustomerOptions(templateCustomerId(template))}</select>
+        </label>
         <label>
           Template name
           <input name="name" required value="${escapeAttribute(template.name)}">
@@ -4193,7 +4344,7 @@ function renderTemplateEditor(template) {
           </label>
           <div class="route-asset-picker">
             <strong>Route equipment</strong>
-            ${renderTemplateRouteAssetPicker(route.assetIds)}
+            ${renderTemplateRouteAssetPicker(route.assetIds, template)}
           </div>
           <p class="muted">When this route is completed, SiteWorks writes one completed PM record to each checked equipment record.</p>
         </details>
@@ -4220,10 +4371,11 @@ function normalizeTemplateRoute(template) {
   };
 }
 
-function renderTemplateRouteAssetPicker(selectedAssetIds = []) {
+function renderTemplateRouteAssetPicker(selectedAssetIds = [], template = null) {
   const selectedIds = new Set(selectedAssetIds);
+  const routeCustomerId = templateCustomerId(template) || selectedCustomerId;
   const assets = state.assets
-    .filter((asset) => canSeeAsset(asset) && asset.customerId === selectedCustomerId)
+    .filter((asset) => canSeeAsset(asset) && (!routeCustomerId || asset.customerId === routeCustomerId))
     .sort((a, b) => {
       const locationCompare = (getLocation(a.locationId)?.name || "").localeCompare(getLocation(b.locationId)?.name || "");
       return locationCompare || a.name.localeCompare(b.name);
@@ -4414,7 +4566,7 @@ async function importEquipmentCsv() {
       }
 
       const templateName = findCsvValue(row, ["template", "maintenance template", "pm template"]);
-      const template = findTemplateByName(templateName) || state.templates[0];
+      const template = findTemplateByName(templateName, customer.id) || templatesForCustomer(customer.id)[0] || state.templates[0];
       const asset = {
         id: crypto.randomUUID(),
         customerId: customer.id,
@@ -4849,9 +5001,12 @@ function isDuplicateImportAsset(customerId, locationId, name, equipmentId) {
   });
 }
 
-function findTemplateByName(name) {
+function findTemplateByName(name, customerId = "") {
   if (!name) return null;
-  return state.templates.find((template) => sameText(template.name, name)) || null;
+  return state.templates.find((template) => sameText(template.name, name) && templateCustomerId(template) === customerId)
+    || state.templates.find((template) => sameText(template.name, name) && !templateCustomerId(template))
+    || state.templates.find((template) => sameText(template.name, name))
+    || null;
 }
 
 function normalizeCsvDate(value) {
@@ -5773,9 +5928,9 @@ function renderAssetTableControls() {
   els.clearSelectedAssetsBtn.disabled = selectedPrintAssetIds.size === 0;
   els.templateFilter.innerHTML = [
     `<option value="all">All templates</option>`,
-    ...state.templates.map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`)
+    ...visibleTemplatesForCurrentView().map((template) => `<option value="${escapeAttribute(template.id)}">${escapeHtml(templateOptionLabel(template))}</option>`)
   ].join("");
-  els.templateFilter.value = state.templates.some((template) => template.id === assetTemplateFilter)
+  els.templateFilter.value = visibleTemplatesForCurrentView().some((template) => template.id === assetTemplateFilter)
     ? assetTemplateFilter
     : "all";
 }
@@ -6097,7 +6252,7 @@ function renderPublicReport() {
   els.reportContext.textContent = [
     report.customer?.name,
     report.location?.name,
-    report.asset?.name
+    report.asset?.name || (!report.location ? "General request" : "")
   ].filter(Boolean).join(" | ");
 }
 
@@ -7293,7 +7448,9 @@ function matchesStatusFilter(asset) {
 }
 
 function matchesTemplateFilter(asset) {
-  return assetTemplateFilter === "all" || asset.templateId === assetTemplateFilter;
+  if (assetTemplateFilter === "all") return true;
+  const filterIsVisible = visibleTemplatesForCurrentView().some((template) => template.id === assetTemplateFilter);
+  return filterIsVisible ? asset.templateId === assetTemplateFilter : true;
 }
 
 function sortAssetsForTable(a, b) {
@@ -7443,7 +7600,8 @@ function routeCompletedAtIso(value) {
 function templateRouteAssets(template) {
   const route = normalizeTemplateRoute(template);
   const selectedIds = new Set(route.assetIds);
-  return state.assets.filter((asset) => selectedIds.has(asset.id) && canSeeAsset(asset));
+  const customerId = templateCustomerId(template);
+  return state.assets.filter((asset) => selectedIds.has(asset.id) && canSeeAsset(asset) && (!customerId || asset.customerId === customerId));
 }
 
 function renderAssetDetails(asset) {
@@ -8434,10 +8592,7 @@ function renderAssetInfoForm(asset) {
   ).join("");
   els.editAssetCustomer.value = asset.customerId;
   renderEditAssetLocationOptions(asset.locationId);
-  els.editAssetTemplate.innerHTML = state.templates.map((template) =>
-    `<option value="${template.id}">${escapeHtml(template.name)}</option>`
-  ).join("");
-  els.editAssetTemplate.value = asset.templateId;
+  renderEditAssetTemplateOptions(asset.customerId, asset.templateId);
   els.editAssetFrequency.value = String(asset.frequencyDays || 30);
   els.editAssetType.value = asset.type || "";
   els.editAssetCriticality.value = asset.criticality || "";
@@ -8660,6 +8815,20 @@ function renderWorkOrderItem(item) {
       </div>
     </details>
   `;
+}
+
+function renderEditAssetTemplateOptions(customerId, selectedTemplateId = "") {
+  let templates = templatesForCustomer(customerId);
+  const currentTemplate = selectedTemplateId ? getTemplate(selectedTemplateId) : null;
+  if (currentTemplate && !templates.some((template) => template.id === currentTemplate.id)) {
+    templates = [...templates, currentTemplate];
+  }
+  els.editAssetTemplate.innerHTML = templates.map((template) =>
+    `<option value="${escapeAttribute(template.id)}">${escapeHtml(templateOptionLabel(template))}</option>`
+  ).join("");
+  els.editAssetTemplate.value = templates.some((template) => template.id === selectedTemplateId)
+    ? selectedTemplateId
+    : templates[0]?.id || "";
 }
 
 function getWorkOrderPhotos(item) {
@@ -9068,6 +9237,54 @@ function getEmailFunctionReportDetails(details) {
     photoDataUrl: details.photoDataUrl || "",
     photos: Array.isArray(details.photos) ? details.photos : []
   };
+}
+
+function getCustomerReportNotificationSettings(customerId) {
+  const customer = getCustomer(customerId);
+  if (!customer?.reportEmailEnabled) return { enabled: false, recipient: "" };
+  const recipient = String(customer.reportEmailTo || customer.contactEmail || "").trim();
+  return { enabled: true, recipient };
+}
+
+async function notifyCustomerReportCreated(item) {
+  if (!item || item.customerReportEmailSentAt || item.customerReportEmailFailedAt) return;
+  if (item.source !== "Public QR report") return;
+  const settings = getCustomerReportNotificationSettings(item.customerId);
+  if (!settings.enabled) return;
+  const details = getIssueReportDetails(item);
+  if (!isEmailAddress(settings.recipient)) {
+    addWorkOrderHistory(item, "Customer report email skipped", "Customer report email is enabled, but no valid recipient is saved.");
+    addActivity("Customer report email skipped", `${details.issueNumber} - no recipient`);
+    saveState();
+    render();
+    return;
+  }
+  try {
+    const reportDetails = getEmailFunctionReportDetails(details);
+    const response = await sendSiteWorksEmail("ticket", {
+      to: settings.recipient,
+      ticket: reportDetails,
+      issue: reportDetails,
+      serviceRequest: reportDetails
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(getEmailFunctionError(result, "The customer report email could not be sent."));
+    }
+    item.customerReportEmailSentAt = new Date().toISOString();
+    item.customerReportEmailTo = settings.recipient;
+    addWorkOrderHistory(item, "Customer report email sent", buildEmailHistoryDetails(settings.recipient, result));
+    addActivity("Customer report email sent", `${details.issueNumber} to ${settings.recipient}`);
+  } catch (error) {
+    console.warn("Customer report email failed.", error);
+    item.customerReportEmailFailedAt = new Date().toISOString();
+    item.customerReportEmailTo = settings.recipient;
+    addWorkOrderHistory(item, "Customer report email failed", error.message || "Automatic customer report email could not be sent.");
+    addActivity("Customer report email failed", `${details.issueNumber} to ${settings.recipient}`);
+  }
+  item.updatedAt = new Date().toISOString();
+  saveState();
+  render();
 }
 
 function getEmailReceiptId(result) {
@@ -9578,6 +9795,31 @@ function renderLabels(assets = filteredAssets()) {
   }).join("");
 }
 
+function renderNfcLabels(assets = filteredAssets()) {
+  els.labelSheet.innerHTML = assets.map((asset) => {
+    const customer = getCustomer(asset.customerId);
+    const locationRecord = getLocation(asset.locationId);
+    const nfcTag = normalizeAssetNfcTag(asset.nfcTag);
+    return `
+      <div class="print-label print-label-nfc">
+        <img alt="" src="${qrUrl(getAssetUrl(asset.id))}">
+        <div class="print-label-copy">
+          <span class="label-brand">SiteWorks</span>
+          <strong>${escapeHtml(asset.name)}</strong>
+          <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
+          <span>${escapeHtml(locationRecord?.name || "Unknown location")}</span>
+          <span>Tap NFC or scan QR</span>
+          <span>NFC UID: ${escapeHtml(nfcTag.uid || "________________")}</span>
+        </div>
+        <div class="print-nfc-target" aria-hidden="true">
+          <span>NFC</span>
+          <small>1&quot; tag</small>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
 function renderInventoryLabel(item) {
   const customer = getCustomer(item.customerId);
   els.labelSheet.innerHTML = `
@@ -9592,6 +9834,35 @@ function renderInventoryLabel(item) {
       </div>
     </div>
   `;
+}
+
+function renderGeneralRequestLabels(records = [], includeNfcTarget = false) {
+  els.labelSheet.innerHTML = records.map((record) => {
+    const customer = record.customer || getCustomer(record.locationRecord?.customerId);
+    const locationRecord = record.locationRecord || null;
+    const url = locationRecord ? getReportLocationUrl(locationRecord.id) : getReportCustomerUrl(customer?.id);
+    const title = locationRecord?.name || "General request";
+    const brand = locationRecord ? "SiteWorks Location Request" : "SiteWorks Customer Request";
+    const labelClass = includeNfcTarget ? "print-label print-label-nfc" : "print-label";
+    return `
+      <div class="${labelClass}">
+        <img alt="" src="${qrUrl(url)}">
+        <div class="print-label-copy">
+          <span class="label-brand">${escapeHtml(brand)}</span>
+          <strong>${escapeHtml(title)}</strong>
+          <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
+          <span>${locationRecord ? "Location request" : "General customer request"}</span>
+          <span>Tap NFC or scan QR to request service</span>
+        </div>
+        ${includeNfcTarget ? `
+          <div class="print-nfc-target" aria-hidden="true">
+            <span>NFC</span>
+            <small>1&quot; tag</small>
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }).join("");
 }
 
 function renderReportLabels(assets = filteredAssets()) {
@@ -9626,7 +9897,22 @@ function renderReportLabels(assets = filteredAssets()) {
       </div>
     `;
   });
-  els.labelSheet.innerHTML = [...assetLabels, ...locationLabels].join("");
+  const customerLabels = visibleCustomers().map((customer) => `
+    <div class="print-label print-label-nfc">
+      <img alt="" src="${qrUrl(getReportCustomerUrl(customer.id))}">
+      <div class="print-label-copy">
+        <span class="label-brand">SiteWorks Customer Request</span>
+        <strong>General request</strong>
+        <span>${escapeHtml(customer.name || "Unknown customer")}</span>
+        <span>Tap NFC or scan QR to request service</span>
+      </div>
+      <div class="print-nfc-target" aria-hidden="true">
+        <span>NFC</span>
+        <small>1&quot; tag</small>
+      </div>
+    </div>
+  `);
+  els.labelSheet.innerHTML = [...assetLabels, ...locationLabels, ...customerLabels].join("");
 }
 
 function visibleLocationsForReportLabels() {
@@ -10701,6 +10987,16 @@ function getReportAssetUrl(id) {
   return `${base}?report=1&a=${encodeURIComponent(id)}${params ? `&${params}` : ""}`;
 }
 
+function getReportCustomerUrl(customerId) {
+  const base = getQrBaseUrl();
+  const customer = getCustomer(customerId);
+  const params = new URLSearchParams();
+  if (customer?.id) params.set("cid", customer.id);
+  if (customer?.name) params.set("c", customer.name);
+  params.set("general", "1");
+  return `${base}?report=1&${params.toString()}`;
+}
+
 function getReportLocationUrl(locationId) {
   const base = getQrBaseUrl();
   const locationRecord = getLocation(locationId);
@@ -10710,6 +11006,7 @@ function getReportLocationUrl(locationId) {
   if (customer?.name) params.set("c", customer.name);
   if (locationRecord?.id) params.set("lid", locationRecord.id);
   if (locationRecord?.name) params.set("l", locationRecord.name);
+  params.set("general", "1");
   return `${base}?report=1&${params.toString()}`;
 }
 
@@ -10893,19 +11190,19 @@ function getReportContext() {
     state.locations.push(locationRecord);
   }
 
-  if (!customer || !locationRecord) return null;
+  if (!customer) return null;
   return { asset: null, customer, location: locationRecord };
 }
 
 function createIssueFromPublicReport(report, note, contact, photo) {
-  const subject = report.asset?.name || report.location?.name || "Area";
+  const subject = report.asset?.name || report.location?.name || "General request";
   return {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
     assetId: report.asset?.id || "",
     customerId: report.customer?.id || "",
     locationId: report.location?.id || "",
-    areaName: report.asset ? "" : report.location?.name || "Area report",
+    areaName: report.asset ? "" : report.location?.name || "General request",
     source: "Public QR report",
     title: `Customer report: ${subject}`,
     priority: "Medium",
@@ -10980,7 +11277,9 @@ async function syncPublicReportsFromSupabase(force = false) {
     if (isCodexTestPublicReport(report)) return count;
     if (state.dismissedPublicReportIds.includes(report.id)) return count;
     if (state.workOrders.some((item) => item.remoteReportId === report.id)) return count;
-    state.workOrders.unshift(createIssueFromRemoteReport(report));
+    const ticket = createIssueFromRemoteReport(report);
+    state.workOrders.unshift(ticket);
+    notifyCustomerReportCreated(ticket);
     return count + 1;
   }, 0);
   if (added) {
@@ -11937,6 +12236,7 @@ function locationFromStructuredRow(row) {
 function templateFromStructuredRow(row) {
   return {
     id: row.id,
+    customerId: row.customer_id || "",
     name: row.name || "",
     items: Array.isArray(row.items) ? row.items : [],
     createdAt: row.created_at || "",
@@ -12726,6 +13026,8 @@ function normalizeState(input) {
     contactEmail: "",
     contactPhone: "",
     contactNotes: "",
+    reportEmailEnabled: false,
+    reportEmailTo: "",
     ...customer
   }));
 
@@ -12735,6 +13037,14 @@ function normalizeState(input) {
     contactPhone: "",
     contactNotes: "",
     ...locationRecord
+  }));
+
+  normalized.templates = normalized.templates.map((template) => ({
+    customerId: "",
+    createdAt: "",
+    updatedAt: "",
+    ...template,
+    customerId: String(template.customerId || "").trim()
   }));
 
   normalized.assets = normalized.assets.map((asset) => ({

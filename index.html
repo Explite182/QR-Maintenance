@@ -212,6 +212,14 @@
                 Contact notes
                 <textarea id="customerContactNotes" rows="2" placeholder="Access notes, billing contact, or site instructions"></textarea>
               </label>
+              <label class="inline-check">
+                <input id="customerReportEmailEnabled" type="checkbox">
+                Email customer reported issues
+              </label>
+              <label>
+                Report email recipient
+                <input id="customerReportEmailTo" type="email" placeholder="service@example.com">
+              </label>
               <button type="submit">Add Customer</button>
             </form>
             <div id="customerList" class="location-list"></div>
@@ -933,6 +941,12 @@
             <summary>Add Maintenance Template</summary>
             <form id="templateForm" class="stack compact-form">
               <label>
+                Template scope
+                <select id="templateCustomer">
+                  <option value="">General/shared template</option>
+                </select>
+              </label>
+              <label>
                 Template name
                 <input id="templateName" required placeholder="HVAC Monthly PM">
               </label>
@@ -1403,7 +1417,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260722-qr-nfc-labels"></script>
+  <script src="app.js?v=20260722-general-request-qr"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
