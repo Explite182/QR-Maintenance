@@ -14,11 +14,16 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260721-equipment-nfc-writer";
+const SITEWORKS_APP_VERSION = "20260721-nfc-fm-write-cors-fallback";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
-const NFC_BRIDGE_BASE_URL = "http://127.0.0.1:8765";
+const NFC_BRIDGE_BASE_URLS = [
+  "http://127.0.0.1:8765",
+  "http://localhost:8765",
+  "http://127.0.0.1:8775",
+  "http://localhost:8775"
+];
 const NFC_BRIDGE_TIMEOUT_MS = 30000;
 const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const PUBLIC_REPORT_SYNC_INTERVAL_MS = 2 * 60 * 1000;
@@ -2154,7 +2159,7 @@ els.pmForm.addEventListener("submit", async (event) => {
 els.assetInfoForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const asset = getSelectedAsset();
-  if (!asset || !canEditEquipment()) return;
+  if (!asset || !canWriteNfcTags()) return;
   if (!canSeeLocation(els.editAssetLocation.value, els.editAssetCustomer.value)) return;
 
   const replacementPhoto = await readPhoto(els.editAssetPhoto.files[0]);
@@ -7467,10 +7472,18 @@ function renderAssetNfcPanel(asset) {
   const tag = normalizeAssetNfcTag(asset?.nfcTag);
   const recordUrl = getAssetUrl(asset.id);
   const status = getAssetNfcStatus(tag, recordUrl);
-  const canWrite = canEditEquipment();
+  const canWrite = canWriteNfcTags() && canUseLocalNfcBridge();
   const uid = tag.uid || "Not assigned";
   const written = tag.lastWrittenAt ? formatDateTime(new Date(tag.lastWrittenAt)) : "Not written";
   const verified = tag.lastVerifiedAt ? formatDateTime(new Date(tag.lastVerifiedAt)) : "Not verified";
+  const writerControls = canUseLocalNfcBridge()
+    ? `
+      <div class="asset-nfc-actions">
+        <button type="button" class="secondary mini" data-write-asset-nfc ${canWrite ? "" : "disabled"}>Write NFC Tag</button>
+        <button type="button" class="secondary mini" data-verify-asset-nfc ${canWrite ? "" : "disabled"}>Read / Verify Tag</button>
+      </div>
+    `
+    : `<p class="asset-nfc-mobile-note">NFC writing uses the local PC writer. Tap written tags with this phone to open SiteWorks.</p>`;
   return `
     <div class="asset-nfc-card" data-nfc-status="${escapeAttribute(status.key)}">
       <div>
@@ -7480,13 +7493,14 @@ function renderAssetNfcPanel(asset) {
         <small>Last written: ${escapeHtml(written)}</small>
         <small>Last verified: ${escapeHtml(verified)}</small>
       </div>
-      <div class="asset-nfc-actions">
-        <button type="button" class="secondary mini" data-write-asset-nfc ${canWrite ? "" : "disabled"}>Write NFC Tag</button>
-        <button type="button" class="secondary mini" data-verify-asset-nfc ${canWrite ? "" : "disabled"}>Read / Verify Tag</button>
-      </div>
+      ${writerControls}
       <p>${escapeHtml(tag.message || `Writes ${recordUrl}`)}</p>
     </div>
   `;
+}
+
+function canUseLocalNfcBridge() {
+  return !window.matchMedia("(max-width: 840px), (pointer: coarse)").matches;
 }
 
 function getAssetNfcStatus(tag, recordUrl) {
@@ -7515,7 +7529,7 @@ async function writeAssetNfcTag(asset) {
   const recordUrl = getAssetUrl(asset.id);
   setAssetNfcBusy("Hold an NTAG tag on the ACR122U reader...");
   try {
-    const result = await callNfcBridge("/nfc/write", {
+    const result = await callNfcBridgeWithFallback(["/nfc/write", "/write", "/api/nfc/write"], {
       url: recordUrl,
       recordType: "equipment",
       recordId: asset.id,
@@ -7523,6 +7537,19 @@ async function writeAssetNfcTag(asset) {
     });
     const uid = getNfcResponseUid(result);
     const writtenUrl = getNfcResponseUrl(result) || recordUrl;
+    if (result.opaque) {
+      asset.nfcTag = {
+        ...normalizeAssetNfcTag(asset.nfcTag),
+        url: recordUrl,
+        status: "assigned",
+        lastWrittenAt: new Date().toISOString(),
+        message: "NFC write request was sent, but the bridge did not allow SiteWorks to read the UID. Tap the tag or fix bridge CORS, then verify."
+      };
+      addActivity("NFC write request sent", asset.name);
+      saveState();
+      render();
+      return;
+    }
     if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
     if (normalizeUrlForNfcCompare(writtenUrl) !== normalizeUrlForNfcCompare(recordUrl)) {
       throw new Error("The bridge wrote a different URL than SiteWorks requested.");
@@ -7583,47 +7610,88 @@ async function verifyAssetNfcTag(asset) {
 }
 
 async function callNfcBridge(path, payload) {
+  return callNfcBridgeUrl(NFC_BRIDGE_BASE_URLS[0], path, payload);
+}
+
+async function callNfcBridgeUrl(baseUrl, path, payload) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), NFC_BRIDGE_TIMEOUT_MS);
   try {
-    const response = await fetch(`${NFC_BRIDGE_BASE_URL}${path}`, {
+    const url = `${baseUrl}${path}`;
+    const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       signal: controller.signal
     });
-    const text = await response.text();
-    let data = {};
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { uid: text.trim() };
-      }
-    }
-    if (!response.ok || data.ok === false || data.success === false) {
-      throw new Error(data.error || data.message || `Bridge returned ${response.status}`);
-    }
-    return data;
+    return await parseNfcBridgeResponse(response, url);
   } catch (error) {
     if (error.name === "AbortError") throw new Error("Timed out waiting for the local NFC bridge.");
+    if (error instanceof TypeError) {
+      return callNfcBridgeSimple(baseUrl, path, payload);
+    }
     throw error;
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function callNfcBridgeWithFallback(paths, payload) {
-  let lastError = null;
-  for (const path of paths) {
+async function callNfcBridgeSimple(baseUrl, path, payload) {
+  const url = `${baseUrl}${path}`;
+  const body = JSON.stringify(payload);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body
+    });
+    return await parseNfcBridgeResponse(response, url);
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
     try {
-      return await callNfcBridge(path, payload);
-    } catch (error) {
-      lastError = error;
-      if (!String(error.message || "").includes("404")) throw error;
+      await fetch(url, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain" },
+        body
+      });
+      return { opaque: true, bridgeUrl: url };
+    } catch {
+      throw new Error("Could not reach the local NFC bridge. Confirm it is running on this PC and allows SiteWorks browser requests.");
     }
   }
-  throw lastError || new Error("NFC bridge endpoint was not available.");
+}
+
+async function parseNfcBridgeResponse(response, bridgeUrl) {
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { uid: text.trim() };
+    }
+  }
+  if (!response.ok || data.ok === false || data.success === false) {
+    throw new Error(data.error || data.message || `Bridge returned ${response.status}`);
+  }
+  return { ...data, bridgeUrl };
+}
+
+async function callNfcBridgeWithFallback(paths, payload) {
+  let lastError = null;
+  for (const baseUrl of NFC_BRIDGE_BASE_URLS) {
+    for (const path of paths) {
+      try {
+        return await callNfcBridgeUrl(baseUrl, path, payload);
+      } catch (error) {
+        lastError = error;
+        const message = String(error.message || "");
+        if (!message.includes("404") && !message.includes("Could not reach")) throw error;
+      }
+    }
+  }
+  throw lastError || new Error("NFC bridge endpoint was not available. Start the ACR122U bridge on this PC.");
 }
 
 function getNfcResponseUid(result = {}) {
@@ -10489,6 +10557,10 @@ function canAddEquipment() {
 
 function canEditEquipment() {
   return currentRole === "Admin" || isManagerRole();
+}
+
+function canWriteNfcTags() {
+  return currentRole === "Admin" || currentRole === "Facility Manager";
 }
 
 function canDeleteEquipment() {

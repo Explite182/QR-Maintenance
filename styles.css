@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260721-equipment-nfc-writer */
+/* SiteWorks styles version: 20260721-nfc-fm-write-cors-fallback */
 
 :root {
   --ink: #172126;
@@ -3424,6 +3424,17 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.asset-nfc-mobile-note {
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: #f8fbfa;
+}
+
+html[data-theme="dark"] .asset-nfc-mobile-note {
+  background: #17222a;
+}
+
 .asset-nfc-card[data-nfc-status="written"] {
   border-color: #9ddbcf;
   background: #f0fffb;
@@ -6561,13 +6572,23 @@ body.panel-schedule-open {
 
   .asset-subnav {
     gap: 14px;
+    max-width: 100%;
     overflow-x: auto;
+    overflow-y: hidden;
     padding-bottom: 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .asset-subnav::-webkit-scrollbar {
+    display: none;
   }
 
   .asset-subnav-tab {
     flex: 0 0 auto;
+    max-width: 58vw;
     font-size: 13px;
+    white-space: nowrap;
   }
 
   .asset-tools .table-actions {
@@ -6588,6 +6609,7 @@ body.panel-schedule-open {
     border: 0;
     background: transparent;
     box-shadow: none;
+    max-width: 100%;
   }
 
   .asset-table {
@@ -6605,6 +6627,8 @@ body.panel-schedule-open {
   .asset-table tbody {
     display: grid;
     gap: 12px;
+    width: 100%;
+    min-width: 0;
   }
 
   .asset-table tbody tr,
@@ -6614,9 +6638,10 @@ body.panel-schedule-open {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     box-sizing: border-box;
-    width: calc(100vw - 36px);
+    width: 100%;
     max-width: 100%;
-    padding: 14px;
+    min-width: 0;
+    padding: 14px 12px;
     background: #ffffff;
     border: 1px solid var(--line);
     border-radius: 14px;
@@ -6670,11 +6695,18 @@ body.panel-schedule-open {
 
   .equipment-id-wrap {
     display: flex;
-    gap: 12px;
+    gap: 9px;
     align-items: center;
     justify-content: flex-start;
     min-width: 0;
     max-width: 100%;
+  }
+
+  .equipment-id-wrap input,
+  .select-cell input {
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
   }
 
   .equipment-id-wrap strong {
@@ -6691,11 +6723,11 @@ body.panel-schedule-open {
   .asset-table .asset-table-thumb {
     display: grid;
     place-items: center;
-    flex: 0 0 44px;
-    width: 44px !important;
-    max-width: 44px !important;
-    height: 44px !important;
-    max-height: 44px !important;
+    flex: 0 0 32px;
+    width: 32px !important;
+    max-width: 32px !important;
+    height: 32px !important;
+    max-height: 32px !important;
     overflow: hidden;
     background: #eef6f3;
     border: 1px solid var(--line);
@@ -6740,6 +6772,11 @@ body.panel-schedule-open {
 
   .asset-table td:nth-child(6),
   .asset-table td:nth-child(7) {
+    min-width: 0;
+  }
+
+  .asset-table td:nth-child(6),
+  .asset-table td:nth-child(7) {
     display: block;
   }
 
@@ -6768,6 +6805,17 @@ body.panel-schedule-open {
   .table-row-actions button {
     min-width: 0;
     width: 100%;
+  }
+
+  @supports (display: contents) {
+    .asset-table,
+    .asset-table tbody {
+      display: block;
+    }
+
+    .asset-table tbody {
+      display: grid;
+    }
   }
 
   .asset-photo-card {
