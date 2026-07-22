@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260721-nfc-fm-write-cors-fallback */
+/* SiteWorks styles version: 20260722-dark-ticket-contrast */
 
 :root {
   --ink: #172126;
@@ -1221,6 +1221,49 @@ html[data-theme="dark"] button.secondary:hover,
 html[data-theme="dark"] a.secondary:hover {
   background: var(--accent-soft);
   border-color: rgba(47, 200, 170, 0.38);
+}
+
+html[data-theme="dark"] .history-item,
+html[data-theme="dark"] .work-order-item,
+html[data-theme="dark"] .issue-group-drawer {
+  background: #1b2831;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+html[data-theme="dark"] .work-order-drawer > summary strong,
+html[data-theme="dark"] .ticket-list-summary strong {
+  color: #f5fbfa;
+}
+
+html[data-theme="dark"] .work-order-item p,
+html[data-theme="dark"] .work-order-item header span,
+html[data-theme="dark"] .work-order-drawer > summary span:not(.history-open-label),
+html[data-theme="dark"] .work-order-drawer > summary .ticket-list-summary > span,
+html[data-theme="dark"] .work-order-drawer > summary .work-drawer-profile-text > span,
+html[data-theme="dark"] .issue-group-drawer > summary small {
+  color: #b5c5ca;
+}
+
+html[data-theme="dark"] .work-order-drawer > summary .ticket-list-badges .badge-danger,
+html[data-theme="dark"] .work-order-drawer > summary .work-drawer-badges .badge-danger {
+  color: #ffb4ad;
+}
+
+html[data-theme="dark"] .work-order-drawer > summary .ticket-list-badges .badge-warn,
+html[data-theme="dark"] .work-order-drawer > summary .work-drawer-badges .badge-warn {
+  color: #ffd08a;
+}
+
+html[data-theme="dark"] .work-order-drawer > summary .ticket-list-badges .badge-ok,
+html[data-theme="dark"] .work-order-drawer > summary .work-drawer-badges .badge-ok {
+  color: #9ee8bd;
+}
+
+html[data-theme="dark"] .work-order-drawer > summary .ticket-list-badges .badge-muted,
+html[data-theme="dark"] .work-order-drawer > summary .work-drawer-badges .badge-muted {
+  color: #b5c5ca;
 }
 
 html[data-theme="dark"] .sidebar .user-list-item,
