@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260721-nfc-fm-write-cors-fallback";
+const SITEWORKS_APP_VERSION = "20260722-nfc-status-save";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -7545,6 +7545,7 @@ async function writeAssetNfcTag(asset) {
         lastWrittenAt: new Date().toISOString(),
         message: "NFC write request was sent, but the bridge did not allow SiteWorks to read the UID. Tap the tag or fix bridge CORS, then verify."
       };
+      asset.updatedAt = new Date().toISOString();
       addActivity("NFC write request sent", asset.name);
       saveState();
       render();
@@ -7562,6 +7563,7 @@ async function writeAssetNfcTag(asset) {
       lastVerifiedAt: "",
       message: "Tag written from local ACR122U bridge."
     };
+    asset.updatedAt = new Date().toISOString();
     addActivity("NFC tag written", `${asset.name} | ${uid}`);
     saveState();
     render();
@@ -7599,6 +7601,7 @@ async function verifyAssetNfcTag(asset) {
       lastVerifiedAt: new Date().toISOString(),
       message: "Tag UID and URL match this equipment record."
     };
+    asset.updatedAt = new Date().toISOString();
     addActivity("NFC tag verified", `${asset.name} | ${uid}`);
     saveState();
     render();
