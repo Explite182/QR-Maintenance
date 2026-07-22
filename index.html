@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260722-dark-ticket-contrast">
+    <link rel="stylesheet" href="styles.css?v=20260722-dark-equipment-drawer">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -803,6 +803,7 @@
             <button id="selectPageAssetsBtn" class="secondary mini" type="button">Select Page</button>
             <button id="clearSelectedAssetsBtn" class="secondary mini" type="button">Clear</button>
             <button id="printSelectedLabelsBtn" class="secondary mini" type="button">Print Selected</button>
+            <button id="printSelectedNfcLabelsBtn" class="secondary mini" type="button">Print QR + NFC</button>
             <button id="exportAssetRegisterBtn" class="secondary mini">Export CSV</button>
           </div>
         </div>
@@ -1402,7 +1403,7 @@
       }
     });
   </script>
-  <script src="app.js?v=20260722-nfc-status-save"></script>
+  <script src="app.js?v=20260722-qr-nfc-labels"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

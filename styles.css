@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260722-dark-ticket-contrast */
+/* SiteWorks styles version: 20260722-dark-equipment-drawer */
 
 :root {
   --ink: #172126;
@@ -1264,6 +1264,50 @@ html[data-theme="dark"] .work-order-drawer > summary .work-drawer-badges .badge-
 html[data-theme="dark"] .work-order-drawer > summary .ticket-list-badges .badge-muted,
 html[data-theme="dark"] .work-order-drawer > summary .work-drawer-badges .badge-muted {
   color: #b5c5ca;
+}
+
+html[data-theme="dark"] .asset-heading,
+html[data-theme="dark"] .status-row,
+html[data-theme="dark"] .asset-sub-drawer,
+html[data-theme="dark"] .asset-details,
+html[data-theme="dark"] .pm-form {
+  background: #1b2831;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .asset-heading {
+  background:
+    linear-gradient(135deg, rgba(47, 200, 170, 0.16), rgba(27, 40, 49, 0) 52%),
+    #1b2831;
+}
+
+html[data-theme="dark"] .asset-heading h2,
+html[data-theme="dark"] .asset-sub-drawer summary h3,
+html[data-theme="dark"] .next-maintenance-card strong,
+html[data-theme="dark"] .status-tile strong,
+html[data-theme="dark"] #selectedTitle {
+  color: #f5fbfa;
+}
+
+html[data-theme="dark"] .asset-heading .muted,
+html[data-theme="dark"] #selectedMeta,
+html[data-theme="dark"] .asset-sub-drawer summary span,
+html[data-theme="dark"] .asset-detail-card small,
+html[data-theme="dark"] .asset-nfc-card small,
+html[data-theme="dark"] .asset-nfc-card p {
+  color: #b5c5ca;
+}
+
+html[data-theme="dark"] .qr-box,
+html[data-theme="dark"] .asset-thumb {
+  background: #f8fbfa;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #5f7077;
+}
+
+html[data-theme="dark"] .asset-sub-drawer[open] > summary {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 html[data-theme="dark"] .sidebar .user-list-item,
@@ -7142,6 +7186,48 @@ body.panel-schedule-open {
   .print-label span {
     font-size: 10px;
   }
+
+  .print-label-nfc {
+    grid-template-columns: 1.2in minmax(0, 1fr) 1in;
+    min-height: 1.45in;
+    gap: 0.13in;
+  }
+
+  .print-label-nfc img {
+    width: 1.2in;
+    height: 1.2in;
+  }
+
+  .print-label-nfc .print-label-copy {
+    min-width: 0;
+    padding-bottom: 0.12in;
+  }
+
+  .print-nfc-target {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    width: 1in;
+    height: 1in;
+    border: 1px dashed #222;
+    border-radius: 50%;
+    color: #111;
+    text-align: center;
+  }
+
+  .print-nfc-target span {
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .print-nfc-target small {
+    display: block;
+    margin-top: 0.04in;
+    color: #444;
+    font-size: 8px;
+    font-weight: 800;
+  }
 }
 
 html[data-theme="dark"] .workspace,
@@ -7153,6 +7239,11 @@ html[data-theme="dark"] .completed-pm-panel,
 html[data-theme="dark"] .inventory-panel,
 html[data-theme="dark"] .metric-card,
 html[data-theme="dark"] .selected-card,
+html[data-theme="dark"] .asset-heading,
+html[data-theme="dark"] .status-row,
+html[data-theme="dark"] .asset-sub-drawer,
+html[data-theme="dark"] .asset-details,
+html[data-theme="dark"] .pm-form,
 html[data-theme="dark"] .table-wrap,
 html[data-theme="dark"] .asset-table tbody tr,
 html[data-theme="dark"] .inventory-item,
