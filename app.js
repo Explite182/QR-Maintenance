@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260722-faster-sync-delete-status";
+const SITEWORKS_APP_VERSION = "20260727-public-report-customer-map";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -29,6 +29,19 @@ const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 const PUBLIC_REPORT_SYNC_INTERVAL_MS = 30 * 1000;
 const CLOUD_REFRESH_INTERVAL_MS = 45 * 1000;
 const PUBLIC_REPORT_SYNC_MIN_AGE_MS = 10 * 1000;
+const REALTIME_REFRESH_DEBOUNCE_MS = 900;
+const REALTIME_TABLES = [
+  "customers",
+  "locations",
+  "pm_templates",
+  "assets",
+  "work_orders",
+  "service_requests",
+  "pm_history",
+  "preferred_contractors",
+  "inventory_items",
+  "public_reports"
+];
 const MANAGER_ROLES = ["Manager", "Facility Manager"];
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
@@ -97,6 +110,17 @@ let structuredDataLoading = false;
 let structuredDataReady = false;
 let structuredSyncTimer = null;
 let structuredSyncActive = false;
+let realtimeClient = null;
+let realtimeChannel = null;
+let realtimeRefreshTimer = null;
+let realtimeConnected = false;
+let syncBannerHideTimer = null;
+let syncBannerState = {
+  status: "idle",
+  message: "",
+  detail: "",
+  updatedAt: ""
+};
 let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
@@ -141,6 +165,7 @@ const els = {
   loginQrReportBtn: document.getElementById("loginQrReportBtn"),
   loginQrAreaReportBtn: document.getElementById("loginQrAreaReportBtn"),
   loginGreetingToast: document.getElementById("loginGreetingToast"),
+  syncBanner: document.getElementById("syncBanner"),
   firstAdminForm: document.getElementById("firstAdminForm"),
   firstAdminUsername: document.getElementById("firstAdminUsername"),
   firstAdminName: document.getElementById("firstAdminName"),
@@ -479,6 +504,7 @@ window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
 window.setTimeout(loadSupabaseProfiles, 0);
 window.setTimeout(bootstrapCloudData, 0);
+window.setTimeout(initializeRealtimeSync, 1200);
 window.setInterval(syncPublicReportsFromSupabase, PUBLIC_REPORT_SYNC_INTERVAL_MS);
 window.setInterval(refreshCloudDataFromSupabase, CLOUD_REFRESH_INTERVAL_MS);
 initPasswordRecoveryFromUrl();
@@ -6203,6 +6229,7 @@ function renderSyncHealth() {
   const loadStatus = structuredDataLoading || sharedStateLoading ? "Loading..." : formatSyncTimestamp(syncHealth.lastCloudLoadAt);
   const saveStatus = structuredSyncActive ? "Saving..." : formatSyncTimestamp(syncHealth.lastCloudSaveAt);
   const publicReportStatus = remoteReportsLoading ? "Checking..." : formatSyncTimestamp(syncHealth.lastPublicReportSyncAt);
+  const realtimeStatus = realtimeConnected ? "Connected" : "Timed refresh";
   els.syncHealthSummary.textContent = hasError
     ? `Last issue: ${syncHealth.lastError}`
     : storageHealth.localOnly
@@ -6211,6 +6238,7 @@ function renderSyncHealth() {
   els.syncHealthPanel?.classList.toggle("has-sync-error", hasError);
   els.syncHealthGrid.innerHTML = [
     ["Backend mode", siteworksApi.backendLabel()],
+    ["Live updates", realtimeStatus],
     ["Cloud load", loadStatus],
     ["Cloud save", saveStatus],
     ["Public reports", publicReportStatus],
@@ -6227,6 +6255,49 @@ function renderSyncHealth() {
   `).join("");
 }
 
+function renderSyncBanner() {
+  if (!els.syncBanner) return;
+  const isVisible = Boolean(syncBannerState.message) && Boolean(currentUser) && !isPublicReportUrl();
+  els.syncBanner.classList.toggle("hidden", !isVisible);
+  els.syncBanner.className = `sync-banner app-only ${isVisible ? "" : "hidden"} is-${syncBannerState.status || "idle"}`.trim();
+  if (!isVisible) {
+    els.syncBanner.innerHTML = "";
+    return;
+  }
+  els.syncBanner.innerHTML = `
+    <span class="sync-banner-dot" aria-hidden="true"></span>
+    <span>
+      <strong>${escapeHtml(syncBannerState.message)}</strong>
+      ${syncBannerState.detail ? `<small>${escapeHtml(syncBannerState.detail)}</small>` : ""}
+    </span>
+  `;
+}
+
+function setSyncBanner(status, message, detail = "", autoHideMs = 0) {
+  window.clearTimeout(syncBannerHideTimer);
+  syncBannerState = {
+    status: status || "idle",
+    message: message || "",
+    detail: detail || "",
+    updatedAt: new Date().toISOString()
+  };
+  renderSyncBanner();
+  if (autoHideMs > 0) {
+    syncBannerHideTimer = window.setTimeout(() => {
+      if (syncBannerState.updatedAt) {
+        syncBannerState = { status: "idle", message: "", detail: "", updatedAt: "" };
+        renderSyncBanner();
+      }
+    }, autoHideMs);
+  }
+}
+
+function syncBannerSuccessMessage(type) {
+  if (type === "save") return "Saved to cloud";
+  if (type === "publicReports") return "Customer reports checked";
+  return "Cloud data current";
+}
+
 function formatSyncTimestamp(value) {
   if (!value) return "Not yet";
   return formatDateTime(new Date(value));
@@ -6239,11 +6310,17 @@ function markSyncSuccess(type) {
   if (type === "publicReports") syncHealth.lastPublicReportSyncAt = now;
   syncHealth.lastError = "";
   syncHealth.lastErrorAt = "";
+  if (structuredSyncActive || type !== "load") {
+    setSyncBanner("ok", syncBannerSuccessMessage(type), "", type === "save" ? 2600 : 1800);
+  }
+  renderSyncHealth();
 }
 
 function markSyncError(message) {
   syncHealth.lastError = message || "Cloud sync failed.";
   syncHealth.lastErrorAt = new Date().toISOString();
+  setSyncBanner("error", "Sync issue", syncHealth.lastError, 0);
+  renderSyncHealth();
 }
 
 function renderQrSettings() {
@@ -11195,7 +11272,7 @@ function getReportContext() {
 
   if (!customer && params.get("c")) {
     customer = {
-      id: `report-customer-${slugify(params.get("c"))}`,
+      id: customerId || `report-customer-${slugify(params.get("c"))}`,
       name: params.get("c"),
       createdAt: new Date().toISOString()
     };
@@ -11203,7 +11280,7 @@ function getReportContext() {
   }
   if (!locationRecord && params.get("l") && customer) {
     locationRecord = {
-      id: `report-location-${slugify(customer.name)}-${slugify(params.get("l"))}`,
+      id: locationId || `report-location-${slugify(customer.name)}-${slugify(params.get("l"))}`,
       customerId: customer.id,
       name: params.get("l"),
       createdAt: new Date().toISOString()
@@ -11338,6 +11415,77 @@ function supabaseAuthFetch(path, options = {}, session = null) {
     ...(options.headers || {})
   };
   return fetch(url, { ...options, headers });
+}
+
+async function initializeRealtimeSync() {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || siteworksServerEnabled() || isPublicReportUrl()) return;
+  if (realtimeChannel || realtimeClient) return;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    setSyncBanner("stale", "Live sync unavailable", "Missing Supabase settings.", 5000);
+    return;
+  }
+  if (!window.supabase?.createClient) {
+    setSyncBanner("stale", "Timed refresh active", "Supabase Realtime helper did not load.", 5000);
+    return;
+  }
+  try {
+    realtimeClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    });
+    const savedSession = getSavedAuthSession();
+    if (savedSession?.access_token && savedSession?.refresh_token && realtimeClient.auth?.setSession) {
+      await realtimeClient.auth.setSession({
+        access_token: savedSession.access_token,
+        refresh_token: savedSession.refresh_token
+      });
+    }
+    realtimeChannel = realtimeClient.channel("siteworks-realtime-sync");
+    REALTIME_TABLES.forEach((table) => {
+      realtimeChannel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+        handleRealtimeCloudChange(payload);
+      });
+    });
+    realtimeChannel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        realtimeConnected = true;
+        setSyncBanner("live", "Live sync connected", "Updates from other devices will appear automatically.", 3600);
+      } else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
+        realtimeConnected = false;
+        setSyncBanner("stale", "Timed refresh active", "Live sync is not connected right now.", 5000);
+      }
+      renderSyncHealth();
+    });
+  } catch (error) {
+    realtimeConnected = false;
+    setSyncBanner("stale", "Timed refresh active", error?.message || "Realtime setup failed.", 5000);
+    console.warn("Supabase Realtime sync was not started.", error);
+    renderSyncHealth();
+  }
+}
+
+function handleRealtimeCloudChange(payload = {}) {
+  if (!currentUser || isPublicReportUrl() || applyingSharedState) return;
+  const table = payload.table || payload?.schema || "cloud";
+  setSyncBanner("live", "Cloud update found", `Refreshing ${table.replaceAll("_", " ")}...`, 0);
+  window.clearTimeout(realtimeRefreshTimer);
+  realtimeRefreshTimer = window.setTimeout(async () => {
+    try {
+      if (table === "public_reports") {
+        await syncPublicReportsFromSupabase(true);
+      } else {
+        await refreshCloudDataFromSupabase();
+        await syncPublicReportsFromSupabase(true);
+      }
+      render();
+      setSyncBanner("ok", "Updated from cloud", "", 2600);
+    } catch (error) {
+      markSyncError(error?.message || "Realtime refresh failed.");
+    }
+  }, REALTIME_REFRESH_DEBOUNCE_MS);
 }
 
 function siteworksServerEnabled() {
@@ -12014,6 +12162,9 @@ async function bootstrapCloudData() {
 }
 
 async function refreshCloudDataFromSupabase() {
+  if (currentUser && !isPublicReportUrl()) {
+    setSyncBanner("loading", "Checking cloud", "", 1200);
+  }
   const loadedStructuredData = await loadStructuredDataFromSupabase();
   if (!loadedStructuredData) await loadSharedStateFromSupabase();
   restoreScannedAssetSelection();
@@ -12658,6 +12809,7 @@ async function syncStructuredDataToSupabase() {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return;
   if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
   structuredSyncActive = true;
+  setSyncBanner("saving", "Saving to cloud", "", 0);
   try {
     await upsertStructuredRows("customers", state.customers.map((customer) => ({
       id: customer.id,
@@ -12852,7 +13004,9 @@ async function upsertStructuredRows(table, rows) {
 
 async function deleteStructuredRows(table, column, values) {
   try {
+    setSyncBanner("saving", "Deleting from cloud", table.replaceAll("_", " "), 0);
     await siteworksApi.deleteRows(table, column, values);
+    markSyncSuccess("save");
     return true;
   } catch (error) {
     const message = `Cloud delete failed for ${table}: ${error?.message || error}`;
@@ -12884,8 +13038,10 @@ function isCodexTestPublicReport(report) {
 
 function createIssueFromRemoteReport(report) {
   const asset = report.equipment_id ? getRawAsset(report.equipment_id) : null;
-  const customerId = asset?.customerId || report.customer_id || "";
-  const locationId = asset?.locationId || report.location_id || "";
+  const matchedCustomer = findCustomerForRemoteReport(report);
+  const matchedLocation = findLocationForRemoteReport(report, matchedCustomer);
+  const customerId = asset?.customerId || matchedCustomer?.id || report.customer_id || "";
+  const locationId = asset?.locationId || matchedLocation?.id || report.location_id || "";
   return {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
@@ -12910,6 +13066,29 @@ function createIssueFromRemoteReport(report) {
     createdAt: report.created_at || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+}
+
+function findCustomerForRemoteReport(report) {
+  if (report.customer_id) {
+    const byId = getCustomer(report.customer_id);
+    if (byId) return byId;
+  }
+  const reportName = normalizedName(report.customer_name || "");
+  if (!reportName) return null;
+  return state.customers.find((customer) => normalizedName(customer.name) === reportName) || null;
+}
+
+function findLocationForRemoteReport(report, customer = null) {
+  if (report.location_id) {
+    const byId = getLocation(report.location_id);
+    if (byId) return byId;
+  }
+  const reportName = normalizedName(report.location_name || "");
+  if (!reportName || !customer?.id) return null;
+  return state.locations.find((locationRecord) =>
+    locationRecord.customerId === customer.id &&
+    normalizedName(locationRecord.name) === reportName
+  ) || null;
 }
 
 function getCompactAssetSnapshot(id) {
