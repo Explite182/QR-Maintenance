@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-short-nfc-links";
+const SITEWORKS_APP_VERSION = "20260731-short-nfc-link-display";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -2317,7 +2317,8 @@ els.copyLinkBtn.addEventListener("click", async () => {
 els.copyNfcLinkBtn?.addEventListener("click", async () => {
   const asset = getSelectedAsset();
   if (!asset) return;
-  await copyText(getAssetUrl(asset.id));
+  const nfcUid = getAssetNfcUid(asset);
+  await copyText(nfcUid ? getShortNfcUrl(nfcUid) : getAssetUrl(asset.id));
   els.copyNfcLinkBtn.textContent = "NFC Link Copied";
   setTimeout(() => {
     els.copyNfcLinkBtn.textContent = "Copy NFC Link";
@@ -7827,6 +7828,9 @@ function renderAssetNfcPanel(asset) {
   const uid = tag.uid || "Not assigned";
   const written = tag.lastWrittenAt ? formatDateTime(new Date(tag.lastWrittenAt)) : "Not written";
   const verified = tag.lastVerifiedAt ? formatDateTime(new Date(tag.lastVerifiedAt)) : "Not verified";
+  const nfcUrlLabel = tag.uid
+    ? `Short NFC link: ${getShortNfcUrl(tag.uid)}`
+    : `Short NFC link will appear after the tag is written. Long fallback: ${recordUrl}`;
   const writerControls = canUseLocalNfcBridge()
     ? `
       <div class="asset-nfc-actions">
@@ -7845,7 +7849,7 @@ function renderAssetNfcPanel(asset) {
         <small>Last verified: ${escapeHtml(verified)}</small>
       </div>
       ${writerControls}
-      <p>${escapeHtml(tag.message || `Writes ${recordUrl}`)}</p>
+      <p>${escapeHtml(tag.message || nfcUrlLabel)}</p>
     </div>
   `;
 }
