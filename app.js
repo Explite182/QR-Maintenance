@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-short-nfc-link-display";
+const SITEWORKS_APP_VERSION = "20260731-nfc-close-fix";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -11293,8 +11293,11 @@ function clearSelectedAssetUrl() {
   params.delete("i");
   params.delete("inventory");
   params.delete("qr");
+  params.delete("qrlogin");
+  params.delete("signedin");
   const query = params.toString();
-  history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}`);
+  const pathname = getShortNfcUidFromPath() ? "/" : location.pathname;
+  history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
 }
 
 function clearRememberedScannedQrContext() {
