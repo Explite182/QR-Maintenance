@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260727-public-report-customer-map";
+const SITEWORKS_APP_VERSION = "20260731-completed-ticket-drawer";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -6450,21 +6450,7 @@ function completedRecordMatchesId(record, id) {
 
 function renderCompletedTicketItem(record) {
   if (record.type === "workOrder") {
-    const isFocused = completedRecordMatchesId(record, focusedCompletedRecordId);
-    return `
-      <details class="work-order-item work-order-drawer completed-pm-item" ${isFocused ? "open" : ""}>
-        <summary>
-          <div>
-            <strong>${escapeHtml(formatIssueNumber(record.workOrder))} - ${escapeHtml(record.workOrder.title || "Completed ticket")}</strong>
-            <span>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</span>
-          </div>
-          <span class="history-open-label">Open</span>
-        </summary>
-        <p><strong>${escapeHtml(record.workOrder.status || "Closed")}</strong> ${escapeHtml(record.workOrder.priority || "Medium")} priority | Completed ${escapeHtml(formatDateTime(new Date(record.completedAt)))}</p>
-        <p>${escapeHtml(record.workOrder.notes || "No notes entered.")}</p>
-        ${record.asset ? `<button type="button" class="secondary mini" data-completed-pm-asset="${escapeAttribute(record.asset.id)}">View Equipment</button>` : ""}
-      </details>
-    `;
+    return renderWorkOrderItem(record.workOrder);
   }
 
   const isFocused = completedRecordMatchesId(record, focusedCompletedRecordId);
@@ -8843,7 +8829,7 @@ function renderWorkOrderItem(item) {
     badges: profileBadges
   });
   return `
-    <details class="work-order-item work-order-drawer ticket-drawer-item" ${item.id === focusedWorkOrderId ? "open" : ""}>
+    <details class="work-order-item work-order-drawer ticket-drawer-item" ${item.id === focusedWorkOrderId || item.id === focusedCompletedRecordId ? "open" : ""}>
       <summary>
         <div class="ticket-list-summary">
           <strong>${escapeHtml(issueNumber)} - ${escapeHtml(item.title || "Open ticket")}</strong>
