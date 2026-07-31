@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-phase1-scoped-cloud-load";
+const SITEWORKS_APP_VERSION = "20260731-phase1-template-fallback";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -13063,11 +13063,25 @@ async function upsertStructuredRows(table, rows) {
   try {
     await siteworksApi.saveRows(table, rows);
   } catch (error) {
+    if (table === "pm_templates" && isMissingColumnError(error, "customer_id")) {
+      await siteworksApi.saveRows(table, rows.map((row) => {
+        const fallbackRow = { ...row };
+        delete fallbackRow.customer_id;
+        return fallbackRow;
+      }));
+      markSyncError("Maintenance templates saved without customer-specific scope. Run the Phase 1 Supabase SQL to enable customer-specific templates.");
+      return;
+    }
     const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
     console.warn(`Structured Supabase sync skipped for ${table}.`, error);
     throw new Error(message);
   }
+}
+
+function isMissingColumnError(error, columnName) {
+  const message = String(error?.message || error || "");
+  return message.includes("PGRST204") && message.includes(columnName);
 }
 
 async function deleteStructuredRows(table, column, values) {
