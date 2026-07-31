@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-nfc-close-fix";
+const SITEWORKS_APP_VERSION = "20260731-email-status";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -9002,12 +9002,15 @@ function renderWorkOrderItem(item) {
           ? "badge-danger"
         : "badge-warn";
   const firstPhoto = mediaSource(getWorkOrderPhotos(item)[0]) || mediaSource(asset?.photo) || "";
+  const emailStatusBadge = renderWorkOrderEmailStatusBadge(item, "drawer-param-badge");
   const profileBadges = [
     `<span class="drawer-param-badge ${statusClass}">${escapeHtml(item.status)}</span>`,
     `<span class="drawer-param-badge ${item.priority === "High" ? "badge-danger" : "badge-warn"}">${escapeHtml(item.priority)} priority</span>`,
     `<span class="drawer-param-badge badge-muted">Created ${escapeHtml(createdLabel)}</span>`,
-    `<span class="drawer-param-badge badge-muted">Due ${escapeHtml(formatDate(new Date(item.dueAt)))}</span>`
-  ].join("");
+    `<span class="drawer-param-badge badge-muted">Due ${escapeHtml(formatDate(new Date(item.dueAt)))}</span>`,
+    emailStatusBadge
+  ].filter(Boolean).join("");
+  const emailStatusPanel = renderWorkOrderEmailStatusPanel(item);
   const drawerProfile = renderWorkDrawerProfile({
     title: `${issueNumber} - ${item.title || "Open ticket"}`,
     systemId: `${targetKind}: ${targetLabel}`,
@@ -9019,11 +9022,11 @@ function renderWorkOrderItem(item) {
   return `
     <details class="work-order-item work-order-drawer ticket-drawer-item" data-work-order-id="${escapeAttribute(item.id)}" ${item.id === focusedWorkOrderId || item.id === focusedCompletedRecordId ? "open" : ""}>
       <summary>
-        <div class="ticket-list-summary">
-          <strong>${escapeHtml(issueNumber)} - ${escapeHtml(item.title || "Open ticket")}</strong>
-          <span>${escapeHtml(targetLabel)} | ${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")}</span>
-          <div class="ticket-list-badges">${profileBadges}</div>
-        </div>
+          <div class="ticket-list-summary">
+            <strong>${escapeHtml(issueNumber)} - ${escapeHtml(item.title || "Open ticket")}</strong>
+            <span>${escapeHtml(targetLabel)} | ${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")}</span>
+            <div class="ticket-list-badges">${profileBadges}</div>
+          </div>
         <div class="ticket-summary-tools">
           ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
           ${headerActions}
@@ -9034,6 +9037,7 @@ function renderWorkOrderItem(item) {
         <section class="ticket-profile-card">
           ${drawerProfile}
         </section>
+        ${emailStatusPanel}
         <details class="ticket-sub-drawer" open>
           <summary>
             <h3>Description</h3>
@@ -9513,19 +9517,96 @@ function getCustomerReportNotificationSettings(customerId) {
   return { enabled: true, recipient };
 }
 
+function getWorkOrderEmailStatus(item) {
+  if (!item) return null;
+  if (item.customerReportEmailSentAt) {
+    return {
+      label: "Email sent",
+      className: "badge-ok",
+      detail: `${item.customerReportEmailTo ? `Sent to ${item.customerReportEmailTo}. ` : ""}${formatDateTime(new Date(item.customerReportEmailSentAt))}`,
+      action: "Customer report email sent"
+    };
+  }
+  if (item.customerReportEmailFailedAt) {
+    return {
+      label: "Email failed",
+      className: "badge-danger",
+      detail: `${item.customerReportEmailTo ? `Tried ${item.customerReportEmailTo}. ` : ""}${item.customerReportEmailError || "The ticket was created, but the automatic email was not sent."}`,
+      action: "Customer report email failed"
+    };
+  }
+  if (item.customerReportEmailSkippedAt) {
+    return {
+      label: "Email skipped",
+      className: "badge-warn",
+      detail: item.customerReportEmailError || "No valid email recipient was saved for this customer.",
+      action: "Customer report email skipped"
+    };
+  }
+  if (item.customerReportEmailPendingAt) {
+    return {
+      label: "Email pending",
+      className: "badge-warn",
+      detail: `${item.customerReportEmailTo ? `Queued for ${item.customerReportEmailTo}. ` : ""}Waiting for the email service response.`,
+      action: "Customer report email pending"
+    };
+  }
+  const emailHistory = workOrderHistoryEntries(item).find((entry) =>
+    /customer report email (sent|failed|skipped)/i.test(entry.action || "")
+  );
+  if (emailHistory) {
+    const action = String(emailHistory.action || "");
+    const failed = /failed/i.test(action);
+    const skipped = /skipped/i.test(action);
+    return {
+      label: failed ? "Email failed" : skipped ? "Email skipped" : "Email sent",
+      className: failed ? "badge-danger" : skipped ? "badge-warn" : "badge-ok",
+      detail: emailHistory.details || action,
+      action
+    };
+  }
+  return null;
+}
+
+function renderWorkOrderEmailStatusBadge(item, classPrefix = "status-badge") {
+  const status = getWorkOrderEmailStatus(item);
+  if (!status) return "";
+  return `<span class="${classPrefix} ${status.className}">${escapeHtml(status.label)}</span>`;
+}
+
+function renderWorkOrderEmailStatusPanel(item) {
+  const status = getWorkOrderEmailStatus(item);
+  if (!status) return "";
+  return `
+    <section class="ticket-email-status-panel ${escapeAttribute(status.className)}">
+      <strong>${escapeHtml(status.label)}</strong>
+      <p>${escapeHtml(status.detail)}</p>
+    </section>
+  `;
+}
+
 async function notifyCustomerReportCreated(item) {
-  if (!item || item.customerReportEmailSentAt || item.customerReportEmailFailedAt) return;
+  if (!item || item.customerReportEmailSentAt || item.customerReportEmailFailedAt || item.customerReportEmailSkippedAt) return;
   if (item.source !== "Public QR report") return;
   const settings = getCustomerReportNotificationSettings(item.customerId);
   if (!settings.enabled) return;
   const details = getIssueReportDetails(item);
   if (!isEmailAddress(settings.recipient)) {
+    item.customerReportEmailSkippedAt = new Date().toISOString();
+    item.customerReportEmailError = "Customer report email is enabled, but no valid recipient is saved.";
     addWorkOrderHistory(item, "Customer report email skipped", "Customer report email is enabled, but no valid recipient is saved.");
     addActivity("Customer report email skipped", `${details.issueNumber} - no recipient`);
+    item.updatedAt = new Date().toISOString();
     saveState();
     render();
     return;
   }
+  item.customerReportEmailPendingAt = new Date().toISOString();
+  item.customerReportEmailTo = settings.recipient;
+  item.customerReportEmailError = "";
+  item.updatedAt = new Date().toISOString();
+  saveState();
+  render();
   try {
     const reportDetails = getEmailFunctionReportDetails(details);
     const response = await sendSiteWorksEmail("ticket", {
@@ -9539,12 +9620,20 @@ async function notifyCustomerReportCreated(item) {
       throw new Error(getEmailFunctionError(result, "The customer report email could not be sent."));
     }
     item.customerReportEmailSentAt = new Date().toISOString();
+    item.customerReportEmailFailedAt = "";
+    item.customerReportEmailSkippedAt = "";
+    item.customerReportEmailPendingAt = "";
+    item.customerReportEmailError = "";
     item.customerReportEmailTo = settings.recipient;
     addWorkOrderHistory(item, "Customer report email sent", buildEmailHistoryDetails(settings.recipient, result));
     addActivity("Customer report email sent", `${details.issueNumber} to ${settings.recipient}`);
   } catch (error) {
     console.warn("Customer report email failed.", error);
     item.customerReportEmailFailedAt = new Date().toISOString();
+    item.customerReportEmailSentAt = "";
+    item.customerReportEmailSkippedAt = "";
+    item.customerReportEmailPendingAt = "";
+    item.customerReportEmailError = error.message || "Automatic customer report email could not be sent.";
     item.customerReportEmailTo = settings.recipient;
     addWorkOrderHistory(item, "Customer report email failed", error.message || "Automatic customer report email could not be sent.");
     addActivity("Customer report email failed", `${details.issueNumber} to ${settings.recipient}`);

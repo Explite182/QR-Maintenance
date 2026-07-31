@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260722-dark-equipment-drawer */
+/* SiteWorks styles version: 20260722-realtime-sync-banners */
 
 :root {
   --ink: #172126;
@@ -140,6 +140,77 @@ html[data-theme="dark"] body {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+}
+
+.sync-banner {
+  position: fixed;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 120;
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  max-width: min(430px, calc(100vw - 36px));
+  padding: 11px 14px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+}
+
+.sync-banner strong,
+.sync-banner small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sync-banner strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.sync-banner small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sync-banner-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.sync-banner.is-saving .sync-banner-dot,
+.sync-banner.is-loading .sync-banner-dot {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px rgba(180, 95, 6, 0.14);
+}
+
+.sync-banner.is-error {
+  border-left-color: var(--danger);
+}
+
+.sync-banner.is-error .sync-banner-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(180, 35, 24, 0.14);
+}
+
+.sync-banner.is-stale {
+  border-left-color: var(--warn);
+}
+
+.sync-banner.is-stale .sync-banner-dot {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px rgba(180, 95, 6, 0.14);
 }
 
 .login-qr-report {
@@ -5442,6 +5513,60 @@ button.asset-detail-card {
   color: var(--muted);
 }
 
+.ticket-email-status-panel {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--soft);
+}
+
+.ticket-email-status-panel strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.ticket-email-status-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ticket-email-status-panel.badge-ok {
+  border-color: #a8d9bf;
+  background: #effaf4;
+}
+
+.ticket-email-status-panel.badge-warn {
+  border-color: #efd9a7;
+  background: #fff8e9;
+}
+
+.ticket-email-status-panel.badge-danger {
+  border-color: #efb7b7;
+  background: #fff0f0;
+}
+
+html[data-theme="dark"] .ticket-email-status-panel {
+  background: #101d25;
+  border-color: #30444f;
+}
+
+html[data-theme="dark"] .ticket-email-status-panel.badge-ok {
+  border-color: #256d53;
+  background: #0c241d;
+}
+
+html[data-theme="dark"] .ticket-email-status-panel.badge-warn {
+  border-color: #745b24;
+  background: #251e10;
+}
+
+html[data-theme="dark"] .ticket-email-status-panel.badge-danger {
+  border-color: #733238;
+  background: #271419;
+}
+
 .work-order-drawer:not([open]) .ticket-drawer-close {
   display: none;
 }
@@ -6094,6 +6219,13 @@ body.panel-schedule-open {
     top: 92px;
     right: 12px;
     left: 12px;
+    max-width: none;
+  }
+
+  .sync-banner {
+    right: 12px;
+    left: 12px;
+    bottom: calc(86px + env(safe-area-inset-bottom));
     max-width: none;
   }
 
@@ -7282,4 +7414,14 @@ html[data-theme="dark"] .inventory-main p {
 html[data-theme="dark"] .status-badge,
 html[data-theme="dark"] [class*="badge"] {
   border-color: rgba(255, 255, 255, 0.18);
+}
+
+html[data-theme="dark"] .sync-banner {
+  color: var(--ink);
+  background: rgba(23, 34, 42, 0.96);
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .sync-banner small {
+  color: var(--muted);
 }
