@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-activity-log-scope";
+const SITEWORKS_APP_VERSION = "20260731-completed-ticket-view";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -2695,6 +2695,13 @@ document.addEventListener("click", (event) => {
   const scrollButton = event.target.closest("[data-scroll-target]");
   if (scrollButton) {
     document.getElementById(scrollButton.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const completedTicketButton = event.target.closest("[data-open-completed-ticket]");
+  if (completedTicketButton) {
+    event.preventDefault();
+    openCompletedRecord(completedTicketButton.dataset.openCompletedTicket);
     return;
   }
 
@@ -6821,16 +6828,7 @@ function openDashboardResult(type, id) {
     serviceRequestDrawerTab = "notes";
     openPanel("serviceRequestsPanel");
   } else if (type === "completed") {
-    const completedTicket = state.workOrders.find((item) => item.id === id);
-    const completedPm = completedPmRecords().find((record) => record.history?.id === id || record.asset?.id === id);
-    if (completedTicket && !isCurrentViewWorkOrder(completedTicket)) return;
-    if (!completedTicket && completedPm && !isCurrentViewAsset(completedPm.asset)) return;
-    if (!completedTicket && !completedPm) return;
-    focusedWorkOrderId = "";
-    focusedServiceRequestId = "";
-    focusedCompletedRecordId = id;
-    workOrderNumberFilter = "all";
-    openPanel("completedPmPanel");
+    if (!openCompletedRecord(id, false)) return;
   }
   render();
   const target = type === "asset"
@@ -6841,6 +6839,24 @@ function openDashboardResult(type, id) {
         ? document.getElementById("serviceRequestsPanel")
         : document.getElementById("completedPmPanel");
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function openCompletedRecord(id, shouldRender = true) {
+  const completedTicket = state.workOrders.find((item) => item.id === id);
+  const completedPm = completedPmRecords().find((record) => record.history?.id === id || record.asset?.id === id);
+  if (completedTicket && !isCurrentViewWorkOrder(completedTicket)) return false;
+  if (!completedTicket && completedPm && !isCurrentViewAsset(completedPm.asset)) return false;
+  if (!completedTicket && !completedPm) return false;
+  focusedWorkOrderId = "";
+  focusedServiceRequestId = "";
+  focusedCompletedRecordId = id;
+  workOrderNumberFilter = "all";
+  openPanel("completedPmPanel");
+  if (shouldRender) {
+    render();
+    document.getElementById("completedPmPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  return true;
 }
 
 function getWorkOrderNumberFilterForTicket(ticket) {
@@ -8844,7 +8860,7 @@ function renderWorkOrderItem(item) {
     <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
   ` : "";
   const primaryActions = item.status === "Closed" ? `
-    ${canEditTicket ? `<button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>` : ""}
+    <button class="secondary mini" type="button" data-open-completed-ticket="${escapeAttribute(item.id)}">View</button>
     ${canManage ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
   ` : `
     ${canEditTicket ? `<button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>` : ""}
@@ -8854,6 +8870,7 @@ function renderWorkOrderItem(item) {
   `;
   const moreActions = `
     ${secondaryActions}
+    ${item.status === "Closed" && canEditTicket ? `<button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>` : ""}
     ${canWork && item.status !== "Waiting parts" && item.status !== "Closed" ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
     ${canManage && item.status !== "Closed" ? `<button class="secondary mini" data-work-order-convert-service="${escapeAttribute(item.id)}">Convert to Service Request</button>` : ""}
     ${canDelete ? `<button class="secondary mini danger-action" data-work-order-delete="${escapeAttribute(item.id)}">Delete</button>` : ""}
