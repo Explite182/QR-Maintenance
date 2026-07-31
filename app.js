@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-phase2-account-sync";
+const SITEWORKS_APP_VERSION = "20260731-ticket-drawer-actions";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -2567,6 +2567,12 @@ els.refreshCloudNowBtn?.addEventListener("click", async () => {
 });
 
 document.addEventListener("click", (event) => {
+  const ticketMenuSummary = event.target.closest(".work-order-drawer > summary .ticket-action-menu > summary");
+  if (ticketMenuSummary) {
+    event.stopPropagation();
+    return;
+  }
+
   const closePanelScheduleButton = event.target.closest("[data-close-panel-schedule]");
   if (closePanelScheduleButton) {
     event.preventDefault();
@@ -2706,6 +2712,7 @@ document.addEventListener("click", (event) => {
 
   const pdfButton = event.target.closest("[data-work-order-pdf]");
   if (pdfButton) {
+    event.preventDefault();
     const workOrder = getWorkOrder(pdfButton.dataset.workOrderPdf);
     if (workOrder) openIssuePdfForm(workOrder);
     return;
@@ -2713,6 +2720,7 @@ document.addEventListener("click", (event) => {
 
   const emailButton = event.target.closest("[data-work-order-email]");
   if (emailButton) {
+    event.preventDefault();
     const workOrder = getWorkOrder(emailButton.dataset.workOrderEmail);
     if (workOrder) emailIssueReport(workOrder);
     return;
@@ -2720,6 +2728,7 @@ document.addEventListener("click", (event) => {
 
   const sendPdfButton = event.target.closest("[data-work-order-send-pdf]");
   if (sendPdfButton) {
+    event.preventDefault();
     const workOrder = getWorkOrder(sendPdfButton.dataset.workOrderSendPdf);
     if (workOrder) sendIssuePdfEmail(workOrder, sendPdfButton);
     return;
@@ -2727,6 +2736,7 @@ document.addEventListener("click", (event) => {
 
   const servicePdfButton = event.target.closest("[data-service-request-pdf]");
   if (servicePdfButton) {
+    event.preventDefault();
     const request = getServiceRequest(servicePdfButton.dataset.serviceRequestPdf);
     if (request) openServiceRequestPdfForm(request);
     return;
@@ -2734,6 +2744,7 @@ document.addEventListener("click", (event) => {
 
   const serviceEmailButton = event.target.closest("[data-service-request-email]");
   if (serviceEmailButton) {
+    event.preventDefault();
     const request = getServiceRequest(serviceEmailButton.dataset.serviceRequestEmail);
     if (request) emailServiceRequest(request);
     return;
@@ -2741,6 +2752,7 @@ document.addEventListener("click", (event) => {
 
   const serviceSendPdfButton = event.target.closest("[data-service-request-send-pdf]");
   if (serviceSendPdfButton) {
+    event.preventDefault();
     const request = getServiceRequest(serviceSendPdfButton.dataset.serviceRequestSendPdf);
     if (request) sendServiceRequestPdfEmail(request, serviceSendPdfButton);
     return;
@@ -2778,30 +2790,35 @@ document.addEventListener("click", (event) => {
 
   const serviceActionButton = event.target.closest("[data-service-request-action]");
   if (serviceActionButton && canManageWorkOrders()) {
+    event.preventDefault();
     updateServiceRequestStatus(serviceActionButton.dataset.serviceRequestId, serviceActionButton.dataset.serviceRequestAction);
     return;
   }
 
   const serviceConvertButton = event.target.closest("[data-service-request-convert]");
   if (serviceConvertButton && canManageWorkOrders()) {
+    event.preventDefault();
     convertServiceRequestToIssue(serviceConvertButton.dataset.serviceRequestConvert);
     return;
   }
 
   const serviceDeleteButton = event.target.closest("[data-service-request-delete]");
   if (serviceDeleteButton) {
+    event.preventDefault();
     deleteServiceRequest(serviceDeleteButton.dataset.serviceRequestDelete);
     return;
   }
 
   const workOrderConvertButton = event.target.closest("[data-work-order-convert-service]");
   if (workOrderConvertButton && canManageWorkOrders()) {
+    event.preventDefault();
     convertOpenIssueToServiceRequest(workOrderConvertButton.dataset.workOrderConvertService);
     return;
   }
 
   const workOrderDeleteButton = event.target.closest("[data-work-order-delete]");
   if (workOrderDeleteButton) {
+    event.preventDefault();
     deleteWorkOrder(workOrderDeleteButton.dataset.workOrderDelete);
     return;
   }
@@ -2814,6 +2831,7 @@ document.addEventListener("click", (event) => {
 
   const button = event.target.closest("[data-work-order-action]");
   if (!button) return;
+  event.preventDefault();
   const workOrder = getWorkOrder(button.dataset.workOrderId);
   if (!workOrder) return;
   const nextStatus = button.dataset.workOrderAction;
@@ -7079,8 +7097,8 @@ function renderServiceRequestItem(request) {
   const requestHistoryPanel = renderServiceRequestHistoryPanel(request);
   const primaryActions = canEdit ? `
     <button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>
-    ${request.status !== "Reviewed" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Reviewed">Review</button>` : ""}
-    ${request.status !== "Completed" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Completed">Complete</button>` : ""}
+    ${request.status !== "Reviewed" ? `<button class="secondary mini" type="button" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Reviewed">Review</button>` : ""}
+    ${request.status !== "Completed" ? `<button class="secondary mini" type="button" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Completed">Complete</button>` : ""}
   ` : "";
   const editAction = canEdit ? `
     <details class="ticket-sub-drawer" data-ticket-edit-drawer>
@@ -7092,13 +7110,13 @@ function renderServiceRequestItem(request) {
     </details>
   ` : "";
   const moreActions = canEdit ? `
-    <button class="secondary mini" data-service-request-pdf="${escapeAttribute(request.id)}">PDF Form</button>
-    <button class="secondary mini" data-service-request-email="${escapeAttribute(request.id)}">Email Request</button>
-    <button class="secondary mini" data-service-request-send-pdf="${escapeAttribute(request.id)}">Send PDF Email</button>
-    ${request.status !== "Scheduled" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Scheduled">Schedule</button>` : ""}
-    ${request.status !== "Declined" ? `<button class="secondary mini" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Declined">Decline</button>` : ""}
-    ${!request.convertedWorkOrderId ? `<button class="secondary mini" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Ticket</button>` : `<span class="status-badge badge-ok">Converted</span>`}
-    ${canDeleteServiceRequests() ? `<button class="secondary mini danger-action" data-service-request-delete="${escapeAttribute(request.id)}">Delete</button>` : ""}
+    <button class="secondary mini" type="button" data-service-request-pdf="${escapeAttribute(request.id)}">PDF Form</button>
+    <button class="secondary mini" type="button" data-service-request-email="${escapeAttribute(request.id)}">Email Request</button>
+    <button class="secondary mini" type="button" data-service-request-send-pdf="${escapeAttribute(request.id)}">Send PDF Email</button>
+    ${request.status !== "Scheduled" ? `<button class="secondary mini" type="button" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Scheduled">Schedule</button>` : ""}
+    ${request.status !== "Declined" ? `<button class="secondary mini" type="button" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Declined">Decline</button>` : ""}
+    ${!request.convertedWorkOrderId ? `<button class="secondary mini" type="button" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Ticket</button>` : `<span class="status-badge badge-ok">Converted</span>`}
+    ${canDeleteServiceRequests() ? `<button class="secondary mini danger-action" type="button" data-service-request-delete="${escapeAttribute(request.id)}">Delete</button>` : ""}
   ` : "";
   return `
     <details class="work-order-item work-order-drawer service-request-item" ${request.id === focusedServiceRequestId ? "open" : ""}>
@@ -8860,19 +8878,19 @@ function renderWorkOrderItem(item) {
   ` : "";
   const primaryActions = item.status === "Closed" ? `
     <button class="secondary mini" type="button" data-open-completed-ticket="${escapeAttribute(item.id)}">View</button>
-    ${canManage ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
+    ${canManage ? `<button class="secondary mini" type="button" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
   ` : `
     ${canEditTicket ? `<button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>` : ""}
-    ${canWork && item.status === "Open" ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
-    ${canWork && item.status !== "Resolved" ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
-    ${canManage ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>` : ""}
+    ${canWork && item.status === "Open" ? `<button class="secondary mini" type="button" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
+    ${canWork && item.status !== "Resolved" ? `<button class="secondary mini" type="button" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
+    ${canManage ? `<button class="secondary mini" type="button" data-work-order-id="${item.id}" data-work-order-action="Closed">Close</button>` : ""}
   `;
   const moreActions = `
     ${secondaryActions}
     ${item.status === "Closed" && canEditTicket ? `<button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>` : ""}
-    ${canWork && item.status !== "Waiting parts" && item.status !== "Closed" ? `<button class="secondary mini" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
-    ${canManage && item.status !== "Closed" ? `<button class="secondary mini" data-work-order-convert-service="${escapeAttribute(item.id)}">Convert to Service Request</button>` : ""}
-    ${canDelete ? `<button class="secondary mini danger-action" data-work-order-delete="${escapeAttribute(item.id)}">Delete</button>` : ""}
+    ${canWork && item.status !== "Waiting parts" && item.status !== "Closed" ? `<button class="secondary mini" type="button" data-work-order-id="${item.id}" data-work-order-action="Waiting parts">Waiting Parts</button>` : ""}
+    ${canManage && item.status !== "Closed" ? `<button class="secondary mini" type="button" data-work-order-convert-service="${escapeAttribute(item.id)}">Convert to Service Request</button>` : ""}
+    ${canDelete ? `<button class="secondary mini danger-action" type="button" data-work-order-delete="${escapeAttribute(item.id)}">Delete</button>` : ""}
   `;
   const headerActions = primaryActions.trim() || moreActions.trim() ? `
     <div class="ticket-header-actions">
