@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-sync-health-status-fix";
+const SITEWORKS_APP_VERSION = "20260731-activity-log-scope";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -3525,7 +3525,7 @@ function renderRole() {
   const canCreateInventory = canManageInventory();
   const canUseNewActions = canAddAssets || canCreateTickets || canCreateServiceRequests() || canCreateInventory;
   const isCustomer = currentRole === "Customer";
-  const hasAdminToolsAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed;
+  const hasAdminToolsAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed || canViewActivityLog();
   const canUseWorkNav = !isCustomer;
   const hasSidebarAccess = canUseWorkNav || hasAdminToolsAccess;
   els.appShell?.classList.toggle("no-sidebar", !hasSidebarAccess);
@@ -3571,8 +3571,8 @@ function renderRole() {
   if (!contractorManagementAllowed) els.contractorDrawer.open = false;
   els.userDrawer.classList.toggle("hidden", !userManagementAllowed);
   if (!userManagementAllowed) els.userDrawer.open = false;
-  els.activityLogDrawer?.classList.toggle("hidden", !isAdmin);
-  if (!isAdmin && els.activityLogDrawer) els.activityLogDrawer.open = false;
+  els.activityLogDrawer?.classList.toggle("hidden", !canViewActivityLog());
+  if (!canViewActivityLog() && els.activityLogDrawer) els.activityLogDrawer.open = false;
   els.backupLocationBlock.classList.toggle("hidden", currentRole !== "Admin");
   els.backupLocationForm.querySelectorAll("input, button").forEach((control) => {
     control.disabled = currentRole !== "Admin";
@@ -4010,11 +4010,12 @@ function findUserByRequest(request) {
 }
 
 function renderActivityLog() {
-  const items = (state.activityLog || []).slice(0, ACTIVITY_LOG_VISIBLE_ENTRIES);
-  els.activityLogCount.textContent = state.activityLog?.length || 0;
+  const visibleEntries = visibleActivityLogEntries();
+  const items = visibleEntries.slice(0, ACTIVITY_LOG_VISIBLE_ENTRIES);
+  els.activityLogCount.textContent = visibleEntries.length;
   els.activityLogList.innerHTML = items.length
     ? items.map(renderActivityLogItem).join("")
-    : `<p class="muted">No activity recorded yet.</p>`;
+    : `<p class="muted">No activity visible for this login yet.</p>`;
 }
 
 function renderActivityLogItem(item) {
@@ -4026,6 +4027,50 @@ function renderActivityLogItem(item) {
       <p>${escapeHtml(item.details || "")}</p>
     </div>
   `;
+}
+
+function canViewActivityLog() {
+  return Boolean(currentUser);
+}
+
+function visibleActivityLogEntries() {
+  const entries = state.activityLog || [];
+  if (currentRole === "Admin") return entries;
+  if (!currentUser) return [];
+  if (isManagerRole() && currentUser.customerId) {
+    return entries.filter((entry) => canSeeCustomerActivity(entry));
+  }
+  return entries.filter((entry) => isCurrentUserActivity(entry));
+}
+
+function canSeeCustomerActivity(entry) {
+  if (!currentUser?.customerId) return isCurrentUserActivity(entry);
+  if (entry.customerId === currentUser.customerId) return true;
+  if (isCurrentUserActivity(entry)) return true;
+  return state.users.some((user) =>
+    user.customerId === currentUser.customerId &&
+    activityEntryMatchesUser(entry, user)
+  );
+}
+
+function isCurrentUserActivity(entry) {
+  return activityEntryMatchesUser(entry, currentUser);
+}
+
+function activityEntryMatchesUser(entry, user) {
+  if (!entry || !user) return false;
+  if (entry.userId && user.id && entry.userId === user.id) return true;
+  const entryName = activityLookupText(entry.userName);
+  return [
+    user.name,
+    user.username,
+    user.email,
+    user.contactEmail
+  ].some((value) => entryName && activityLookupText(value) === entryName);
+}
+
+function activityLookupText(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function renderCustomers() {
@@ -13596,11 +13641,27 @@ function addActivity(action, details = "") {
       userId: currentUser?.id || "",
       userName: currentUser?.name || currentUser?.username || "System",
       userRole: currentRole || "System",
+      customerId: currentActivityCustomerId(),
+      locationId: currentActivityLocationId(),
       deviceLabel: currentDeviceLabel(),
       createdAt: new Date().toISOString()
     },
     ...(state.activityLog || [])
   ].slice(0, MAX_ACTIVITY_LOG_ENTRIES);
+}
+
+function currentActivityCustomerId() {
+  if (currentUser?.customerId) return currentUser.customerId;
+  if (selectedCustomerId && getCustomer(selectedCustomerId)) return selectedCustomerId;
+  return "";
+}
+
+function currentActivityLocationId() {
+  if (currentUser?.locationId) return currentUser.locationId;
+  if (selectedLocationId && selectedLocationId !== "all" && getLocation(selectedLocationId)) {
+    return selectedLocationId;
+  }
+  return "";
 }
 
 function currentDeviceLabel() {
