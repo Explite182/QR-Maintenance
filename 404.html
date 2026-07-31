@@ -1,0 +1,1652 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SiteWorks</title>
+    <link rel="stylesheet" href="/styles.css?v=20260731-short-nfc-links">
+</head>
+<body>
+  <section id="publicReportScreen" class="report-screen hidden">
+    <div class="report-card">
+      <div>
+        <p class="eyebrow">Quick facility report</p>
+        <h1 id="reportTitle">Send a quick report</h1>
+        <p id="reportContext" class="report-context"></p>
+      </div>
+      <form id="publicReportForm" class="stack">
+        <label>
+          Photo
+          <input id="publicReportPhoto" type="file" accept="image/*" capture="environment">
+        </label>
+        <label>
+          Quick note
+          <textarea id="publicReportNote" rows="4" required placeholder="What is wrong, where is it, or what should the team know?"></textarea>
+        </label>
+        <label>
+          Name or contact
+          <input id="publicReportContact" placeholder="Optional">
+        </label>
+        <button type="submit">Send to Maintenance</button>
+        <p id="publicReportMessage" class="login-message"></p>
+      </form>
+      <small class="report-note">No app download or login is required. Add a quick note, then tap Send to Maintenance. Wait for the sent confirmation before closing this page.</small>
+    </div>
+  </section>
+
+  <section id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div>
+        <p class="eyebrow">Preventative Maintenance</p>
+        <h1>SiteWorks</h1>
+      </div>
+      <form id="loginForm" class="stack">
+        <label>
+          Email
+          <input id="loginUsername" required type="email" autocomplete="username" placeholder="name@example.com">
+        </label>
+        <label>
+          Password
+          <input id="loginPassword" required type="password" autocomplete="current-password" placeholder="Password">
+        </label>
+        <button id="loginSubmitBtn" type="submit">Log In</button>
+        <button id="forgotPasswordBtn" type="button" class="secondary">Forgot password?</button>
+        <p id="loginError" class="login-error"></p>
+      </form>
+      <form id="passwordResetForm" class="stack hidden">
+        <p class="login-message">Enter a new password for this SiteWorks login.</p>
+        <label>
+          New password
+          <input id="resetPassword" required type="password" autocomplete="new-password" placeholder="New password">
+        </label>
+        <label>
+          Confirm password
+          <input id="resetPasswordConfirm" required type="password" autocomplete="new-password" placeholder="Confirm password">
+        </label>
+        <button id="resetPasswordSubmitBtn" type="submit">Save New Password</button>
+        <p id="resetPasswordMessage" class="login-error"></p>
+      </form>
+      <div id="loginQrReportPrompt" class="login-qr-report">
+        <strong>Opening a ticket?</strong>
+        <p id="loginQrReportMessage">Send a photo and quick note without logging in.</p>
+        <div class="login-qr-actions">
+          <a id="loginQrReportBtn" class="secondary primary-action" href="#">Report Issue</a>
+          <a id="loginQrAreaReportBtn" class="secondary hidden" href="#">Report Area Ticket</a>
+        </div>
+      </div>
+      <form id="firstAdminForm" class="stack hidden">
+        <p class="login-message">Create the first SiteWorks admin account.</p>
+        <label>
+          Email
+          <input id="firstAdminUsername" required type="email" autocomplete="username" placeholder="name@example.com">
+        </label>
+        <label>
+          Display name
+          <input id="firstAdminName" placeholder="Your name">
+        </label>
+        <label>
+          Password
+          <input id="firstAdminPassword" type="password" autocomplete="new-password" placeholder="Choose a password">
+        </label>
+        <button type="submit">Create Admin</button>
+        <p id="firstAdminMessage" class="login-error"></p>
+      </form>
+      <details class="access-request">
+        <summary>Request user access</summary>
+        <form id="accessRequestForm" class="stack compact-form">
+          <label>
+            Name
+            <input id="requestName" required placeholder="Jordan Smith">
+          </label>
+          <label>
+            Email
+            <input id="requestEmail" required type="email" placeholder="jordan@example.com">
+          </label>
+          <label>
+            Company / customer
+            <input id="requestCompany" placeholder="ABC Manufacturing">
+          </label>
+          <label>
+            Requested role
+            <select id="requestRole">
+              <option value="Customer">Customer</option>
+              <option value="Technician">Technician</option>
+              <option value="Manager">Manager</option>
+              <option value="Facility Manager">Facility Manager</option>
+            </select>
+          </label>
+          <label>
+            Notes
+            <textarea id="requestNotes" rows="3" placeholder="Tell us what location or equipment you need access to"></textarea>
+          </label>
+          <button type="submit" class="secondary">Send Request</button>
+          <p id="accessRequestMessage" class="login-message"></p>
+        </form>
+      </details>
+    </div>
+  </section>
+
+  <header class="app-header app-only hidden">
+    <div>
+      <p class="eyebrow">Preventative Maintenance</p>
+      <h1>SiteWorks</h1>
+    </div>
+    <div class="header-actions">
+      <label id="userSwitcherWrap" class="user-switcher hidden">
+        Test as
+        <select id="userSwitcher"></select>
+      </label>
+      <div class="user-chip">
+        <span id="currentUserName"></span>
+        <strong id="currentUserRole"></strong>
+      </div>
+      <label class="theme-switcher">
+        Theme
+        <select id="themeSelect">
+          <option value="light">Regular</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <button id="logoutBtn" class="secondary">Log Out</button>
+      <input id="importDataInput" class="hidden-input" type="file" accept="application/json,.json">
+    </div>
+  </header>
+
+  <div id="loginGreetingToast" class="login-greeting-toast hidden" role="status" aria-live="polite"></div>
+  <div id="syncBanner" class="sync-banner app-only hidden" role="status" aria-live="polite"></div>
+
+  <main class="app-shell app-only hidden">
+    <aside id="appSidebar" class="sidebar">
+        <nav id="workNav" class="sidebar-work-nav" aria-label="Work shortcuts">
+          <button type="button" class="sidebar-nav-btn" data-open-target="pmCalendarPanel" aria-expanded="false">
+            <span>PM Calendar</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="assetRegisterDrawer" aria-expanded="false">
+            <span>Equipment Register</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="workOrdersPanel" aria-expanded="false">
+            <span>Open Tickets</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="serviceRequestsPanel" aria-expanded="false">
+            <span>Service Requests</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="inventoryPanel" aria-expanded="false">
+            <span>Inventory</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="templatesPanel" data-template-nav aria-expanded="false">
+            <span>Templates</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
+            <span>Completed Tickets</span>
+          </button>
+        </nav>
+      <details id="adminToolsDrawer" class="sidebar-section setup-drawer admin-tools-drawer">
+        <summary>
+          <span>Admin & Settings</span>
+        </summary>
+      <details id="setupDrawer" class="sidebar-section setup-drawer">
+        <summary>Setup</summary>
+        <details class="setup-subdrawer">
+          <summary>
+            <span>Customers</span>
+            <span id="customerCount">0</span>
+          </summary>
+          <section>
+            <form id="customerForm" class="stack compact-form">
+              <label>
+                Customer name
+                <input id="customerName" required placeholder="ABC Manufacturing">
+              </label>
+              <label>
+                Main contact
+                <input id="customerContactName" placeholder="Contact name">
+              </label>
+              <label>
+                Contact email
+                <input id="customerContactEmail" type="email" placeholder="name@example.com">
+              </label>
+              <label>
+                Contact phone
+                <input id="customerContactPhone" placeholder="604-555-0123">
+              </label>
+              <label>
+                Contact notes
+                <textarea id="customerContactNotes" rows="2" placeholder="Access notes, billing contact, or site instructions"></textarea>
+              </label>
+              <label class="inline-check">
+                <input id="customerReportEmailEnabled" type="checkbox">
+                Email customer reported issues
+              </label>
+              <label>
+                Report email recipient
+                <input id="customerReportEmailTo" type="email" placeholder="service@example.com">
+              </label>
+              <button type="submit">Add Customer</button>
+            </form>
+            <div id="customerList" class="location-list"></div>
+          </section>
+        </details>
+
+        <details class="setup-subdrawer">
+          <summary>
+            <span>Locations</span>
+            <span id="locationCount">0</span>
+          </summary>
+          <section>
+            <form id="locationForm" class="stack compact-form">
+              <label>
+                Customer
+                <select id="locationCustomer"></select>
+              </label>
+              <label>
+                Location name
+                <input id="locationName" required placeholder="Main Plant">
+              </label>
+              <label>
+                Site contact
+                <input id="locationContactName" placeholder="Contact name">
+              </label>
+              <label>
+                Contact email
+                <input id="locationContactEmail" type="email" placeholder="name@example.com">
+              </label>
+              <label>
+                Contact phone
+                <input id="locationContactPhone" placeholder="604-555-0123">
+              </label>
+              <label>
+                Location notes
+                <textarea id="locationContactNotes" rows="2" placeholder="Access notes, suite number, gate code, or parking"></textarea>
+              </label>
+              <button type="submit">Add Location</button>
+            </form>
+            <div id="locationList" class="location-list"></div>
+          </section>
+        </details>
+
+        <details id="activityLogDrawer" class="setup-subdrawer">
+          <summary>
+            <span>Activity Log</span>
+            <span id="activityLogCount">0</span>
+          </summary>
+          <section>
+            <div id="activityLogList" class="activity-log-list"></div>
+          </section>
+        </details>
+      </details>
+
+      <details id="userDrawer" class="sidebar-section setup-drawer">
+        <summary>Users</summary>
+        <section>
+          <div class="section-title">
+            <h2>Users</h2>
+          </div>
+          <div class="record-actions">
+            <button id="refreshCloudUsersBtn" type="button" class="secondary mini">Refresh Cloud Users</button>
+          </div>
+          <p id="cloudUsersStatus" class="inline-status"></p>
+          <form id="userForm" class="stack compact-form">
+            <label>
+              Email
+              <input id="newUsername" required type="email" autocomplete="email" placeholder="name@example.com">
+            </label>
+            <label>
+              Display name
+              <input id="newUserName" required placeholder="Jordan Smith">
+            </label>
+            <label>
+              Password
+              <input id="newUserPassword" required type="password" placeholder="Temporary password">
+            </label>
+            <label>
+              Role
+              <select id="newUserRole">
+                <option value="Customer">Customer</option>
+                <option value="Technician">Technician</option>
+                <option value="Manager">Manager</option>
+                <option value="Facility Manager">Facility Manager</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </label>
+            <label>
+              Assigned customer
+              <select id="newUserCustomer"></select>
+            </label>
+            <label>
+              Assigned location
+              <select id="newUserLocation"></select>
+            </label>
+            <button type="submit">Add User</button>
+            <p id="userFormStatus" class="inline-status"></p>
+          </form>
+          <details class="sidebar-sub-drawer">
+            <summary>
+              <span>Current Users</span>
+              <span id="userCount">0</span>
+            </summary>
+            <div id="userList" class="user-list"></div>
+          </details>
+          <div class="section-title access-request-title">
+            <h3>Access Requests</h3>
+            <span id="accessRequestCount">0</span>
+          </div>
+          <div id="accessRequestList" class="user-list"></div>
+          <details class="sidebar-sub-drawer">
+            <summary>
+              <span>Access Request History</span>
+              <span id="accessRequestHistoryCount">0</span>
+            </summary>
+            <div id="accessRequestHistoryList" class="user-list"></div>
+          </details>
+        </section>
+      </details>
+
+      <details id="contractorDrawer" class="sidebar-section setup-drawer">
+        <summary>Preferred Contacts</summary>
+        <section>
+          <div class="section-title">
+            <h2>Contacts</h2>
+            <span id="contractorCount">0</span>
+          </div>
+          <form id="contractorForm" class="stack compact-form">
+            <label>
+              Customer
+              <select id="contractorCustomer"></select>
+            </label>
+            <p id="contractorCustomerHint" class="muted"></p>
+            <label>
+              Contact name
+              <input id="contractorName" required placeholder="ABC Mechanical">
+            </label>
+            <label>
+              Email
+              <input id="contractorEmail" required type="email" placeholder="service@example.com">
+            </label>
+            <label>
+              Role / notes
+              <input id="contractorTrade" placeholder="Facility manager, HVAC, electrical, plumbing">
+            </label>
+            <button type="submit">Add Contact</button>
+          </form>
+          <div id="contractorList" class="user-list"></div>
+        </section>
+      </details>
+
+      <details id="backupDrawer" class="sidebar-section setup-drawer">
+        <summary>Backups & QR</summary>
+        <div class="backup-controls">
+          <span id="backupStatus">No backup yet</span>
+          <div id="backupLocationBlock" class="backup-location">
+            <strong>Backup file location</strong>
+            <form id="backupLocationForm" class="stack compact-form">
+              <label>
+                Folder path
+                <input id="backupLocation" value="C:\Users\expli\Documents\SiteWorks Backups\Data Backups" placeholder="C:\Users\expli\Documents\SiteWorks Backups\Data Backups">
+              </label>
+              <button type="submit" class="secondary">Save Backup Location</button>
+            </form>
+            <small>Place exported data files here. Manual export: siteworks-data-backup-YYYYMMDD-HHMMSS.json. Complete backup: siteworks-complete-backup-YYYYMMDD-HHMMSS.json.</small>
+          </div>
+          <form id="qrBaseUrlForm" class="stack compact-form">
+            <label>
+              QR scan URL
+                <input id="qrBaseUrl" placeholder="https://sitesworks.info/">
+            </label>
+            <button type="submit" class="secondary">Save QR URL</button>
+          </form>
+          <button id="exportDataBtn" class="secondary">Export Data</button>
+          <button id="exportCompleteBackupBtn" class="secondary">Export Complete Backup</button>
+          <button id="importDataBtn" class="secondary">Import Data</button>
+          <button id="restoreBackupBtn" class="secondary">Restore Latest</button>
+          <div id="syncHealthPanel" class="backup-location sync-health-panel">
+            <strong>Sync health</strong>
+            <small id="syncHealthSummary">Checking cloud sync...</small>
+            <div id="syncHealthGrid" class="sync-health-grid"></div>
+            <button id="refreshCloudNowBtn" type="button" class="secondary">Refresh Cloud Now</button>
+          </div>
+          <div id="cloudCleanupBlock" class="backup-location cloud-cleanup">
+            <strong>Cloud cleanup</strong>
+            <small id="cloudCleanupStatus">Scan for old browser-stored photos and PDFs, then move them to Supabase Storage.</small>
+            <div class="cloud-cleanup-actions">
+              <button id="scanLocalFilesBtn" type="button" class="secondary">Scan Local Files</button>
+              <button id="migrateLocalFilesBtn" type="button" class="secondary">Move to Cloud</button>
+              <button id="removeLocalCopiesBtn" type="button" class="secondary">Remove Local Copies</button>
+            </div>
+          </div>
+          <button id="printReportLabelsBtn" class="secondary">Print Report QRs</button>
+        </div>
+      </details>
+      </details>
+    </aside>
+
+    <section class="workspace">
+      <div class="filters" aria-label="Customer and location filters">
+        <label id="customerFilterField">
+          Customer view
+          <select id="customerFilter"></select>
+        </label>
+        <label>
+          Location view
+          <select id="locationFilter"></select>
+        </label>
+        <label class="global-search-field">
+          Global search
+          <input id="globalSearch" type="search" placeholder="Search equipment, SW number, customer, location">
+          <div id="globalSearchResults" class="global-search-results hidden" role="status" aria-live="polite"></div>
+        </label>
+      </div>
+
+      <section id="workHeader" class="work-header">
+        <div>
+          <p class="eyebrow">Current View</p>
+          <h2 id="currentViewLabel">All customers | All locations</h2>
+        </div>
+        <div id="newActionBar" class="new-action-bar">
+          <button id="createNewBtn" class="create-new-trigger" type="button" aria-expanded="false" aria-controls="createNewMenu">
+            <span>+ Create New</span>
+            <span aria-hidden="true">v</span>
+          </button>
+          <div id="createNewMenu" class="create-new-menu hidden">
+            <button id="newEquipmentBtn" type="button">New Equipment</button>
+            <button id="newIssueBtn" type="button" class="secondary">New Ticket</button>
+            <button id="newServiceRequestBtn" type="button" class="secondary">New Service Request</button>
+            <button id="newInventoryBtn" type="button" class="secondary">New Inventory Item</button>
+          </div>
+        </div>
+      </section>
+
+      <details id="quickAddDrawer" class="quick-add setup-drawer work-create-drawer">
+        <summary>
+          <span>New Equipment</span>
+          <span id="assetCount" class="drawer-count">0</span>
+        </summary>
+        <form id="assetForm" class="stack">
+          <label>
+            Customer
+            <select id="assetCustomer"></select>
+          </label>
+          <label>
+            Location
+            <select id="assetLocation"></select>
+          </label>
+          <label>
+            Equipment name
+            <input id="assetName" required placeholder="Rooftop Unit 1">
+          </label>
+          <label>
+            Equipment ID
+            <input id="assetEquipmentId" placeholder="FT6-US-EMA0528A">
+          </label>
+          <label>
+            Maintenance template
+            <select id="assetTemplate"></select>
+          </label>
+          <label>
+            Maintenance frequency
+            <select id="assetFrequency">
+              <option value="7">Weekly</option>
+              <option value="30" selected>Monthly</option>
+              <option value="90">Quarterly</option>
+              <option value="365">Yearly</option>
+            </select>
+          </label>
+          <div class="form-grid">
+            <label>
+              Manufacturer
+              <input id="assetManufacturer" placeholder="Trane">
+            </label>
+            <label>
+              Model
+              <input id="assetModel" placeholder="XR-14">
+            </label>
+          </div>
+          <div class="form-grid">
+            <label>
+              Serial number
+              <input id="assetSerial" placeholder="SN-10492">
+            </label>
+            <label>
+              Install date
+              <input id="assetInstallDate" type="date">
+            </label>
+          </div>
+          <div class="form-grid">
+            <label>
+              Equipment type
+              <input id="assetType" placeholder="HVAC, pump, conveyor">
+            </label>
+            <label>
+              Criticality
+              <select id="assetCriticality">
+                <option value="">Not set</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Manual / document link
+            <input id="assetDocumentUrl" type="url" placeholder="https://example.com/manual.pdf">
+          </label>
+          <label>
+            Upload PDF manual
+            <input id="assetManualFile" type="file" accept="application/pdf,.pdf">
+          </label>
+          <label>
+            Equipment photo
+            <input id="assetPhoto" type="file" accept="image/*">
+          </label>
+          <label>
+            Equipment notes
+            <textarea id="assetNotes" rows="3" placeholder="Warranty notes, access instructions, or service cautions"></textarea>
+          </label>
+          <button type="submit">Add Equipment</button>
+        </form>
+        <details id="assetImportDrawer" class="asset-import-drawer">
+          <summary>Import Equipment CSV</summary>
+          <div class="asset-import-body">
+            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment ID, Equipment Name, Equipment Type, Manufacturer, Model, Serial, PM Frequency Days, Next PM Date, Criticality, and Notes.</p>
+            <label>
+              CSV file
+              <input id="assetImportFile" type="file" accept=".csv,text/csv">
+            </label>
+            <label class="inline-check">
+              <input id="assetImportCreateLocations" type="checkbox" checked>
+              Create missing locations
+            </label>
+            <button id="assetImportBtn" type="button" class="secondary">Import Equipment</button>
+            <p id="assetImportStatus" class="inline-status"></p>
+            <div id="assetImportPreview" class="asset-import-preview"></div>
+          </div>
+        </details>
+      </details>
+
+      <details id="newIssueDrawer" class="quick-add setup-drawer work-create-drawer">
+        <summary>
+          <span>New Ticket</span>
+        </summary>
+        <form id="newIssueForm" class="stack compact-form">
+          <label>
+            Customer
+            <select id="newIssueCustomer"></select>
+          </label>
+          <label>
+            Location
+            <select id="newIssueLocation"></select>
+          </label>
+          <label>
+            Equipment
+            <select id="newIssueAsset"></select>
+          </label>
+          <fieldset class="choice-field">
+            <legend>Ticket applies to</legend>
+            <label>
+              <input id="newIssueTargetEquipment" type="radio" name="newIssueTarget" value="equipment" checked>
+              Equipment
+            </label>
+            <label>
+              <input id="newIssueTargetArea" type="radio" name="newIssueTarget" value="area">
+              Area
+            </label>
+          </fieldset>
+          <label>
+            Area
+            <input id="newIssueArea" placeholder="Area in this location">
+          </label>
+          <div class="form-grid">
+            <label>
+              Ticket title
+              <input id="newIssueTitle" required placeholder="What needs attention?">
+            </label>
+            <label>
+              Priority
+              <select id="newIssuePriority">
+                <option>Medium</option>
+                <option>High</option>
+                <option>Low</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Notes
+            <textarea id="newIssueNotes" rows="3" placeholder="Add details for the technician"></textarea>
+          </label>
+          <label>
+            Photo
+            <input id="newIssuePhoto" type="file" accept="image/*">
+          </label>
+          <button type="submit" class="primary">Create Ticket</button>
+          <p id="newIssueStatus" class="inline-status"></p>
+        </form>
+        <details id="issueImportDrawer" class="asset-import-drawer">
+          <summary>Import Tickets CSV</summary>
+          <div class="asset-import-body">
+            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment Name, Area, Applies To, Ticket Title, Status, Priority, Assigned To, Due Date, and Notes.</p>
+            <label>
+              CSV file
+              <input id="issueImportFile" type="file" accept=".csv,text/csv">
+            </label>
+            <label class="inline-check">
+              <input id="issueImportCreateLocations" type="checkbox" checked>
+              Create missing locations
+            </label>
+            <button id="issueImportBtn" type="button" class="secondary">Import Tickets</button>
+            <p id="issueImportStatus" class="inline-status"></p>
+            <div id="issueImportPreview" class="asset-import-preview"></div>
+          </div>
+        </details>
+      </details>
+
+      <section id="dashboardPanel" class="dashboard-panel" aria-label="Maintenance summary">
+        <div class="panel-heading">
+          <div>
+          <p class="eyebrow">Today</p>
+          <h2>Maintenance overview</h2>
+          </div>
+        </div>
+        <div class="dashboard">
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-warn" data-dashboard-filter="dueNow">
+              <span id="dueToday">0</span>
+              <p>Due now</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="dueNow">
+              <p class="metric-dropdown-empty">No equipment is due now.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-danger" data-dashboard-filter="overdue">
+              <span id="overdue">0</span>
+              <p>Overdue</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="overdue">
+              <p class="metric-dropdown-empty">No equipment is overdue.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
+              <span id="openWorkOrders">0</span>
+              <p>Open tickets</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="workOrders">
+              <p class="metric-dropdown-empty">No open tickets for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="reportedIssues">
+              <span id="reportedIssues">0</span>
+              <p>Customer reports</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="reportedIssues">
+              <p class="metric-dropdown-empty">No customer reports for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-danger" data-dashboard-filter="failedPmIssues">
+              <span id="failedPmIssues">0</span>
+              <p>Failed PMs</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="failedPmIssues">
+              <p class="metric-dropdown-empty">No failed PM follow-ups for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="serviceRequests">
+              <span id="serviceRequestsMetric">0</span>
+              <p>Service requests</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="serviceRequests">
+              <p class="metric-dropdown-empty">No service requests for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-danger" data-dashboard-filter="highPriority">
+              <span id="highPriorityIssues">0</span>
+              <p>High priority</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="highPriority">
+              <p class="metric-dropdown-empty">No high priority tickets for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-warn" data-dashboard-filter="waitingParts">
+              <span id="waitingPartsIssues">0</span>
+              <p>Waiting parts</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="waitingParts">
+              <p class="metric-dropdown-empty">No waiting parts tickets for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-neutral" data-dashboard-filter="assignedToMe">
+              <span id="assignedToMeIssues">0</span>
+              <p>Assigned to me</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="assignedToMe">
+              <p class="metric-dropdown-empty">No tickets assigned to you for this view.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="pmCalendarPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="pmCalendarPanel">
+          <h2>PM Calendar</h2>
+          <span class="panel-title-actions">
+            <span id="pmCalendarCount">0</span>
+          </span>
+        </div>
+        <div class="pm-calendar-body" data-panel-body>
+          <div class="pm-calendar-toolbar">
+            <label>
+              View
+              <select id="pmCalendarRange">
+                <option value="week">Week</option>
+                <option value="month" selected>Month</option>
+                <option value="year">Year</option>
+              </select>
+            </label>
+            <label>
+              Starting
+              <input id="pmCalendarDate" type="date">
+            </label>
+            <div class="pm-calendar-actions">
+              <button id="printPmCalendarBtn" type="button" class="secondary mini">Print PM List</button>
+              <button id="emailPmCalendarBtn" type="button" class="secondary mini">Email List</button>
+              <button id="exportPmCalendarBtn" type="button" class="secondary mini">Export CSV</button>
+            </div>
+          </div>
+          <div id="pmCalendarSummary" class="pm-calendar-summary"></div>
+          <div id="pmCalendarList" class="pm-calendar-list"></div>
+        </div>
+      </section>
+
+        <details id="assetRegisterDrawer" class="asset-table-panel asset-register-drawer sidebar-controlled-panel hidden">
+        <summary class="section-title drawer-title clickable-panel-title">
+          <h2>Selected Equipment</h2>
+          <span class="panel-title-actions">
+            <span id="tableAssetCount">0</span>
+          </span>
+        </summary>
+        <div class="asset-tools" aria-label="Asset register tools">
+          <label class="search-field">
+            Search
+            <input id="assetSearch" placeholder="Name, serial, model, customer, location">
+          </label>
+          <label>
+            Maintenance status
+            <select id="statusFilter">
+              <option value="all">All statuses</option>
+              <option value="dueNow">Due now</option>
+              <option value="overdue">Overdue</option>
+              <option value="due">Due today</option>
+              <option value="upcoming">Upcoming</option>
+            </select>
+          </label>
+          <label>
+            Template
+            <select id="templateFilter">
+              <option value="all">All templates</option>
+            </select>
+          </label>
+          <label>
+            Sort by
+            <select id="assetSort">
+              <option value="due">Next maintenance</option>
+              <option value="name">Equipment name</option>
+              <option value="location">Location</option>
+              <option value="status">Status</option>
+              <option value="workOrders">Open tickets</option>
+            </select>
+          </label>
+          <label>
+            Rows
+            <select id="assetPageSize">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+          <div class="table-actions">
+            <button id="selectPageAssetsBtn" class="secondary mini" type="button">Select Page</button>
+            <button id="clearSelectedAssetsBtn" class="secondary mini" type="button">Clear</button>
+            <button id="printSelectedLabelsBtn" class="secondary mini" type="button">Print Selected</button>
+            <button id="printSelectedNfcLabelsBtn" class="secondary mini" type="button">Print QR + NFC</button>
+            <button id="exportAssetRegisterBtn" class="secondary mini">Export CSV</button>
+          </div>
+        </div>
+        <div class="asset-subnav" aria-label="Equipment register views">
+          <button type="button" class="asset-subnav-tab is-active" data-asset-register-tab="active">Active Inventory</button>
+          <button type="button" class="asset-subnav-tab" data-asset-register-tab="upcoming">Upcoming Schedules</button>
+          <button type="button" class="asset-subnav-tab" data-asset-register-tab="overdue">Overdue Inspections</button>
+        </div>
+        <div class="table-wrap">
+          <table class="asset-table">
+            <thead>
+              <tr>
+                <th>Equipment ID</th>
+                <th>Name</th>
+                <th>Location</th>
+                <th>Model</th>
+                <th>Manufacturer</th>
+                <th>Condition</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="assetTableBody"></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="assetPageInfo"></span>
+          <div>
+            <button id="prevAssetPageBtn" class="secondary mini">Previous</button>
+            <button id="nextAssetPageBtn" class="secondary mini">Next</button>
+          </div>
+        </div>
+      </details>
+
+        <section id="workOrdersPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="workOrdersPanel">
+          <h2>Open Tickets</h2>
+          <div class="panel-title-actions">
+            <span id="workOrderCount">0</span>
+          </div>
+        </div>
+        <div class="ticket-filter-bar" data-panel-body>
+          <label>
+            SW number type
+            <select id="workOrderNumberFilter">
+              <option value="all">All SW records</option>
+            </select>
+          </label>
+        </div>
+        <div id="workOrderList" class="work-order-list" data-panel-body></div>
+      </section>
+
+        <section id="serviceRequestsPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="serviceRequestsPanel">
+          <h2>Service Requests</h2>
+          <div class="panel-title-actions">
+            <span id="serviceRequestCount">0</span>
+          </div>
+        </div>
+        <div data-panel-body>
+          <details id="serviceRequestCreateDrawer" class="service-request-create-drawer work-create-drawer">
+            <summary>Create Service Request</summary>
+            <form id="serviceRequestForm" class="stack compact-form">
+              <div class="form-grid">
+                <label>
+                  Customer
+                  <select id="serviceRequestCustomer"></select>
+                </label>
+                <label>
+                  Location
+                  <select id="serviceRequestLocation"></select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Equipment
+                  <select id="serviceRequestAsset"></select>
+                </label>
+                <label>
+                  Priority
+                  <select id="serviceRequestPriority">
+                    <option>Medium</option>
+                    <option>High</option>
+                    <option>Low</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Requested by
+                  <input id="serviceRequestRequestedBy" placeholder="Name">
+                </label>
+                <label>
+                  Preferred date
+                  <input id="serviceRequestPreferredDate" type="date">
+                </label>
+              </div>
+              <label>
+                Request
+                <input id="serviceRequestTitle" required placeholder="Short service request">
+              </label>
+              <label>
+                Details
+                <textarea id="serviceRequestNotes" rows="3" placeholder="What needs service?"></textarea>
+              </label>
+              <label>
+                Photo
+                <input id="serviceRequestPhoto" type="file" accept="image/*">
+              </label>
+              <button type="submit" class="primary">Create Service Request</button>
+              <p id="serviceRequestStatus" class="inline-status"></p>
+            </form>
+          </details>
+          <div id="serviceRequestList" class="work-order-list"></div>
+        </div>
+      </section>
+
+      <section id="templatesPanel" class="work-orders-panel templates-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="templatesPanel">
+          <h2>Maintenance Templates</h2>
+          <div class="panel-title-actions">
+            <span id="templateCount">0</span>
+          </div>
+        </div>
+        <div class="templates-panel-body" data-panel-body>
+          <details class="asset-import-drawer templates-create-drawer">
+            <summary>Add Maintenance Template</summary>
+            <form id="templateForm" class="stack compact-form">
+              <label>
+                Template scope
+                <select id="templateCustomer">
+                  <option value="">General/shared template</option>
+                </select>
+              </label>
+              <label>
+                Template name
+                <input id="templateName" required placeholder="HVAC Monthly PM">
+              </label>
+              <label>
+                Checklist items
+                <textarea id="templateItems" rows="4" required placeholder="Inspect belts&#10;Check filter condition&#10;Record temperature"></textarea>
+              </label>
+              <p class="muted">After adding a template, open it below to optionally schedule it as a multi-equipment PM route.</p>
+              <button type="submit">Add Template</button>
+            </form>
+          </details>
+          <div id="templateList" class="template-list"></div>
+        </div>
+      </section>
+
+        <section id="inventoryPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="inventoryPanel">
+          <h2>Inventory</h2>
+          <div class="panel-title-actions">
+            <span id="inventoryCount">0</span>
+          </div>
+        </div>
+        <div data-panel-body>
+          <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
+            <summary>Add Inventory Item</summary>
+            <form id="inventoryForm" class="stack compact-form">
+              <div class="form-grid">
+                <label>
+                  Customer
+                  <select id="inventoryCustomer"></select>
+                </label>
+                <label>
+                  Category
+                  <select id="inventoryCategory">
+                    <option>Parts</option>
+                    <option>Material</option>
+                    <option>Tool</option>
+                    <option>Consumable</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Item name
+                <input id="inventoryName" required placeholder="Filter, belt, breaker, cleaner">
+              </label>
+              <div class="form-grid">
+                <label>
+                  Quantity on hand
+                  <input id="inventoryQuantity" type="number" min="0" step="1" value="0">
+                </label>
+                <label>
+                  Minimum stock
+                  <input id="inventoryMinStock" type="number" min="0" step="1" value="0">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Location / bin
+                  <input id="inventoryBin" placeholder="Shop shelf A3">
+                </label>
+                <label>
+                  Supplier
+                  <input id="inventorySupplier" placeholder="Supplier or preferred contact">
+                </label>
+              </div>
+              <label>
+                Notes
+                <textarea id="inventoryNotes" rows="3" placeholder="Part numbers, equipment used on, reorder notes"></textarea>
+              </label>
+              <button type="submit" class="primary">Add Inventory Item</button>
+              <p id="inventoryStatus" class="inline-status"></p>
+            </form>
+          </details>
+          <div id="inventoryList" class="inventory-list"></div>
+        </div>
+      </section>
+
+        <section id="completedPmPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="completedPmPanel">
+          <h2>Completed Tickets</h2>
+          <div class="panel-title-actions">
+            <span id="completedPmCount">0</span>
+          </div>
+        </div>
+        <div data-panel-body>
+          <div id="completedPmList" class="work-order-list"></div>
+        </div>
+      </section>
+
+      <article id="emptyState" class="empty-state hidden">
+        <h2>Add equipment to start</h2>
+        <p>Create equipment records, print QR labels, scan a label, and complete maintenance from a phone or browser.</p>
+      </article>
+
+      <article id="assetPanel" class="asset-panel collapsible-panel hidden">
+        <div class="section-title">
+          <h2>Selected Equipment</h2>
+          <button id="closeAssetPanelBtn" class="secondary mini asset-drawer-close" type="button" data-close-asset-panel aria-label="Close selected equipment">X</button>
+        </div>
+        <div class="asset-panel-body" data-panel-body>
+        <div class="asset-heading">
+          <div class="selected-asset-summary">
+            <div id="selectedAssetThumb" class="asset-thumb"></div>
+            <div>
+              <p class="eyebrow" id="selectedLocation"></p>
+              <h2 id="selectedName"></h2>
+              <p id="selectedMeta"></p>
+              <div id="selectedBadges" class="selected-badges"></div>
+            </div>
+          </div>
+          <div id="selectedQr" class="qr-box" aria-label="Asset QR code"></div>
+        </div>
+        <div class="status-row">
+          <div class="next-maintenance-card">
+          <div class="status-tile">
+            <span class="label">Next maintenance</span>
+            <strong id="nextPm"></strong>
+          </div>
+          <form id="nextPmForm" class="next-pm-form">
+            <label>
+              Edit next maintenance
+              <input id="nextPmInput" type="date">
+            </label>
+            <button type="submit" class="secondary mini">Save</button>
+            <button id="clearNextPmBtn" type="button" class="secondary mini">Clear</button>
+          </form>
+          </div>
+          <div class="status-tile">
+            <span class="label">Status</span>
+            <strong id="pmStatus"></strong>
+          </div>
+          <button id="reportIssueBtn" class="primary" type="button">Report Issue</button>
+          <button id="copyLinkBtn" class="secondary">Copy Scan Link</button>
+          <button id="copyNfcLinkBtn" class="secondary">Copy NFC Link</button>
+          <div id="assetNfcPanel" class="asset-nfc-panel"></div>
+        </div>
+
+        <div class="asset-drawer-row">
+          <details class="asset-sub-drawer">
+            <summary>
+              <h3>Maintenance Checklist</h3>
+              <span id="selectedTemplate"></span>
+            </summary>
+            <form id="pmForm" class="pm-form">
+              <div id="checklistFields" class="checklist-fields"></div>
+              <div class="form-grid">
+                <label>
+                  Technician
+                  <input id="technician" required placeholder="Name">
+                </label>
+                <label>
+                  Meter / reading
+                  <input id="reading" placeholder="Optional">
+                </label>
+              </div>
+              <label>
+                Notes
+                <textarea id="notes" rows="4" placeholder="Findings, parts needed, or follow-up work"></textarea>
+              </label>
+              <label>
+                Photo evidence
+                <input id="photoInput" type="file" accept="image/*">
+              </label>
+              <label>
+                Result
+                <select id="result">
+                  <option value="Passed">Passed</option>
+                  <option value="Needs attention">Needs attention</option>
+                  <option value="Failed">Failed</option>
+                </select>
+              </label>
+              <button type="submit">Complete Maintenance</button>
+            </form>
+          </details>
+
+          <details class="asset-details asset-sub-drawer">
+            <summary>
+              <h3>Equipment Details</h3>
+            </summary>
+            <div class="asset-detail-actions">
+              <button id="exportSelectedAssetBtn" class="secondary mini" type="button">Export Equipment CSV</button>
+              <button id="deleteSelectedAssetBtn" class="secondary mini danger-action hidden" type="button">Delete Equipment</button>
+            </div>
+            <div id="assetPhotoPanel" class="asset-photo-panel"></div>
+            <div id="assetManualPanel" class="asset-manual-panel"></div>
+            <div id="assetDetailsGrid" class="details-grid"></div>
+            <details class="asset-info-editor">
+              <summary>Edit Equipment</summary>
+              <form id="assetInfoForm" class="stack compact-form">
+                <label>
+                  Equipment name
+                  <input id="editAssetName" required placeholder="Rooftop Unit 1">
+                </label>
+                <label>
+                  Equipment ID
+                  <input id="editAssetEquipmentId" placeholder="FT6-US-EMA0528A">
+                </label>
+                <div class="form-grid">
+                  <label>
+                    Customer
+                    <select id="editAssetCustomer"></select>
+                  </label>
+                  <label>
+                    Location
+                    <select id="editAssetLocation"></select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Maintenance template
+                    <select id="editAssetTemplate"></select>
+                  </label>
+                  <label>
+                    Maintenance frequency
+                    <select id="editAssetFrequency">
+                      <option value="7">Weekly</option>
+                      <option value="30">Monthly</option>
+                      <option value="90">Quarterly</option>
+                      <option value="365">Yearly</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                  Equipment type
+                    <input id="editAssetType" placeholder="HVAC, pump, conveyor">
+                  </label>
+                  <label>
+                    Criticality
+                    <select id="editAssetCriticality">
+                      <option value="">Not set</option>
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Manufacturer
+                    <input id="editAssetManufacturer" placeholder="Trane">
+                  </label>
+                  <label>
+                    Model
+                    <input id="editAssetModel" placeholder="XR-14">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Serial number
+                    <input id="editAssetSerial" placeholder="SN-10492">
+                  </label>
+                  <label>
+                    Install date
+                    <input id="editAssetInstallDate" type="date">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Vendor / service company
+                    <input id="editAssetVendor" placeholder="ABC Mechanical">
+                  </label>
+                  <label>
+                    Vendor contact
+                    <input id="editAssetVendorContact" placeholder="604-555-0100">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Warranty expires
+                    <input id="editAssetWarrantyDate" type="date">
+                  </label>
+                  <label>
+                    Parts / supply notes
+                    <input id="editAssetParts" placeholder="Belt A42, filter 20x20x2">
+                  </label>
+                </div>
+                <label>
+                  Manual / document link
+                  <input id="editAssetDocumentUrl" type="url" placeholder="https://example.com/manual.pdf">
+                </label>
+                <label>
+                  Upload PDF manual
+                  <input id="editAssetManualFile" type="file" accept="application/pdf,.pdf">
+                </label>
+                <p id="assetManualUploadStatus" class="inline-status"></p>
+                <label>
+                  Replace equipment photo
+                  <input id="editAssetPhoto" type="file" accept="image/*">
+                </label>
+                <div class="section-title inline-section-title">
+                  <h3>More Asset Photos</h3>
+                  <span id="assetGalleryCount">0</span>
+                </div>
+                <div id="assetGalleryPanel" class="asset-gallery-panel"></div>
+                <label>
+                  Add more equipment photos
+                  <input id="editAssetGalleryPhotos" type="file" accept="image/*" multiple>
+                </label>
+                <p id="assetGalleryUploadStatus" class="inline-status"></p>
+                <label>
+                  Equipment notes
+                  <textarea id="editAssetNotes" rows="3" placeholder="Warranty notes, access instructions, or service cautions"></textarea>
+                </label>
+                <button type="submit" class="secondary">Save Asset Info</button>
+              </form>
+            </details>
+          </details>
+
+          <details id="electricalPanelScheduleDrawer" class="asset-sub-drawer electrical-panel-schedule hidden">
+            <summary>
+              <h3>Electrical Panel Schedule</h3>
+              <span id="electricalPanelScheduleCount">0 circuits</span>
+            </summary>
+            <div id="electricalPanelScheduleContent" class="panel-schedule-content"></div>
+          </details>
+
+          <details class="asset-sub-drawer">
+            <summary>
+              <h3>Maintenance History</h3>
+              <span id="historyCount">0</span>
+            </summary>
+            <div class="history-title-actions asset-history-actions">
+              <button id="exportBtn" class="secondary">Export CSV</button>
+            </div>
+            <div id="historyList" class="history-list"></div>
+          </details>
+        </div>
+
+        <details class="asset-sub-drawer">
+          <summary>
+            <h3>Equipment Tickets</h3>
+            <span id="assetWorkOrderCount">0</span>
+          </summary>
+          <div id="assetWorkOrderList" class="work-order-list"></div>
+        </details>
+        </div>
+
+      </article>
+    </section>
+  </main>
+
+  <nav class="mobile-tab-bar app-only hidden" aria-label="Mobile navigation">
+    <button type="button" class="mobile-tab-btn is-active" data-mobile-tab="dashboardPanel">
+      <span class="mobile-tab-icon mobile-tab-dashboard" aria-hidden="true"></span>
+      <span>Dashboard</span>
+    </button>
+    <button type="button" class="mobile-tab-btn" data-mobile-tab="assetRegisterDrawer">
+      <span class="mobile-tab-icon mobile-tab-equipment" aria-hidden="true"></span>
+      <span>Equipment</span>
+    </button>
+    <button type="button" class="mobile-tab-btn" data-mobile-tab="inventoryPanel">
+      <span class="mobile-tab-icon mobile-tab-inventory" aria-hidden="true"></span>
+      <span>Inventory</span>
+    </button>
+    <button type="button" class="mobile-tab-btn" data-mobile-tab="workOrdersPanel">
+      <span class="mobile-tab-icon mobile-tab-tickets" aria-hidden="true"></span>
+      <span>Tickets</span>
+    </button>
+    <button type="button" class="mobile-tab-btn" data-mobile-tab="adminToolsDrawer">
+      <span class="mobile-tab-icon mobile-tab-settings" aria-hidden="true"></span>
+      <span>Settings</span>
+    </button>
+    <button type="button" class="mobile-tab-btn mobile-create-btn" id="mobileCreateBtn" aria-expanded="false" aria-controls="mobileCreateMenu">
+      <span class="mobile-tab-icon mobile-tab-create" aria-hidden="true"></span>
+      <span>Create</span>
+    </button>
+    <div id="mobileCreateMenu" class="mobile-create-menu hidden" aria-label="Create new">
+      <button type="button" data-mobile-create-action="newEquipment">Add Equipment</button>
+      <button type="button" data-mobile-create-action="newTicket">Create Ticket</button>
+      <button type="button" data-mobile-create-action="newServiceRequest">Create Service Call</button>
+      <button type="button" data-mobile-create-action="newInventory">Add Inventory Item</button>
+    </div>
+  </nav>
+
+  <section id="labelSheet" class="label-sheet" aria-label="Printable QR labels"></section>
+  <div id="assetPanelBackdrop" class="asset-panel-backdrop hidden" data-close-asset-panel></div>
+  <div id="panelScheduleBackdrop" class="panel-schedule-backdrop hidden" data-close-panel-schedule></div>
+  <aside id="panelScheduleSheet" class="panel-schedule-sheet hidden" aria-label="Electrical panel schedule editor">
+    <div class="panel-schedule-sheet-header">
+      <div>
+        <span class="eyebrow">Electrical</span>
+        <h2 id="panelScheduleSheetTitle">Panel Schedule</h2>
+        <p id="panelScheduleSheetMeta"></p>
+      </div>
+      <button type="button" class="secondary mini asset-drawer-close" data-close-panel-schedule aria-label="Close panel schedule">X</button>
+    </div>
+    <form id="panelScheduleForm" class="panel-schedule-form">
+      <div class="panel-schedule-form-grid">
+        <label>
+          Panel name
+          <input name="panelName" placeholder="Main Panel">
+        </label>
+        <label>
+          Voltage
+          <input name="voltage" placeholder="120/208V">
+        </label>
+        <label>
+          Phase
+          <input name="phase" placeholder="3 phase">
+        </label>
+        <label>
+          Main breaker
+          <input name="mainBreaker" placeholder="225A">
+        </label>
+        <label>
+          Circuit count
+          <input name="circuitCount" type="number" min="2" max="132" step="2" placeholder="42">
+        </label>
+      </div>
+      <div class="panel-schedule-logo-editor">
+        <div>
+          <h3>Company Logo</h3>
+          <p>Upload a logo to show in the printed panel schedule header.</p>
+        </div>
+        <div id="panelScheduleLogoPreview" class="panel-schedule-logo-preview">No logo uploaded</div>
+        <label class="panel-schedule-logo-upload">
+          Upload logo
+          <input id="panelScheduleLogoInput" type="file" accept="image/*">
+        </label>
+        <button id="removePanelScheduleLogoBtn" type="button" class="secondary mini">Remove</button>
+      </div>
+      <div class="section-title inline-section-title">
+        <h3>Circuits</h3>
+        <button id="addPanelCircuitBtn" type="button" class="secondary mini">Add Circuit</button>
+      </div>
+      <div class="panel-schedule-csv-import">
+        <label>
+          Import panel schedule CSV
+          <input id="panelScheduleCsvInput" type="file" accept=".csv,text/csv">
+        </label>
+        <button id="importPanelScheduleCsvBtn" type="button" class="secondary mini">Import CSV</button>
+        <p id="panelScheduleImportStatus" class="inline-status"></p>
+      </div>
+      <div id="panelScheduleCircuitRows" class="panel-schedule-editor-rows"></div>
+      <div class="panel-schedule-actions">
+        <button id="viewPanelScheduleBtn" type="button" class="secondary">View Full Schedule</button>
+        <button id="printPanelScheduleBtn" type="button" class="secondary">Print Schedule</button>
+        <button type="submit" class="primary">Save Schedule</button>
+        <button type="button" class="secondary" data-close-panel-schedule>Cancel</button>
+      </div>
+    </form>
+  </aside>
+  <div id="workDrawerBackdrop" class="work-drawer-backdrop hidden" data-close-work-drawer></div>
+  <div id="photoSideBay" class="photo-side-bay hidden" aria-label="Photo preview bay">
+    <img id="photoSideBayImage" alt="Photo preview">
+  </div>
+  <div id="commandPalette" class="command-palette hidden" role="dialog" aria-modal="true" aria-label="Quick search">
+    <div class="command-palette-card">
+      <label class="command-palette-search">
+        <span>Quick Search</span>
+        <input id="commandPaletteInput" type="search" placeholder="Go to equipment, open ticket, jump to a section">
+      </label>
+      <div id="commandPaletteResults" class="command-palette-results"></div>
+    </div>
+  </div>
+  <div id="photoViewer" class="photo-viewer hidden" role="dialog" aria-modal="true" aria-label="Equipment photo viewer">
+    <button id="photoViewerClose" class="photo-viewer-close" type="button" aria-label="Close photo viewer">Close</button>
+    <img id="photoViewerImage" alt="Equipment photo full screen">
+    <p id="photoViewerCaption"></p>
+  </div>
+
+  <script>
+    window.addEventListener("error", (event) => {
+      const message = document.getElementById("loginError");
+      if (message) {
+        message.textContent = `SiteWorks startup error: ${event.message} (${event.lineno || "?"}:${event.colno || "?"})`;
+      }
+    });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/app.js?v=20260731-short-nfc-links"></script>
+  <script>
+    (() => {
+      const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
+      const SUPABASE_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
+      const SUPABASE_STORAGE_BUCKET = "siteworks-files";
+      const params = new URLSearchParams(location.search);
+      const reportButton = document.getElementById("loginQrReportBtn");
+      const areaReportButton = document.getElementById("loginQrAreaReportBtn");
+      const promptMessage = document.getElementById("loginQrReportMessage");
+      const hasReportContext = Boolean(params.get("a") || params.get("lid") || (params.get("c") && params.get("l")));
+      if (params.get("report") !== "1" && hasReportContext && reportButton) {
+        const reportParams = new URLSearchParams(location.search);
+        reportParams.set("report", "1");
+        reportParams.delete("qr");
+        reportButton.textContent = "Report Issue";
+        reportButton.href = `${location.href.split(/[?#]/)[0]}?${reportParams.toString()}`;
+        reportButton.classList.remove("disabled-link");
+        reportButton.setAttribute("aria-disabled", "false");
+        areaReportButton?.classList.add("hidden");
+        if (promptMessage) promptMessage.textContent = "Send a photo and quick note without logging in.";
+      }
+      if (params.get("report") !== "1") return;
+      const reportScreen = document.getElementById("publicReportScreen");
+      const loginScreen = document.getElementById("loginScreen");
+      const form = document.getElementById("publicReportForm");
+      const note = document.getElementById("publicReportNote");
+      const contact = document.getElementById("publicReportContact");
+      const photo = document.getElementById("publicReportPhoto");
+      const message = document.getElementById("publicReportMessage");
+      reportScreen?.classList.remove("hidden");
+      loginScreen?.classList.add("hidden");
+      document.querySelectorAll(".app-only").forEach((node) => node.classList.add("hidden"));
+      const title = document.getElementById("reportTitle");
+      const context = document.getElementById("reportContext");
+      if (title) title.textContent = "Report Issue";
+      if (context) {
+        const pieces = [params.get("c"), params.get("l"), params.get("n")].filter(Boolean);
+        context.textContent = pieces.join(" | ");
+      }
+
+      const headers = {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json"
+      };
+
+      async function getRows(path) {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers });
+        if (!response.ok) return [];
+        return response.json();
+      }
+
+      async function resolveCustomer() {
+        if (params.get("cid")) return { id: params.get("cid"), name: params.get("c") || "" };
+        const name = params.get("c") || "";
+        if (!name) return { id: null, name: "" };
+        const rows = await getRows(`customers?name=eq.${encodeURIComponent(name)}&select=id,name&limit=1`);
+        return rows[0] || { id: `scan-customer-${slugify(name)}`, name };
+      }
+
+      async function resolveLocation(customer) {
+        if (params.get("lid")) return { id: params.get("lid"), name: params.get("l") || "" };
+        const name = params.get("l") || "";
+        if (!name) return { id: null, name: "" };
+        const customerFilter = customer?.id ? `&customer_id=eq.${encodeURIComponent(customer.id)}` : "";
+        const rows = await getRows(`locations?name=eq.${encodeURIComponent(name)}${customerFilter}&select=id,name,customer_id&limit=1`);
+        return rows[0] || { id: `scan-location-${slugify(customer?.name || "customer")}-${slugify(name)}`, name };
+      }
+
+      async function resolveAsset() {
+        const assetId = params.get("a") || "";
+        if (!assetId) return { id: null, name: params.get("n") || "" };
+        const rows = await getRows(`assets?id=eq.${encodeURIComponent(assetId)}&select=id,name,customer_id,location_id&limit=1`);
+        const asset = rows[0] || null;
+        return {
+          id: asset?.id || assetId,
+          name: asset?.name || params.get("n") || "",
+          customerId: asset?.customer_id || "",
+          locationId: asset?.location_id || ""
+        };
+      }
+
+      function slugify(value) {
+        return String(value || "item").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
+      }
+
+      function fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result || "");
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function resizeImageDataUrl(dataUrl, maxSize = 720, quality = 0.52) {
+        return new Promise((resolve) => {
+          const image = new Image();
+          image.onload = () => {
+            const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+            const width = Math.max(1, Math.round(image.width * scale));
+            const height = Math.max(1, Math.round(image.height * scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const context = canvas.getContext("2d");
+            context.fillStyle = "#ffffff";
+            context.fillRect(0, 0, width, height);
+            context.drawImage(image, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", quality));
+          };
+          image.onerror = () => resolve(dataUrl);
+          image.src = dataUrl;
+        });
+      }
+
+      async function optionalReportPhoto(file) {
+        if (!file) return null;
+        const rawDataUrl = await fileToDataUrl(file);
+        const dataUrl = await resizeImageDataUrl(rawDataUrl);
+        const blob = dataUrlToBlob(dataUrl);
+        const uploadFile = new File([blob], replaceFileExtension(file.name || "Report photo.jpg", "jpg"), { type: "image/jpeg" });
+        const stored = await uploadPublicReportPhoto(uploadFile);
+        return stored || null;
+      }
+
+      function dataUrlToBlob(dataUrl) {
+        const [header, payload] = String(dataUrl || "").split(",");
+        const mime = /data:([^;]+)/.exec(header || "")?.[1] || "application/octet-stream";
+        const binary = atob(payload || "");
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+        return new Blob([bytes], { type: mime });
+      }
+
+      function replaceFileExtension(name, extension) {
+        return `${String(name || "file").replace(/\.[^.]+$/, "")}.${extension}`;
+      }
+
+      async function uploadPublicReportPhoto(file) {
+        const cleanName = slugify(file.name || "report-photo.jpg");
+        const path = `public-reports/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${cleanName}`;
+        try {
+          const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_STORAGE_BUCKET}/${path}`, {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`,
+              "Content-Type": file.type || "image/jpeg",
+              "x-upsert": "false"
+            },
+            body: file
+          });
+          if (!response.ok) return null;
+          return {
+            name: file.name || "Report photo.jpg",
+            url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`
+          };
+        } catch {
+          return null;
+        }
+      }
+
+      form?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const submitButton = form.querySelector("button[type='submit']");
+        if (submitButton?.disabled) return;
+        const noteText = (note?.value || "").trim();
+        if (!noteText) {
+          if (message) message.textContent = "Add a quick note, then tap Send to Maintenance.";
+          return;
+        }
+        try {
+          if (submitButton) submitButton.disabled = true;
+          if (message) message.textContent = "Preparing report...";
+          const asset = await resolveAsset();
+          let customer = await resolveCustomer();
+          let locationRecord = await resolveLocation(customer);
+          if (!customer.id && asset.customerId) customer = { id: asset.customerId, name: params.get("c") || "" };
+          if (!locationRecord.id && asset.locationId) locationRecord = { id: asset.locationId, name: params.get("l") || "" };
+          if (!customer.name && !locationRecord.name && !asset.name && !asset.id) {
+            if (message) message.textContent = "This QR report link is missing equipment or location details.";
+            return;
+          }
+          const attachedPhoto = await optionalReportPhoto(photo?.files?.[0]);
+          if (photo?.files?.[0] && !attachedPhoto && message) {
+            message.textContent = "Photo could not upload, so the report will send without it...";
+          }
+          if (message) message.textContent = "Sending report...";
+          const reportId = crypto.randomUUID();
+          const buildPayload = (reportPhoto) => ({
+            id: reportId,
+            equipment_id: asset.id || null,
+            customer_id: customer.id || null,
+            customer_name: customer.name || params.get("c") || "",
+            location_id: locationRecord.id || null,
+            location_name: locationRecord.name || params.get("l") || "",
+            equipment_name: asset.name || params.get("n") || "",
+            note: noteText,
+            contact: (contact?.value || "").trim(),
+            photo_data_url: reportPhoto?.url || "",
+            photo_name: reportPhoto?.name || ""
+          });
+          const sendReport = (reportPhoto) => fetch(`${SUPABASE_URL}/rest/v1/public_reports`, {
+            method: "POST",
+            headers: { ...headers, Prefer: "return=minimal" },
+            body: JSON.stringify(buildPayload(reportPhoto))
+          });
+          let response = await sendReport(attachedPhoto);
+          if (!response.ok && attachedPhoto) {
+            if (message) message.textContent = "Photo could not be attached, so SiteWorks is sending the report without it...";
+            response = await sendReport(null);
+          }
+          if (!response.ok) {
+            if (message) message.textContent = "Report was not sent. Please try again.";
+            return;
+          }
+          form.reset();
+          if (message) message.textContent = "Report sent to SiteWorks. Thank you.";
+        } catch {
+          if (message) message.textContent = "Report was not sent. Check the phone connection and try again.";
+        } finally {
+          if (submitButton) submitButton.disabled = false;
+        }
+      }, true);
+    })();
+  </script>
+</body>
+</html>
