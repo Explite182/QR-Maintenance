@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-email-login-labels";
+const SITEWORKS_APP_VERSION = "20260731-sync-health-status-fix";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -6235,7 +6235,7 @@ function renderSyncHealth() {
   const scopedAssets = filteredAssets();
   const visibleOrders = filterWorkOrdersForView(filteredWorkOrders());
   const visibleServiceRequests = filteredServiceRequests();
-  const completedTickets = visibleOrders.filter((item) => isClosedStatus(item.status)).length;
+  const completedTickets = visibleOrders.filter((item) => item.status === "Closed").length;
   const activeTickets = visibleOrders.length - completedTickets;
   const selectedCustomerName = selectedCustomerId
     ? getCustomer(selectedCustomerId)?.name || "Unknown customer"
