@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-phase1-sync-health";
+const SITEWORKS_APP_VERSION = "20260731-email-login-labels";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -11910,24 +11910,6 @@ async function resolveSupabaseLoginEmail(identifier) {
   const clean = String(identifier || "").trim();
   const lower = clean.toLowerCase();
   if (isEmailAddress(lower)) return lower;
-
-  const localMatch = state.users.find((user) =>
-    String(user.username || "").toLowerCase() === lower ||
-    String(user.name || "").toLowerCase() === lower
-  );
-  if (localMatch?.username && isEmailAddress(localMatch.username)) return localMatch.username.toLowerCase();
-
-  try {
-    const escaped = lower.replace(/[%*_]/g, "\\$&");
-    const response = await siteworksApi.findLoginEmail(lower);
-    if (response.ok) {
-      const rows = await response.json();
-      const email = rows?.[0]?.email || "";
-      if (isEmailAddress(email)) return email.toLowerCase();
-    }
-  } catch (error) {
-    console.warn("Supabase login name lookup skipped.", error);
-  }
 
   return lower;
 }

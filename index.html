@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="styles.css?v=20260731-phase1-sync-health">
+    <link rel="stylesheet" href="styles.css?v=20260731-email-login-labels">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -42,8 +42,8 @@
       </div>
       <form id="loginForm" class="stack">
         <label>
-          Email or login name
-          <input id="loginUsername" required autocomplete="username" placeholder="tech1 or name@example.com">
+          Email
+          <input id="loginUsername" required type="email" autocomplete="username" placeholder="name@example.com">
         </label>
         <label>
           Password
@@ -287,8 +287,8 @@
           <p id="cloudUsersStatus" class="inline-status"></p>
           <form id="userForm" class="stack compact-form">
             <label>
-              Email or login name
-              <input id="newUsername" required placeholder="name@example.com">
+              Email
+              <input id="newUsername" required type="email" autocomplete="email" placeholder="name@example.com">
             </label>
             <label>
               Display name
@@ -1419,7 +1419,7 @@
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=20260731-phase1-sync-health"></script>
+  <script src="app.js?v=20260731-email-login-labels"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
