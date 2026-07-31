@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-completed-ticket-drawer";
+const SITEWORKS_APP_VERSION = "20260731-phase1-scoped-cloud-load";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -11496,6 +11496,49 @@ function siteworksServerFetch(path, options = {}) {
   return fetch(siteworksServerUrl(path), { ...options, headers });
 }
 
+function activeCloudCustomerId() {
+  if (canSeeAllCustomers()) return "";
+  return currentUser?.customerId || "";
+}
+
+function customerScopeQuery(column = "customer_id", { includeShared = false } = {}) {
+  const customerId = activeCloudCustomerId();
+  if (!customerId) return "";
+  const encodedColumn = encodeURIComponent(column);
+  const encodedCustomerId = encodeURIComponent(customerId);
+  if (includeShared) {
+    return `or=(${encodedColumn}.is.null,${encodedColumn}.eq.${encodedCustomerId})`;
+  }
+  return `${encodedColumn}=eq.${encodedCustomerId}`;
+}
+
+function structuredTableScopeQuery(table) {
+  const customerId = activeCloudCustomerId();
+  if (!customerId) return "";
+  if (table === "customers") return `id=eq.${encodeURIComponent(customerId)}`;
+  if (table === "pm_templates") return customerScopeQuery("customer_id", { includeShared: true });
+  if (["locations", "assets", "work_orders", "service_requests", "preferred_contractors", "inventory_items"].includes(table)) {
+    return customerScopeQuery("customer_id");
+  }
+  return "";
+}
+
+function canSyncCustomerOwnedRecord(record) {
+  const customerId = activeCloudCustomerId();
+  if (!customerId) return true;
+  return record?.customerId === customerId || record?.customer_id === customerId;
+}
+
+function canSyncTemplateRecord(template) {
+  const customerId = activeCloudCustomerId();
+  if (!customerId) return true;
+  return template?.customerId === customerId || template?.customer_id === customerId;
+}
+
+function canSyncHistoryRecord(asset) {
+  return canSyncCustomerOwnedRecord(asset);
+}
+
 const cloudApi = {
   rest(path, options = {}) {
     return supabaseFetch(path, options);
@@ -11641,7 +11684,14 @@ const siteworksApi = {
   },
   loadPublicReports() {
     if (siteworksServerEnabled()) return this.server("/api/public/reports?limit=50");
-    return cloudApi.rest("public_reports?select=id,equipment_id,customer_id,customer_name,location_id,location_name,equipment_name,note,contact,photo_data_url,photo_name,created_at&order=created_at.desc&limit=50");
+    const filter = customerScopeQuery("customer_id");
+    const query = [
+      "select=id,equipment_id,customer_id,customer_name,location_id,location_name,equipment_name,note,contact,photo_data_url,photo_name,created_at",
+      "order=created_at.desc",
+      "limit=50",
+      filter
+    ].filter(Boolean).join("&");
+    return cloudApi.rest(`public_reports?${query}`);
   },
   loadSharedState(id) {
     if (siteworksServerEnabled()) return this.server(`/api/sync/shared-state/${encodeURIComponent(id)}`);
@@ -11668,7 +11718,13 @@ const siteworksApi = {
         return response.json();
       });
     }
-    return cloudApi.select(`${table}?select=*&order=${encodeURIComponent(order)}`);
+    const scope = structuredTableScopeQuery(table);
+    const query = [
+      "select=*",
+      `order=${encodeURIComponent(order)}`,
+      scope
+    ].filter(Boolean).join("&");
+    return cloudApi.select(`${table}?${query}`);
   },
   peekRows(table, timestampColumn) {
     if (siteworksServerEnabled()) {
@@ -11677,7 +11733,14 @@ const siteworksApi = {
         return response.json();
       });
     }
-    return cloudApi.select(`${table}?select=id,${timestampColumn}&order=${encodeURIComponent(`${timestampColumn}.desc`)}&limit=1`);
+    const scope = structuredTableScopeQuery(table);
+    const query = [
+      `select=id,${timestampColumn}`,
+      `order=${encodeURIComponent(`${timestampColumn}.desc`)}`,
+      "limit=1",
+      scope
+    ].filter(Boolean).join("&");
+    return cloudApi.select(`${table}?${query}`);
   },
   saveRows(table, rows) {
     if (siteworksServerEnabled()) {
@@ -12139,7 +12202,7 @@ function applyForcedLogoutFromUrl() {
 
 async function bootstrapCloudData() {
   const loadedStructuredData = await loadStructuredDataFromSupabase();
-  if (!loadedStructuredData) await loadSharedStateFromSupabase();
+  if (!loadedStructuredData && canUseSharedStateFallback()) await loadSharedStateFromSupabase();
   if (!focusScannedAssetContext()) {
     restoreScannedAssetSelection();
     syncFiltersToSelectedAsset();
@@ -12152,7 +12215,7 @@ async function refreshCloudDataFromSupabase() {
     setSyncBanner("loading", "Checking cloud", "", 1200);
   }
   const loadedStructuredData = await loadStructuredDataFromSupabase();
-  if (!loadedStructuredData) await loadSharedStateFromSupabase();
+  if (!loadedStructuredData && canUseSharedStateFallback()) await loadSharedStateFromSupabase();
   restoreScannedAssetSelection();
 }
 
@@ -12210,7 +12273,9 @@ async function loadStructuredDataFromSupabase() {
     };
     if (structuredRowsMissingAssets(structuredRows)) {
       markSyncError("Structured cloud load returned related records but no equipment. Keeping/restoring the last known equipment list.");
-      const restoredSharedState = await loadSharedStateFromSupabase(true);
+      const restoredSharedState = canUseSharedStateFallback()
+        ? await loadSharedStateFromSupabase(true)
+        : false;
       if (!restoredSharedState && state.assets?.length) scheduleStructuredDataSync(0);
       return Boolean(restoredSharedState || state.assets?.length);
     }
@@ -12554,7 +12619,7 @@ function newestTimestampFromRows(rows = []) {
 }
 
 async function loadSharedStateFromSupabase(forceApplyAssets = false) {
-  if (sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  if (!canUseSharedStateFallback() || sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
   sharedStateLoading = true;
   const localHadSharedData = hasSharedMaintenanceData(state);
 
@@ -12631,6 +12696,10 @@ function applySharedState(sharedData, updatedAt = "") {
     window.setTimeout(() => scheduleSharedStateSave(0), 0);
   }
   window.setTimeout(syncLoginQrReportPrompt, 0);
+}
+
+function canUseSharedStateFallback() {
+  return currentRole === "Admin";
 }
 
 function mergeSharedUsers(sharedUsers = [], localUsers = [], localCurrentUserId = "") {
@@ -12797,7 +12866,19 @@ async function syncStructuredDataToSupabase() {
   structuredSyncActive = true;
   setSyncBanner("saving", "Saving to cloud", "", 0);
   try {
-    await upsertStructuredRows("customers", state.customers.map((customer) => ({
+    const syncCustomers = (state.customers || []).filter((customer) => {
+      const customerId = activeCloudCustomerId();
+      return !customerId || customer.id === customerId;
+    });
+    const syncLocations = (state.locations || []).filter(canSyncCustomerOwnedRecord);
+    const syncTemplates = (state.templates || []).filter(canSyncTemplateRecord);
+    const syncAssets = (state.assets || []).filter(canSyncCustomerOwnedRecord);
+    const syncWorkOrders = (state.workOrders || []).filter(canSyncCustomerOwnedRecord);
+    const syncServiceRequests = (state.serviceRequests || []).filter(canSyncCustomerOwnedRecord);
+    const syncPreferredContractors = (state.preferredContractors || []).filter(canSyncCustomerOwnedRecord);
+    const syncInventoryItems = (state.inventoryItems || []).filter(canSyncCustomerOwnedRecord);
+
+    await upsertStructuredRows("customers", syncCustomers.map((customer) => ({
       id: customer.id,
       name: customer.name || "",
       created_at: customer.createdAt || new Date().toISOString(),
@@ -12805,7 +12886,7 @@ async function syncStructuredDataToSupabase() {
       data: customer
     })));
 
-    await upsertStructuredRows("locations", state.locations.map((locationRecord) => ({
+    await upsertStructuredRows("locations", syncLocations.map((locationRecord) => ({
       id: locationRecord.id,
       customer_id: locationRecord.customerId,
       name: locationRecord.name || "",
@@ -12814,16 +12895,17 @@ async function syncStructuredDataToSupabase() {
       data: locationRecord
     })));
 
-    await upsertStructuredRows("pm_templates", state.templates.map((template) => ({
+    await upsertStructuredRows("pm_templates", syncTemplates.map((template) => ({
       id: template.id,
       name: template.name || "",
+      customer_id: template.customerId || null,
       items: template.items || [],
       created_at: template.createdAt || new Date().toISOString(),
       updated_at: template.updatedAt || state.updatedAt || new Date().toISOString(),
       data: template
     })));
 
-    await upsertStructuredRows("assets", state.assets.map((asset) => ({
+    await upsertStructuredRows("assets", syncAssets.map((asset) => ({
       id: asset.id,
       customer_id: asset.customerId,
       location_id: asset.locationId,
@@ -12848,11 +12930,11 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(asset)
     })));
 
-    const cloudAssetIds = new Set((state.assets || []).map((asset) => asset.id).filter(Boolean));
-    const cloudReadyWorkOrders = (state.workOrders || []).filter((item) =>
+    const cloudAssetIds = new Set(syncAssets.map((asset) => asset.id).filter(Boolean));
+    const cloudReadyWorkOrders = syncWorkOrders.filter((item) =>
       !item.assetId || cloudAssetIds.has(item.assetId)
     );
-    const skippedWorkOrders = (state.workOrders || []).length - cloudReadyWorkOrders.length;
+    const skippedWorkOrders = syncWorkOrders.length - cloudReadyWorkOrders.length;
     if (skippedWorkOrders > 0) {
       console.warn(`Skipped ${skippedWorkOrders} ticket sync row(s) because their linked equipment is missing locally.`);
     }
@@ -12878,10 +12960,10 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(item)
     })));
 
-    const cloudReadyServiceRequests = (state.serviceRequests || []).filter((item) =>
+    const cloudReadyServiceRequests = syncServiceRequests.filter((item) =>
       !item.assetId || cloudAssetIds.has(item.assetId)
     );
-    const skippedServiceRequests = (state.serviceRequests || []).length - cloudReadyServiceRequests.length;
+    const skippedServiceRequests = syncServiceRequests.length - cloudReadyServiceRequests.length;
     if (skippedServiceRequests > 0) {
       console.warn(`Skipped ${skippedServiceRequests} service request sync row(s) because their linked equipment is missing locally.`);
     }
@@ -12908,11 +12990,11 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(item)
     })));
 
-    const cloudCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
-    const cloudReadyPreferredContractors = (state.preferredContractors || []).filter((contractor) =>
+    const cloudCustomerIds = new Set(syncCustomers.map((customer) => customer.id).filter(Boolean));
+    const cloudReadyPreferredContractors = syncPreferredContractors.filter((contractor) =>
       !contractor.customerId || cloudCustomerIds.has(contractor.customerId)
     );
-    const skippedPreferredContractors = (state.preferredContractors || []).length - cloudReadyPreferredContractors.length;
+    const skippedPreferredContractors = syncPreferredContractors.length - cloudReadyPreferredContractors.length;
     if (skippedPreferredContractors > 0) {
       console.warn(`Skipped ${skippedPreferredContractors} preferred contact sync row(s) because their linked customer is missing locally.`);
     }
@@ -12928,10 +13010,10 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(contractor)
     })));
 
-    const cloudReadyInventoryItems = (state.inventoryItems || []).filter((item) =>
+    const cloudReadyInventoryItems = syncInventoryItems.filter((item) =>
       !item.customerId || cloudCustomerIds.has(item.customerId)
     );
-    const skippedInventoryItems = (state.inventoryItems || []).length - cloudReadyInventoryItems.length;
+    const skippedInventoryItems = syncInventoryItems.length - cloudReadyInventoryItems.length;
     if (skippedInventoryItems > 0) {
       console.warn(`Skipped ${skippedInventoryItems} inventory sync row(s) because their linked customer is missing locally.`);
     }
@@ -12952,7 +13034,7 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(item)
     })));
 
-    const historyRows = state.assets.flatMap((asset) => (asset.history || []).map((item) => ({
+    const historyRows = syncAssets.filter(canSyncHistoryRecord).flatMap((asset) => (asset.history || []).map((item) => ({
       id: item.id,
       pm_number: item.pmNumber || null,
       asset_id: asset.id,
