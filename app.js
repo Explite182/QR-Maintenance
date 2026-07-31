@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-ticket-drawer-actions";
+const SITEWORKS_APP_VERSION = "20260731-short-nfc-links";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -790,6 +790,7 @@ async function openScannedAssetAfterLogin() {
     await runWithTimeout(refreshCloudDataFromSupabase(), 5000);
     openedScannedAsset = focusScannedAssetContext() || focusScannedInventoryContext();
   }
+  if (!openedScannedAsset) notifyUnassignedShortNfcTag();
   if (!openedScannedAsset) closeAssetRegisterDrawer();
   return openedScannedAsset;
 }
@@ -2619,10 +2620,23 @@ document.addEventListener("click", (event) => {
   if (openTicketEditButton) {
     event.preventDefault();
     const drawer = openTicketEditButton.closest(".work-order-drawer");
+    if (drawer) {
+      drawer.open = true;
+      if (drawer.classList.contains("service-request-item")) {
+        focusedServiceRequestId = drawer.dataset.serviceRequestId || "";
+        focusedWorkOrderId = "";
+        focusedCompletedRecordId = "";
+      } else if (drawer.classList.contains("ticket-drawer-item")) {
+        focusedWorkOrderId = drawer.dataset.workOrderId || "";
+        focusedServiceRequestId = "";
+        focusedCompletedRecordId = "";
+      }
+      syncWorkDrawerBackdrop();
+    }
     const editDrawer = drawer?.querySelector("[data-ticket-edit-drawer]");
     if (editDrawer) {
       editDrawer.open = true;
-      editDrawer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      requestAnimationFrame(() => editDrawer.scrollIntoView({ behavior: "smooth", block: "nearest" }));
     }
     return;
   }
@@ -7119,7 +7133,7 @@ function renderServiceRequestItem(request) {
     ${canDeleteServiceRequests() ? `<button class="secondary mini danger-action" type="button" data-service-request-delete="${escapeAttribute(request.id)}">Delete</button>` : ""}
   ` : "";
   return `
-    <details class="work-order-item work-order-drawer service-request-item" ${request.id === focusedServiceRequestId ? "open" : ""}>
+    <details class="work-order-item work-order-drawer service-request-item" data-service-request-id="${escapeAttribute(request.id)}" ${request.id === focusedServiceRequestId ? "open" : ""}>
       <summary>
         <div class="ticket-list-summary">
           <strong>${escapeHtml(requestNumber)} - ${escapeHtml(request.title || "Service request")}</strong>
@@ -7842,7 +7856,7 @@ function canUseLocalNfcBridge() {
 
 function getAssetNfcStatus(tag, recordUrl) {
   if (!tag.uid) return { key: "unassigned", label: "Unassigned" };
-  const urlMatches = normalizeUrlForNfcCompare(tag.url) === normalizeUrlForNfcCompare(recordUrl);
+  const urlMatches = doesNfcTagUrlMatchAsset(tag, recordUrl);
   if (tag.status === "verified" && urlMatches) return { key: "written", label: "Written and verified" };
   if (tag.status === "written" && urlMatches) return { key: "written", label: "Written" };
   if (tag.url && !urlMatches) return { key: "mismatch", label: "Assigned to another URL" };
@@ -7855,7 +7869,7 @@ function normalizeAssetNfcTag(value) {
   return {
     uid: String(value.uid || value.tagUid || value.id || "").trim(),
     url: String(value.url || value.ndefUrl || value.recordUrl || "").trim(),
-    status: value.status || "",
+    status: value.status || value.nfcStatus || "",
     lastWrittenAt: value.lastWrittenAt || value.writtenAt || "",
     lastVerifiedAt: value.lastVerifiedAt || value.verifiedAt || "",
     message: value.message || ""
@@ -7864,16 +7878,19 @@ function normalizeAssetNfcTag(value) {
 
 async function writeAssetNfcTag(asset) {
   const recordUrl = getAssetUrl(asset.id);
+  const shortUrlTemplate = getShortNfcUrlTemplate();
   setAssetNfcBusy("Hold an NTAG tag on the ACR122U reader...");
   try {
     const result = await callNfcBridgeWithFallback(["/nfc/write", "/write", "/api/nfc/write"], {
-      url: recordUrl,
+      url: shortUrlTemplate,
+      urlTemplate: shortUrlTemplate,
+      fallbackUrl: recordUrl,
       recordType: "equipment",
       recordId: asset.id,
       name: asset.name
     });
     const uid = getNfcResponseUid(result);
-    const writtenUrl = getNfcResponseUrl(result) || recordUrl;
+    const writtenUrl = getNfcResponseUrl(result) || "";
     if (result.opaque) {
       asset.nfcTag = {
         ...normalizeAssetNfcTag(asset.nfcTag),
@@ -7889,16 +7906,17 @@ async function writeAssetNfcTag(asset) {
       return;
     }
     if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
-    if (normalizeUrlForNfcCompare(writtenUrl) !== normalizeUrlForNfcCompare(recordUrl)) {
+    const expectedShortUrl = getShortNfcUrl(uid);
+    if (!doesWrittenNfcUrlMatchAsset(writtenUrl, asset, expectedShortUrl, recordUrl)) {
       throw new Error("The bridge wrote a different URL than SiteWorks requested.");
     }
     asset.nfcTag = {
       uid,
-      url: recordUrl,
+      url: normalizeUrlForNfcCompare(writtenUrl || expectedShortUrl),
       status: "written",
       lastWrittenAt: new Date().toISOString(),
       lastVerifiedAt: "",
-      message: "Tag written from local ACR122U bridge."
+      message: "Short NFC tag written from local ACR122U bridge."
     };
     asset.updatedAt = new Date().toISOString();
     addActivity("NFC tag written", `${asset.name} | ${uid}`);
@@ -7914,11 +7932,13 @@ async function writeAssetNfcTag(asset) {
 async function verifyAssetNfcTag(asset) {
   const expected = normalizeAssetNfcTag(asset.nfcTag);
   const recordUrl = getAssetUrl(asset.id);
+  const shortUrl = expected.uid ? getShortNfcUrl(expected.uid) : "";
   setAssetNfcBusy("Hold the written tag on the ACR122U reader...");
   try {
     const payload = {
       expectedUid: expected.uid || "",
-      expectedUrl: recordUrl,
+      expectedUrl: shortUrl || recordUrl,
+      fallbackUrl: recordUrl,
       recordType: "equipment",
       recordId: asset.id
     };
@@ -7927,13 +7947,14 @@ async function verifyAssetNfcTag(asset) {
     const tagUrl = getNfcResponseUrl(result);
     if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
     if (expected.uid && uid !== expected.uid) throw new Error(`UID mismatch. Expected ${expected.uid}, read ${uid}.`);
-    if (tagUrl && normalizeUrlForNfcCompare(tagUrl) !== normalizeUrlForNfcCompare(recordUrl)) {
+    const expectedShortUrl = getShortNfcUrl(uid);
+    if (tagUrl && !doesWrittenNfcUrlMatchAsset(tagUrl, asset, expectedShortUrl, recordUrl)) {
       throw new Error("URL mismatch. The tag opens a different SiteWorks record.");
     }
     asset.nfcTag = {
       ...expected,
       uid,
-      url: recordUrl,
+      url: normalizeUrlForNfcCompare(tagUrl || expectedShortUrl),
       status: "verified",
       lastVerifiedAt: new Date().toISOString(),
       message: "Tag UID and URL match this equipment record."
@@ -8046,10 +8067,72 @@ function normalizeUrlForNfcCompare(value) {
   try {
     const url = new URL(value);
     url.searchParams.delete("refresh");
+    url.hash = "";
     return url.toString();
   } catch {
     return String(value || "").trim();
   }
+}
+
+function getShortNfcUrl(uid) {
+  const base = getQrBaseUrl().replace(/\/+$/, "");
+  return `${base}/t/${encodeURIComponent(uid)}`;
+}
+
+function getShortNfcUrlTemplate() {
+  const base = getQrBaseUrl().replace(/\/+$/, "");
+  return `${base}/t/{uid}`;
+}
+
+function getShortNfcUidFromPath() {
+  const match = String(location.pathname || "").match(/\/t\/([^/?#]+)/i);
+  if (!match) return "";
+  try {
+    return decodeURIComponent(match[1]).trim();
+  } catch {
+    return match[1].trim();
+  }
+}
+
+function normalizeNfcUid(value) {
+  return String(value || "").replace(/[^a-f0-9]/gi, "").toUpperCase();
+}
+
+function getAssetNfcUid(asset) {
+  return normalizeNfcUid(normalizeAssetNfcTag(asset?.nfcTag).uid || asset?.nfcUid || asset?.nfc_uid || "");
+}
+
+function findAssetByNfcUid(uid) {
+  const normalizedUid = normalizeNfcUid(uid);
+  if (!normalizedUid) return null;
+  return state.assets.find((asset) => getAssetNfcUid(asset) === normalizedUid) || null;
+}
+
+function isShortNfcUrlForUid(value, uid) {
+  const expectedUid = normalizeNfcUid(uid);
+  if (!value || !expectedUid) return false;
+  try {
+    const url = new URL(value, location.origin);
+    const match = url.pathname.match(/\/t\/([^/?#]+)/i);
+    if (!match) return false;
+    return normalizeNfcUid(decodeURIComponent(match[1])) === expectedUid;
+  } catch {
+    return false;
+  }
+}
+
+function doesNfcTagUrlMatchAsset(tag, recordUrl) {
+  if (!tag.url) return false;
+  if (normalizeUrlForNfcCompare(tag.url) === normalizeUrlForNfcCompare(recordUrl)) return true;
+  return isShortNfcUrlForUid(tag.url, tag.uid);
+}
+
+function doesWrittenNfcUrlMatchAsset(writtenUrl, asset, expectedShortUrl, recordUrl) {
+  if (!writtenUrl) return true;
+  const normalizedWrittenUrl = normalizeUrlForNfcCompare(writtenUrl);
+  return normalizedWrittenUrl === normalizeUrlForNfcCompare(expectedShortUrl) ||
+    normalizedWrittenUrl === normalizeUrlForNfcCompare(recordUrl) ||
+    isShortNfcUrlForUid(writtenUrl, getAssetNfcUid(asset) || normalizeAssetNfcTag(asset?.nfcTag).uid || expectedShortUrl.split("/").pop());
 }
 
 function setAssetNfcBusy(message) {
@@ -8930,7 +9013,7 @@ function renderWorkOrderItem(item) {
     badges: profileBadges
   });
   return `
-    <details class="work-order-item work-order-drawer ticket-drawer-item" ${item.id === focusedWorkOrderId || item.id === focusedCompletedRecordId ? "open" : ""}>
+    <details class="work-order-item work-order-drawer ticket-drawer-item" data-work-order-id="${escapeAttribute(item.id)}" ${item.id === focusedWorkOrderId || item.id === focusedCompletedRecordId ? "open" : ""}>
       <summary>
         <div class="ticket-list-summary">
           <strong>${escapeHtml(issueNumber)} - ${escapeHtml(item.title || "Open ticket")}</strong>
@@ -11284,6 +11367,8 @@ function getAssetIdFromUrl() {
   if (queryId) return queryId;
   const match = location.hash.match(/^#asset\/([^?]+)/);
   if (match) return match[1];
+  const shortNfcUid = getShortNfcUidFromPath();
+  if (shortNfcUid) return findAssetByNfcUid(shortNfcUid)?.id || "";
   return getRememberedScannedQrParam("a");
 }
 
@@ -11297,11 +11382,17 @@ function getInventoryItemIdFromUrl() {
 }
 
 function isQrAccessUrl() {
-  return new URLSearchParams(location.search).get("qr") === "1" || getRememberedScannedQrParam("qr") === "1";
+  return new URLSearchParams(location.search).get("qr") === "1" || getRememberedScannedQrParam("qr") === "1" || Boolean(getShortNfcUidFromPath());
 }
 
 function isScannedItemUrl() {
-  return isQrAccessUrl() || Boolean(getAssetIdFromUrl()) || Boolean(getInventoryItemIdFromUrl());
+  return isQrAccessUrl() || Boolean(getAssetIdFromUrl()) || Boolean(getInventoryItemIdFromUrl()) || Boolean(getShortNfcUidFromPath());
+}
+
+function notifyUnassignedShortNfcTag() {
+  const uid = getShortNfcUidFromPath();
+  if (!uid || !currentUser) return;
+  setSyncBanner("stale", "Unassigned NFC tag", `No equipment or panel is assigned to UID ${uid}.`, 0);
 }
 
 function isPublicReportUrl() {
@@ -12502,6 +12593,18 @@ function structuredPayload(row) {
   return row?.data && typeof row.data === "object" ? row.data : {};
 }
 
+function nfcTagFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return normalizeAssetNfcTag(payload.nfcTag || {
+    uid: row.nfc_uid || payload.nfcUid || payload.nfc_uid || "",
+    url: row.nfc_url || payload.nfcUrl || payload.nfc_url || "",
+    status: row.nfc_status || payload.nfcStatus || payload.nfc_status || "",
+    lastWrittenAt: row.nfc_written_at || payload.nfcWrittenAt || payload.nfc_written_at || "",
+    lastVerifiedAt: row.nfc_verified_at || payload.nfcVerifiedAt || payload.nfc_verified_at || "",
+    message: payload.nfcMessage || payload.nfc_message || ""
+  });
+}
+
 function withFileScope(file, scope = {}) {
   if (!file || typeof file !== "object") return file;
   return {
@@ -12560,6 +12663,7 @@ function templateFromStructuredRow(row) {
 }
 
 function assetFromStructuredRow(row) {
+  const payload = structuredPayload(row);
   const asset = {
     id: row.id,
     customerId: row.customer_id || "",
@@ -12582,7 +12686,8 @@ function assetFromStructuredRow(row) {
     notes: row.notes || "",
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
-    ...structuredPayload(row)
+    ...payload,
+    nfcTag: nfcTagFromStructuredRow(row)
   };
   return withRecordMediaScope(asset, asset);
 }
@@ -12996,30 +13101,37 @@ async function syncStructuredDataToSupabase() {
       data: template
     })));
 
-    await upsertStructuredRows("assets", syncAssets.map((asset) => ({
-      id: asset.id,
-      customer_id: asset.customerId,
-      location_id: asset.locationId,
-      template_id: asset.templateId || null,
-      name: asset.name || "",
-      frequency_days: Number(asset.frequencyDays || 30),
-      next_pm_date: asset.nextPmDate || null,
-      manufacturer: asset.manufacturer || "",
-      model: asset.model || "",
-      serial: asset.serial || "",
-      install_date: asset.installDate || null,
-      type: asset.type || "",
-      criticality: asset.criticality || "",
-      document_url: asset.documentUrl || "",
-      vendor: asset.vendor || "",
-      vendor_contact: asset.vendorContact || "",
-      warranty_date: asset.warrantyDate || null,
-      parts: asset.parts || "",
-      notes: asset.notes || "",
-      created_at: asset.createdAt || new Date().toISOString(),
-      updated_at: asset.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: leanCloudRecord(asset)
-    })));
+    await upsertStructuredRows("assets", syncAssets.map((asset) => {
+      const nfcTag = normalizeAssetNfcTag(asset.nfcTag);
+      return {
+        id: asset.id,
+        customer_id: asset.customerId,
+        location_id: asset.locationId,
+        template_id: asset.templateId || null,
+        name: asset.name || "",
+        frequency_days: Number(asset.frequencyDays || 30),
+        next_pm_date: asset.nextPmDate || null,
+        manufacturer: asset.manufacturer || "",
+        model: asset.model || "",
+        serial: asset.serial || "",
+        install_date: asset.installDate || null,
+        type: asset.type || "",
+        criticality: asset.criticality || "",
+        document_url: asset.documentUrl || "",
+        vendor: asset.vendor || "",
+        vendor_contact: asset.vendorContact || "",
+        warranty_date: asset.warrantyDate || null,
+        parts: asset.parts || "",
+        notes: asset.notes || "",
+        nfc_uid: nfcTag.uid || null,
+        nfc_url: nfcTag.url || null,
+        nfc_written_at: nfcTag.lastWrittenAt || null,
+        nfc_status: nfcTag.status || null,
+        created_at: asset.createdAt || new Date().toISOString(),
+        updated_at: asset.updatedAt || state.updatedAt || new Date().toISOString(),
+        data: leanCloudRecord(asset)
+      };
+    }));
 
     const cloudAssetIds = new Set(syncAssets.map((asset) => asset.id).filter(Boolean));
     const cloudReadyWorkOrders = syncWorkOrders.filter((item) =>
@@ -13163,6 +13275,11 @@ async function upsertStructuredRows(table, rows) {
       markSyncError("Maintenance templates saved without customer-specific scope. Run the Phase 1 Supabase SQL to enable customer-specific templates.");
       return;
     }
+    if (table === "assets" && hasMissingAssetNfcColumnError(error)) {
+      await siteworksApi.saveRows(table, rows.map(stripAssetNfcColumns));
+      markSyncError("NFC tag details saved inside equipment data. Run the NFC Supabase SQL to enable short NFC lookup columns.");
+      return;
+    }
     const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
     console.warn(`Structured Supabase sync skipped for ${table}.`, error);
@@ -13173,6 +13290,21 @@ async function upsertStructuredRows(table, rows) {
 function isMissingColumnError(error, columnName) {
   const message = String(error?.message || error || "");
   return message.includes("PGRST204") && message.includes(columnName);
+}
+
+function hasMissingAssetNfcColumnError(error) {
+  return ["nfc_uid", "nfc_url", "nfc_written_at", "nfc_status"].some((column) =>
+    isMissingColumnError(error, column)
+  );
+}
+
+function stripAssetNfcColumns(row) {
+  const fallbackRow = { ...row };
+  delete fallbackRow.nfc_uid;
+  delete fallbackRow.nfc_url;
+  delete fallbackRow.nfc_written_at;
+  delete fallbackRow.nfc_status;
+  return fallbackRow;
 }
 
 async function deleteStructuredRows(table, column, values) {
