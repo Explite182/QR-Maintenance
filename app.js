@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-phase1-template-fallback";
+const SITEWORKS_APP_VERSION = "20260731-phase1-sync-health";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -3043,7 +3043,9 @@ function render() {
   renderPanelToggles();
 
   const asset = getSelectedAsset();
-  els.customerCount.textContent = manageableSetupCustomers().length;
+  els.customerCount.textContent = canSeeAllCustomers()
+    ? `${state.customers.length} total`
+    : manageableSetupCustomers().length;
   els.templateCount.textContent = visibleTemplatesForCurrentView().length;
   els.locationCount.textContent = state.locations.filter((locationRecord) =>
     manageableSetupCustomers().some((customer) => customer.id === locationRecord.customerId)
@@ -6230,6 +6232,21 @@ function renderSyncHealth() {
   const saveStatus = structuredSyncActive ? "Saving..." : formatSyncTimestamp(syncHealth.lastCloudSaveAt);
   const publicReportStatus = remoteReportsLoading ? "Checking..." : formatSyncTimestamp(syncHealth.lastPublicReportSyncAt);
   const realtimeStatus = realtimeConnected ? "Connected" : "Timed refresh";
+  const scopedAssets = filteredAssets();
+  const visibleOrders = filterWorkOrdersForView(filteredWorkOrders());
+  const visibleServiceRequests = filteredServiceRequests();
+  const completedTickets = visibleOrders.filter((item) => isClosedStatus(item.status)).length;
+  const activeTickets = visibleOrders.length - completedTickets;
+  const selectedCustomerName = selectedCustomerId
+    ? getCustomer(selectedCustomerId)?.name || "Unknown customer"
+    : "All customers";
+  const loadedCounts = [
+    `${visibleCustomers().length}/${state.customers.length} customers`,
+    `${scopedAssets.length}/${state.assets.length} equipment`,
+    `${activeTickets} open tickets`,
+    `${completedTickets} completed tickets`,
+    `${visibleServiceRequests.length} service requests`
+  ].join(" | ");
   els.syncHealthSummary.textContent = hasError
     ? `Last issue: ${syncHealth.lastError}`
     : storageHealth.localOnly
@@ -6238,10 +6255,15 @@ function renderSyncHealth() {
   els.syncHealthPanel?.classList.toggle("has-sync-error", hasError);
   els.syncHealthGrid.innerHTML = [
     ["Backend mode", siteworksApi.backendLabel()],
+    ["Current scope", currentRole === "Admin" ? `${selectedCustomerName} (Admin can switch customers)` : selectedCustomerName],
+    ["Loaded rows", loadedCounts],
     ["Live updates", realtimeStatus],
     ["Cloud load", loadStatus],
     ["Cloud save", saveStatus],
     ["Public reports", publicReportStatus],
+    ["Users visible", `${visibleManagedUsers().length}/${state.users.filter((user) => user.username !== "scan-customer").length}`],
+    ["Templates visible", `${visibleTemplatesForCurrentView().length}/${state.templates.length}`],
+    ["Inventory visible", `${visibleInventoryItems().length}/${state.inventoryItems.length}`],
     ["Old browser files", storageHealth.localOnly ? `${storageHealth.localOnly} (${formatBytes(storageHealth.localBytes)})` : "None"],
     ["Cloud files", `${storageHealth.cloudBacked}`],
     ["Removable local copies", storageHealth.removableLocalCopies ? `${storageHealth.removableLocalCopies} (${formatBytes(storageHealth.removableLocalBytes)})` : "None"],
