@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-completed-ticket-view";
+const SITEWORKS_APP_VERSION = "20260731-phase2-account-sync";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -502,7 +502,6 @@ window.setTimeout(() => {
 window.setTimeout(syncLoginQrReportPrompt, 0);
 window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
-window.setTimeout(loadSupabaseProfiles, 0);
 window.setTimeout(bootstrapCloudData, 0);
 window.setTimeout(initializeRealtimeSync, 1200);
 window.setInterval(syncPublicReportsFromSupabase, PUBLIC_REPORT_SYNC_INTERVAL_MS);
@@ -12267,7 +12266,8 @@ function applyForcedLogoutFromUrl() {
 }
 
 async function bootstrapCloudData() {
-  const loadedStructuredData = await loadStructuredDataFromSupabase();
+  await loadSupabaseProfiles({ renderAfter: false });
+  const loadedStructuredData = await loadStructuredDataFromSupabase({ forceReload: true });
   if (!loadedStructuredData && canUseSharedStateFallback()) await loadSharedStateFromSupabase();
   if (!focusScannedAssetContext()) {
     restoreScannedAssetSelection();
@@ -12280,23 +12280,30 @@ async function refreshCloudDataFromSupabase() {
   if (currentUser && !isPublicReportUrl()) {
     setSyncBanner("loading", "Checking cloud", "", 1200);
   }
-  const loadedStructuredData = await loadStructuredDataFromSupabase();
+  await loadSupabaseProfiles({ renderAfter: false });
+  const loadedStructuredData = await loadStructuredDataFromSupabase({ forceReload: true });
   if (!loadedStructuredData && canUseSharedStateFallback()) await loadSharedStateFromSupabase();
   restoreScannedAssetSelection();
+  render();
 }
 
-async function loadStructuredDataFromSupabase() {
+async function loadStructuredDataFromSupabase(options = {}) {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return false;
   if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
   structuredDataLoading = true;
   try {
-    const remoteStructuredState = await peekStructuredCloudState();
-    if (remoteStructuredState.hasRows && hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(remoteStructuredState.updatedAt)) {
-      structuredDataLoading = false;
-      structuredDataReady = true;
-      scheduleStructuredDataSync(0);
-      markSyncSuccess("load");
-      return true;
+    const forceReload = Boolean(options.forceReload);
+    const remoteStructuredState = forceReload
+      ? { hasRows: true, updatedAt: "" }
+      : await peekStructuredCloudState();
+    if (!forceReload) {
+      if (remoteStructuredState.hasRows && hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(remoteStructuredState.updatedAt)) {
+        structuredDataLoading = false;
+        structuredDataReady = true;
+        scheduleStructuredDataSync(0);
+        markSyncSuccess("load");
+        return true;
+      }
     }
     const [
       customerRows,
@@ -12346,7 +12353,7 @@ async function loadStructuredDataFromSupabase() {
       return Boolean(restoredSharedState || state.assets?.length);
     }
     const structuredUpdatedAt = newestStructuredUpdatedAt(structuredRows);
-    if (hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(structuredUpdatedAt)) {
+    if (!forceReload && hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(structuredUpdatedAt)) {
       scheduleStructuredDataSync(0);
       markSyncSuccess("load");
       return true;
