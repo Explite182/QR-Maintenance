@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260801-header-controls-align";
+const SITEWORKS_APP_VERSION = "20260801-public-key-forget-after-scan";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -12228,6 +12228,7 @@ function clearRememberedScannedQrContext() {
 }
 
 function rememberScannedQrContext() {
+  if (isPublicReportUrl() || isPublicKeyUrl()) return;
   const params = new URLSearchParams(location.search);
   if (params.get("qr") !== "1" && !params.get("a") && !params.get("i") && !params.get("kid")) return;
   try {
@@ -12314,7 +12315,9 @@ function getKeyIdFromUrl() {
   if (match) return match[1];
   const shortKeyUid = getShortKeyUidFromPath();
   if (shortKeyUid) return findKeyByNfcUid(shortKeyUid)?.id || "";
-  return getRememberedScannedQrParam("kid") || getRememberedScannedQrParam("keyId");
+  const rememberedParams = getRememberedScannedQrParams();
+  if (rememberedParams.get("k") || rememberedParams.get("keyTag")) return "";
+  return rememberedParams.get("kid") || rememberedParams.get("keyId");
 }
 
 function isQrAccessUrl() {
@@ -12409,6 +12412,9 @@ function getPublicKeyIdFromUrl() {
 }
 
 function clearPublicKeyUrlAfterAction() {
+  clearRememberedScannedQrContext();
+  focusedKeyId = "";
+  if (inventoryTab === "keys") inventoryTab = "items";
   try {
     history.replaceState(null, "", `${location.origin}${location.pathname}`);
   } catch (error) {
