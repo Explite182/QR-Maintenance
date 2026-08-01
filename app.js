@@ -6502,16 +6502,20 @@ function currentSiteMapScope() {
   return { customerId, locationId };
 }
 
+function isSiteMapLocationSelected() {
+  return Boolean(selectedLocationId && selectedLocationId !== "all");
+}
+
 function siteMapScopeLabel(map = null) {
   const scope = map || currentSiteMapScope();
   const customer = getCustomer(scope.customerId)?.name || "Current customer";
-  const location = scope.locationId ? getLocation(scope.locationId)?.name || "Selected location" : "All locations";
+  const location = scope.locationId ? getLocation(scope.locationId)?.name || "Selected location" : "Choose a location";
   return `${customer} | ${location}`;
 }
 
 function getCurrentSiteMap(create = false) {
   const { customerId, locationId } = currentSiteMapScope();
-  if (!customerId) return null;
+  if (!customerId || !locationId) return null;
   state.siteMaps = Array.isArray(state.siteMaps) ? state.siteMaps : [];
   let map = state.siteMaps.find((item) => item.customerId === customerId && (item.locationId || "") === locationId);
   if (!map && create) {
@@ -6532,19 +6536,27 @@ function getCurrentSiteMap(create = false) {
 
 function renderSiteMap() {
   if (!els.siteMapPanel) return;
+  const hasLocation = isSiteMapLocationSelected();
   const map = getCurrentSiteMap(false);
-  const assets = filteredAssets();
+  const assets = hasLocation ? filteredAssets() : [];
   const pins = Array.isArray(map?.pins) ? map.pins : [];
   if (els.siteMapPinCount) els.siteMapPinCount.textContent = pins.length;
+  if (els.siteMapImageInput) els.siteMapImageInput.disabled = !hasLocation;
+  if (els.siteMapPinLabel) els.siteMapPinLabel.disabled = !hasLocation;
+  if (els.siteMapAddPinBtn) els.siteMapAddPinBtn.disabled = !hasLocation;
+  if (els.siteMapClearBtn) els.siteMapClearBtn.disabled = !hasLocation;
   if (els.siteMapPinAsset) {
+    els.siteMapPinAsset.disabled = !hasLocation;
     els.siteMapPinAsset.innerHTML = assets.length
       ? assets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name || asset.equipmentId || "Equipment")} - ${escapeHtml(getLocation(asset.locationId)?.name || "No location")}</option>`).join("")
-      : `<option value="">No equipment in this view</option>`;
+      : `<option value="">${hasLocation ? "No equipment in this location" : "Choose a location first"}</option>`;
   }
   const imageUrl = mediaSource(map?.image);
   if (els.siteMapCanvas) {
     els.siteMapCanvas.classList.toggle("has-map", Boolean(imageUrl));
-    els.siteMapCanvas.innerHTML = imageUrl
+    els.siteMapCanvas.innerHTML = !hasLocation
+      ? `<div class="site-map-empty">Choose a location to view or create its site map.</div>`
+      : imageUrl
       ? `
         <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(map?.name || "Site map")}">
         ${pins.map((pin, index) => {
@@ -6560,7 +6572,9 @@ function renderSiteMap() {
       : `<div class="site-map-empty">Upload a site or floor plan image to start mapping equipment.</div>`;
   }
   if (els.siteMapPinList) {
-    els.siteMapPinList.innerHTML = pins.length
+    els.siteMapPinList.innerHTML = !hasLocation
+      ? `<p class="metric-dropdown-empty">Site maps are saved per location. Select a location above to continue.</p>`
+      : pins.length
       ? pins.map((pin, index) => {
         const asset = getRawAsset(pin.assetId);
         const locationName = asset ? getLocation(asset.locationId)?.name || "No location" : "Equipment missing";
@@ -6581,9 +6595,14 @@ function renderSiteMap() {
 async function handleSiteMapImageChange() {
   const file = els.siteMapImageInput?.files?.[0];
   if (!file) return;
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before adding a site map.");
+    if (els.siteMapImageInput) els.siteMapImageInput.value = "";
+    return;
+  }
   const map = getCurrentSiteMap(true);
   if (!map) {
-    updateSiteMapStatus("Choose a customer before adding a map.");
+    updateSiteMapStatus("Choose a location before adding a site map.");
     return;
   }
   try {
@@ -6603,6 +6622,10 @@ async function handleSiteMapImageChange() {
 }
 
 function startSiteMapPinPlacement() {
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before adding pins.");
+    return;
+  }
   const map = getCurrentSiteMap(false);
   if (!mediaSource(map?.image)) {
     updateSiteMapStatus("Upload a map image first.");
@@ -6619,6 +6642,10 @@ function startSiteMapPinPlacement() {
 function addSiteMapPinFromEvent(event) {
   if (event.target.closest("[data-open-site-map-pin]")) return;
   if (!pendingSiteMapPin) return;
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before adding pins.");
+    return;
+  }
   const map = getCurrentSiteMap(true);
   if (!map) return;
   const rect = els.siteMapCanvas.getBoundingClientRect();
@@ -6654,6 +6681,10 @@ function deleteSiteMapPin(pinId) {
 }
 
 function clearCurrentSiteMap() {
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before clearing a map.");
+    return;
+  }
   const map = getCurrentSiteMap(false);
   if (!map?.image && !map?.pins?.length) {
     updateSiteMapStatus("No map to clear for this view.");
