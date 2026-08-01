@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-key-public-fallback";
+const SITEWORKS_APP_VERSION = "20260731-key-public-action-v2";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -12404,7 +12404,7 @@ async function submitPublicKeyAction(action) {
     els.publicKeyNote.value = "";
   } catch (error) {
     console.warn("Public key action failed.", error);
-    publicKeyLookupState.message = "Key was not updated. Try again.";
+    publicKeyLookupState.message = `Key was not updated: ${readableSupabaseError(error?.message || error) || "Try again."}`;
   } finally {
     renderPublicKeyScan();
   }
@@ -12944,7 +12944,7 @@ const siteworksApi = {
         body: JSON.stringify(payload)
       });
     }
-    return cloudApi.rest("rpc/siteworks_public_key_action", {
+    return cloudApi.rest("rpc/siteworks_public_key_action_v2", {
       method: "POST",
       body: JSON.stringify(payload)
     });
