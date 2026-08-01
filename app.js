@@ -11418,6 +11418,31 @@ function defaultLocationSelection() {
   return isLocationScopedUser() ? currentUser.locationId : "all";
 }
 
+function restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId) {
+  const customers = visibleCustomers();
+  if (!customers.length) {
+    selectedCustomerId = "";
+    selectedLocationId = "all";
+    return;
+  }
+
+  selectedCustomerId = customers.some((customer) => customer.id === previousCustomerId)
+    ? previousCustomerId
+    : customers.some((customer) => customer.id === selectedCustomerId)
+      ? selectedCustomerId
+      : customers[0].id;
+
+  const visibleLocations = locationsForCustomer(selectedCustomerId);
+  if (isLocationScopedUser() && visibleLocations.some((locationRecord) => locationRecord.id === currentUser.locationId)) {
+    selectedLocationId = currentUser.locationId;
+    return;
+  }
+
+  selectedLocationId = previousLocationId !== "all" && visibleLocations.some((locationRecord) => locationRecord.id === previousLocationId)
+    ? previousLocationId
+    : "all";
+}
+
 function ensureSelection() {
   const customers = visibleCustomers();
   if (!customers.length) {
@@ -14199,6 +14224,8 @@ async function fetchOptionalStructuredTimestampRows(table, timestampColumn) {
 }
 
 function applyStructuredState(rows, updatedAt = "") {
+  const previousCustomerId = selectedCustomerId;
+  const previousLocationId = selectedLocationId;
   const localUsers = state.users || [];
   const localAccessRequests = state.accessRequests || [];
   const localCurrentUserId = state.currentUserId || "";
@@ -14233,8 +14260,7 @@ function applyStructuredState(rows, updatedAt = "") {
   });
   currentUser = findStateUserForCurrentSession() || currentUser;
   currentRole = currentUser?.role || "Customer";
-  selectedCustomerId = selectedCustomerId || state.customers[0]?.id || "";
-  selectedLocationId = "all";
+  restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId);
   selectedId = getAssetIdFromUrl() || selectedId;
   persistLocalStateOnly(false);
   applyingSharedState = false;
@@ -14568,6 +14594,8 @@ async function loadSharedStateFromSupabase(forceApplyAssets = false) {
 }
 
 function applySharedState(sharedData, updatedAt = "") {
+  const previousCustomerId = selectedCustomerId;
+  const previousLocationId = selectedLocationId;
   const localUsers = state.users || [];
   const localAccessRequests = state.accessRequests || [];
   const localCurrentUserId = state.currentUserId || "";
@@ -14588,8 +14616,7 @@ function applySharedState(sharedData, updatedAt = "") {
   });
   currentUser = findStateUserForCurrentSession() || currentUser;
   currentRole = currentUser?.role || "Customer";
-  selectedCustomerId = selectedCustomerId || state.customers[0]?.id || "";
-  selectedLocationId = "all";
+  restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId);
   selectedId = getAssetIdFromUrl() || null;
   persistLocalStateOnly();
   applyingSharedState = false;
