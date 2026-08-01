@@ -391,7 +391,7 @@ textarea:disabled {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
   margin-left: auto;
   position: static;
@@ -413,9 +413,9 @@ textarea:disabled {
 
 .user-switcher {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   flex: 0 0 320px;
-  min-width: 280px;
+  min-width: 320px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
@@ -423,33 +423,34 @@ textarea:disabled {
 }
 
 .user-switcher select {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 40px 0 14px;
   white-space: nowrap;
 }
 
 .theme-switcher {
   display: grid;
-  gap: 5px;
-  flex: 0 0 116px;
+  gap: 6px;
+  flex: 0 0 120px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
 }
 
 .theme-switcher select {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 34px 0 12px;
 }
 
 .user-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  flex: 0 0 auto;
-  min-width: max-content;
-  min-height: 42px;
-  padding: 10px 18px;
+  flex: 0 0 116px;
+  width: 116px;
+  min-height: 44px;
+  padding: 0 16px;
   background: #f8fbfa;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -468,8 +469,10 @@ textarea:disabled {
 }
 
 #logoutBtn {
-  flex: 0 0 auto;
-  min-width: 92px;
+  flex: 0 0 96px;
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 16px;
   white-space: nowrap;
 }
 
