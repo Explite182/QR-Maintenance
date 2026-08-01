@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-key-direct-sync";
+const SITEWORKS_APP_VERSION = "20260731-key-id-nfc-link";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -4218,7 +4218,7 @@ function renderKeyNfcStatus(key, canManage = false) {
   const label = status.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   const written = key.nfcWrittenAt ? formatDateTime(new Date(key.nfcWrittenAt)) : "Not written";
   const verified = key.nfcVerifiedAt ? formatDateTime(new Date(key.nfcVerifiedAt)) : "Not verified";
-  const url = uid ? getShortKeyUrl(uid) : getKeyUrl(key);
+  const url = uid ? getShortKeyUrl(uid, key.id) : getKeyUrl(key);
   return `
     <div class="asset-nfc-card key-nfc-card" data-key-nfc-status="${escapeAttribute(status)}">
       <div>
@@ -8469,7 +8469,7 @@ function setKeyNfcMessage(key, message) {
 
 async function writeKeyNfcTag(key) {
   const recordUrl = getKeyRecordUrl(key.id);
-  const shortUrlTemplate = getShortKeyUrlTemplate();
+  const shortUrlTemplate = `${getQrBaseUrl().replace(/\/+$/, "")}?k={uid}&kid=${encodeURIComponent(key.id)}`;
   setKeyNfcMessage(key, "Hold an NTAG tag on the ACR122U reader...");
   render();
   try {
@@ -8497,7 +8497,7 @@ async function writeKeyNfcTag(key) {
       return;
     }
     if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
-    const expectedShortUrl = getShortKeyUrl(uid);
+    const expectedShortUrl = getShortKeyUrl(uid, key.id);
     if (!doesWrittenNfcUrlMatchKey(writtenUrl, key, expectedShortUrl, recordUrl)) {
       throw new Error("The bridge wrote a different URL than SiteWorks requested.");
     }
@@ -8523,7 +8523,7 @@ async function writeKeyNfcTag(key) {
 async function verifyKeyNfcTag(key) {
   const expectedUid = normalizeNfcUid(key.uniqueTagId || "");
   const recordUrl = getKeyRecordUrl(key.id);
-  const shortUrl = expectedUid ? getShortKeyUrl(expectedUid) : "";
+  const shortUrl = expectedUid ? getShortKeyUrl(expectedUid, key.id) : "";
   setKeyNfcMessage(key, "Hold the written tag on the ACR122U reader...");
   render();
   try {
@@ -8541,7 +8541,7 @@ async function verifyKeyNfcTag(key) {
       throw new Error(`UID mismatch. Expected ${expectedUid}, read ${normalizeNfcUid(uid)}.`);
     }
     const normalizedUid = normalizeNfcUid(uid);
-    const expectedShortUrl = getShortKeyUrl(normalizedUid);
+    const expectedShortUrl = getShortKeyUrl(normalizedUid, key.id);
     if (tagUrl && !doesWrittenNfcUrlMatchKey(tagUrl, key, expectedShortUrl, recordUrl)) {
       throw new Error("URL mismatch. The tag opens a different SiteWorks key record.");
     }
@@ -8678,9 +8678,12 @@ function getShortNfcUrlTemplate() {
   return `${base}/t/{uid}`;
 }
 
-function getShortKeyUrl(uid) {
+function getShortKeyUrl(uid, keyId = "") {
   const base = getQrBaseUrl().replace(/\/+$/, "");
-  return `${base}?k=${encodeURIComponent(uid)}`;
+  const query = new URLSearchParams();
+  query.set("k", uid);
+  if (keyId) query.set("kid", keyId);
+  return `${base}?${query.toString()}`;
 }
 
 function getShortKeyUrlTemplate() {
@@ -12042,7 +12045,7 @@ function getInventoryItemUrl(id) {
 function getKeyUrl(keyOrId) {
   const key = typeof keyOrId === "object" ? keyOrId : getKeyRecord(keyOrId);
   const uid = normalizeNfcUid(key?.uniqueTagId);
-  if (uid) return getShortKeyUrl(uid);
+  if (uid) return getShortKeyUrl(uid, key?.id || "");
   return getKeyRecordUrl(key?.id || keyOrId);
 }
 
