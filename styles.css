@@ -2163,8 +2163,8 @@ textarea {
 
 .dashboard-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 0.65fr) minmax(0, 2.35fr);
-  gap: 22px;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+  gap: 24px;
   padding: 20px;
   align-items: center;
 }
@@ -2257,7 +2257,7 @@ textarea {
 
 .dashboard {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -2266,6 +2266,7 @@ textarea {
   display: grid;
   gap: 8px;
   align-content: end;
+  width: 100%;
   min-height: 90px;
   padding: 28px 18px 17px;
   border: 1px solid rgba(79, 96, 105, 0.12);
