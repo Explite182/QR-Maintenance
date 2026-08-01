@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-key-custody";
+const SITEWORKS_APP_VERSION = "20260731-key-nfc-write";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -2009,6 +2009,28 @@ document.addEventListener("click", async (event) => {
     window.setTimeout(() => {
       copyButton.textContent = copyButton.dataset.linkLabel || "Copy QR Link";
     }, 1200);
+    return;
+  }
+
+  const writeKeyButton = event.target.closest("[data-write-key-nfc]");
+  if (writeKeyButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageKeys()) return;
+    const key = getKeyRecord(writeKeyButton.dataset.writeKeyNfc);
+    if (!key || !canManageKeyCustomer(key.customerId)) return;
+    await writeKeyNfcTag(key);
+    return;
+  }
+
+  const verifyKeyButton = event.target.closest("[data-verify-key-nfc]");
+  if (verifyKeyButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageKeys()) return;
+    const key = getKeyRecord(verifyKeyButton.dataset.verifyKeyNfc);
+    if (!key || !canManageKeyCustomer(key.customerId)) return;
+    await verifyKeyNfcTag(key);
     return;
   }
 
@@ -4138,6 +4160,8 @@ function renderKeyRecord(key) {
         </div>
         <div class="inventory-actions">
           <button type="button" class="secondary mini" data-key-action="${escapeAttribute(key.id)}" data-action="${checkedOut ? "checkin" : "checkout"}" ${canManage ? "" : "disabled"}>${checkedOut ? "Check In" : "Check Out"}</button>
+          <button type="button" class="secondary mini" data-write-key-nfc="${escapeAttribute(key.id)}" ${canManage ? "" : "disabled"}>Write NFC Tag</button>
+          <button type="button" class="secondary mini" data-verify-key-nfc="${escapeAttribute(key.id)}" ${canManage ? "" : "disabled"}>Read / Verify</button>
           <button type="button" class="secondary mini" data-copy-key-link="${escapeAttribute(key.id)}" data-link-label="Copy QR Link">Copy QR Link</button>
           <button type="button" class="secondary mini" data-print-key-qr="${escapeAttribute(key.id)}">Print QR</button>
           <button type="button" class="secondary mini danger-action" data-delete-key="${escapeAttribute(key.id)}" ${canManage ? "" : "disabled"}>Delete</button>
@@ -4152,10 +4176,36 @@ function renderKeyRecord(key) {
             <button type="button" class="secondary mini" data-copy-key-link="${escapeAttribute(key.id)}" data-link-label="Copy NFC Link">Copy NFC Link</button>
           </div>
         </div>
+        ${renderKeyNfcStatus(key, canManage)}
         ${canManage ? renderKeyEditForm(key) : `<p class="muted">Keys can be edited by Admin or Manager users.</p>`}
         ${renderKeyLogList(key)}
       </div>
     </details>
+  `;
+}
+
+function renderKeyNfcStatus(key, canManage = false) {
+  const uid = normalizeNfcUid(key.uniqueTagId || "");
+  const status = key.nfcStatus || (uid ? "assigned" : "unassigned");
+  const label = status.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const written = key.nfcWrittenAt ? formatDateTime(new Date(key.nfcWrittenAt)) : "Not written";
+  const verified = key.nfcVerifiedAt ? formatDateTime(new Date(key.nfcVerifiedAt)) : "Not verified";
+  const url = uid ? getShortKeyUrl(uid) : getKeyUrl(key);
+  return `
+    <div class="asset-nfc-card key-nfc-card" data-key-nfc-status="${escapeAttribute(status)}">
+      <div>
+        <strong>NFC tag</strong>
+        <span>${escapeHtml(label || "Unassigned")}</span>
+        <small>UID: ${escapeHtml(uid || "Not assigned")}</small>
+        <small>Last written: ${escapeHtml(written)}</small>
+        <small>Last verified: ${escapeHtml(verified)}</small>
+      </div>
+      <div class="asset-nfc-actions">
+        <button type="button" class="secondary mini" data-write-key-nfc="${escapeAttribute(key.id)}" ${canManage ? "" : "disabled"}>Write NFC Tag</button>
+        <button type="button" class="secondary mini" data-verify-key-nfc="${escapeAttribute(key.id)}" ${canManage ? "" : "disabled"}>Read / Verify</button>
+      </div>
+      <p>${escapeHtml(key.nfcMessage || `Writes ${url}`)}</p>
+    </div>
   `;
 }
 
@@ -8383,6 +8433,106 @@ async function verifyAssetNfcTag(asset) {
   }
 }
 
+function setKeyNfcMessage(key, message) {
+  key.nfcStatus = key.nfcStatus || (key.uniqueTagId ? "assigned" : "unassigned");
+  key.nfcMessage = message;
+  key.updatedAt = new Date().toISOString();
+}
+
+async function writeKeyNfcTag(key) {
+  const recordUrl = getKeyRecordUrl(key.id);
+  const shortUrlTemplate = getShortKeyUrlTemplate();
+  setKeyNfcMessage(key, "Hold an NTAG tag on the ACR122U reader...");
+  render();
+  try {
+    const result = await callNfcBridgeWithFallback(["/nfc/write", "/write", "/api/nfc/write"], {
+      url: shortUrlTemplate,
+      urlTemplate: shortUrlTemplate,
+      fallbackUrl: recordUrl,
+      recordType: "key",
+      recordId: key.id,
+      name: key.keyName || key.name || "Key"
+    });
+    const uid = getNfcResponseUid(result);
+    const writtenUrl = getNfcResponseUrl(result) || "";
+    if (result.opaque) {
+      key.nfcUrl = recordUrl;
+      key.nfcStatus = "assigned";
+      key.nfcWrittenAt = new Date().toISOString();
+      key.nfcVerifiedAt = "";
+      key.nfcMessage = "NFC write request was sent, but SiteWorks could not read the UID. Tap or verify the tag next.";
+      key.updatedAt = new Date().toISOString();
+      addActivity("Key NFC write request sent", key.keyName || key.name || "Key");
+      saveState();
+      render();
+      return;
+    }
+    if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
+    const expectedShortUrl = getShortKeyUrl(uid);
+    if (!doesWrittenNfcUrlMatchKey(writtenUrl, key, expectedShortUrl, recordUrl)) {
+      throw new Error("The bridge wrote a different URL than SiteWorks requested.");
+    }
+    key.uniqueTagId = normalizeNfcUid(uid);
+    key.nfcUrl = normalizeUrlForNfcCompare(writtenUrl || expectedShortUrl);
+    key.nfcStatus = "written";
+    key.nfcWrittenAt = new Date().toISOString();
+    key.nfcVerifiedAt = "";
+    key.nfcMessage = "Short NFC tag written from local ACR122U bridge.";
+    key.updatedAt = new Date().toISOString();
+    addKeyLog(key, "Check-In", `NFC tag written: ${key.uniqueTagId}.`);
+    addActivity("Key NFC tag written", `${key.keyName || key.name || "Key"} | ${key.uniqueTagId}`);
+    saveState();
+    render();
+  } catch (error) {
+    console.warn("Key NFC write failed.", error);
+    setKeyNfcMessage(key, `NFC write failed: ${error.message || "Bridge unavailable."}`);
+    render();
+  }
+}
+
+async function verifyKeyNfcTag(key) {
+  const expectedUid = normalizeNfcUid(key.uniqueTagId || "");
+  const recordUrl = getKeyRecordUrl(key.id);
+  const shortUrl = expectedUid ? getShortKeyUrl(expectedUid) : "";
+  setKeyNfcMessage(key, "Hold the written tag on the ACR122U reader...");
+  render();
+  try {
+    const result = await callNfcBridgeWithFallback(["/nfc/verify", "/nfc/read"], {
+      expectedUid,
+      expectedUrl: shortUrl || recordUrl,
+      fallbackUrl: recordUrl,
+      recordType: "key",
+      recordId: key.id
+    });
+    const uid = getNfcResponseUid(result);
+    const tagUrl = getNfcResponseUrl(result);
+    if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
+    if (expectedUid && normalizeNfcUid(uid) !== expectedUid) {
+      throw new Error(`UID mismatch. Expected ${expectedUid}, read ${normalizeNfcUid(uid)}.`);
+    }
+    const normalizedUid = normalizeNfcUid(uid);
+    const expectedShortUrl = getShortKeyUrl(normalizedUid);
+    if (tagUrl && !doesWrittenNfcUrlMatchKey(tagUrl, key, expectedShortUrl, recordUrl)) {
+      throw new Error("URL mismatch. The tag opens a different SiteWorks key record.");
+    }
+    key.uniqueTagId = normalizedUid;
+    key.nfcUrl = normalizeUrlForNfcCompare(tagUrl || expectedShortUrl);
+    key.nfcStatus = "verified";
+    key.nfcVerifiedAt = new Date().toISOString();
+    if (!key.nfcWrittenAt) key.nfcWrittenAt = key.nfcVerifiedAt;
+    key.nfcMessage = "Tag UID and URL match this key record.";
+    key.updatedAt = new Date().toISOString();
+    addKeyLog(key, "Check-In", `NFC tag verified: ${key.uniqueTagId}.`);
+    addActivity("Key NFC tag verified", `${key.keyName || key.name || "Key"} | ${key.uniqueTagId}`);
+    saveState();
+    render();
+  } catch (error) {
+    console.warn("Key NFC verify failed.", error);
+    setKeyNfcMessage(key, `NFC verify failed: ${error.message || "Bridge unavailable."}`);
+    render();
+  }
+}
+
 async function callNfcBridge(path, payload) {
   return callNfcBridgeUrl(NFC_BRIDGE_BASE_URLS[0], path, payload);
 }
@@ -8502,6 +8652,11 @@ function getShortKeyUrl(uid) {
   return `${base}/k/${encodeURIComponent(uid)}`;
 }
 
+function getShortKeyUrlTemplate() {
+  const base = getQrBaseUrl().replace(/\/+$/, "");
+  return `${base}/k/{uid}`;
+}
+
 function getShortNfcUidFromPath() {
   const match = String(location.pathname || "").match(/\/t\/([^/?#]+)/i);
   if (!match) return "";
@@ -8555,10 +8710,31 @@ function isShortNfcUrlForUid(value, uid) {
   }
 }
 
+function isShortKeyUrlForUid(value, uid) {
+  const expectedUid = normalizeNfcUid(uid);
+  if (!value || !expectedUid) return false;
+  try {
+    const url = new URL(value, location.origin);
+    const match = url.pathname.match(/\/k\/([^/?#]+)/i);
+    if (!match) return false;
+    return normalizeNfcUid(decodeURIComponent(match[1])) === expectedUid;
+  } catch {
+    return false;
+  }
+}
+
 function doesNfcTagUrlMatchAsset(tag, recordUrl) {
   if (!tag.url) return false;
   if (normalizeUrlForNfcCompare(tag.url) === normalizeUrlForNfcCompare(recordUrl)) return true;
   return isShortNfcUrlForUid(tag.url, tag.uid);
+}
+
+function doesWrittenNfcUrlMatchKey(writtenUrl, key, expectedShortUrl, recordUrl) {
+  if (!writtenUrl) return true;
+  const normalizedWrittenUrl = normalizeUrlForNfcCompare(writtenUrl);
+  return normalizedWrittenUrl === normalizeUrlForNfcCompare(expectedShortUrl) ||
+    normalizedWrittenUrl === normalizeUrlForNfcCompare(recordUrl) ||
+    isShortKeyUrlForUid(writtenUrl, normalizeNfcUid(key.uniqueTagId) || expectedShortUrl.split("/").pop());
 }
 
 function doesWrittenNfcUrlMatchAsset(writtenUrl, asset, expectedShortUrl, recordUrl) {
