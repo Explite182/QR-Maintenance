@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260801-public-key-forget-after-scan";
+const SITEWORKS_APP_VERSION = "20260801-pm-dropdown-nav";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -216,6 +216,8 @@ const els = {
   newServiceRequestBtn: document.getElementById("newServiceRequestBtn"),
   newInventoryBtn: document.getElementById("newInventoryBtn"),
   newKeyBtn: document.getElementById("newKeyBtn"),
+  mobilePmBtn: document.getElementById("mobilePmBtn"),
+  mobilePmMenu: document.getElementById("mobilePmMenu"),
   mobileCreateBtn: document.getElementById("mobileCreateBtn"),
   mobileCreateMenu: document.getElementById("mobileCreateMenu"),
   newIssueDrawer: document.getElementById("newIssueDrawer"),
@@ -984,6 +986,20 @@ els.logoutBtn.addEventListener("click", () => {
 
 document.querySelector("#mobileLogoutBtn")?.addEventListener("click", () => {
   logoutCurrentUser("manual");
+});
+
+els.mobilePmBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleMobilePmMenu();
+});
+
+els.mobilePmMenu?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-mobile-pm-target]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeMobilePmMenu();
+  openMobileTab(button.dataset.mobilePmTarget);
 });
 
 els.mobileCreateBtn?.addEventListener("click", (event) => {
@@ -2192,10 +2208,11 @@ els.createNewBtn?.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #inventoryCreateDrawer, #keyCreateDrawer, #createNewBtn, #createNewMenu, #mobileCreateBtn, #mobileCreateMenu")) return;
+  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #inventoryCreateDrawer, #keyCreateDrawer, #createNewBtn, #createNewMenu, #mobilePmBtn, #mobilePmMenu, #mobileCreateBtn, #mobileCreateMenu")) return;
   closeTopActionDrawers();
   closeMetricMenus();
   closeCreateNewMenu();
+  closeMobilePmMenu();
   closeMobileCreateMenu();
 });
 
@@ -2949,6 +2966,20 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const pmMenuToggle = event.target.closest("[data-pm-menu-toggle]");
+  if (pmMenuToggle) {
+    event.preventDefault();
+    togglePmSidebarMenu();
+    return;
+  }
+
+  const openPmTabButton = event.target.closest("[data-open-pm-tab]");
+  if (openPmTabButton) {
+    event.preventDefault();
+    openPmSidebarTab(openPmTabButton.dataset.openPmTab);
+    return;
+  }
+
   const inventoryMenuToggle = event.target.closest("[data-inventory-menu-toggle]");
   if (inventoryMenuToggle) {
     event.preventDefault();
@@ -2976,6 +3007,7 @@ document.addEventListener("click", (event) => {
   if (mobileTabButton) {
     event.preventDefault();
     closePanelScheduleSheet();
+    closeMobilePmMenu();
     closeMobileCreateMenu();
     openMobileTab(mobileTabButton.dataset.mobileTab);
     return;
@@ -3518,6 +3550,7 @@ function closeSidebarTarget(targetId) {
   }
   setSidebarTargetButtonState(targetId, false);
   if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
+  if (targetId === "pmCalendarPanel" || targetId === "templatesPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
 }
 
@@ -3548,6 +3581,7 @@ function openSidebarTarget(targetId) {
   }
   setSidebarTargetButtonState(targetId, true);
   if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
+  if (targetId === "pmCalendarPanel" || targetId === "templatesPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
 }
 
@@ -3555,6 +3589,8 @@ function closeAllSidebarTargets() {
   document.querySelectorAll("[data-open-target]").forEach((button) => {
     closeSidebarTarget(button.dataset.openTarget);
   });
+  closeSidebarTarget("pmCalendarPanel");
+  closeSidebarTarget("templatesPanel");
   closeSidebarTarget("inventoryPanel");
 }
 
@@ -3564,6 +3600,8 @@ function closeOtherSidebarTargets(activeTargetId) {
       closeSidebarTarget(button.dataset.openTarget);
     }
   });
+  if (activeTargetId !== "pmCalendarPanel") closeSidebarTarget("pmCalendarPanel");
+  if (activeTargetId !== "templatesPanel") closeSidebarTarget("templatesPanel");
   if (activeTargetId !== "inventoryPanel") closeSidebarTarget("inventoryPanel");
 }
 
@@ -3574,6 +3612,67 @@ function syncCalendarFocusState() {
     !document.getElementById("pmCalendarPanel").classList.contains("is-collapsed")
   );
   els.appShell?.classList.toggle("calendar-focus", calendarOpen);
+}
+
+function isPmPanelOpen() {
+  return ["pmCalendarPanel", "templatesPanel"].some((targetId) => {
+    const panel = document.getElementById(targetId);
+    return Boolean(
+      panel &&
+      !panel.classList.contains("hidden") &&
+      !panel.classList.contains("is-collapsed")
+    );
+  });
+}
+
+function activePmTab() {
+  const templatesOpen = Boolean(
+    document.getElementById("templatesPanel") &&
+    !document.getElementById("templatesPanel").classList.contains("hidden") &&
+    !document.getElementById("templatesPanel").classList.contains("is-collapsed")
+  );
+  return templatesOpen ? "templates" : "calendar";
+}
+
+function setPmSidebarMenuOpen(isOpen) {
+  const toggle = document.querySelector("[data-pm-menu-toggle]");
+  const submenu = document.querySelector("[data-pm-submenu]");
+  toggle?.classList.toggle("is-active", isOpen || isPmPanelOpen());
+  toggle?.setAttribute("aria-expanded", String(isOpen));
+  submenu?.classList.toggle("hidden", !isOpen);
+  syncPmSidebarMenuButtons();
+}
+
+function syncPmSidebarMenuButtons() {
+  const tab = activePmTab();
+  document.querySelectorAll("[data-open-pm-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.openPmTab === tab);
+  });
+}
+
+function syncPmSidebarMenuState() {
+  const isOpen = isPmPanelOpen();
+  const toggle = document.querySelector("[data-pm-menu-toggle]");
+  const submenu = document.querySelector("[data-pm-submenu]");
+  toggle?.classList.toggle("is-active", isOpen);
+  toggle?.setAttribute("aria-expanded", String(isOpen));
+  submenu?.classList.toggle("hidden", !isOpen);
+  syncPmSidebarMenuButtons();
+}
+
+function togglePmSidebarMenu() {
+  const submenu = document.querySelector("[data-pm-submenu]");
+  const shouldOpen = submenu?.classList.contains("hidden");
+  setPmSidebarMenuOpen(Boolean(shouldOpen));
+}
+
+function openPmSidebarTab(tab = "calendar") {
+  const targetId = tab === "templates" ? "templatesPanel" : "pmCalendarPanel";
+  closeOtherSidebarTargets(targetId);
+  openPanel(targetId);
+  setPmSidebarMenuOpen(true);
+  setMobileTabState(targetId);
+  document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function setInventoryTab(tab = "items") {
@@ -3664,6 +3763,7 @@ function setMobileTabState(targetId) {
   document.querySelectorAll("[data-mobile-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.mobileTab === targetId);
   });
+  els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "templatesPanel");
 }
 
 function closeSelectedAssetDrawers() {
@@ -3931,7 +4031,9 @@ function renderRole() {
   if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canCreateServiceRequests();
   if (els.newInventoryBtn) els.newInventoryBtn.disabled = !canCreateInventory;
   if (els.newKeyBtn) els.newKeyBtn.disabled = !canCreateKey;
+  renderMobilePmActions();
   renderMobileCreateActions();
+  syncPmSidebarMenuState();
   els.adminToolsDrawer.classList.toggle("hidden", !hasAdminToolsAccess);
   if (!hasAdminToolsAccess) els.adminToolsDrawer.open = false;
   els.quickAddDrawer.classList.toggle("hidden", !canAddAssets);
@@ -7196,9 +7298,28 @@ function toggleMobileCreateMenu() {
   renderMobileCreateActions();
   closeMetricMenus();
   closeTopActionDrawers();
+  closeMobilePmMenu();
   els.mobileCreateMenu.classList.toggle("hidden", !shouldOpen);
   els.mobileCreateBtn.classList.toggle("is-active", shouldOpen);
   els.mobileCreateBtn.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function toggleMobilePmMenu() {
+  if (!els.mobilePmMenu || !els.mobilePmBtn) return;
+  const shouldOpen = els.mobilePmMenu.classList.contains("hidden");
+  renderMobilePmActions();
+  closeMetricMenus();
+  closeTopActionDrawers();
+  closeMobileCreateMenu();
+  els.mobilePmMenu.classList.toggle("hidden", !shouldOpen);
+  els.mobilePmBtn.classList.toggle("is-active", shouldOpen || isPmPanelOpen());
+  els.mobilePmBtn.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function closeMobilePmMenu() {
+  els.mobilePmMenu?.classList.add("hidden");
+  els.mobilePmBtn?.classList.toggle("is-active", isPmPanelOpen());
+  els.mobilePmBtn?.setAttribute("aria-expanded", "false");
 }
 
 function closeMobileCreateMenu() {
@@ -7238,6 +7359,11 @@ function renderMobileCreateActions() {
   els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newKey']")
     ?.classList.toggle("hidden", !canManageKeys());
   els.mobileCreateBtn?.classList.toggle("hidden", !(canAddEquipment() || canCreateWorkOrders() || canCreateServiceRequests() || canManageInventory() || canManageKeys()));
+}
+
+function renderMobilePmActions() {
+  els.mobilePmMenu?.querySelector("[data-mobile-pm-target='templatesPanel']")
+    ?.classList.toggle("hidden", !canManageTemplateSetup());
 }
 
 function runMobileCreateAction(action) {

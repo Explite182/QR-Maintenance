@@ -185,9 +185,16 @@
   <main class="app-shell app-only hidden">
     <aside id="appSidebar" class="sidebar">
         <nav id="workNav" class="sidebar-work-nav" aria-label="Work shortcuts">
-          <button type="button" class="sidebar-nav-btn" data-open-target="pmCalendarPanel" aria-expanded="false">
-            <span>PM Calendar</span>
-          </button>
+          <div class="sidebar-nav-group" data-sidebar-group="pm">
+            <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-pm-menu-toggle aria-expanded="false">
+              <span>PM</span>
+              <span class="sidebar-submenu-arrow" aria-hidden="true"></span>
+            </button>
+            <div class="sidebar-submenu hidden" data-pm-submenu>
+              <button type="button" class="sidebar-submenu-btn is-active" data-open-pm-tab="calendar">Calendar</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-pm-tab="templates" data-template-nav>Templates</button>
+            </div>
+          </div>
           <button type="button" class="sidebar-nav-btn" data-open-target="assetRegisterDrawer" aria-expanded="false">
             <span>Equipment Register</span>
           </button>
@@ -207,9 +214,6 @@
               <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="keys">Keys</button>
             </div>
           </div>
-          <button type="button" class="sidebar-nav-btn" data-open-target="templatesPanel" data-template-nav aria-expanded="false">
-            <span>Templates</span>
-          </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
             <span>Completed Tickets</span>
           </button>
@@ -1386,6 +1390,10 @@
       <span class="mobile-tab-icon mobile-tab-dashboard" aria-hidden="true"></span>
       <span>Dashboard</span>
     </button>
+    <button type="button" class="mobile-tab-btn mobile-pm-btn" id="mobilePmBtn" aria-expanded="false" aria-controls="mobilePmMenu">
+      <span class="mobile-tab-icon mobile-tab-pm" aria-hidden="true"></span>
+      <span>PM</span>
+    </button>
     <button type="button" class="mobile-tab-btn" data-mobile-tab="assetRegisterDrawer">
       <span class="mobile-tab-icon mobile-tab-equipment" aria-hidden="true"></span>
       <span>Equipment</span>
@@ -1412,6 +1420,10 @@
       <button type="button" data-mobile-create-action="newServiceRequest">Create Service Call</button>
       <button type="button" data-mobile-create-action="newInventory">Add Inventory Item</button>
       <button type="button" data-mobile-create-action="newKey">Add Key</button>
+    </div>
+    <div id="mobilePmMenu" class="mobile-create-menu hidden" aria-label="Preventive maintenance">
+      <button type="button" data-mobile-pm-target="pmCalendarPanel">PM Calendar</button>
+      <button type="button" data-mobile-pm-target="templatesPanel" data-template-nav>Templates</button>
     </div>
   </nav>
 
@@ -1511,7 +1523,7 @@
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/app.js?v=20260801-public-key-forget-after-scan"></script>
+  <script src="/app.js?v=20260801-pm-dropdown-nav"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

@@ -7144,7 +7144,7 @@ body.panel-schedule-open {
     left: 0;
     z-index: 90;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 2px;
     padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
     background: rgba(255, 255, 255, 0.96);
@@ -7193,6 +7193,8 @@ body.panel-schedule-open {
 
   .mobile-tab-dashboard::before,
   .mobile-tab-dashboard::after,
+  .mobile-tab-pm::before,
+  .mobile-tab-pm::after,
   .mobile-tab-equipment::before,
   .mobile-tab-equipment::after,
   .mobile-tab-inventory::before,
@@ -7284,6 +7286,19 @@ body.panel-schedule-open {
     right: 5px;
     left: 5px;
     border-width: 1px 0 0;
+  }
+
+  .mobile-tab-pm::before {
+    inset: 4px 3px;
+    border-radius: 4px;
+  }
+
+  .mobile-tab-pm::after {
+    top: 6px;
+    right: 7px;
+    bottom: 6px;
+    left: 7px;
+    border-width: 2px 0;
   }
 
   .mobile-tab-equipment::before {
