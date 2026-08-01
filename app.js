@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-public-key-scan";
+const SITEWORKS_APP_VERSION = "20260731-public-key-scan-fix";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -12223,10 +12223,11 @@ function isPublicReportUrl() {
 }
 
 function isPublicKeyUrl() {
-  return Boolean(getShortKeyUidFromPath()) && !currentUser;
+  return Boolean(getShortKeyUidFromPath());
 }
 
 async function renderPublicKeyScan() {
+  ensurePublicKeyScreenMarkup();
   const uid = normalizeNfcUid(getShortKeyUidFromPath());
   if (!uid) {
     els.publicKeyTitle.textContent = "Key tag not found";
@@ -12281,6 +12282,49 @@ async function renderPublicKeyScan() {
   els.publicKeyCheckOutBtn.disabled = checkedOut;
   els.publicKeyCheckInBtn.disabled = !checkedOut;
   els.publicKeyMessage.textContent = publicKeyLookupState.message || "";
+}
+
+function ensurePublicKeyScreenMarkup() {
+  if (els.publicKeyScreen && els.publicKeyCard && els.publicKeyForm) return;
+  const section = document.createElement("section");
+  section.id = "publicKeyScreen";
+  section.className = "report-screen";
+  section.innerHTML = `
+    <div class="login-card report-card">
+      <p class="eyebrow">SiteWorks key custody</p>
+      <h1 id="publicKeyTitle">Key check-in</h1>
+      <p id="publicKeyContext" class="muted">Loading key...</p>
+      <div id="publicKeyCard" class="report-target-card"></div>
+      <div id="publicKeyForm" class="report-form hidden">
+        <label>
+          Your name
+          <input id="publicKeyHolder" type="text" placeholder="Name or company">
+        </label>
+        <label>
+          Note
+          <textarea id="publicKeyNote" placeholder="Optional note"></textarea>
+        </label>
+        <div class="form-actions">
+          <button id="publicKeyCheckOutBtn" type="button">Check Out</button>
+          <button id="publicKeyCheckInBtn" type="button" class="secondary-btn">Check In</button>
+        </div>
+        <p id="publicKeyMessage" class="login-message"></p>
+      </div>
+    </div>
+  `;
+  document.body.prepend(section);
+  els.publicKeyScreen = document.getElementById("publicKeyScreen");
+  els.publicKeyCard = document.getElementById("publicKeyCard");
+  els.publicKeyForm = document.getElementById("publicKeyForm");
+  els.publicKeyTitle = document.getElementById("publicKeyTitle");
+  els.publicKeyContext = document.getElementById("publicKeyContext");
+  els.publicKeyHolder = document.getElementById("publicKeyHolder");
+  els.publicKeyNote = document.getElementById("publicKeyNote");
+  els.publicKeyCheckOutBtn = document.getElementById("publicKeyCheckOutBtn");
+  els.publicKeyCheckInBtn = document.getElementById("publicKeyCheckInBtn");
+  els.publicKeyMessage = document.getElementById("publicKeyMessage");
+  els.publicKeyCheckOutBtn?.addEventListener("click", () => submitPublicKeyAction("Check-Out"));
+  els.publicKeyCheckInBtn?.addEventListener("click", () => submitPublicKeyAction("Check-In"));
 }
 
 async function loadPublicKey(uid) {
