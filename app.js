@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-key-id-nfc-link";
+const SITEWORKS_APP_VERSION = "20260731-key-public-fallback";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -12352,14 +12352,19 @@ async function loadPublicKey(uid, keyId = "") {
     const response = await siteworksApi.lookupPublicKey(uid, keyId);
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
-    publicKeyLookupState.key = data?.found === false ? null : data;
+    let key = data?.found === false ? null : data;
+    if (!key) {
+      key = await siteworksApi.lookupPublicKeyDirect(uid, keyId);
+    }
+    publicKeyLookupState.key = key;
     publicKeyLookupState.loaded = true;
-    publicKeyLookupState.message = "";
+    publicKeyLookupState.message = key ? "" : (data?.message || "No key record matched this tag.");
   } catch (error) {
     console.warn("Public key lookup failed.", error);
-    publicKeyLookupState.key = null;
+    const fallbackKey = await siteworksApi.lookupPublicKeyDirect(uid, keyId).catch(() => null);
+    publicKeyLookupState.key = fallbackKey;
     publicKeyLookupState.loaded = true;
-    publicKeyLookupState.message = "Could not load this key. Try again.";
+    publicKeyLookupState.message = fallbackKey ? "" : "Could not load this key. Try again.";
   } finally {
     publicKeyLookupState.loading = false;
     renderPublicKeyScan();
@@ -12900,6 +12905,37 @@ const siteworksApi = {
       method: "POST",
       body: JSON.stringify({ tag_uid: uid, key_id: keyId })
     });
+  },
+  async lookupPublicKeyDirect(uid, keyId = "") {
+    if (siteworksServerEnabled()) return null;
+    const normalizedUid = normalizeNfcUid(uid || "");
+    const filters = [];
+    if (normalizedUid) filters.push(`unique_tag_id=eq.${encodeURIComponent(normalizedUid)}`);
+    if (keyId) filters.push(`id=eq.${encodeURIComponent(keyId)}`);
+    for (const filter of filters) {
+      const response = await cloudApi.rest(`keys?${filter}&select=id,unique_tag_id,key_name,key_number,storage_location,current_status,current_holder_name,customer_id,location_id,updated_at&limit=1`, { forceAnon: true });
+      if (!response.ok) continue;
+      const rows = await response.json();
+      const row = rows?.[0];
+      if (row) {
+        return {
+          found: true,
+          id: row.id,
+          unique_tag_id: row.unique_tag_id,
+          key_name: row.key_name,
+          key_number: row.key_number,
+          storage_location: row.storage_location,
+          current_status: row.current_status,
+          current_holder_name: row.current_holder_name,
+          customer_id: row.customer_id,
+          customer_name: "",
+          location_id: row.location_id,
+          location_name: "",
+          updated_at: row.updated_at
+        };
+      }
+    }
+    return null;
   },
   submitPublicKeyAction(payload) {
     if (siteworksServerEnabled()) {
