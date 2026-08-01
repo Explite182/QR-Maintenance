@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-key-nfc-write";
+const SITEWORKS_APP_VERSION = "20260731-public-key-scan";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -129,6 +129,13 @@ let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
 let lastPublicReportError = "";
+let publicKeyLookupState = {
+  uid: "",
+  loading: false,
+  loaded: false,
+  key: null,
+  message: ""
+};
 let syncHealth = {
   lastCloudLoadAt: "",
   lastCloudSaveAt: "",
@@ -149,6 +156,16 @@ const els = {
   publicReportNote: document.getElementById("publicReportNote"),
   publicReportContact: document.getElementById("publicReportContact"),
   publicReportMessage: document.getElementById("publicReportMessage"),
+  publicKeyScreen: document.getElementById("publicKeyScreen"),
+  publicKeyCard: document.getElementById("publicKeyCard"),
+  publicKeyForm: document.getElementById("publicKeyForm"),
+  publicKeyTitle: document.getElementById("publicKeyTitle"),
+  publicKeyContext: document.getElementById("publicKeyContext"),
+  publicKeyHolder: document.getElementById("publicKeyHolder"),
+  publicKeyNote: document.getElementById("publicKeyNote"),
+  publicKeyCheckOutBtn: document.getElementById("publicKeyCheckOutBtn"),
+  publicKeyCheckInBtn: document.getElementById("publicKeyCheckInBtn"),
+  publicKeyMessage: document.getElementById("publicKeyMessage"),
   reportTitle: document.getElementById("reportTitle"),
   reportContext: document.getElementById("reportContext"),
   loginScreen: document.getElementById("loginScreen"),
@@ -928,6 +945,9 @@ els.publicReportForm.addEventListener("submit", async (event) => {
 els.publicReportNote.addEventListener("invalid", () => {
   els.publicReportMessage.textContent = "Add a quick note, then tap Send to Maintenance.";
 });
+
+els.publicKeyCheckOutBtn?.addEventListener("click", () => submitPublicKeyAction("Check-Out"));
+els.publicKeyCheckInBtn?.addEventListener("click", () => submitPublicKeyAction("Check-In"));
 
 els.accessRequestForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -3259,6 +3279,10 @@ document.addEventListener("submit", async (event) => {
 
 function render() {
   renderAuth();
+  if (isPublicKeyUrl()) {
+    renderPublicKeyScan();
+    return;
+  }
   if (isPublicReportUrl()) {
     renderPublicReport();
     return;
@@ -3354,23 +3378,25 @@ function render() {
 
 function renderAuth() {
   const isReport = isPublicReportUrl();
+  const isPublicKey = isPublicKeyUrl();
   const isLoggedIn = Boolean(currentUser);
   const hasScannedAsset = Boolean(getAssetIdFromUrl());
-  const needsFirstAdmin = !isReport && !isLoggedIn && !hasSetupUsers();
+  const needsFirstAdmin = !isReport && !isPublicKey && !isLoggedIn && !hasSetupUsers();
+  els.publicKeyScreen?.classList.toggle("hidden", !isPublicKey);
   els.publicReportScreen.classList.toggle("hidden", !isReport);
-  els.loginScreen.classList.toggle("hidden", isReport || isLoggedIn);
+  els.loginScreen.classList.toggle("hidden", isReport || isPublicKey || isLoggedIn);
   els.loginForm.classList.toggle("hidden", passwordRecoveryMode);
   els.passwordResetForm?.classList.toggle("hidden", !passwordRecoveryMode);
-  els.loginQrReportPrompt.classList.toggle("hidden", passwordRecoveryMode || isReport || isLoggedIn || !hasScannedAsset);
+  els.loginQrReportPrompt.classList.toggle("hidden", passwordRecoveryMode || isReport || isPublicKey || isLoggedIn || !hasScannedAsset);
   els.userSwitcherWrap?.classList.add("hidden");
-  if (!isReport && !isLoggedIn && hasScannedAsset) {
+  if (!isReport && !isPublicKey && !isLoggedIn && hasScannedAsset) {
     setLoginQrReportStatus(Boolean(getScannedReportAsset()));
     if (!els.loginError.textContent.trim()) setQrLoginTrace("QR ready. Log in to open equipment.");
   }
   syncLoginQrReportPrompt();
   els.firstAdminForm.classList.add("hidden");
-  els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || !isLoggedIn));
-  if (isReport || !isLoggedIn) return;
+  els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || isPublicKey || !isLoggedIn));
+  if (isReport || isPublicKey || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
   els.currentUserRole.textContent = currentUser.role;
   renderUserSwitcher();
@@ -12099,7 +12125,7 @@ function rememberScannedQrContext() {
 function cleanQrLoginUrlForUnauthenticatedUser() {
   const params = new URLSearchParams(location.search);
   const isScannedQr = params.get("qr") === "1" || params.get("a") || params.get("i") || params.get("kid") || getShortKeyUidFromPath();
-  if (!isScannedQr || currentUser || isPublicReportUrl()) return;
+  if (!isScannedQr || currentUser || isPublicReportUrl() || isPublicKeyUrl()) return;
   const cleanParams = new URLSearchParams();
   cleanParams.set("qrlogin", "1");
   cleanParams.set("refresh", SITEWORKS_APP_VERSION);
@@ -12194,6 +12220,124 @@ function notifyUnassignedShortNfcTag() {
 
 function isPublicReportUrl() {
   return new URLSearchParams(location.search).get("report") === "1";
+}
+
+function isPublicKeyUrl() {
+  return Boolean(getShortKeyUidFromPath()) && !currentUser;
+}
+
+async function renderPublicKeyScan() {
+  const uid = normalizeNfcUid(getShortKeyUidFromPath());
+  if (!uid) {
+    els.publicKeyTitle.textContent = "Key tag not found";
+    els.publicKeyContext.textContent = "This NFC link is missing a tag ID.";
+    els.publicKeyCard.innerHTML = "";
+    els.publicKeyForm.classList.add("hidden");
+    return;
+  }
+  if (publicKeyLookupState.uid !== uid) {
+    publicKeyLookupState = { uid, loading: false, loaded: false, key: null, message: "" };
+  }
+  if (!publicKeyLookupState.loaded && !publicKeyLookupState.loading) {
+    loadPublicKey(uid);
+  }
+  const key = publicKeyLookupState.key;
+  els.publicKeyTitle.textContent = key?.key_name || "Key check-in";
+  els.publicKeyContext.textContent = key
+    ? [key.customer_name, key.location_name].filter(Boolean).join(" | ")
+    : `NFC UID ${uid}`;
+  if (publicKeyLookupState.loading) {
+    els.publicKeyCard.innerHTML = `<p class="login-message">Loading key...</p>`;
+    els.publicKeyForm.classList.add("hidden");
+    return;
+  }
+  if (!key) {
+    els.publicKeyCard.innerHTML = `
+      <article class="inventory-item">
+        <strong>Unassigned NFC tag</strong>
+        <p>This tag is not assigned to a SiteWorks key yet.</p>
+        <small>UID ${escapeHtml(uid)}</small>
+      </article>
+    `;
+    els.publicKeyForm.classList.add("hidden");
+    return;
+  }
+  const checkedOut = key.current_status === "Checked Out";
+  els.publicKeyCard.innerHTML = `
+    <article class="inventory-item">
+      <div class="inventory-main">
+        <strong>${escapeHtml(key.key_name || "Key")}</strong>
+        <small>${escapeHtml([key.customer_name, key.location_name].filter(Boolean).join(" | ") || "SiteWorks key")}</small>
+        ${key.key_number ? `<span>Key number ${escapeHtml(key.key_number)}</span>` : ""}
+        ${key.storage_location ? `<span>Storage: ${escapeHtml(key.storage_location)}</span>` : ""}
+      </div>
+      <div class="inventory-stock">
+        <span class="status-badge ${checkedOut ? "badge-warn" : "badge-ok"}">${escapeHtml(key.current_status || "Available")}</span>
+        <strong>${escapeHtml(checkedOut ? key.current_holder_name || "Checked out" : "Ready")}</strong>
+      </div>
+    </article>
+  `;
+  els.publicKeyForm.classList.remove("hidden");
+  els.publicKeyCheckOutBtn.disabled = checkedOut;
+  els.publicKeyCheckInBtn.disabled = !checkedOut;
+  els.publicKeyMessage.textContent = publicKeyLookupState.message || "";
+}
+
+async function loadPublicKey(uid) {
+  publicKeyLookupState.loading = true;
+  renderPublicKeyScan();
+  try {
+    const response = await siteworksApi.lookupPublicKey(uid);
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json();
+    publicKeyLookupState.key = data?.found === false ? null : data;
+    publicKeyLookupState.loaded = true;
+    publicKeyLookupState.message = "";
+  } catch (error) {
+    console.warn("Public key lookup failed.", error);
+    publicKeyLookupState.key = null;
+    publicKeyLookupState.loaded = true;
+    publicKeyLookupState.message = "Could not load this key. Try again.";
+  } finally {
+    publicKeyLookupState.loading = false;
+    renderPublicKeyScan();
+  }
+}
+
+async function submitPublicKeyAction(action) {
+  const uid = normalizeNfcUid(getShortKeyUidFromPath());
+  const holder = els.publicKeyHolder.value.trim();
+  if (!holder) {
+    els.publicKeyMessage.textContent = "Enter your name first.";
+    els.publicKeyHolder.focus();
+    return;
+  }
+  const buttons = [els.publicKeyCheckOutBtn, els.publicKeyCheckInBtn].filter(Boolean);
+  buttons.forEach((button) => { button.disabled = true; });
+  els.publicKeyMessage.textContent = action === "Check-Out" ? "Checking out key..." : "Checking in key...";
+  try {
+    const response = await siteworksApi.submitPublicKeyAction({
+      tag_uid: uid,
+      action,
+      holder_name: holder,
+      notes: els.publicKeyNote.value.trim()
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json();
+    publicKeyLookupState = {
+      uid,
+      loading: false,
+      loaded: true,
+      key: data,
+      message: action === "Check-Out" ? "Key checked out. Thank you." : "Key checked in. Thank you."
+    };
+    els.publicKeyNote.value = "";
+  } catch (error) {
+    console.warn("Public key action failed.", error);
+    publicKeyLookupState.message = "Key was not updated. Try again.";
+  } finally {
+    renderPublicKeyScan();
+  }
 }
 
 function hydrateAssetFromHash(shouldPersist = true) {
@@ -12681,6 +12825,25 @@ const siteworksApi = {
       filter
     ].filter(Boolean).join("&");
     return cloudApi.rest(`public_reports?${query}`);
+  },
+  lookupPublicKey(uid) {
+    if (siteworksServerEnabled()) return this.server(`/api/public/keys/${encodeURIComponent(uid)}`);
+    return cloudApi.rest("rpc/siteworks_public_key_lookup", {
+      method: "POST",
+      body: JSON.stringify({ tag_uid: uid })
+    });
+  },
+  submitPublicKeyAction(payload) {
+    if (siteworksServerEnabled()) {
+      return this.server("/api/public/keys/action", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    }
+    return cloudApi.rest("rpc/siteworks_public_key_action", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
   },
   loadSharedState(id) {
     if (siteworksServerEnabled()) return this.server(`/api/sync/shared-state/${encodeURIComponent(id)}`);

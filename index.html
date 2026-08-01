@@ -4,9 +4,36 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260731-key-nfc-write">
+    <link rel="stylesheet" href="/styles.css?v=20260731-public-key-scan">
 </head>
 <body>
+  <section id="publicKeyScreen" class="report-screen hidden">
+    <div class="report-card">
+      <div>
+        <p class="eyebrow">SiteWorks key custody</p>
+        <h1 id="publicKeyTitle">Key check-in</h1>
+        <p id="publicKeyContext" class="report-context"></p>
+      </div>
+      <div id="publicKeyCard" class="stack"></div>
+      <form id="publicKeyForm" class="stack hidden">
+        <label>
+          Your name
+          <input id="publicKeyHolder" required autocomplete="name" placeholder="Name or company">
+        </label>
+        <label>
+          Note
+          <textarea id="publicKeyNote" rows="3" placeholder="Optional note"></textarea>
+        </label>
+        <div class="form-grid">
+          <button id="publicKeyCheckOutBtn" type="button">Check Out Key</button>
+          <button id="publicKeyCheckInBtn" type="button" class="secondary">Check In Key</button>
+        </div>
+        <p id="publicKeyMessage" class="login-message"></p>
+      </form>
+      <small class="report-note">No SiteWorks login is required. This page only updates the scanned key.</small>
+    </div>
+  </section>
+
   <section id="publicReportScreen" class="report-screen hidden">
     <div class="report-card">
       <div>
@@ -1477,7 +1504,7 @@
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/app.js?v=20260731-key-nfc-write"></script>
+  <script src="/app.js?v=20260731-public-key-scan"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
