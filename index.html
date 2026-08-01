@@ -204,6 +204,9 @@
           <button type="button" class="sidebar-nav-btn" data-open-target="serviceRequestsPanel" aria-expanded="false">
             <span>Service Requests</span>
           </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="siteMapPanel" aria-expanded="false">
+            <span>Site Map</span>
+          </button>
           <div class="sidebar-nav-group" data-sidebar-group="inventory">
             <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-inventory-menu-toggle aria-expanded="false">
               <span>Inventory</span>
@@ -765,6 +768,42 @@
             <div class="metric-dropdown hidden" data-dashboard-menu="assignedToMe">
               <p class="metric-dropdown-empty">No tickets assigned to you for this view.</p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="siteMapPanel" class="work-orders-panel site-map-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="siteMapPanel">
+          <h2>Site Map</h2>
+          <div class="panel-title-actions">
+            <span id="siteMapPinCount">0</span>
+          </div>
+        </div>
+        <div class="site-map-body" data-panel-body>
+          <div class="site-map-toolbar">
+            <label>
+              Map image
+              <input id="siteMapImageInput" type="file" accept="image/*">
+            </label>
+            <label>
+              Equipment
+              <select id="siteMapPinAsset"></select>
+            </label>
+            <label>
+              Pin label
+              <input id="siteMapPinLabel" placeholder="Optional label">
+            </label>
+            <div class="site-map-actions">
+              <button id="siteMapAddPinBtn" type="button" class="primary mini">Add Pin</button>
+              <button id="siteMapClearBtn" type="button" class="secondary mini">Clear Map</button>
+            </div>
+          </div>
+          <p id="siteMapStatus" class="inline-status"></p>
+          <div class="site-map-layout">
+            <div id="siteMapCanvas" class="site-map-canvas" role="application" aria-label="Interactive site map">
+              <div id="siteMapEmpty" class="site-map-empty">Upload a site or floor plan image to start mapping equipment.</div>
+            </div>
+            <div id="siteMapPinList" class="site-map-pin-list"></div>
           </div>
         </div>
       </section>
@@ -1424,6 +1463,7 @@
     <div id="mobilePmMenu" class="mobile-create-menu hidden" aria-label="Preventive maintenance">
       <button type="button" data-mobile-pm-target="pmCalendarPanel">PM Calendar</button>
       <button type="button" data-mobile-pm-target="templatesPanel" data-template-nav>Templates</button>
+      <button type="button" data-mobile-pm-target="siteMapPanel">Site Map</button>
     </div>
   </nav>
 
@@ -1523,7 +1563,7 @@
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/app.js?v=20260801-pm-dropdown-nav"></script>
+  <script src="/app.js?v=20260801-site-map-panel"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

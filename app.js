@@ -98,6 +98,7 @@ let assetTemplateFilter = "all";
 let assetSort = "due";
 let assetRegisterTab = "active";
 let inventoryTab = focusedKeyId ? "keys" : "items";
+let pendingSiteMapPin = false;
 let assetPageSize = 25;
 let assetPage = 1;
 let selectedPrintAssetIds = new Set();
@@ -245,6 +246,16 @@ const els = {
   backupDrawer: document.getElementById("backupDrawer"),
   activityLogDrawer: document.getElementById("activityLogDrawer"),
   dashboardPanel: document.querySelector(".dashboard-panel"),
+  siteMapPanel: document.getElementById("siteMapPanel"),
+  siteMapPinCount: document.getElementById("siteMapPinCount"),
+  siteMapImageInput: document.getElementById("siteMapImageInput"),
+  siteMapPinAsset: document.getElementById("siteMapPinAsset"),
+  siteMapPinLabel: document.getElementById("siteMapPinLabel"),
+  siteMapAddPinBtn: document.getElementById("siteMapAddPinBtn"),
+  siteMapClearBtn: document.getElementById("siteMapClearBtn"),
+  siteMapCanvas: document.getElementById("siteMapCanvas"),
+  siteMapPinList: document.getElementById("siteMapPinList"),
+  siteMapStatus: document.getElementById("siteMapStatus"),
   userSwitcherWrap: document.getElementById("userSwitcherWrap"),
   userSwitcher: document.getElementById("userSwitcher"),
   themeSelect: document.getElementById("themeSelect"),
@@ -1001,6 +1012,11 @@ els.mobilePmMenu?.addEventListener("click", (event) => {
   closeMobilePmMenu();
   openMobileTab(button.dataset.mobilePmTarget);
 });
+
+els.siteMapImageInput?.addEventListener("change", handleSiteMapImageChange);
+els.siteMapAddPinBtn?.addEventListener("click", startSiteMapPinPlacement);
+els.siteMapClearBtn?.addEventListener("click", clearCurrentSiteMap);
+els.siteMapCanvas?.addEventListener("click", addSiteMapPinFromEvent);
 
 els.mobileCreateBtn?.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -3003,6 +3019,20 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const siteMapPinButton = event.target.closest("[data-open-site-map-pin]");
+  if (siteMapPinButton) {
+    event.preventDefault();
+    openSiteMapAsset(siteMapPinButton.dataset.openSiteMapPin);
+    return;
+  }
+
+  const siteMapPinDeleteButton = event.target.closest("[data-delete-site-map-pin]");
+  if (siteMapPinDeleteButton) {
+    event.preventDefault();
+    deleteSiteMapPin(siteMapPinDeleteButton.dataset.deleteSiteMapPin);
+    return;
+  }
+
   const mobileTabButton = event.target.closest("[data-mobile-tab]");
   if (mobileTabButton) {
     event.preventDefault();
@@ -3371,6 +3401,7 @@ function render() {
   renderLocationOptions();
   renderAssetLocationOptions();
   renderDashboard();
+  renderSiteMap();
   renderPmCalendar();
   renderBackupStatus();
   renderSyncHealth();
@@ -3615,7 +3646,7 @@ function syncCalendarFocusState() {
 }
 
 function isPmPanelOpen() {
-  return ["pmCalendarPanel", "templatesPanel"].some((targetId) => {
+  return ["pmCalendarPanel", "templatesPanel", "siteMapPanel"].some((targetId) => {
     const panel = document.getElementById(targetId);
     return Boolean(
       panel &&
@@ -3763,7 +3794,7 @@ function setMobileTabState(targetId) {
   document.querySelectorAll("[data-mobile-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.mobileTab === targetId);
   });
-  els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "templatesPanel");
+  els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "templatesPanel" || targetId === "siteMapPanel");
 }
 
 function closeSelectedAssetDrawers() {
@@ -6455,6 +6486,206 @@ function renderDashboardMoreCount(total) {
 
 function renderDashboardEmpty(message) {
   return `<p class="metric-dropdown-empty">${escapeHtml(message)}</p>`;
+}
+
+function clampPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 50;
+  return Math.max(0, Math.min(100, number));
+}
+
+function currentSiteMapScope() {
+  const customerId = selectedCustomerId && selectedCustomerId !== "all"
+    ? selectedCustomerId
+    : visibleCustomers()[0]?.id || state.customers[0]?.id || "";
+  const locationId = selectedLocationId && selectedLocationId !== "all" ? selectedLocationId : "";
+  return { customerId, locationId };
+}
+
+function siteMapScopeLabel(map = null) {
+  const scope = map || currentSiteMapScope();
+  const customer = getCustomer(scope.customerId)?.name || "Current customer";
+  const location = scope.locationId ? getLocation(scope.locationId)?.name || "Selected location" : "All locations";
+  return `${customer} | ${location}`;
+}
+
+function getCurrentSiteMap(create = false) {
+  const { customerId, locationId } = currentSiteMapScope();
+  if (!customerId) return null;
+  state.siteMaps = Array.isArray(state.siteMaps) ? state.siteMaps : [];
+  let map = state.siteMaps.find((item) => item.customerId === customerId && (item.locationId || "") === locationId);
+  if (!map && create) {
+    map = {
+      id: crypto.randomUUID(),
+      customerId,
+      locationId,
+      name: siteMapScopeLabel({ customerId, locationId }),
+      image: null,
+      pins: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    state.siteMaps.push(map);
+  }
+  return map || null;
+}
+
+function renderSiteMap() {
+  if (!els.siteMapPanel) return;
+  const map = getCurrentSiteMap(false);
+  const assets = filteredAssets();
+  const pins = Array.isArray(map?.pins) ? map.pins : [];
+  if (els.siteMapPinCount) els.siteMapPinCount.textContent = pins.length;
+  if (els.siteMapPinAsset) {
+    els.siteMapPinAsset.innerHTML = assets.length
+      ? assets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name || asset.equipmentId || "Equipment")} - ${escapeHtml(getLocation(asset.locationId)?.name || "No location")}</option>`).join("")
+      : `<option value="">No equipment in this view</option>`;
+  }
+  const imageUrl = map?.image?.dataUrl || map?.image?.url || "";
+  if (els.siteMapCanvas) {
+    els.siteMapCanvas.classList.toggle("has-map", Boolean(imageUrl));
+    els.siteMapCanvas.innerHTML = imageUrl
+      ? `
+        <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(map?.name || "Site map")}">
+        ${pins.map((pin, index) => {
+          const asset = getRawAsset(pin.assetId);
+          const title = pin.label || asset?.name || `Pin ${index + 1}`;
+          return `
+            <button type="button" class="site-map-pin" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" title="${escapeAttribute(title)}">
+              <span>${index + 1}</span>
+            </button>
+          `;
+        }).join("")}
+      `
+      : `<div class="site-map-empty">Upload a site or floor plan image to start mapping equipment.</div>`;
+  }
+  if (els.siteMapPinList) {
+    els.siteMapPinList.innerHTML = pins.length
+      ? pins.map((pin, index) => {
+        const asset = getRawAsset(pin.assetId);
+        const locationName = asset ? getLocation(asset.locationId)?.name || "No location" : "Equipment missing";
+        return `
+          <article class="site-map-pin-row">
+            <button type="button" class="site-map-pin-open" data-open-site-map-pin="${escapeAttribute(pin.assetId)}">
+              <strong>${index + 1}. ${escapeHtml(pin.label || asset?.name || "Equipment pin")}</strong>
+              <span>${escapeHtml(locationName)}${asset?.equipmentId ? ` | ${escapeHtml(asset.equipmentId)}` : ""}</span>
+            </button>
+            <button type="button" class="secondary mini" data-delete-site-map-pin="${escapeAttribute(pin.id)}">Remove</button>
+          </article>
+        `;
+      }).join("")
+      : `<p class="metric-dropdown-empty">No equipment pins on this map yet.</p>`;
+  }
+}
+
+async function handleSiteMapImageChange() {
+  const file = els.siteMapImageInput?.files?.[0];
+  if (!file) return;
+  const map = getCurrentSiteMap(true);
+  if (!map) {
+    updateSiteMapStatus("Choose a customer before adding a map.");
+    return;
+  }
+  try {
+    const image = await readPhoto(file);
+    map.image = image;
+    map.name = siteMapScopeLabel(map);
+    map.updatedAt = new Date().toISOString();
+    pendingSiteMapPin = false;
+    saveState();
+    renderSiteMap();
+    updateSiteMapStatus("Map image saved. Choose equipment, then Add Pin.");
+  } catch (error) {
+    updateSiteMapStatus("Map image could not be loaded.");
+  } finally {
+    if (els.siteMapImageInput) els.siteMapImageInput.value = "";
+  }
+}
+
+function startSiteMapPinPlacement() {
+  const map = getCurrentSiteMap(false);
+  if (!map?.image?.dataUrl && !map?.image?.url) {
+    updateSiteMapStatus("Upload a map image first.");
+    return;
+  }
+  if (!els.siteMapPinAsset?.value && !els.siteMapPinLabel?.value.trim()) {
+    updateSiteMapStatus("Choose equipment or enter a label before placing a pin.");
+    return;
+  }
+  pendingSiteMapPin = true;
+  updateSiteMapStatus("Tap the map where this equipment belongs.");
+}
+
+function addSiteMapPinFromEvent(event) {
+  if (event.target.closest("[data-open-site-map-pin]")) return;
+  if (!pendingSiteMapPin) return;
+  const map = getCurrentSiteMap(true);
+  if (!map) return;
+  const rect = els.siteMapCanvas.getBoundingClientRect();
+  const x = clampPercent(((event.clientX - rect.left) / rect.width) * 100);
+  const y = clampPercent(((event.clientY - rect.top) / rect.height) * 100);
+  const assetId = els.siteMapPinAsset?.value || "";
+  const label = els.siteMapPinLabel?.value.trim() || "";
+  map.pins = Array.isArray(map.pins) ? map.pins : [];
+  map.pins.push({
+    id: crypto.randomUUID(),
+    assetId,
+    label,
+    x,
+    y,
+    createdAt: new Date().toISOString()
+  });
+  map.updatedAt = new Date().toISOString();
+  pendingSiteMapPin = false;
+  if (els.siteMapPinLabel) els.siteMapPinLabel.value = "";
+  saveState();
+  renderSiteMap();
+  updateSiteMapStatus("Pin added.");
+}
+
+function deleteSiteMapPin(pinId) {
+  const map = getCurrentSiteMap(false);
+  if (!map || !Array.isArray(map.pins)) return;
+  map.pins = map.pins.filter((pin) => pin.id !== pinId);
+  map.updatedAt = new Date().toISOString();
+  saveState();
+  renderSiteMap();
+  updateSiteMapStatus("Pin removed.");
+}
+
+function clearCurrentSiteMap() {
+  const map = getCurrentSiteMap(false);
+  if (!map?.image && !map?.pins?.length) {
+    updateSiteMapStatus("No map to clear for this view.");
+    return;
+  }
+  if (!confirm("Clear the current site map image and pins?")) return;
+  map.image = null;
+  map.pins = [];
+  map.updatedAt = new Date().toISOString();
+  pendingSiteMapPin = false;
+  saveState();
+  renderSiteMap();
+  updateSiteMapStatus("Map cleared.");
+}
+
+function openSiteMapAsset(assetId) {
+  const asset = getAsset(assetId);
+  if (!asset) {
+    updateSiteMapStatus("That equipment is not available in your current view.");
+    return;
+  }
+  selectedId = asset.id;
+  syncFiltersToSelectedAsset();
+  location.hash = `asset/${selectedId}`;
+  closeOtherSidebarTargets("assetRegisterDrawer");
+  openAssetRegisterDrawer();
+  render();
+  els.assetPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function updateSiteMapStatus(message = "") {
+  if (els.siteMapStatus) els.siteMapStatus.textContent = message;
 }
 
 function isCurrentViewAsset(asset) {
@@ -14443,6 +14674,7 @@ function buildSharedStatePayload(uploadedAt) {
     inventoryItems: state.inventoryItems || [],
     keys: state.keys || [],
     keyLogs: state.keyLogs || [],
+    siteMaps: state.siteMaps || [],
     users: (state.users || []).map(sanitizeSharedUser),
     accessRequests: state.accessRequests || [],
     activityLog: state.activityLog || [],
@@ -14464,6 +14696,7 @@ function hasSharedMaintenanceData(candidate) {
     candidate?.inventoryItems?.length ||
     candidate?.keys?.length ||
     candidate?.keyLogs?.length ||
+    candidate?.siteMaps?.length ||
     candidate?.users?.some((user) => user.username !== "scan-customer") ||
     candidate?.accessRequests?.length
   );
@@ -15097,6 +15330,7 @@ function normalizeState(input) {
     inventoryItems: input.inventoryItems || [],
     keys: input.keys || [],
     keyLogs: input.keyLogs || [],
+    siteMaps: input.siteMaps || [],
     users: input.users || [],
     accessRequests: input.accessRequests || [],
     activityLog: input.activityLog || [],
@@ -15317,6 +15551,28 @@ function normalizeState(input) {
     timestamp: log.timestamp || log.createdAt || new Date().toISOString()
   })).filter((log) => log.keyId);
 
+  normalized.siteMaps = normalized.siteMaps.map((map) => ({
+    ...map,
+    id: map.id || crypto.randomUUID(),
+    customerId: map.customerId || normalized.customers[0]?.id || "",
+    locationId: map.locationId || "",
+    name: map.name || "",
+    image: map.image || null,
+    pins: Array.isArray(map.pins)
+      ? map.pins.map((pin) => ({
+        ...pin,
+        id: pin.id || crypto.randomUUID(),
+        assetId: pin.assetId || "",
+        label: pin.label || "",
+        x: clampPercent(pin.x),
+        y: clampPercent(pin.y),
+        createdAt: pin.createdAt || new Date().toISOString()
+      })).filter((pin) => pin.assetId || pin.label)
+      : [],
+    createdAt: map.createdAt || new Date().toISOString(),
+    updatedAt: map.updatedAt || map.createdAt || new Date().toISOString()
+  })).filter((map) => map.customerId);
+
   return normalized;
 }
 
@@ -15332,6 +15588,7 @@ function emptyState() {
     inventoryItems: [],
     keys: [],
     keyLogs: [],
+    siteMaps: [],
     users: [],
     accessRequests: [],
     activityLog: [],
