@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260801-inventory-key-tabs";
+const SITEWORKS_APP_VERSION = "20260801-inventory-sidebar-submenu";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -2949,6 +2949,20 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const inventoryMenuToggle = event.target.closest("[data-inventory-menu-toggle]");
+  if (inventoryMenuToggle) {
+    event.preventDefault();
+    toggleInventorySidebarMenu();
+    return;
+  }
+
+  const openInventoryTabButton = event.target.closest("[data-open-inventory-tab]");
+  if (openInventoryTabButton) {
+    event.preventDefault();
+    openInventorySidebarTab(openInventoryTabButton.dataset.openInventoryTab);
+    return;
+  }
+
   const inventoryTabButton = event.target.closest("[data-inventory-tab]");
   if (inventoryTabButton) {
     event.preventDefault();
@@ -3503,6 +3517,7 @@ function closeSidebarTarget(targetId) {
     renderPanelToggles();
   }
   setSidebarTargetButtonState(targetId, false);
+  if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
   syncCalendarFocusState();
 }
 
@@ -3532,6 +3547,7 @@ function openSidebarTarget(targetId) {
     openPanel(targetId);
   }
   setSidebarTargetButtonState(targetId, true);
+  if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
   syncCalendarFocusState();
 }
 
@@ -3539,6 +3555,7 @@ function closeAllSidebarTargets() {
   document.querySelectorAll("[data-open-target]").forEach((button) => {
     closeSidebarTarget(button.dataset.openTarget);
   });
+  closeSidebarTarget("inventoryPanel");
 }
 
 function closeOtherSidebarTargets(activeTargetId) {
@@ -3547,6 +3564,7 @@ function closeOtherSidebarTargets(activeTargetId) {
       closeSidebarTarget(button.dataset.openTarget);
     }
   });
+  if (activeTargetId !== "inventoryPanel") closeSidebarTarget("inventoryPanel");
 }
 
 function syncCalendarFocusState() {
@@ -3566,6 +3584,50 @@ function setInventoryTab(tab = "items") {
   document.querySelectorAll("[data-inventory-pane]").forEach((pane) => {
     pane.classList.toggle("hidden", pane.dataset.inventoryPane !== inventoryTab);
   });
+  syncInventorySidebarMenuState();
+}
+
+function isInventoryPanelOpen() {
+  return Boolean(
+    els.inventoryPanel &&
+    !els.inventoryPanel.classList.contains("hidden") &&
+    !els.inventoryPanel.classList.contains("is-collapsed")
+  );
+}
+
+function setInventorySidebarMenuOpen(isOpen) {
+  const toggle = document.querySelector("[data-inventory-menu-toggle]");
+  const submenu = document.querySelector("[data-inventory-submenu]");
+  toggle?.classList.toggle("is-active", isOpen || isInventoryPanelOpen());
+  toggle?.setAttribute("aria-expanded", String(isOpen));
+  submenu?.classList.toggle("hidden", !isOpen);
+}
+
+function syncInventorySidebarMenuState() {
+  const isOpen = isInventoryPanelOpen();
+  const toggle = document.querySelector("[data-inventory-menu-toggle]");
+  const submenu = document.querySelector("[data-inventory-submenu]");
+  toggle?.classList.toggle("is-active", isOpen);
+  toggle?.setAttribute("aria-expanded", String(isOpen));
+  submenu?.classList.toggle("hidden", !isOpen);
+  document.querySelectorAll("[data-open-inventory-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.openInventoryTab === inventoryTab);
+  });
+}
+
+function toggleInventorySidebarMenu() {
+  const submenu = document.querySelector("[data-inventory-submenu]");
+  const shouldOpen = submenu?.classList.contains("hidden");
+  setInventorySidebarMenuOpen(Boolean(shouldOpen));
+}
+
+function openInventorySidebarTab(tab = "items") {
+  setInventoryTab(tab);
+  closeOtherSidebarTargets("inventoryPanel");
+  openPanel("inventoryPanel");
+  setInventorySidebarMenuOpen(true);
+  setMobileTabState("inventoryPanel");
+  els.inventoryPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function openMobileTab(targetId) {

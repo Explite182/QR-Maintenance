@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260801-inventory-key-tabs">
+    <link rel="stylesheet" href="/styles.css?v=20260801-inventory-sidebar-submenu">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -197,9 +197,16 @@
           <button type="button" class="sidebar-nav-btn" data-open-target="serviceRequestsPanel" aria-expanded="false">
             <span>Service Requests</span>
           </button>
-          <button type="button" class="sidebar-nav-btn" data-open-target="inventoryPanel" aria-expanded="false">
-            <span>Inventory</span>
-          </button>
+          <div class="sidebar-nav-group" data-sidebar-group="inventory">
+            <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-inventory-menu-toggle aria-expanded="false">
+              <span>Inventory</span>
+              <span class="sidebar-submenu-arrow" aria-hidden="true"></span>
+            </button>
+            <div class="sidebar-submenu hidden" data-inventory-submenu>
+              <button type="button" class="sidebar-submenu-btn is-active" data-open-inventory-tab="items">Parts & Materials</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="keys">Keys</button>
+            </div>
+          </div>
           <button type="button" class="sidebar-nav-btn" data-open-target="templatesPanel" data-template-nav aria-expanded="false">
             <span>Templates</span>
           </button>
@@ -1504,7 +1511,7 @@
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/app.js?v=20260801-inventory-key-tabs"></script>
+  <script src="/app.js?v=20260801-inventory-sidebar-submenu"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
