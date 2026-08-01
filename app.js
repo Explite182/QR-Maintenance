@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260801-dashboard-kpi-symmetry";
+const SITEWORKS_APP_VERSION = "20260801-supabase-token-refresh";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -12683,21 +12683,33 @@ async function syncPublicReportsFromSupabase(force = false) {
   return added;
 }
 
-function supabaseFetch(path, options = {}) {
+async function supabaseFetch(path, options = {}) {
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
-  const session = getSavedAuthSession();
+  let session = getSavedAuthSession();
   if (options.requireAuth && !hasAuthenticatedCloudSession()) {
-    return Promise.resolve(new Response("Missing authenticated Supabase session.", { status: 401 }));
+    session = await refreshSupabaseAuthSession();
+    if (!session?.access_token || !hasAuthenticatedCloudSession()) {
+      return new Response("Missing authenticated Supabase session.", { status: 401 });
+    }
   }
-  const token = options.forceAnon ? SUPABASE_ANON_KEY : (session?.access_token || SUPABASE_ANON_KEY);
-  const headers = {
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-    ...(options.headers || {})
-  };
   const { forceAnon, requireAuth, ...fetchOptions } = options;
-  return fetch(url, { ...fetchOptions, headers });
+  const runRequest = (tokenSession = null) => {
+    const token = forceAnon ? SUPABASE_ANON_KEY : (tokenSession?.access_token || SUPABASE_ANON_KEY);
+    const headers = {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    };
+    return fetch(url, { ...fetchOptions, headers });
+  };
+  const response = await runRequest(session);
+  if (forceAnon || response.ok || response.status !== 401) return response;
+  const errorText = await response.clone().text().catch(() => "");
+  if (!isSupabaseJwtExpiredText(errorText)) return response;
+  const refreshedSession = await refreshSupabaseAuthSession();
+  if (!refreshedSession?.access_token) return response;
+  return runRequest(refreshedSession);
 }
 
 function supabaseAuthFetch(path, options = {}, session = null) {
@@ -13501,8 +13513,16 @@ function findStateUserForCurrentSession() {
 
 function saveAuthSession(session) {
   if (!session?.access_token) return;
+  const savedAt = Math.floor(Date.now() / 1000);
+  const cleanSession = {
+    ...session,
+    created_at: Number(session.created_at || savedAt),
+    expires_at: Number(session.expires_at || 0) || (
+      session.expires_in ? savedAt + Number(session.expires_in) : 0
+    )
+  };
   try {
-    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(cleanSession));
   } catch (error) {
     console.warn("Auth session was not saved because browser storage is full.", error);
   }
@@ -13522,6 +13542,46 @@ function clearAuthSession() {
   } catch (error) {
     console.warn("Auth session could not be cleared.", error);
   }
+}
+
+function isSupabaseJwtExpiredText(text = "") {
+  return /jwt\s+expired|token\s+expired|invalid\s+jwt/i.test(String(text || ""));
+}
+
+let authRefreshPromise = null;
+
+async function refreshSupabaseAuthSession() {
+  if (siteworksServerEnabled()) return getSavedAuthSession();
+  const savedSession = getSavedAuthSession();
+  if (!savedSession?.refresh_token) return savedSession;
+  if (authRefreshPromise) return authRefreshPromise;
+  authRefreshPromise = (async () => {
+    try {
+      const response = await cloudApi.auth("token?grant_type=refresh_token", {
+        method: "POST",
+        body: JSON.stringify({ refresh_token: savedSession.refresh_token })
+      });
+      if (!response.ok) {
+        console.warn("Supabase session refresh failed.", await response.text());
+        return savedSession;
+      }
+      const refreshedSession = await response.json();
+      const mergedSession = {
+        ...savedSession,
+        ...refreshedSession,
+        refresh_token: refreshedSession.refresh_token || savedSession.refresh_token,
+        user: refreshedSession.user || savedSession.user
+      };
+      saveAuthSession(mergedSession);
+      return getSavedAuthSession() || mergedSession;
+    } catch (error) {
+      console.warn("Supabase session refresh skipped.", error);
+      return savedSession;
+    } finally {
+      authRefreshPromise = null;
+    }
+  })();
+  return authRefreshPromise;
 }
 
 function applyForcedLogoutFromUrl() {
