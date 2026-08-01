@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-key-location-fk-fix";
+const SITEWORKS_APP_VERSION = "20260731-key-direct-sync";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -1993,6 +1993,7 @@ document.addEventListener("click", async (event) => {
     }
     key.updatedAt = new Date().toISOString();
     saveState();
+    await syncSingleKeyToSupabase(key);
     render();
     return;
   }
@@ -2678,7 +2679,7 @@ els.inventoryForm?.addEventListener("submit", (event) => {
   render();
 });
 
-els.keyForm?.addEventListener("submit", (event) => {
+els.keyForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageKeys()) return;
   const keyName = els.keyName.value.trim();
@@ -2712,6 +2713,7 @@ els.keyForm?.addEventListener("submit", (event) => {
   addKeyLog(key, "Check-In", "Key record created.");
   addActivity("Key added", key.keyName);
   saveState();
+  await syncSingleKeyToSupabase(key);
   els.keyForm.reset();
   if (els.keyStatus) {
     els.keyStatus.textContent = `Added ${key.keyName}.`;
@@ -8490,6 +8492,7 @@ async function writeKeyNfcTag(key) {
       key.updatedAt = new Date().toISOString();
       addActivity("Key NFC write request sent", key.keyName || key.name || "Key");
       saveState();
+      await syncSingleKeyToSupabase(key);
       render();
       return;
     }
@@ -8508,6 +8511,7 @@ async function writeKeyNfcTag(key) {
     addKeyLog(key, "Check-In", `NFC tag written: ${key.uniqueTagId}.`);
     addActivity("Key NFC tag written", `${key.keyName || key.name || "Key"} | ${key.uniqueTagId}`);
     saveState();
+    await syncSingleKeyToSupabase(key);
     render();
   } catch (error) {
     console.warn("Key NFC write failed.", error);
@@ -8551,6 +8555,7 @@ async function verifyKeyNfcTag(key) {
     addKeyLog(key, "Check-In", `NFC tag verified: ${key.uniqueTagId}.`);
     addActivity("Key NFC tag verified", `${key.keyName || key.name || "Key"} | ${key.uniqueTagId}`);
     saveState();
+    await syncSingleKeyToSupabase(key);
     render();
   } catch (error) {
     console.warn("Key NFC verify failed.", error);
@@ -14149,6 +14154,77 @@ function leanCloudRecord(record) {
   return clean;
 }
 
+function buildStructuredKeyRow(key, cloudLocationIds = null) {
+  const locationId = key.locationId && (!cloudLocationIds || cloudLocationIds.has(key.locationId)) ? key.locationId : null;
+  return {
+    id: key.id,
+    customer_id: key.customerId || null,
+    location_id: locationId,
+    unique_tag_id: normalizeNfcUid(key.uniqueTagId || "") || key.uniqueTagId || "",
+    key_name: key.keyName || key.name || "",
+    key_number: key.keyNumber || "",
+    storage_location: key.storageLocation || "",
+    current_status: KEY_STATUS_OPTIONS.includes(key.currentStatus) ? key.currentStatus : "Available",
+    current_holder_id: isUuid(key.currentHolderId) ? key.currentHolderId : null,
+    current_holder_name: key.currentHolderName || "",
+    notes: key.notes || "",
+    created_at: key.createdAt || new Date().toISOString(),
+    updated_at: key.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({
+      ...key,
+      locationId: locationId || ""
+    })
+  };
+}
+
+function buildStructuredKeyLogRow(log, cloudLocationIds = null) {
+  const locationId = log.locationId && (!cloudLocationIds || cloudLocationIds.has(log.locationId)) ? log.locationId : null;
+  return {
+    id: log.id,
+    key_id: log.keyId,
+    customer_id: log.customerId || null,
+    location_id: locationId,
+    user_id: isUuid(log.userId) ? log.userId : null,
+    user_name: log.userName || "",
+    action: log.action === "Check-Out" ? "Check-Out" : "Check-In",
+    notes: log.notes || "",
+    timestamp: log.timestamp || log.createdAt || new Date().toISOString(),
+    data: leanCloudRecord({
+      ...log,
+      locationId: locationId || ""
+    })
+  };
+}
+
+async function syncSingleKeyToSupabase(key) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !key?.id || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+  const customerId = activeCloudCustomerId();
+  if (customerId && key.customerId !== customerId) return;
+  const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
+  if (key.customerId && !knownCustomerIds.has(key.customerId)) {
+    setKeyNfcMessage(key, "Key cloud save skipped because the assigned customer is missing locally.");
+    markSyncError("Key cloud save skipped because the assigned customer is missing locally.");
+    return;
+  }
+  const cloudLocationIds = new Set((state.locations || [])
+    .filter((locationRecord) => !key.customerId || locationRecord.customerId === key.customerId)
+    .map((locationRecord) => locationRecord.id)
+    .filter(Boolean));
+  try {
+    await upsertStructuredRows("keys", [buildStructuredKeyRow(key, cloudLocationIds)]);
+    const logs = (state.keyLogs || []).filter((log) => log.keyId === key.id);
+    if (logs.length) {
+      await upsertStructuredRows("key_logs", logs.map((log) => buildStructuredKeyLogRow(log, cloudLocationIds)));
+    }
+    markSyncSuccess("save");
+  } catch (error) {
+    const message = `Key cloud save failed: ${error?.message || error}`;
+    setKeyNfcMessage(key, message);
+    markSyncError(message);
+    console.warn("Key cloud save failed.", error);
+  }
+}
+
 async function syncStructuredDataToSupabase() {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return;
   if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
@@ -14352,22 +14428,7 @@ async function syncStructuredDataToSupabase() {
       console.warn(`Skipped ${skippedKeys} key sync row(s) because their linked customer is missing locally.`);
     }
 
-    await upsertStructuredRows("keys", cloudReadyKeys.map((key) => ({
-      id: key.id,
-      customer_id: key.customerId || null,
-      location_id: key.locationId && cloudLocationIds.has(key.locationId) ? key.locationId : null,
-      unique_tag_id: key.uniqueTagId || "",
-      key_name: key.keyName || key.name || "",
-      key_number: key.keyNumber || "",
-      storage_location: key.storageLocation || "",
-      current_status: KEY_STATUS_OPTIONS.includes(key.currentStatus) ? key.currentStatus : "Available",
-      current_holder_id: isUuid(key.currentHolderId) ? key.currentHolderId : null,
-      current_holder_name: key.currentHolderName || "",
-      notes: key.notes || "",
-      created_at: key.createdAt || new Date().toISOString(),
-      updated_at: key.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: leanCloudRecord(key)
-    })));
+    await upsertStructuredRows("keys", cloudReadyKeys.map((key) => buildStructuredKeyRow(key, cloudLocationIds)));
 
     const cloudKeyIds = new Set(cloudReadyKeys.map((key) => key.id).filter(Boolean));
     const cloudReadyKeyLogs = syncKeyLogs.filter((log) => log.keyId && cloudKeyIds.has(log.keyId));
@@ -14376,21 +14437,7 @@ async function syncStructuredDataToSupabase() {
       console.warn(`Skipped ${skippedKeyLogs} key log sync row(s) because their linked key is missing locally.`);
     }
 
-    await upsertStructuredRows("key_logs", cloudReadyKeyLogs.map((log) => ({
-      id: log.id,
-      key_id: log.keyId,
-      customer_id: log.customerId || null,
-      location_id: log.locationId && cloudLocationIds.has(log.locationId) ? log.locationId : null,
-      user_id: isUuid(log.userId) ? log.userId : null,
-      user_name: log.userName || "",
-      action: log.action === "Check-Out" ? "Check-Out" : "Check-In",
-      notes: log.notes || "",
-      timestamp: log.timestamp || log.createdAt || new Date().toISOString(),
-      data: leanCloudRecord({
-        ...log,
-        locationId: log.locationId && cloudLocationIds.has(log.locationId) ? log.locationId : ""
-      })
-    })));
+    await upsertStructuredRows("key_logs", cloudReadyKeyLogs.map((log) => buildStructuredKeyLogRow(log, cloudLocationIds)));
 
     const historyRows = syncAssets.filter(canSyncHistoryRecord).flatMap((asset) => (asset.history || []).map((item) => ({
       id: item.id,
