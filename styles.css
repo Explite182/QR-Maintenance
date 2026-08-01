@@ -3211,6 +3211,25 @@ textarea {
   background: var(--sidebar-bg);
 }
 
+.inventory-subnav {
+  margin-bottom: 14px;
+}
+
+.inventory-tab-pane {
+  display: grid;
+  gap: 12px;
+}
+
+.inventory-tab-pane.hidden {
+  display: none;
+}
+
+.inventory-subsection-title {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+}
+
 .asset-tools {
   display: grid;
   grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(112px, 1fr)) minmax(260px, auto);

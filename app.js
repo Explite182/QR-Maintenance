@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260801-key-cloud-status-precedence";
+const SITEWORKS_APP_VERSION = "20260801-inventory-key-tabs";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -97,6 +97,7 @@ let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
 let assetSort = "due";
 let assetRegisterTab = "active";
+let inventoryTab = focusedKeyId ? "keys" : "items";
 let assetPageSize = 25;
 let assetPage = 1;
 let selectedPrintAssetIds = new Set();
@@ -1880,6 +1881,8 @@ document.addEventListener("click", (event) => {
   event.stopPropagation();
   if (!canManageInventory() || !els.inventoryCreateDrawer) return;
   closeCreateNewMenu();
+  setInventoryTab("items");
+  openPanel("inventoryPanel");
   openTopActionDrawer(els.inventoryCreateDrawer);
   window.setTimeout(() => els.inventoryName?.focus(), 120);
 });
@@ -1891,6 +1894,8 @@ document.addEventListener("click", (event) => {
   event.stopPropagation();
   if (!canManageKeys() || !els.keyCreateDrawer) return;
   closeCreateNewMenu();
+  setInventoryTab("keys");
+  openPanel("inventoryPanel");
   openTopActionDrawer(els.keyCreateDrawer);
   window.setTimeout(() => els.keyName?.focus(), 120);
 });
@@ -2211,6 +2216,8 @@ els.newServiceRequestBtn?.addEventListener("click", () => {
 els.newInventoryBtn?.addEventListener("click", () => {
   if (!canManageInventory()) return;
   closeCreateNewMenu();
+  setInventoryTab("items");
+  openPanel("inventoryPanel");
   openTopActionDrawer(els.inventoryCreateDrawer);
 });
 
@@ -2218,6 +2225,8 @@ els.newKeyBtn?.addEventListener("click", () => {
   if (!canManageKeys()) return;
   closeCreateNewMenu();
   renderKeyLocationOptions();
+  setInventoryTab("keys");
+  openPanel("inventoryPanel");
   openTopActionDrawer(els.keyCreateDrawer);
 });
 
@@ -2940,6 +2949,15 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const inventoryTabButton = event.target.closest("[data-inventory-tab]");
+  if (inventoryTabButton) {
+    event.preventDefault();
+    setInventoryTab(inventoryTabButton.dataset.inventoryTab);
+    openPanel("inventoryPanel");
+    setMobileTabState("inventoryPanel");
+    return;
+  }
+
   const mobileTabButton = event.target.closest("[data-mobile-tab]");
   if (mobileTabButton) {
     event.preventDefault();
@@ -3317,6 +3335,7 @@ function render() {
   renderServiceRequests();
   renderInventory();
   renderKeys();
+  setInventoryTab(inventoryTab);
   syncWorkDrawerBackdrop();
   renderServiceRequestFormOptions();
   renderNewIssueFormOptions();
@@ -3539,6 +3558,16 @@ function syncCalendarFocusState() {
   els.appShell?.classList.toggle("calendar-focus", calendarOpen);
 }
 
+function setInventoryTab(tab = "items") {
+  inventoryTab = tab === "keys" ? "keys" : "items";
+  document.querySelectorAll("[data-inventory-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.inventoryTab === inventoryTab);
+  });
+  document.querySelectorAll("[data-inventory-pane]").forEach((pane) => {
+    pane.classList.toggle("hidden", pane.dataset.inventoryPane !== inventoryTab);
+  });
+}
+
 function openMobileTab(targetId) {
   if (targetId === "dashboardPanel") {
     closeAllSidebarTargets();
@@ -3548,6 +3577,7 @@ function openMobileTab(targetId) {
     return;
   }
 
+  if (targetId === "inventoryPanel" && inventoryTab !== "keys") setInventoryTab("items");
   if (targetId !== "adminToolsDrawer") closeSidebarTarget("adminToolsDrawer");
   const target = document.getElementById(targetId);
   const isOpen = target?.tagName === "DETAILS"
@@ -7164,11 +7194,17 @@ function runMobileCreateAction(action) {
     return;
   }
   if (action === "newInventory" && canManageInventory()) {
+    setInventoryTab("items");
+    openPanel("inventoryPanel");
+    setMobileTabState("inventoryPanel");
     openMobileCreateDrawer(els.inventoryCreateDrawer);
     return;
   }
   if (action === "newKey" && canManageKeys()) {
     renderKeyLocationOptions();
+    setInventoryTab("keys");
+    openPanel("inventoryPanel");
+    setMobileTabState("inventoryPanel");
     openMobileCreateDrawer(els.keyCreateDrawer);
   }
 }
@@ -10992,6 +11028,7 @@ function restoreScannedInventorySelection() {
   const item = getInventoryItem(inventoryItemId);
   if (!item || !canSeeCustomer(item.customerId)) return;
   focusedInventoryItemId = item.id;
+  inventoryTab = "items";
   selectedCustomerId = item.customerId || selectedCustomerId;
   selectedLocationId = "all";
   openPanel("inventoryPanel");
@@ -11005,7 +11042,8 @@ function restoreScannedKeySelection() {
   focusedKeyId = key.id;
   selectedCustomerId = key.customerId || selectedCustomerId;
   selectedLocationId = defaultLocationSelection();
-  openPanel("keysPanel");
+  inventoryTab = "keys";
+  openPanel("inventoryPanel");
 }
 
 function focusScannedAssetContext() {
@@ -11035,11 +11073,14 @@ function focusScannedInventoryContext() {
   restoreScannedInventorySelection();
   const item = getInventoryItem(inventoryItemId);
   if (!item || !canSeeCustomer(item.customerId)) return false;
+  inventoryTab = "items";
   closeOtherSidebarTargets("inventoryPanel");
   openPanel("inventoryPanel");
+  setInventoryTab("items");
   setMobileTabState("inventoryPanel");
   window.setTimeout(() => {
     openPanel("inventoryPanel");
+    setInventoryTab("items");
     els.inventoryPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 0);
   return true;
@@ -11051,11 +11092,14 @@ function focusScannedKeyContext() {
   restoreScannedKeySelection();
   const key = getKeyRecord(keyId);
   if (!key || !canSeeCustomer(key.customerId)) return false;
-  closeOtherSidebarTargets("keysPanel");
-  openPanel("keysPanel");
-  setMobileTabState("dashboardPanel");
+  inventoryTab = "keys";
+  closeOtherSidebarTargets("inventoryPanel");
+  openPanel("inventoryPanel");
+  setInventoryTab("keys");
+  setMobileTabState("inventoryPanel");
   window.setTimeout(() => {
-    openPanel("keysPanel");
+    openPanel("inventoryPanel");
+    setInventoryTab("keys");
     els.keysPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 0);
   return true;

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260801-key-cloud-status-precedence">
+    <link rel="stylesheet" href="/styles.css?v=20260801-inventory-key-tabs">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -199,9 +199,6 @@
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="inventoryPanel" aria-expanded="false">
             <span>Inventory</span>
-          </button>
-          <button type="button" class="sidebar-nav-btn" data-open-target="keysPanel" aria-expanded="false">
-            <span>Keys</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="templatesPanel" data-template-nav aria-expanded="false">
             <span>Templates</span>
@@ -1002,7 +999,12 @@
           </div>
         </div>
         <div data-panel-body>
-          <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
+          <div class="asset-subnav inventory-subnav" aria-label="Inventory views">
+            <button type="button" class="asset-subnav-tab is-active" data-inventory-tab="items">Parts & Materials</button>
+            <button type="button" class="asset-subnav-tab" data-inventory-tab="keys">Keys</button>
+          </div>
+          <div id="inventoryItemsPane" class="inventory-tab-pane" data-inventory-pane="items">
+            <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
             <summary>Add Inventory Item</summary>
             <form id="inventoryForm" class="stack compact-form">
               <div class="form-grid">
@@ -1053,59 +1055,57 @@
             </form>
           </details>
           <div id="inventoryList" class="inventory-list"></div>
-        </div>
-      </section>
-
-        <section id="keysPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
-        <div class="section-title clickable-panel-title" data-panel-toggle="keysPanel">
-          <h2>Keys</h2>
-          <div class="panel-title-actions">
-            <span id="keyCount">0</span>
           </div>
-        </div>
-        <div data-panel-body>
-          <details id="keyCreateDrawer" class="service-request-create-drawer work-create-drawer">
-            <summary>Add Key</summary>
-            <form id="keyForm" class="stack compact-form">
-              <div class="form-grid">
-                <label>
-                  Customer
-                  <select id="keyCustomer"></select>
-                </label>
-                <label>
-                  Location
-                  <select id="keyLocation"></select>
-                </label>
+          <div id="keysPanel" class="inventory-tab-pane hidden" data-inventory-pane="keys">
+            <div class="section-title inventory-subsection-title">
+              <h2>Keys</h2>
+              <div class="panel-title-actions">
+                <span id="keyCount">0</span>
               </div>
-              <div class="form-grid">
+            </div>
+            <details id="keyCreateDrawer" class="service-request-create-drawer work-create-drawer">
+              <summary>Add Key</summary>
+              <form id="keyForm" class="stack compact-form">
+                <div class="form-grid">
+                  <label>
+                    Customer
+                    <select id="keyCustomer"></select>
+                  </label>
+                  <label>
+                    Location
+                    <select id="keyLocation"></select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Key name
+                    <input id="keyName" required placeholder="Electrical room key">
+                  </label>
+                  <label>
+                    Key number
+                    <input id="keyNumber" placeholder="K-101">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    NFC tag UID
+                    <input id="keyTagUid" placeholder="Scan or type tag UID">
+                  </label>
+                  <label>
+                    Storage location
+                    <input id="keyStorageLocation" placeholder="Lock box, office, cabinet">
+                  </label>
+                </div>
                 <label>
-                  Key name
-                  <input id="keyName" required placeholder="Electrical room key">
+                  Notes
+                  <textarea id="keyNotes" rows="3" placeholder="Access notes, lock info, or return instructions"></textarea>
                 </label>
-                <label>
-                  Key number
-                  <input id="keyNumber" placeholder="K-101">
-                </label>
-              </div>
-              <div class="form-grid">
-                <label>
-                  NFC tag UID
-                  <input id="keyTagUid" placeholder="Scan or type tag UID">
-                </label>
-                <label>
-                  Storage location
-                  <input id="keyStorageLocation" placeholder="Lock box, office, cabinet">
-                </label>
-              </div>
-              <label>
-                Notes
-                <textarea id="keyNotes" rows="3" placeholder="Access notes, lock info, or return instructions"></textarea>
-              </label>
-              <button type="submit" class="primary">Add Key</button>
-              <p id="keyStatus" class="inline-status"></p>
-            </form>
-          </details>
-          <div id="keyList" class="inventory-list"></div>
+                <button type="submit" class="primary">Add Key</button>
+                <p id="keyStatus" class="inline-status"></p>
+              </form>
+            </details>
+            <div id="keyList" class="inventory-list"></div>
+          </div>
         </div>
       </section>
 
@@ -1504,7 +1504,7 @@
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/app.js?v=20260801-key-cloud-status-precedence"></script>
+  <script src="/app.js?v=20260801-inventory-key-tabs"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
