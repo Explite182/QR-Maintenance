@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-email-status";
+const SITEWORKS_APP_VERSION = "20260731-key-custody";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -40,8 +40,11 @@ const REALTIME_TABLES = [
   "pm_history",
   "preferred_contractors",
   "inventory_items",
+  "keys",
+  "key_logs",
   "public_reports"
 ];
+const KEY_STATUS_OPTIONS = ["Available", "Checked Out"];
 const MANAGER_ROLES = ["Manager", "Facility Manager"];
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
@@ -83,6 +86,7 @@ let focusedWorkOrderId = "";
 let focusedServiceRequestId = "";
 let focusedCompletedRecordId = "";
 let focusedInventoryItemId = getInventoryItemIdFromUrl() || "";
+let focusedKeyId = getKeyIdFromUrl() || "";
 let serviceRequestDrawerTab = "notes";
 let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
@@ -193,6 +197,7 @@ const els = {
   newIssueBtn: document.getElementById("newIssueBtn"),
   newServiceRequestBtn: document.getElementById("newServiceRequestBtn"),
   newInventoryBtn: document.getElementById("newInventoryBtn"),
+  newKeyBtn: document.getElementById("newKeyBtn"),
   mobileCreateBtn: document.getElementById("mobileCreateBtn"),
   mobileCreateMenu: document.getElementById("mobileCreateMenu"),
   newIssueDrawer: document.getElementById("newIssueDrawer"),
@@ -466,6 +471,19 @@ const els = {
   inventoryCount: document.getElementById("inventoryCount"),
   inventoryOpenFormBtn: document.getElementById("inventoryOpenFormBtn"),
   inventoryList: document.getElementById("inventoryList"),
+  keysPanel: document.getElementById("keysPanel"),
+  keyCreateDrawer: document.getElementById("keyCreateDrawer"),
+  keyForm: document.getElementById("keyForm"),
+  keyCustomer: document.getElementById("keyCustomer"),
+  keyLocation: document.getElementById("keyLocation"),
+  keyName: document.getElementById("keyName"),
+  keyNumber: document.getElementById("keyNumber"),
+  keyTagUid: document.getElementById("keyTagUid"),
+  keyStorageLocation: document.getElementById("keyStorageLocation"),
+  keyNotes: document.getElementById("keyNotes"),
+  keyStatus: document.getElementById("keyStatus"),
+  keyCount: document.getElementById("keyCount"),
+  keyList: document.getElementById("keyList"),
   serviceRequestCreateDrawer: document.getElementById("serviceRequestCreateDrawer"),
   serviceRequestForm: document.getElementById("serviceRequestForm"),
   serviceRequestCustomer: document.getElementById("serviceRequestCustomer"),
@@ -496,7 +514,7 @@ moveTopActionDrawers();
 window.setTimeout(() => {
   render();
   if (currentUser && isScannedItemUrl()) {
-    focusScannedAssetContext() || focusScannedInventoryContext();
+    focusScannedAssetContext() || focusScannedInventoryContext() || focusScannedKeyContext();
   }
 }, 0);
 window.setTimeout(syncLoginQrReportPrompt, 0);
@@ -512,6 +530,7 @@ window.addEventListener("hashchange", () => {
   hydrateAssetFromHash();
   restoreScannedAssetSelection();
   restoreScannedInventorySelection();
+  restoreScannedKeySelection();
   selectedId = getAssetIdFromUrl() || selectedId;
   syncFiltersToSelectedAsset();
   render();
@@ -785,10 +804,10 @@ async function updateRecoveredPassword(password) {
 }
 
 async function openScannedAssetAfterLogin() {
-  let openedScannedAsset = focusScannedAssetContext() || focusScannedInventoryContext();
+  let openedScannedAsset = focusScannedAssetContext() || focusScannedInventoryContext() || focusScannedKeyContext();
   if (!openedScannedAsset && isScannedItemUrl()) {
     await runWithTimeout(refreshCloudDataFromSupabase(), 5000);
-    openedScannedAsset = focusScannedAssetContext() || focusScannedInventoryContext();
+    openedScannedAsset = focusScannedAssetContext() || focusScannedInventoryContext() || focusScannedKeyContext();
   }
   if (!openedScannedAsset) notifyUnassignedShortNfcTag();
   if (!openedScannedAsset) closeAssetRegisterDrawer();
@@ -1846,10 +1865,28 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const openKeyButton = event.target.closest("[data-open-key-form]");
+  if (!openKeyButton) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!canManageKeys() || !els.keyCreateDrawer) return;
+  closeCreateNewMenu();
+  openTopActionDrawer(els.keyCreateDrawer);
+  window.setTimeout(() => els.keyName?.focus(), 120);
+});
+
+document.addEventListener("click", (event) => {
   if (event.target.closest("button, input, select, textarea, a")) return;
   const summary = event.target.closest("[data-inventory-item-summary]");
   if (!summary) return;
   focusedInventoryItemId = summary.dataset.inventoryItemSummary || "";
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("button, input, select, textarea, a")) return;
+  const summary = event.target.closest("[data-key-summary]");
+  if (!summary) return;
+  focusedKeyId = summary.dataset.keySummary || "";
 });
 
 document.addEventListener("click", async (event) => {
@@ -1911,6 +1948,81 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+document.addEventListener("click", async (event) => {
+  const actionButton = event.target.closest("[data-key-action]");
+  if (actionButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageKeys()) return;
+    const key = getKeyRecord(actionButton.dataset.keyAction);
+    if (!key || !canManageKeyCustomer(key.customerId)) return;
+    const action = actionButton.dataset.action || "";
+    if (action === "checkout") {
+      key.currentStatus = "Checked Out";
+      key.currentHolderId = currentUser?.id || "";
+      key.currentHolderName = currentUser?.name || currentUser?.username || "SiteWorks user";
+      addKeyLog(key, "Check-Out", `Checked out to ${key.currentHolderName}.`);
+      addActivity("Key checked out", key.keyName || key.name);
+    } else if (action === "checkin") {
+      const priorHolder = key.currentHolderName || "holder";
+      key.currentStatus = "Available";
+      key.currentHolderId = "";
+      key.currentHolderName = "";
+      addKeyLog(key, "Check-In", `Checked in from ${priorHolder}.`);
+      addActivity("Key checked in", key.keyName || key.name);
+    }
+    key.updatedAt = new Date().toISOString();
+    saveState();
+    render();
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-delete-key]");
+  if (deleteButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageKeys()) return;
+    const key = getKeyRecord(deleteButton.dataset.deleteKey);
+    if (!key || !canManageKeyCustomer(key.customerId)) return;
+    if (!confirm(`Delete ${key.keyName || key.name}? This cannot be undone.`)) return;
+    state.keys = state.keys.filter((item) => item.id !== key.id);
+    state.keyLogs = state.keyLogs.filter((log) => log.keyId !== key.id);
+    if (focusedKeyId === key.id) focusedKeyId = "";
+    addActivity("Key deleted", key.keyName || key.name);
+    saveState();
+    await finishCloudDelete("Key", Promise.all([
+      deleteStructuredRows("key_logs", "key_id", [key.id]),
+      deleteStructuredRows("keys", "id", [key.id])
+    ]));
+    render();
+    return;
+  }
+
+  const copyButton = event.target.closest("[data-copy-key-link]");
+  if (copyButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const key = getKeyRecord(copyButton.dataset.copyKeyLink);
+    if (!key || !canSeeCustomer(key.customerId)) return;
+    await copyText(getKeyUrl(key));
+    copyButton.textContent = "Copied";
+    window.setTimeout(() => {
+      copyButton.textContent = copyButton.dataset.linkLabel || "Copy QR Link";
+    }, 1200);
+    return;
+  }
+
+  const printButton = event.target.closest("[data-print-key-qr]");
+  if (printButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const key = getKeyRecord(printButton.dataset.printKeyQr);
+    if (!key || !canSeeCustomer(key.customerId)) return;
+    renderKeyLabel(key);
+    window.print();
+  }
+});
+
 document.addEventListener("submit", (event) => {
   const form = event.target.closest("[data-inventory-edit-form]");
   if (!form) return;
@@ -1929,6 +2041,32 @@ document.addEventListener("submit", (event) => {
   item.notes = String(formData.get("notes") || "").trim();
   item.updatedAt = new Date().toISOString();
   addActivity("Inventory item edited", item.name);
+  saveState();
+  render();
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-key-edit-form]");
+  if (!form) return;
+  event.preventDefault();
+  if (!canManageKeys()) return;
+  const key = getKeyRecord(form.dataset.keyEditForm);
+  if (!key || !canManageKeyCustomer(key.customerId)) return;
+  const formData = new FormData(form);
+  key.keyName = String(formData.get("keyName") || "").trim() || key.keyName;
+  key.keyNumber = String(formData.get("keyNumber") || "").trim();
+  key.uniqueTagId = normalizeNfcUid(formData.get("uniqueTagId")) || String(formData.get("uniqueTagId") || "").trim();
+  key.storageLocation = String(formData.get("storageLocation") || "").trim();
+  key.notes = String(formData.get("notes") || "").trim();
+  key.currentStatus = KEY_STATUS_OPTIONS.includes(String(formData.get("currentStatus"))) ? String(formData.get("currentStatus")) : key.currentStatus;
+  if (key.currentStatus === "Available") {
+    key.currentHolderId = "";
+    key.currentHolderName = "";
+  } else {
+    key.currentHolderName = String(formData.get("currentHolderName") || "").trim() || key.currentHolderName;
+  }
+  key.updatedAt = new Date().toISOString();
+  addActivity("Key edited", key.keyName || key.name);
   saveState();
   render();
 });
@@ -2006,7 +2144,7 @@ els.createNewBtn?.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #inventoryCreateDrawer, #createNewBtn, #createNewMenu, #mobileCreateBtn, #mobileCreateMenu")) return;
+  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #inventoryCreateDrawer, #keyCreateDrawer, #createNewBtn, #createNewMenu, #mobileCreateBtn, #mobileCreateMenu")) return;
   closeTopActionDrawers();
   closeMetricMenus();
   closeCreateNewMenu();
@@ -2031,6 +2169,13 @@ els.newInventoryBtn?.addEventListener("click", () => {
   if (!canManageInventory()) return;
   closeCreateNewMenu();
   openTopActionDrawer(els.inventoryCreateDrawer);
+});
+
+els.newKeyBtn?.addEventListener("click", () => {
+  if (!canManageKeys()) return;
+  closeCreateNewMenu();
+  renderKeyLocationOptions();
+  openTopActionDrawer(els.keyCreateDrawer);
 });
 
 els.prevAssetPageBtn.addEventListener("click", () => {
@@ -2088,6 +2233,10 @@ els.newIssueLocation?.addEventListener("change", () => {
 
 els.newIssueAsset?.addEventListener("change", () => {
   syncNewIssueTitle();
+});
+
+els.keyCustomer?.addEventListener("change", () => {
+  renderKeyLocationOptions();
 });
 
 els.newIssueTargetEquipment?.addEventListener("change", () => {
@@ -2484,6 +2633,50 @@ els.inventoryForm?.addEventListener("submit", (event) => {
   }
   closeTopActionDrawers();
   showCreationConfirmation(`Inventory item created: ${item.name}`);
+  render();
+});
+
+els.keyForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!canManageKeys()) return;
+  const keyName = els.keyName.value.trim();
+  const customerId = currentRole === "Admin" ? els.keyCustomer.value : currentUser?.customerId || selectedCustomerId || "";
+  const locationId = els.keyLocation?.value || "";
+  if (!keyName) {
+    alert("Enter a key name.");
+    return;
+  }
+  if (!canManageKeyCustomer(customerId)) {
+    alert("Managers can only add keys for their assigned customer.");
+    return;
+  }
+  const now = new Date().toISOString();
+  const key = {
+    id: crypto.randomUUID(),
+    customerId,
+    locationId,
+    uniqueTagId: normalizeNfcUid(els.keyTagUid.value) || els.keyTagUid.value.trim(),
+    keyName,
+    keyNumber: els.keyNumber.value.trim(),
+    storageLocation: els.keyStorageLocation.value.trim(),
+    currentStatus: "Available",
+    currentHolderId: "",
+    currentHolderName: "",
+    notes: els.keyNotes.value.trim(),
+    createdAt: now,
+    updatedAt: now
+  };
+  state.keys.push(key);
+  addKeyLog(key, "Check-In", "Key record created.");
+  addActivity("Key added", key.keyName);
+  saveState();
+  els.keyForm.reset();
+  if (els.keyStatus) {
+    els.keyStatus.textContent = `Added ${key.keyName}.`;
+    els.keyStatus.className = "inline-status is-ok";
+  }
+  closeTopActionDrawers();
+  showCreationConfirmation(`Key created: ${key.keyName}`);
   render();
 });
 
@@ -3075,6 +3268,7 @@ function render() {
   renderWorkOrders();
   renderServiceRequests();
   renderInventory();
+  renderKeys();
   syncWorkDrawerBackdrop();
   renderServiceRequestFormOptions();
   renderNewIssueFormOptions();
@@ -3556,13 +3750,15 @@ function renderRole() {
   const userManagementAllowed = canManageUsers();
   const contractorManagementAllowed = canManageContractors();
   const inventoryManagementAllowed = canManageInventory();
+  const keyManagementAllowed = canManageKeys();
   const isAdmin = currentRole === "Admin";
   const canCreateCustomerRecords = canCreateCustomers();
   const canManageTemplates = canManageTemplateSetup();
   const canAddAssets = canAddEquipment();
   const canCreateTickets = canCreateWorkOrders();
   const canCreateInventory = canManageInventory();
-  const canUseNewActions = canAddAssets || canCreateTickets || canCreateServiceRequests() || canCreateInventory;
+  const canCreateKey = canManageKeys();
+  const canUseNewActions = canAddAssets || canCreateTickets || canCreateServiceRequests() || canCreateInventory || canCreateKey;
   const isCustomer = currentRole === "Customer";
   const hasAdminToolsAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed || canViewActivityLog();
   const canUseWorkNav = !isCustomer;
@@ -3581,6 +3777,7 @@ function renderRole() {
   els.newIssueBtn?.classList.toggle("hidden", !canCreateTickets);
   els.newServiceRequestBtn?.classList.toggle("hidden", !canCreateServiceRequests());
   els.newInventoryBtn?.classList.toggle("hidden", !canCreateInventory);
+  els.newKeyBtn?.classList.toggle("hidden", !canCreateKey);
   document.querySelectorAll("[data-template-nav]").forEach((button) => {
     button.classList.toggle("hidden", !canManageTemplates);
   });
@@ -3591,6 +3788,7 @@ function renderRole() {
   if (els.newIssueBtn) els.newIssueBtn.disabled = !canCreateTickets;
   if (els.newServiceRequestBtn) els.newServiceRequestBtn.disabled = !canCreateServiceRequests();
   if (els.newInventoryBtn) els.newInventoryBtn.disabled = !canCreateInventory;
+  if (els.newKeyBtn) els.newKeyBtn.disabled = !canCreateKey;
   renderMobileCreateActions();
   els.adminToolsDrawer.classList.toggle("hidden", !hasAdminToolsAccess);
   if (!hasAdminToolsAccess) els.adminToolsDrawer.open = false;
@@ -3602,6 +3800,8 @@ function renderRole() {
   if (!canCreateServiceRequests() && els.serviceRequestCreateDrawer) els.serviceRequestCreateDrawer.open = false;
   els.inventoryCreateDrawer?.classList.toggle("hidden", !inventoryManagementAllowed);
   if (!inventoryManagementAllowed && els.inventoryCreateDrawer) els.inventoryCreateDrawer.open = false;
+  els.keyCreateDrawer?.classList.toggle("hidden", !keyManagementAllowed);
+  if (!keyManagementAllowed && els.keyCreateDrawer) els.keyCreateDrawer.open = false;
   els.setupDrawer.classList.toggle("hidden", setupDisabled);
   if (setupDisabled) els.setupDrawer.open = false;
   els.backupDrawer.classList.toggle("hidden", !isAdmin);
@@ -3641,8 +3841,12 @@ function renderRole() {
   els.inventoryForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !inventoryManagementAllowed;
   });
+  els.keyForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !keyManagementAllowed;
+  });
   if (els.contractorCustomer) els.contractorCustomer.disabled = currentRole !== "Admin";
   if (els.inventoryCustomer) els.inventoryCustomer.disabled = currentRole !== "Admin";
+  if (els.keyCustomer) els.keyCustomer.disabled = currentRole !== "Admin";
   els.assetForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canAddAssets;
   });
@@ -3860,6 +4064,204 @@ function formatInventoryNumber(value) {
 
 function getInventoryItem(id) {
   return (state.inventoryItems || []).find((item) => item.id === id);
+}
+
+function renderKeys() {
+  if (!els.keyList) return;
+  const customers = manageableKeyCustomers();
+  const selectedKeyCustomerId = currentRole === "Admin" && customers.some((customer) => customer.id === selectedCustomerId)
+    ? selectedCustomerId
+    : customers[0]?.id || "";
+  if (els.keyCustomer) {
+    els.keyCustomer.innerHTML = customers.map((customer) =>
+      `<option value="${escapeAttribute(customer.id)}">${escapeHtml(customer.name)}</option>`
+    ).join("");
+    els.keyCustomer.value = selectedKeyCustomerId;
+    els.keyCustomer.disabled = currentRole !== "Admin" || !canManageKeys();
+  }
+  renderKeyLocationOptions();
+  if (els.keyCreateDrawer) {
+    els.keyCreateDrawer.classList.toggle("hidden", !canManageKeys());
+    if (!canManageKeys()) els.keyCreateDrawer.open = false;
+  }
+  els.keyForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = !canManageKeys();
+  });
+  const keys = visibleKeys();
+  if (focusedKeyId && !keys.some((key) => key.id === focusedKeyId)) focusedKeyId = "";
+  if (els.keyCount) els.keyCount.textContent = keys.length;
+  els.keyList.innerHTML = keys.length
+    ? keys.map(renderKeyRecord).join("")
+    : `<p class="muted">No keys for this view yet.</p>`;
+}
+
+function renderKeyLocationOptions() {
+  if (!els.keyLocation) return;
+  const customerId = currentRole === "Admin" ? els.keyCustomer?.value || selectedCustomerId : currentUser?.customerId || selectedCustomerId;
+  const options = [
+    `<option value="">All locations / unassigned</option>`,
+    ...state.locations
+      .filter((locationRecord) => locationRecord.customerId === customerId)
+      .map((locationRecord) => `<option value="${escapeAttribute(locationRecord.id)}">${escapeHtml(locationRecord.name)}</option>`)
+  ].join("");
+  const prior = els.keyLocation.value || "";
+  els.keyLocation.innerHTML = options;
+  els.keyLocation.value = state.locations.some((locationRecord) => locationRecord.id === prior && locationRecord.customerId === customerId)
+    ? prior
+    : "";
+}
+
+function renderKeyRecord(key) {
+  const customer = getCustomer(key.customerId);
+  const locationRecord = getLocation(key.locationId);
+  const canManage = canManageKeyCustomer(key.customerId);
+  const keyUrl = getKeyUrl(key);
+  const checkedOut = key.currentStatus === "Checked Out";
+  const statusBadge = checkedOut
+    ? `<span class="status-badge badge-warn">Checked out</span>`
+    : `<span class="status-badge badge-ok">Available</span>`;
+  const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key.storageLocation || "Ready";
+  const customerLabel = currentRole === "Admin" ? `${customer?.name || "No customer"} | ` : "";
+  return `
+    <details class="inventory-item inventory-item-drawer" ${key.id === focusedKeyId ? "open" : ""}>
+      <summary data-key-summary="${escapeAttribute(key.id)}">
+        <div class="inventory-main">
+          <strong>${escapeHtml(key.keyName || key.name || "Key")}</strong>
+          <small>${escapeHtml(customerLabel)}${escapeHtml(locationRecord?.name || "All locations")}${key.keyNumber ? ` | ${escapeHtml(key.keyNumber)}` : ""}</small>
+          ${key.uniqueTagId ? `<span>NFC UID ${escapeHtml(key.uniqueTagId)}</span>` : ""}
+          ${key.notes ? `<p>${escapeHtml(key.notes)}</p>` : ""}
+        </div>
+        <div class="inventory-stock">
+          <span>${statusBadge}</span>
+          <strong>${escapeHtml(holder)}</strong>
+          <small>${escapeHtml(key.storageLocation || "No storage location")}</small>
+        </div>
+        <div class="inventory-actions">
+          <button type="button" class="secondary mini" data-key-action="${escapeAttribute(key.id)}" data-action="${checkedOut ? "checkin" : "checkout"}" ${canManage ? "" : "disabled"}>${checkedOut ? "Check In" : "Check Out"}</button>
+          <button type="button" class="secondary mini" data-copy-key-link="${escapeAttribute(key.id)}" data-link-label="Copy QR Link">Copy QR Link</button>
+          <button type="button" class="secondary mini" data-print-key-qr="${escapeAttribute(key.id)}">Print QR</button>
+          <button type="button" class="secondary mini danger-action" data-delete-key="${escapeAttribute(key.id)}" ${canManage ? "" : "disabled"}>Delete</button>
+        </div>
+      </summary>
+      <div class="inventory-detail-panel">
+        <div class="inventory-qr-card">
+          <img alt="Key QR code for ${escapeAttribute(key.keyName || "key")}" src="${qrUrl(keyUrl)}">
+          <div>
+            <strong>QR / NFC link</strong>
+            <span>${escapeHtml(keyUrl)}</span>
+            <button type="button" class="secondary mini" data-copy-key-link="${escapeAttribute(key.id)}" data-link-label="Copy NFC Link">Copy NFC Link</button>
+          </div>
+        </div>
+        ${canManage ? renderKeyEditForm(key) : `<p class="muted">Keys can be edited by Admin or Manager users.</p>`}
+        ${renderKeyLogList(key)}
+      </div>
+    </details>
+  `;
+}
+
+function renderKeyEditForm(key) {
+  return `
+    <form class="stack compact-form inventory-edit-form" data-key-edit-form="${escapeAttribute(key.id)}">
+      <div class="form-grid">
+        <label>
+          Key name
+          <input name="keyName" required value="${escapeAttribute(key.keyName || key.name || "")}">
+        </label>
+        <label>
+          Key number
+          <input name="keyNumber" value="${escapeAttribute(key.keyNumber || "")}">
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          NFC tag UID
+          <input name="uniqueTagId" value="${escapeAttribute(key.uniqueTagId || "")}" placeholder="Tag UID">
+        </label>
+        <label>
+          Storage location
+          <input name="storageLocation" value="${escapeAttribute(key.storageLocation || "")}">
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          Status
+          <select name="currentStatus">
+            ${KEY_STATUS_OPTIONS.map((status) => `<option value="${status}" ${key.currentStatus === status ? "selected" : ""}>${status}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Current holder
+          <input name="currentHolderName" value="${escapeAttribute(key.currentHolderName || "")}" placeholder="Person or company">
+        </label>
+      </div>
+      <label>
+        Notes
+        <textarea name="notes" rows="3">${escapeHtml(key.notes || "")}</textarea>
+      </label>
+      <button type="submit" class="primary">Save Key</button>
+    </form>
+  `;
+}
+
+function renderKeyLogList(key) {
+  const logs = (state.keyLogs || [])
+    .filter((log) => log.keyId === key.id)
+    .sort((a, b) => String(b.timestamp || b.createdAt || "").localeCompare(String(a.timestamp || a.createdAt || "")))
+    .slice(0, 8);
+  if (!logs.length) return `<p class="muted">No key activity yet.</p>`;
+  return `
+    <div class="activity-log-list key-log-list">
+      ${logs.map((log) => `
+        <article>
+          <strong>${escapeHtml(log.action || "Key activity")}</strong>
+          <small>${escapeHtml(formatDateTime(new Date(log.timestamp || log.createdAt || new Date())))} | ${escapeHtml(log.userName || "SiteWorks")}</small>
+          ${log.notes ? `<p>${escapeHtml(log.notes)}</p>` : ""}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function addKeyLog(key, action, notes = "") {
+  state.keyLogs = [
+    {
+      id: crypto.randomUUID(),
+      keyId: key.id,
+      customerId: key.customerId || "",
+      locationId: key.locationId || "",
+      userId: currentUser?.id || "",
+      userName: currentUser?.name || currentUser?.username || "SiteWorks",
+      action,
+      notes,
+      timestamp: new Date().toISOString()
+    },
+    ...(state.keyLogs || [])
+  ].slice(0, MAX_ACTIVITY_LOG_ENTRIES);
+}
+
+function getKeyRecord(id) {
+  return (state.keys || []).find((key) => key.id === id);
+}
+
+function renderKeyLabel(key) {
+  const customer = getCustomer(key.customerId);
+  const locationRecord = getLocation(key.locationId);
+  els.labelSheet.innerHTML = `
+    <div class="print-label print-label-nfc">
+      <img alt="" src="${qrUrl(getKeyUrl(key))}">
+      <div class="print-label-copy">
+        <span class="label-brand">SiteWorks Key</span>
+        <strong>${escapeHtml(key.keyName || "Key")}</strong>
+        <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
+        <span>${escapeHtml(locationRecord?.name || "All locations")}${key.keyNumber ? ` | ${escapeHtml(key.keyNumber)}` : ""}</span>
+        <span>Tap NFC or scan QR for key custody</span>
+      </div>
+      <div class="print-nfc-target" aria-hidden="true">
+        <span>NFC</span>
+        <small>1&quot; tag</small>
+      </div>
+    </div>
+  `;
 }
 
 async function deleteWorkOrder(workOrderId) {
@@ -6663,7 +7065,9 @@ function renderMobileCreateActions() {
     ?.classList.toggle("hidden", !canCreateServiceRequests());
   els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newInventory']")
     ?.classList.toggle("hidden", !canManageInventory());
-  els.mobileCreateBtn?.classList.toggle("hidden", !(canAddEquipment() || canCreateWorkOrders() || canCreateServiceRequests() || canManageInventory()));
+  els.mobileCreateMenu?.querySelector("[data-mobile-create-action='newKey']")
+    ?.classList.toggle("hidden", !canManageKeys());
+  els.mobileCreateBtn?.classList.toggle("hidden", !(canAddEquipment() || canCreateWorkOrders() || canCreateServiceRequests() || canManageInventory() || canManageKeys()));
 }
 
 function runMobileCreateAction(action) {
@@ -6683,6 +7087,11 @@ function runMobileCreateAction(action) {
   }
   if (action === "newInventory" && canManageInventory()) {
     openMobileCreateDrawer(els.inventoryCreateDrawer);
+    return;
+  }
+  if (action === "newKey" && canManageKeys()) {
+    renderKeyLocationOptions();
+    openMobileCreateDrawer(els.keyCreateDrawer);
   }
 }
 
@@ -8088,8 +8497,23 @@ function getShortNfcUrlTemplate() {
   return `${base}/t/{uid}`;
 }
 
+function getShortKeyUrl(uid) {
+  const base = getQrBaseUrl().replace(/\/+$/, "");
+  return `${base}/k/${encodeURIComponent(uid)}`;
+}
+
 function getShortNfcUidFromPath() {
   const match = String(location.pathname || "").match(/\/t\/([^/?#]+)/i);
+  if (!match) return "";
+  try {
+    return decodeURIComponent(match[1]).trim();
+  } catch {
+    return match[1].trim();
+  }
+}
+
+function getShortKeyUidFromPath() {
+  const match = String(location.pathname || "").match(/\/k\/([^/?#]+)/i);
   if (!match) return "";
   try {
     return decodeURIComponent(match[1]).trim();
@@ -8110,6 +8534,12 @@ function findAssetByNfcUid(uid) {
   const normalizedUid = normalizeNfcUid(uid);
   if (!normalizedUid) return null;
   return state.assets.find((asset) => getAssetNfcUid(asset) === normalizedUid) || null;
+}
+
+function findKeyByNfcUid(uid) {
+  const normalizedUid = normalizeNfcUid(uid);
+  if (!normalizedUid) return null;
+  return (state.keys || []).find((key) => normalizeNfcUid(key.uniqueTagId) === normalizedUid) || null;
 }
 
 function isShortNfcUrlForUid(value, uid) {
@@ -10355,6 +10785,17 @@ function restoreScannedInventorySelection() {
   openPanel("inventoryPanel");
 }
 
+function restoreScannedKeySelection() {
+  const keyId = getKeyIdFromUrl();
+  if (!keyId) return;
+  const key = getKeyRecord(keyId);
+  if (!key || !canSeeCustomer(key.customerId)) return;
+  focusedKeyId = key.id;
+  selectedCustomerId = key.customerId || selectedCustomerId;
+  selectedLocationId = defaultLocationSelection();
+  openPanel("keysPanel");
+}
+
 function focusScannedAssetContext() {
   const scannedAssetId = getAssetIdFromUrl();
   if (!scannedAssetId || !currentUser) return false;
@@ -10388,6 +10829,22 @@ function focusScannedInventoryContext() {
   window.setTimeout(() => {
     openPanel("inventoryPanel");
     els.inventoryPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
+  return true;
+}
+
+function focusScannedKeyContext() {
+  const keyId = getKeyIdFromUrl();
+  if (!keyId || !currentUser) return false;
+  restoreScannedKeySelection();
+  const key = getKeyRecord(keyId);
+  if (!key || !canSeeCustomer(key.customerId)) return false;
+  closeOtherSidebarTargets("keysPanel");
+  openPanel("keysPanel");
+  setMobileTabState("dashboardPanel");
+  window.setTimeout(() => {
+    openPanel("keysPanel");
+    els.keysPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 0);
   return true;
 }
@@ -11108,6 +11565,37 @@ function visibleInventoryItems(customerId = selectedCustomerId) {
     });
 }
 
+function canManageKeys() {
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
+}
+
+function canManageKeyCustomer(customerId) {
+  if (currentRole === "Admin") return true;
+  return isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
+}
+
+function manageableKeyCustomers() {
+  if (currentRole === "Admin") {
+    const selectedCustomer = getCustomer(selectedCustomerId);
+    return selectedCustomer ? [selectedCustomer] : [...state.customers];
+  }
+  if (isManagerRole() && currentUser?.customerId) {
+    return state.customers.filter((customer) => customer.id === currentUser.customerId);
+  }
+  return visibleCustomers();
+}
+
+function visibleKeys(customerId = selectedCustomerId) {
+  return (state.keys || [])
+    .filter((key) => canSeeCustomer(key.customerId))
+    .filter((key) => !customerId || key.customerId === customerId || (currentRole === "Admin" && !getCustomer(customerId)))
+    .filter((key) => selectedLocationId === "all" || !key.locationId || key.locationId === selectedLocationId)
+    .sort((a, b) => {
+      if ((a.currentStatus || "") !== (b.currentStatus || "")) return (a.currentStatus || "").localeCompare(b.currentStatus || "");
+      return `${a.keyName || ""} ${a.keyNumber || ""}`.localeCompare(`${b.keyName || ""} ${b.keyNumber || ""}`);
+    });
+}
+
 function visiblePreferredContractors(customerId = "") {
   if (currentRole === "Admin") {
     return state.preferredContractors.filter((contractor) => !customerId || contractor.customerId === customerId);
@@ -11342,6 +11830,27 @@ function getInventoryItemUrl(id) {
   return `${base}?${params.toString()}`;
 }
 
+function getKeyUrl(keyOrId) {
+  const key = typeof keyOrId === "object" ? keyOrId : getKeyRecord(keyOrId);
+  const uid = normalizeNfcUid(key?.uniqueTagId);
+  if (uid) return getShortKeyUrl(uid);
+  return getKeyRecordUrl(key?.id || keyOrId);
+}
+
+function getKeyRecordUrl(id) {
+  const base = getQrBaseUrl();
+  const key = getKeyRecord(id);
+  const params = new URLSearchParams();
+  params.set("qr", "1");
+  params.set("key", "1");
+  params.set("kid", id);
+  if (key?.keyName) params.set("n", key.keyName);
+  if (key?.customerId) params.set("cid", key.customerId);
+  const customer = getCustomer(key?.customerId);
+  if (customer?.name) params.set("c", customer.name);
+  return `${base}?${params.toString()}`;
+}
+
 function getReportAssetUrl(id) {
   const base = getQrBaseUrl();
   const params = getCompactAssetParams(id);
@@ -11380,12 +11889,14 @@ function clearSelectedAssetUrl() {
   const params = new URLSearchParams(location.search);
   params.delete("a");
   params.delete("i");
+  params.delete("kid");
+  params.delete("key");
   params.delete("inventory");
   params.delete("qr");
   params.delete("qrlogin");
   params.delete("signedin");
   const query = params.toString();
-  const pathname = getShortNfcUidFromPath() ? "/" : location.pathname;
+  const pathname = (getShortNfcUidFromPath() || getShortKeyUidFromPath()) ? "/" : location.pathname;
   history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
 }
 
@@ -11400,7 +11911,7 @@ function clearRememberedScannedQrContext() {
 
 function rememberScannedQrContext() {
   const params = new URLSearchParams(location.search);
-  if (params.get("qr") !== "1" && !params.get("a") && !params.get("i")) return;
+  if (params.get("qr") !== "1" && !params.get("a") && !params.get("i") && !params.get("kid")) return;
   try {
     sessionStorage.setItem(SCANNED_QR_CONTEXT_KEY, params.toString());
     localStorage.setItem(SCANNED_QR_CONTEXT_KEY, params.toString());
@@ -11411,7 +11922,7 @@ function rememberScannedQrContext() {
 
 function cleanQrLoginUrlForUnauthenticatedUser() {
   const params = new URLSearchParams(location.search);
-  const isScannedQr = params.get("qr") === "1" || params.get("a") || params.get("i");
+  const isScannedQr = params.get("qr") === "1" || params.get("a") || params.get("i") || params.get("kid") || getShortKeyUidFromPath();
   if (!isScannedQr || currentUser || isPublicReportUrl()) return;
   const cleanParams = new URLSearchParams();
   cleanParams.set("qrlogin", "1");
@@ -11437,7 +11948,7 @@ function getRememberedScannedQrParam(name) {
 
 function scannedQrParams() {
   const currentParams = new URLSearchParams(location.search);
-  if (currentParams.get("qr") === "1" || currentParams.get("a") || currentParams.get("i") || currentParams.get("n")) return currentParams;
+  if (currentParams.get("qr") === "1" || currentParams.get("a") || currentParams.get("i") || currentParams.get("kid") || currentParams.get("n")) return currentParams;
   return getRememberedScannedQrParams();
 }
 
@@ -11477,18 +11988,32 @@ function getInventoryItemIdFromUrl() {
   return getRememberedScannedQrParam("i") || getRememberedScannedQrParam("inventoryId");
 }
 
+function getKeyIdFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const queryId = params.get("kid") || params.get("keyId");
+  if (queryId) return queryId;
+  const match = location.hash.match(/^#key\/([^?]+)/);
+  if (match) return match[1];
+  const shortKeyUid = getShortKeyUidFromPath();
+  if (shortKeyUid) return findKeyByNfcUid(shortKeyUid)?.id || "";
+  return getRememberedScannedQrParam("kid") || getRememberedScannedQrParam("keyId");
+}
+
 function isQrAccessUrl() {
-  return new URLSearchParams(location.search).get("qr") === "1" || getRememberedScannedQrParam("qr") === "1" || Boolean(getShortNfcUidFromPath());
+  return new URLSearchParams(location.search).get("qr") === "1" ||
+    getRememberedScannedQrParam("qr") === "1" ||
+    Boolean(getShortNfcUidFromPath()) ||
+    Boolean(getShortKeyUidFromPath());
 }
 
 function isScannedItemUrl() {
-  return isQrAccessUrl() || Boolean(getAssetIdFromUrl()) || Boolean(getInventoryItemIdFromUrl()) || Boolean(getShortNfcUidFromPath());
+  return isQrAccessUrl() || Boolean(getAssetIdFromUrl()) || Boolean(getInventoryItemIdFromUrl()) || Boolean(getKeyIdFromUrl()) || Boolean(getShortNfcUidFromPath()) || Boolean(getShortKeyUidFromPath());
 }
 
 function notifyUnassignedShortNfcTag() {
-  const uid = getShortNfcUidFromPath();
+  const uid = getShortNfcUidFromPath() || getShortKeyUidFromPath();
   if (!uid || !currentUser) return;
-  setSyncBanner("stale", "Unassigned NFC tag", `No equipment or panel is assigned to UID ${uid}.`, 0);
+  setSyncBanner("stale", "Unassigned NFC tag", `No equipment, panel, or key is assigned to UID ${uid}.`, 0);
 }
 
 function isPublicReportUrl() {
@@ -11805,7 +12330,7 @@ function structuredTableScopeQuery(table) {
   if (!customerId) return "";
   if (table === "customers") return `id=eq.${encodeURIComponent(customerId)}`;
   if (table === "pm_templates") return customerScopeQuery("customer_id", { includeShared: true });
-  if (["locations", "assets", "work_orders", "service_requests", "preferred_contractors", "inventory_items"].includes(table)) {
+  if (["locations", "assets", "work_orders", "service_requests", "preferred_contractors", "inventory_items", "keys", "key_logs"].includes(table)) {
     return customerScopeQuery("customer_id");
   }
   return "";
@@ -12519,7 +13044,9 @@ async function loadStructuredDataFromSupabase(options = {}) {
       serviceRequestRows,
       historyRows,
       preferredContractorRows,
-      inventoryItemRows
+      inventoryItemRows,
+      keyRows,
+      keyLogRows
     ] = await Promise.all([
       fetchStructuredRows("customers", "updated_at.asc"),
       fetchStructuredRows("locations", "updated_at.asc"),
@@ -12529,11 +13056,13 @@ async function loadStructuredDataFromSupabase(options = {}) {
       fetchStructuredRows("service_requests", "updated_at.asc"),
       fetchStructuredRows("pm_history", "completed_at.asc"),
       fetchOptionalStructuredRows("preferred_contractors", "updated_at.asc"),
-      fetchOptionalStructuredRows("inventory_items", "updated_at.asc")
+      fetchOptionalStructuredRows("inventory_items", "updated_at.asc"),
+      fetchOptionalStructuredRows("keys", "updated_at.asc"),
+      fetchOptionalStructuredRows("key_logs", "timestamp.asc")
     ]);
     structuredDataLoading = false;
     structuredDataReady = true;
-    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length || inventoryItemRows.length;
+    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length || inventoryItemRows.length || keyRows.length || keyLogRows.length;
     if (!hasRows) {
       if (hasSharedMaintenanceData(state)) scheduleStructuredDataSync(0);
       return false;
@@ -12547,7 +13076,9 @@ async function loadStructuredDataFromSupabase(options = {}) {
       serviceRequests: serviceRequestRows,
       history: historyRows,
       preferredContractors: preferredContractorRows,
-      inventoryItems: inventoryItemRows
+      inventoryItems: inventoryItemRows,
+      keys: keyRows,
+      keyLogs: keyLogRows
     };
     if (structuredRowsMissingAssets(structuredRows)) {
       markSyncError("Structured cloud load returned related records but no equipment. Keeping/restoring the last known equipment list.");
@@ -12615,7 +13146,9 @@ async function peekStructuredCloudState() {
     { table: "service_requests", timestamp: "updated_at" },
     { table: "pm_history", timestamp: "completed_at" },
     { table: "preferred_contractors", timestamp: "updated_at", optional: true },
-    { table: "inventory_items", timestamp: "updated_at", optional: true }
+    { table: "inventory_items", timestamp: "updated_at", optional: true },
+    { table: "keys", timestamp: "updated_at", optional: true },
+    { table: "key_logs", timestamp: "timestamp", optional: true }
   ];
   const rows = await Promise.all(tables.map(({ table, timestamp, optional }) =>
     optional ? fetchOptionalStructuredTimestampRows(table, timestamp) : fetchStructuredTimestampRows(table, timestamp)
@@ -12669,6 +13202,8 @@ function applyStructuredState(rows, updatedAt = "") {
     serviceRequests: rows.serviceRequests.map(serviceRequestFromStructuredRow),
     preferredContractors: rows.preferredContractors.map(preferredContractorFromStructuredRow),
     inventoryItems: (rows.inventoryItems || []).map(inventoryItemFromStructuredRow),
+    keys: (rows.keys || []).map(keyFromStructuredRow),
+    keyLogs: (rows.keyLogs || []).map(keyLogFromStructuredRow),
     users: localUsers,
     accessRequests: localAccessRequests,
     currentUserId: localCurrentUserId,
@@ -12867,6 +13402,42 @@ function inventoryItemFromStructuredRow(row) {
   };
 }
 
+function keyFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    id: row.id,
+    customerId: row.customer_id || "",
+    locationId: row.location_id || "",
+    uniqueTagId: row.unique_tag_id || payload.uniqueTagId || payload.unique_tag_id || "",
+    keyName: row.key_name || payload.keyName || payload.name || "",
+    keyNumber: row.key_number || payload.keyNumber || "",
+    storageLocation: row.storage_location || payload.storageLocation || "",
+    currentStatus: row.current_status || payload.currentStatus || "Available",
+    currentHolderId: row.current_holder_id || payload.currentHolderId || "",
+    currentHolderName: row.current_holder_name || payload.currentHolderName || "",
+    notes: row.notes || payload.notes || "",
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || "",
+    ...payload
+  };
+}
+
+function keyLogFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    id: row.id,
+    keyId: row.key_id || payload.keyId || "",
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    userId: row.user_id || payload.userId || "",
+    userName: row.user_name || payload.userName || "",
+    action: row.action || payload.action || "Check-In",
+    notes: row.notes || payload.notes || "",
+    timestamp: row.timestamp || payload.timestamp || payload.createdAt || "",
+    ...payload
+  };
+}
+
 function groupStructuredHistoryByAsset(historyRows = []) {
   const grouped = new Map();
   historyRows.forEach((row) => {
@@ -12899,12 +13470,14 @@ function newestStructuredUpdatedAt(rows) {
     ...rows.serviceRequests,
     ...rows.history,
     ...(rows.preferredContractors || []),
-    ...(rows.inventoryItems || [])
+    ...(rows.inventoryItems || []),
+    ...(rows.keys || []),
+    ...(rows.keyLogs || [])
   ]);
 }
 
 function newestTimestampFromRows(rows = []) {
-  return rows.map((row) => row.updated_at || row.completed_at || row.created_at || "")
+  return rows.map((row) => row.updated_at || row.completed_at || row.timestamp || row.created_at || "")
     .filter(Boolean)
     .sort()
     .at(-1) || new Date().toISOString();
@@ -13093,6 +13666,8 @@ function buildSharedStatePayload(uploadedAt) {
     serviceRequests: state.serviceRequests || [],
     preferredContractors: state.preferredContractors || [],
     inventoryItems: state.inventoryItems || [],
+    keys: state.keys || [],
+    keyLogs: state.keyLogs || [],
     users: (state.users || []).map(sanitizeSharedUser),
     accessRequests: state.accessRequests || [],
     activityLog: state.activityLog || [],
@@ -13112,6 +13687,8 @@ function hasSharedMaintenanceData(candidate) {
     candidate?.serviceRequests?.length ||
     candidate?.preferredContractors?.length ||
     candidate?.inventoryItems?.length ||
+    candidate?.keys?.length ||
+    candidate?.keyLogs?.length ||
     candidate?.users?.some((user) => user.username !== "scan-customer") ||
     candidate?.accessRequests?.length
   );
@@ -13169,6 +13746,8 @@ async function syncStructuredDataToSupabase() {
     const syncServiceRequests = (state.serviceRequests || []).filter(canSyncCustomerOwnedRecord);
     const syncPreferredContractors = (state.preferredContractors || []).filter(canSyncCustomerOwnedRecord);
     const syncInventoryItems = (state.inventoryItems || []).filter(canSyncCustomerOwnedRecord);
+    const syncKeys = (state.keys || []).filter(canSyncCustomerOwnedRecord);
+    const syncKeyLogs = (state.keyLogs || []).filter(canSyncCustomerOwnedRecord);
 
     await upsertStructuredRows("customers", syncCustomers.map((customer) => ({
       id: customer.id,
@@ -13333,6 +13912,51 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(item)
     })));
 
+    const cloudReadyKeys = syncKeys.filter((key) =>
+      !key.customerId || cloudCustomerIds.has(key.customerId)
+    );
+    const skippedKeys = syncKeys.length - cloudReadyKeys.length;
+    if (skippedKeys > 0) {
+      console.warn(`Skipped ${skippedKeys} key sync row(s) because their linked customer is missing locally.`);
+    }
+
+    await upsertStructuredRows("keys", cloudReadyKeys.map((key) => ({
+      id: key.id,
+      customer_id: key.customerId || null,
+      location_id: key.locationId || null,
+      unique_tag_id: key.uniqueTagId || "",
+      key_name: key.keyName || key.name || "",
+      key_number: key.keyNumber || "",
+      storage_location: key.storageLocation || "",
+      current_status: KEY_STATUS_OPTIONS.includes(key.currentStatus) ? key.currentStatus : "Available",
+      current_holder_id: isUuid(key.currentHolderId) ? key.currentHolderId : null,
+      current_holder_name: key.currentHolderName || "",
+      notes: key.notes || "",
+      created_at: key.createdAt || new Date().toISOString(),
+      updated_at: key.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: leanCloudRecord(key)
+    })));
+
+    const cloudKeyIds = new Set(cloudReadyKeys.map((key) => key.id).filter(Boolean));
+    const cloudReadyKeyLogs = syncKeyLogs.filter((log) => log.keyId && cloudKeyIds.has(log.keyId));
+    const skippedKeyLogs = syncKeyLogs.length - cloudReadyKeyLogs.length;
+    if (skippedKeyLogs > 0) {
+      console.warn(`Skipped ${skippedKeyLogs} key log sync row(s) because their linked key is missing locally.`);
+    }
+
+    await upsertStructuredRows("key_logs", cloudReadyKeyLogs.map((log) => ({
+      id: log.id,
+      key_id: log.keyId,
+      customer_id: log.customerId || null,
+      location_id: log.locationId || null,
+      user_id: isUuid(log.userId) ? log.userId : null,
+      user_name: log.userName || "",
+      action: log.action === "Check-Out" ? "Check-Out" : "Check-In",
+      notes: log.notes || "",
+      timestamp: log.timestamp || log.createdAt || new Date().toISOString(),
+      data: leanCloudRecord(log)
+    })));
+
     const historyRows = syncAssets.filter(canSyncHistoryRecord).flatMap((asset) => (asset.history || []).map((item) => ({
       id: item.id,
       pm_number: item.pmNumber || null,
@@ -13376,6 +14000,10 @@ async function upsertStructuredRows(table, rows) {
       markSyncError("NFC tag details saved inside equipment data. Run the NFC Supabase SQL to enable short NFC lookup columns.");
       return;
     }
+    if (["keys", "key_logs"].includes(table) && isMissingStructuredTableError(error)) {
+      markSyncError("Key custody is local only until supabase-key-custody.sql is run in Supabase.");
+      return;
+    }
     const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
     console.warn(`Structured Supabase sync skipped for ${table}.`, error);
@@ -13392,6 +14020,17 @@ function hasMissingAssetNfcColumnError(error) {
   return ["nfc_uid", "nfc_url", "nfc_written_at", "nfc_status"].some((column) =>
     isMissingColumnError(error, column)
   );
+}
+
+function isMissingStructuredTableError(error) {
+  const message = String(error?.message || error || "");
+  return message.includes("PGRST205") ||
+    message.includes("Could not find the table") ||
+    message.includes("does not exist");
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
 
 function stripAssetNfcColumns(row) {
@@ -13622,6 +14261,8 @@ function normalizeState(input) {
     serviceRequests: input.serviceRequests || [],
     preferredContractors: input.preferredContractors || [],
     inventoryItems: input.inventoryItems || [],
+    keys: input.keys || [],
+    keyLogs: input.keyLogs || [],
     users: input.users || [],
     accessRequests: input.accessRequests || [],
     activityLog: input.activityLog || [],
@@ -13812,6 +14453,36 @@ function normalizeState(input) {
     updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
   })).filter((item) => item.name);
 
+  normalized.keys = normalized.keys.map((key) => ({
+    ...key,
+    id: key.id || crypto.randomUUID(),
+    customerId: key.customerId || normalized.customers[0]?.id || "",
+    locationId: key.locationId || "",
+    uniqueTagId: normalizeNfcUid(key.uniqueTagId || key.unique_tag_id || key.nfcUid || ""),
+    keyName: key.keyName || key.name || "",
+    keyNumber: key.keyNumber || "",
+    storageLocation: key.storageLocation || "",
+    currentStatus: KEY_STATUS_OPTIONS.includes(key.currentStatus) ? key.currentStatus : "Available",
+    currentHolderId: key.currentHolderId || "",
+    currentHolderName: key.currentHolderName || "",
+    notes: key.notes || "",
+    createdAt: key.createdAt || new Date().toISOString(),
+    updatedAt: key.updatedAt || key.createdAt || new Date().toISOString()
+  })).filter((key) => key.keyName);
+
+  normalized.keyLogs = normalized.keyLogs.map((log) => ({
+    ...log,
+    id: log.id || crypto.randomUUID(),
+    keyId: log.keyId || "",
+    customerId: log.customerId || "",
+    locationId: log.locationId || "",
+    userId: log.userId || "",
+    userName: log.userName || "",
+    action: log.action === "Check-Out" ? "Check-Out" : "Check-In",
+    notes: log.notes || "",
+    timestamp: log.timestamp || log.createdAt || new Date().toISOString()
+  })).filter((log) => log.keyId);
+
   return normalized;
 }
 
@@ -13825,6 +14496,8 @@ function emptyState() {
     serviceRequests: [],
     preferredContractors: [],
     inventoryItems: [],
+    keys: [],
+    keyLogs: [],
     users: [],
     accessRequests: [],
     activityLog: [],

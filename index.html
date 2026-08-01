@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260731-email-status">
+    <link rel="stylesheet" href="/styles.css?v=20260731-key-custody">
 </head>
 <body>
   <section id="publicReportScreen" class="report-screen hidden">
@@ -172,6 +172,9 @@
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="inventoryPanel" aria-expanded="false">
             <span>Inventory</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="keysPanel" aria-expanded="false">
+            <span>Keys</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="templatesPanel" data-template-nav aria-expanded="false">
             <span>Templates</span>
@@ -451,6 +454,7 @@
             <button id="newIssueBtn" type="button" class="secondary">New Ticket</button>
             <button id="newServiceRequestBtn" type="button" class="secondary">New Service Request</button>
             <button id="newInventoryBtn" type="button" class="secondary">New Inventory Item</button>
+            <button id="newKeyBtn" type="button" class="secondary">New Key</button>
           </div>
         </div>
       </section>
@@ -1025,6 +1029,59 @@
         </div>
       </section>
 
+        <section id="keysPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="keysPanel">
+          <h2>Keys</h2>
+          <div class="panel-title-actions">
+            <span id="keyCount">0</span>
+          </div>
+        </div>
+        <div data-panel-body>
+          <details id="keyCreateDrawer" class="service-request-create-drawer work-create-drawer">
+            <summary>Add Key</summary>
+            <form id="keyForm" class="stack compact-form">
+              <div class="form-grid">
+                <label>
+                  Customer
+                  <select id="keyCustomer"></select>
+                </label>
+                <label>
+                  Location
+                  <select id="keyLocation"></select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Key name
+                  <input id="keyName" required placeholder="Electrical room key">
+                </label>
+                <label>
+                  Key number
+                  <input id="keyNumber" placeholder="K-101">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  NFC tag UID
+                  <input id="keyTagUid" placeholder="Scan or type tag UID">
+                </label>
+                <label>
+                  Storage location
+                  <input id="keyStorageLocation" placeholder="Lock box, office, cabinet">
+                </label>
+              </div>
+              <label>
+                Notes
+                <textarea id="keyNotes" rows="3" placeholder="Access notes, lock info, or return instructions"></textarea>
+              </label>
+              <button type="submit" class="primary">Add Key</button>
+              <p id="keyStatus" class="inline-status"></p>
+            </form>
+          </details>
+          <div id="keyList" class="inventory-list"></div>
+        </div>
+      </section>
+
         <section id="completedPmPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="completedPmPanel">
           <h2>Completed Tickets</h2>
@@ -1320,6 +1377,7 @@
       <button type="button" data-mobile-create-action="newTicket">Create Ticket</button>
       <button type="button" data-mobile-create-action="newServiceRequest">Create Service Call</button>
       <button type="button" data-mobile-create-action="newInventory">Add Inventory Item</button>
+      <button type="button" data-mobile-create-action="newKey">Add Key</button>
     </div>
   </nav>
 
@@ -1419,7 +1477,7 @@
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/app.js?v=20260731-email-status"></script>
+  <script src="/app.js?v=20260731-key-custody"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
