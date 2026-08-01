@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-public-report-stability";
+const SITEWORKS_APP_VERSION = "20260731-key-location-fk-fix";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -14228,42 +14228,55 @@ async function syncStructuredDataToSupabase() {
       };
     }));
 
+    const cloudCustomerIds = new Set(syncCustomers.map((customer) => customer.id).filter(Boolean));
+    const cloudLocationIds = new Set(syncLocations.map((locationRecord) => locationRecord.id).filter(Boolean));
     const cloudAssetIds = new Set(syncAssets.map((asset) => asset.id).filter(Boolean));
     const cloudReadyWorkOrders = syncWorkOrders.filter((item) =>
-      !item.assetId || cloudAssetIds.has(item.assetId)
+      (!item.customerId || cloudCustomerIds.has(item.customerId)) &&
+      (!item.assetId || cloudAssetIds.has(item.assetId))
     );
     const skippedWorkOrders = syncWorkOrders.length - cloudReadyWorkOrders.length;
     if (skippedWorkOrders > 0) {
-      console.warn(`Skipped ${skippedWorkOrders} ticket sync row(s) because their linked equipment is missing locally.`);
+      console.warn(`Skipped ${skippedWorkOrders} ticket sync row(s) because their linked customer or equipment is missing locally.`);
     }
 
-    await upsertStructuredRows("work_orders", cloudReadyWorkOrders.map((item) => ({
-      id: item.id,
-      issue_number: item.issueNumber || null,
-      asset_id: item.assetId || null,
-      customer_id: item.customerId || null,
-      location_id: item.locationId || null,
-      title: item.title || "",
-      priority: item.priority || "Medium",
-      status: item.status || "Open",
-      source: item.source || "",
-      area_name: item.areaName || "",
-      assigned_user_id: item.assignedUserId || "",
-      assigned_user_name: item.assignedUserName || "",
-      notes: item.notes || "",
-      due_at: item.dueAt || null,
-      resolved_at: item.resolvedAt || null,
-      created_at: item.createdAt || new Date().toISOString(),
-      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: leanCloudRecord(item)
-    })));
+    await upsertStructuredRows("work_orders", cloudReadyWorkOrders.map((item) => {
+      const row = {
+        id: item.id,
+        issue_number: item.issueNumber || null,
+        asset_id: item.assetId || null,
+        customer_id: item.customerId || null,
+        location_id: item.locationId && cloudLocationIds.has(item.locationId) ? item.locationId : null,
+        title: item.title || "",
+        priority: item.priority || "Medium",
+        status: item.status || "Open",
+        source: item.source || "",
+        area_name: item.areaName || "",
+        assigned_user_id: item.assignedUserId || "",
+        assigned_user_name: item.assignedUserName || "",
+        notes: item.notes || "",
+        due_at: item.dueAt || null,
+        resolved_at: item.resolvedAt || null,
+        created_at: item.createdAt || new Date().toISOString(),
+        updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+        data: leanCloudRecord(item)
+      };
+      if (item.locationId && !row.location_id) {
+        row.data = {
+          ...row.data,
+          missingLocationId: item.locationId
+        };
+      }
+      return row;
+    }));
 
     const cloudReadyServiceRequests = syncServiceRequests.filter((item) =>
-      !item.assetId || cloudAssetIds.has(item.assetId)
+      (!item.customerId || cloudCustomerIds.has(item.customerId)) &&
+      (!item.assetId || cloudAssetIds.has(item.assetId))
     );
     const skippedServiceRequests = syncServiceRequests.length - cloudReadyServiceRequests.length;
     if (skippedServiceRequests > 0) {
-      console.warn(`Skipped ${skippedServiceRequests} service request sync row(s) because their linked equipment is missing locally.`);
+      console.warn(`Skipped ${skippedServiceRequests} service request sync row(s) because their linked customer or equipment is missing locally.`);
     }
 
     await upsertStructuredRows("service_requests", cloudReadyServiceRequests.map((item) => ({
@@ -14271,7 +14284,7 @@ async function syncStructuredDataToSupabase() {
       service_request_number: item.serviceRequestNumber || null,
       asset_id: item.assetId || null,
       customer_id: item.customerId || null,
-      location_id: item.locationId || null,
+      location_id: item.locationId && cloudLocationIds.has(item.locationId) ? item.locationId : null,
       title: item.title || "",
       priority: item.priority || "Medium",
       status: item.status || "New",
@@ -14288,7 +14301,6 @@ async function syncStructuredDataToSupabase() {
       data: leanCloudRecord(item)
     })));
 
-    const cloudCustomerIds = new Set(syncCustomers.map((customer) => customer.id).filter(Boolean));
     const cloudReadyPreferredContractors = syncPreferredContractors.filter((contractor) =>
       !contractor.customerId || cloudCustomerIds.has(contractor.customerId)
     );
@@ -14343,7 +14355,7 @@ async function syncStructuredDataToSupabase() {
     await upsertStructuredRows("keys", cloudReadyKeys.map((key) => ({
       id: key.id,
       customer_id: key.customerId || null,
-      location_id: key.locationId || null,
+      location_id: key.locationId && cloudLocationIds.has(key.locationId) ? key.locationId : null,
       unique_tag_id: key.uniqueTagId || "",
       key_name: key.keyName || key.name || "",
       key_number: key.keyNumber || "",
@@ -14368,13 +14380,16 @@ async function syncStructuredDataToSupabase() {
       id: log.id,
       key_id: log.keyId,
       customer_id: log.customerId || null,
-      location_id: log.locationId || null,
+      location_id: log.locationId && cloudLocationIds.has(log.locationId) ? log.locationId : null,
       user_id: isUuid(log.userId) ? log.userId : null,
       user_name: log.userName || "",
       action: log.action === "Check-Out" ? "Check-Out" : "Check-In",
       notes: log.notes || "",
       timestamp: log.timestamp || log.createdAt || new Date().toISOString(),
-      data: leanCloudRecord(log)
+      data: leanCloudRecord({
+        ...log,
+        locationId: log.locationId && cloudLocationIds.has(log.locationId) ? log.locationId : ""
+      })
     })));
 
     const historyRows = syncAssets.filter(canSyncHistoryRecord).flatMap((asset) => (asset.history || []).map((item) => ({
