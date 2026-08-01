@@ -6541,7 +6541,7 @@ function renderSiteMap() {
       ? assets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name || asset.equipmentId || "Equipment")} - ${escapeHtml(getLocation(asset.locationId)?.name || "No location")}</option>`).join("")
       : `<option value="">No equipment in this view</option>`;
   }
-  const imageUrl = map?.image?.dataUrl || map?.image?.url || "";
+  const imageUrl = mediaSource(map?.image);
   if (els.siteMapCanvas) {
     els.siteMapCanvas.classList.toggle("has-map", Boolean(imageUrl));
     els.siteMapCanvas.innerHTML = imageUrl
@@ -6604,7 +6604,7 @@ async function handleSiteMapImageChange() {
 
 function startSiteMapPinPlacement() {
   const map = getCurrentSiteMap(false);
-  if (!map?.image?.dataUrl && !map?.image?.url) {
+  if (!mediaSource(map?.image)) {
     updateSiteMapStatus("Upload a map image first.");
     return;
   }
