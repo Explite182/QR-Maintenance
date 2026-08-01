@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-public-key-scan-fix";
+const SITEWORKS_APP_VERSION = "20260731-public-report-stability";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -8675,12 +8675,12 @@ function getShortNfcUrlTemplate() {
 
 function getShortKeyUrl(uid) {
   const base = getQrBaseUrl().replace(/\/+$/, "");
-  return `${base}/k/${encodeURIComponent(uid)}`;
+  return `${base}?k=${encodeURIComponent(uid)}`;
 }
 
 function getShortKeyUrlTemplate() {
   const base = getQrBaseUrl().replace(/\/+$/, "");
-  return `${base}/k/{uid}`;
+  return `${base}?k={uid}`;
 }
 
 function getShortNfcUidFromPath() {
@@ -8694,6 +8694,8 @@ function getShortNfcUidFromPath() {
 }
 
 function getShortKeyUidFromPath() {
+  const queryUid = new URLSearchParams(location.search).get("k");
+  if (queryUid) return queryUid.trim();
   const match = String(location.pathname || "").match(/\/k\/([^/?#]+)/i);
   if (!match) return "";
   try {
@@ -12223,30 +12225,33 @@ function isPublicReportUrl() {
 }
 
 function isPublicKeyUrl() {
-  return Boolean(getShortKeyUidFromPath());
+  const params = new URLSearchParams(location.search);
+  return Boolean(getShortKeyUidFromPath() || params.get("kid") || params.get("keyId"));
 }
 
 async function renderPublicKeyScan() {
   ensurePublicKeyScreenMarkup();
   const uid = normalizeNfcUid(getShortKeyUidFromPath());
-  if (!uid) {
+  const keyId = getPublicKeyIdFromUrl();
+  const lookupToken = uid || keyId;
+  if (!lookupToken) {
     els.publicKeyTitle.textContent = "Key tag not found";
     els.publicKeyContext.textContent = "This NFC link is missing a tag ID.";
     els.publicKeyCard.innerHTML = "";
     els.publicKeyForm.classList.add("hidden");
     return;
   }
-  if (publicKeyLookupState.uid !== uid) {
-    publicKeyLookupState = { uid, loading: false, loaded: false, key: null, message: "" };
+  if (publicKeyLookupState.uid !== lookupToken) {
+    publicKeyLookupState = { uid: lookupToken, loading: false, loaded: false, key: null, message: "" };
   }
   if (!publicKeyLookupState.loaded && !publicKeyLookupState.loading) {
-    loadPublicKey(uid);
+    loadPublicKey(uid, keyId);
   }
   const key = publicKeyLookupState.key;
   els.publicKeyTitle.textContent = key?.key_name || "Key check-in";
   els.publicKeyContext.textContent = key
     ? [key.customer_name, key.location_name].filter(Boolean).join(" | ")
-    : `NFC UID ${uid}`;
+    : uid ? `NFC UID ${uid}` : "SiteWorks key";
   if (publicKeyLookupState.loading) {
     els.publicKeyCard.innerHTML = `<p class="login-message">Loading key...</p>`;
     els.publicKeyForm.classList.add("hidden");
@@ -12257,7 +12262,7 @@ async function renderPublicKeyScan() {
       <article class="inventory-item">
         <strong>Unassigned NFC tag</strong>
         <p>This tag is not assigned to a SiteWorks key yet.</p>
-        <small>UID ${escapeHtml(uid)}</small>
+        <small>${uid ? `UID ${escapeHtml(uid)}` : "Key record was not found"}</small>
       </article>
     `;
     els.publicKeyForm.classList.add("hidden");
@@ -12282,6 +12287,11 @@ async function renderPublicKeyScan() {
   els.publicKeyCheckOutBtn.disabled = checkedOut;
   els.publicKeyCheckInBtn.disabled = !checkedOut;
   els.publicKeyMessage.textContent = publicKeyLookupState.message || "";
+}
+
+function getPublicKeyIdFromUrl() {
+  const params = new URLSearchParams(location.search);
+  return params.get("kid") || params.get("keyId") || "";
 }
 
 function ensurePublicKeyScreenMarkup() {
@@ -12327,11 +12337,11 @@ function ensurePublicKeyScreenMarkup() {
   els.publicKeyCheckInBtn?.addEventListener("click", () => submitPublicKeyAction("Check-In"));
 }
 
-async function loadPublicKey(uid) {
+async function loadPublicKey(uid, keyId = "") {
   publicKeyLookupState.loading = true;
   renderPublicKeyScan();
   try {
-    const response = await siteworksApi.lookupPublicKey(uid);
+    const response = await siteworksApi.lookupPublicKey(uid, keyId);
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     publicKeyLookupState.key = data?.found === false ? null : data;
@@ -12350,6 +12360,8 @@ async function loadPublicKey(uid) {
 
 async function submitPublicKeyAction(action) {
   const uid = normalizeNfcUid(getShortKeyUidFromPath());
+  const keyId = getPublicKeyIdFromUrl();
+  const lookupToken = uid || keyId;
   const holder = els.publicKeyHolder.value.trim();
   if (!holder) {
     els.publicKeyMessage.textContent = "Enter your name first.";
@@ -12362,6 +12374,7 @@ async function submitPublicKeyAction(action) {
   try {
     const response = await siteworksApi.submitPublicKeyAction({
       tag_uid: uid,
+      key_id: keyId,
       action,
       holder_name: holder,
       notes: els.publicKeyNote.value.trim()
@@ -12369,7 +12382,7 @@ async function submitPublicKeyAction(action) {
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     publicKeyLookupState = {
-      uid,
+      uid: lookupToken,
       loading: false,
       loaded: true,
       key: data,
@@ -12870,11 +12883,14 @@ const siteworksApi = {
     ].filter(Boolean).join("&");
     return cloudApi.rest(`public_reports?${query}`);
   },
-  lookupPublicKey(uid) {
-    if (siteworksServerEnabled()) return this.server(`/api/public/keys/${encodeURIComponent(uid)}`);
+  lookupPublicKey(uid, keyId = "") {
+    if (siteworksServerEnabled()) {
+      const query = keyId ? `?key_id=${encodeURIComponent(keyId)}` : "";
+      return this.server(`/api/public/keys/${encodeURIComponent(uid || "lookup")}${query}`);
+    }
     return cloudApi.rest("rpc/siteworks_public_key_lookup", {
       method: "POST",
-      body: JSON.stringify({ tag_uid: uid })
+      body: JSON.stringify({ tag_uid: uid, key_id: keyId })
     });
   },
   submitPublicKeyAction(payload) {
@@ -13382,6 +13398,7 @@ async function bootstrapCloudData() {
   await loadSupabaseProfiles({ renderAfter: false });
   const loadedStructuredData = await loadStructuredDataFromSupabase({ forceReload: true });
   if (!loadedStructuredData && canUseSharedStateFallback()) await loadSharedStateFromSupabase();
+  await syncPublicReportsFromSupabase(true);
   if (!focusScannedAssetContext()) {
     restoreScannedAssetSelection();
     syncFiltersToSelectedAsset();
@@ -13396,6 +13413,7 @@ async function refreshCloudDataFromSupabase() {
   await loadSupabaseProfiles({ renderAfter: false });
   const loadedStructuredData = await loadStructuredDataFromSupabase({ forceReload: true });
   if (!loadedStructuredData && canUseSharedStateFallback()) await loadSharedStateFromSupabase();
+  await syncPublicReportsFromSupabase(true);
   restoreScannedAssetSelection();
   render();
 }
@@ -13567,6 +13585,7 @@ function applyStructuredState(rows, updatedAt = "") {
   const localUsers = state.users || [];
   const localAccessRequests = state.accessRequests || [];
   const localCurrentUserId = state.currentUserId || "";
+  const localWorkOrders = state.workOrders || [];
   const nextAssets = rows.assets.map(assetFromStructuredRow);
   const historyByAsset = groupStructuredHistoryByAsset(rows.history);
   nextAssets.forEach((asset) => {
@@ -13581,7 +13600,10 @@ function applyStructuredState(rows, updatedAt = "") {
     locations: rows.locations.map(locationFromStructuredRow),
     templates: rows.templates.map(templateFromStructuredRow),
     assets: nextAssets,
-    workOrders: rows.workOrders.map(workOrderFromStructuredRow),
+    workOrders: mergeStructuredWorkOrdersWithLocalPublicReports(
+      rows.workOrders.map(workOrderFromStructuredRow),
+      localWorkOrders
+    ),
     serviceRequests: rows.serviceRequests.map(serviceRequestFromStructuredRow),
     preferredContractors: rows.preferredContractors.map(preferredContractorFromStructuredRow),
     inventoryItems: (rows.inventoryItems || []).map(inventoryItemFromStructuredRow),
@@ -13601,6 +13623,21 @@ function applyStructuredState(rows, updatedAt = "") {
   applyingSharedState = false;
   render();
   window.setTimeout(syncLoginQrReportPrompt, 0);
+}
+
+function mergeStructuredWorkOrdersWithLocalPublicReports(structuredWorkOrders = [], localWorkOrders = []) {
+  const merged = structuredWorkOrders.slice();
+  const knownIds = new Set(merged.map((item) => item.id).filter(Boolean));
+  const knownRemoteReportIds = new Set(merged.map((item) => item.remoteReportId).filter(Boolean));
+  localWorkOrders.forEach((item) => {
+    if (!isCustomerReportedIssue(item) || !item.remoteReportId) return;
+    if (state.dismissedPublicReportIds.includes(item.remoteReportId)) return;
+    if (knownIds.has(item.id) || knownRemoteReportIds.has(item.remoteReportId)) return;
+    merged.unshift(item);
+    knownIds.add(item.id);
+    knownRemoteReportIds.add(item.remoteReportId);
+  });
+  return merged;
 }
 
 function structuredPayload(row) {
@@ -14465,14 +14502,15 @@ function createIssueFromRemoteReport(report) {
   const matchedLocation = findLocationForRemoteReport(report, matchedCustomer);
   const customerId = asset?.customerId || matchedCustomer?.id || report.customer_id || "";
   const locationId = asset?.locationId || matchedLocation?.id || report.location_id || "";
+  const reportedEquipmentId = report.equipment_id || "";
   return {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
     remoteReportId: report.id,
-    assetId: asset?.id || report.equipment_id || "",
+    assetId: asset?.id || "",
     customerId,
     locationId,
-    areaName: asset ? "" : report.location_name || "Area report",
+    areaName: asset ? "" : report.equipment_name || report.location_name || "Area report",
     source: "Public QR report",
     title: `Customer report: ${asset?.name || report.equipment_name || report.location_name || "Area"}`,
     priority: "Medium",
@@ -14483,6 +14521,7 @@ function createIssueFromRemoteReport(report) {
     notes: [
       report.note || "",
       report.contact ? `Contact: ${report.contact}` : "",
+      !asset && reportedEquipmentId ? `Reported equipment ID: ${reportedEquipmentId}` : "",
       "Source: public QR report"
     ].filter(Boolean).join("\n"),
     photo: report.photo_data_url ? { name: report.photo_name || "Report photo", url: report.photo_data_url } : null,
