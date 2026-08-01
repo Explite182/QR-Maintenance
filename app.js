@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260731-key-public-action-v2";
+const SITEWORKS_APP_VERSION = "20260801-key-cloud-status-precedence";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -13869,9 +13869,10 @@ function inventoryItemFromStructuredRow(row) {
 function keyFromStructuredRow(row) {
   const payload = structuredPayload(row);
   return {
-    id: row.id,
-    customerId: row.customer_id || "",
-    locationId: row.location_id || "",
+    ...payload,
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
     uniqueTagId: row.unique_tag_id || payload.uniqueTagId || payload.unique_tag_id || "",
     keyName: row.key_name || payload.keyName || payload.name || "",
     keyNumber: row.key_number || payload.keyNumber || "",
@@ -13881,8 +13882,7 @@ function keyFromStructuredRow(row) {
     currentHolderName: row.current_holder_name || payload.currentHolderName || "",
     notes: row.notes || payload.notes || "",
     createdAt: row.created_at || payload.createdAt || "",
-    updatedAt: row.updated_at || payload.updatedAt || "",
-    ...payload
+    updatedAt: row.updated_at || payload.updatedAt || ""
   };
 }
 
