@@ -99,6 +99,7 @@ let assetSort = "due";
 let assetRegisterTab = "active";
 let inventoryTab = focusedKeyId ? "keys" : "items";
 let pendingSiteMapPin = false;
+let siteMapZoom = 1;
 let assetPageSize = 25;
 let assetPage = 1;
 let selectedPrintAssetIds = new Set();
@@ -3030,6 +3031,13 @@ document.addEventListener("click", (event) => {
   if (siteMapPinDeleteButton) {
     event.preventDefault();
     deleteSiteMapPin(siteMapPinDeleteButton.dataset.deleteSiteMapPin);
+    return;
+  }
+
+  const siteMapZoomButton = event.target.closest("[data-site-map-zoom]");
+  if (siteMapZoomButton) {
+    event.preventDefault();
+    changeSiteMapZoom(siteMapZoomButton.dataset.siteMapZoom);
     return;
   }
 
@@ -6552,22 +6560,33 @@ function renderSiteMap() {
       : `<option value="">${hasLocation ? "No equipment in this location" : "Choose a location first"}</option>`;
   }
   const imageUrl = mediaSource(map?.image);
+  const zoomLabel = `${Math.round(siteMapZoom * 100)}%`;
   if (els.siteMapCanvas) {
     els.siteMapCanvas.classList.toggle("has-map", Boolean(imageUrl));
     els.siteMapCanvas.innerHTML = !hasLocation
       ? `<div class="site-map-empty">Choose a location to view or create its site map.</div>`
       : imageUrl
       ? `
-        <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(map?.name || "Site map")}">
-        ${pins.map((pin, index) => {
-          const asset = getRawAsset(pin.assetId);
-          const title = pin.label || asset?.name || `Pin ${index + 1}`;
-          return `
-            <button type="button" class="site-map-pin" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" title="${escapeAttribute(title)}">
-              <span>${index + 1}</span>
-            </button>
-          `;
-        }).join("")}
+        <div class="site-map-controls" aria-label="Site map zoom controls">
+          <button type="button" class="secondary mini" data-site-map-zoom="out">-</button>
+          <span>${escapeHtml(zoomLabel)}</span>
+          <button type="button" class="secondary mini" data-site-map-zoom="in">+</button>
+          <button type="button" class="secondary mini" data-site-map-zoom="reset">Reset</button>
+        </div>
+        <div class="site-map-viewport">
+          <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%;">
+            <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(map?.name || "Site map")}">
+            ${pins.map((pin, index) => {
+              const asset = getRawAsset(pin.assetId);
+              const title = pin.label || asset?.name || `Pin ${index + 1}`;
+              return `
+                <button type="button" class="site-map-pin" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" title="${escapeAttribute(title)}">
+                  <span>${index + 1}</span>
+                </button>
+              `;
+            }).join("")}
+          </div>
+        </div>
       `
       : `<div class="site-map-empty">Upload a site or floor plan image to start mapping equipment.</div>`;
   }
@@ -6640,6 +6659,7 @@ function startSiteMapPinPlacement() {
 }
 
 function addSiteMapPinFromEvent(event) {
+  if (event.target.closest(".site-map-controls")) return;
   if (event.target.closest("[data-open-site-map-pin]")) return;
   if (!pendingSiteMapPin) return;
   if (!isSiteMapLocationSelected()) {
@@ -6648,7 +6668,13 @@ function addSiteMapPinFromEvent(event) {
   }
   const map = getCurrentSiteMap(true);
   if (!map) return;
-  const rect = els.siteMapCanvas.getBoundingClientRect();
+  const stage = event.target.closest("[data-site-map-stage]") || els.siteMapCanvas.querySelector("[data-site-map-stage]");
+  if (!stage) {
+    updateSiteMapStatus("Upload a map image first.");
+    pendingSiteMapPin = false;
+    return;
+  }
+  const rect = stage.getBoundingClientRect();
   const x = clampPercent(((event.clientX - rect.left) / rect.width) * 100);
   const y = clampPercent(((event.clientY - rect.top) / rect.height) * 100);
   const assetId = els.siteMapPinAsset?.value || "";
@@ -6678,6 +6704,17 @@ function deleteSiteMapPin(pinId) {
   saveState();
   renderSiteMap();
   updateSiteMapStatus("Pin removed.");
+}
+
+function changeSiteMapZoom(action = "") {
+  if (action === "reset") {
+    siteMapZoom = 1;
+  } else if (action === "in") {
+    siteMapZoom = Math.min(3, Math.round((siteMapZoom + 0.25) * 100) / 100);
+  } else if (action === "out") {
+    siteMapZoom = Math.max(0.75, Math.round((siteMapZoom - 0.25) * 100) / 100);
+  }
+  renderSiteMap();
 }
 
 function clearCurrentSiteMap() {
