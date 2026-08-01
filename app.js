@@ -6744,12 +6744,8 @@ function openSiteMapAsset(assetId) {
     return;
   }
   selectedId = asset.id;
-  syncFiltersToSelectedAsset();
-  location.hash = `asset/${selectedId}`;
-  closeOtherSidebarTargets("assetRegisterDrawer");
-  openAssetRegisterDrawer();
   render();
-  els.assetPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  updateSiteMapStatus(`${asset.name || "Equipment"} opened. Close the equipment panel to return to the map.`);
 }
 
 function updateSiteMapStatus(message = "") {
