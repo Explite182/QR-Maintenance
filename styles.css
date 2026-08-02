@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260802-site-map-pdf */
+/* SiteWorks styles version: 20260802-site-map-drag */
 
 :root {
   --ink: #172126;
@@ -2951,6 +2951,13 @@ textarea {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 18px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.site-map-viewport.is-dragging {
+  cursor: grabbing;
 }
 
 .site-map-stage {

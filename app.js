@@ -100,6 +100,8 @@ let assetRegisterTab = "active";
 let inventoryTab = focusedKeyId ? "keys" : "items";
 let pendingSiteMapPin = false;
 let siteMapZoom = 1;
+let siteMapDragState = null;
+let siteMapDragSuppressClick = false;
 let assetPageSize = 25;
 let assetPage = 1;
 let selectedPrintAssetIds = new Set();
@@ -1018,6 +1020,10 @@ els.siteMapImageInput?.addEventListener("change", handleSiteMapImageChange);
 els.siteMapAddPinBtn?.addEventListener("click", startSiteMapPinPlacement);
 els.siteMapClearBtn?.addEventListener("click", clearCurrentSiteMap);
 els.siteMapCanvas?.addEventListener("click", addSiteMapPinFromEvent);
+els.siteMapCanvas?.addEventListener("pointerdown", startSiteMapDrag);
+els.siteMapCanvas?.addEventListener("pointermove", moveSiteMapDrag);
+els.siteMapCanvas?.addEventListener("pointerup", endSiteMapDrag);
+els.siteMapCanvas?.addEventListener("pointercancel", endSiteMapDrag);
 
 els.mobileCreateBtn?.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -6573,7 +6579,7 @@ function renderSiteMap() {
           <button type="button" class="secondary mini" data-site-map-zoom="in">+</button>
           <button type="button" class="secondary mini" data-site-map-zoom="reset">Reset</button>
         </div>
-        <div class="site-map-viewport">
+        <div class="site-map-viewport" data-site-map-viewport>
           <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%;">
             <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(map?.name || "Site map")}">
             ${pins.map((pin, index) => {
@@ -6660,7 +6666,60 @@ function startSiteMapPinPlacement() {
   updateSiteMapStatus("Tap the map where this equipment belongs.");
 }
 
+function startSiteMapDrag(event) {
+  if (pendingSiteMapPin) return;
+  if (event.button !== undefined && event.button !== 0) return;
+  if (event.target.closest(".site-map-controls, .site-map-pin, button, input, select, textarea, label")) return;
+  const viewport = event.target.closest("[data-site-map-viewport]");
+  if (!viewport) return;
+  const canScroll = viewport.scrollWidth > viewport.clientWidth || viewport.scrollHeight > viewport.clientHeight;
+  if (!canScroll) return;
+  siteMapDragState = {
+    pointerId: event.pointerId,
+    viewport,
+    startX: event.clientX,
+    startY: event.clientY,
+    scrollLeft: viewport.scrollLeft,
+    scrollTop: viewport.scrollTop,
+    moved: false
+  };
+  viewport.classList.add("is-dragging");
+  viewport.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+}
+
+function moveSiteMapDrag(event) {
+  if (!siteMapDragState || siteMapDragState.pointerId !== event.pointerId) return;
+  const dx = event.clientX - siteMapDragState.startX;
+  const dy = event.clientY - siteMapDragState.startY;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+    siteMapDragState.moved = true;
+    siteMapDragSuppressClick = true;
+  }
+  siteMapDragState.viewport.scrollLeft = siteMapDragState.scrollLeft - dx;
+  siteMapDragState.viewport.scrollTop = siteMapDragState.scrollTop - dy;
+  event.preventDefault();
+}
+
+function endSiteMapDrag(event) {
+  if (!siteMapDragState || siteMapDragState.pointerId !== event.pointerId) return;
+  const viewport = siteMapDragState.viewport;
+  const moved = siteMapDragState.moved;
+  viewport.classList.remove("is-dragging");
+  viewport.releasePointerCapture?.(event.pointerId);
+  siteMapDragState = null;
+  if (moved) {
+    window.setTimeout(() => {
+      siteMapDragSuppressClick = false;
+    }, 0);
+  }
+}
+
 function addSiteMapPinFromEvent(event) {
+  if (siteMapDragSuppressClick) {
+    siteMapDragSuppressClick = false;
+    return;
+  }
   if (event.target.closest(".site-map-controls")) return;
   if (event.target.closest("[data-open-site-map-pin]")) return;
   if (!pendingSiteMapPin) return;
