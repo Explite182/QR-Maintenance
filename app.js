@@ -3651,12 +3651,19 @@ function closeOtherSidebarTargets(activeTargetId) {
 }
 
 function syncCalendarFocusState() {
-  const calendarOpen = Boolean(
-    document.getElementById("pmCalendarPanel") &&
-    !document.getElementById("pmCalendarPanel").classList.contains("hidden") &&
-    !document.getElementById("pmCalendarPanel").classList.contains("is-collapsed")
-  );
+  const calendarOpen = isPanelVisiblyOpen("pmCalendarPanel");
+  const siteMapOpen = isPanelVisiblyOpen("siteMapPanel");
   els.appShell?.classList.toggle("calendar-focus", calendarOpen);
+  els.appShell?.classList.toggle("site-map-focus", siteMapOpen);
+}
+
+function isPanelVisiblyOpen(panelId) {
+  const panel = document.getElementById(panelId);
+  return Boolean(
+    panel &&
+    !panel.classList.contains("hidden") &&
+    !panel.classList.contains("is-collapsed")
+  );
 }
 
 function isPmPanelOpen() {

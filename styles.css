@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260802-site-map-drag */
+/* SiteWorks styles version: 20260802-site-map-focus */
 
 :root {
   --ink: #172126;
@@ -2975,6 +2975,35 @@ textarea {
   min-height: 520px;
   object-fit: contain;
   background: #ffffff;
+}
+
+.app-shell.site-map-focus .dashboard-panel {
+  display: none;
+}
+
+@media (min-width: 1181px) {
+  .app-shell.site-map-focus #siteMapPanel {
+    padding: 14px;
+  }
+
+  .app-shell.site-map-focus .site-map-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+    gap: 12px;
+  }
+
+  .app-shell.site-map-focus .site-map-viewport {
+    height: min(84vh, 960px);
+    min-height: 680px;
+  }
+
+  .app-shell.site-map-focus .site-map-canvas,
+  .app-shell.site-map-focus .site-map-empty {
+    min-height: 680px;
+  }
+
+  .app-shell.site-map-focus .site-map-image {
+    min-height: 640px;
+  }
 }
 
 .site-map-empty {
@@ -6403,6 +6432,33 @@ body.panel-schedule-open {
 
   .app-shell.calendar-focus .metric-trend {
     display: none;
+  }
+
+  .app-shell.site-map-focus .dashboard-panel {
+    display: none;
+  }
+
+  .app-shell.site-map-focus #siteMapPanel {
+    padding: 14px;
+  }
+
+  .app-shell.site-map-focus .site-map-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+    gap: 12px;
+  }
+
+  .app-shell.site-map-focus .site-map-viewport {
+    height: min(84vh, 960px);
+    min-height: 680px;
+  }
+
+  .app-shell.site-map-focus .site-map-canvas,
+  .app-shell.site-map-focus .site-map-empty {
+    min-height: 680px;
+  }
+
+  .app-shell.site-map-focus .site-map-image {
+    min-height: 640px;
   }
 
   .app-shell.calendar-focus #pmCalendarPanel {
