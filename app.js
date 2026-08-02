@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260802-site-map-pin-tooltip-fix";
+const SITEWORKS_APP_VERSION = "20260802-site-map-cloud-sync";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -6672,7 +6672,9 @@ async function handleSiteMapImageChange() {
     pendingSiteMapPin = false;
     saveState();
     renderSiteMap();
-    updateSiteMapStatus(isPdfFile(file) ? "PDF map saved. Choose equipment, then Add Pin." : "Map image saved. Choose equipment, then Add Pin.");
+    updateSiteMapStatus(siteMapImageIsCloudReady(image)
+      ? `${isPdfFile(file) ? "PDF map" : "Map image"} saved to cloud. It should show on iPad after refresh. Choose equipment, then Add Pin.`
+      : `${isPdfFile(file) ? "PDF map" : "Map image"} saved only on this device because cloud storage did not accept the upload. It will not show on iPad until storage upload works.`);
   } catch (error) {
     console.warn("Site map file could not be loaded.", error);
     updateSiteMapStatus(error?.message || "Map file could not be loaded.");
@@ -14216,7 +14218,8 @@ async function loadStructuredDataFromSupabase(options = {}) {
       preferredContractorRows,
       inventoryItemRows,
       keyRows,
-      keyLogRows
+      keyLogRows,
+      siteMapRows
     ] = await Promise.all([
       fetchStructuredRows("customers", "updated_at.asc"),
       fetchStructuredRows("locations", "updated_at.asc"),
@@ -14228,11 +14231,12 @@ async function loadStructuredDataFromSupabase(options = {}) {
       fetchOptionalStructuredRows("preferred_contractors", "updated_at.asc"),
       fetchOptionalStructuredRows("inventory_items", "updated_at.asc"),
       fetchOptionalStructuredRows("keys", "updated_at.asc"),
-      fetchOptionalStructuredRows("key_logs", "timestamp.asc")
+      fetchOptionalStructuredRows("key_logs", "timestamp.asc"),
+      fetchOptionalStructuredRows("site_maps", "updated_at.asc")
     ]);
     structuredDataLoading = false;
     structuredDataReady = true;
-    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length || inventoryItemRows.length || keyRows.length || keyLogRows.length;
+    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length || inventoryItemRows.length || keyRows.length || keyLogRows.length || siteMapRows.length;
     if (!hasRows) {
       if (hasSharedMaintenanceData(state)) scheduleStructuredDataSync(0);
       return false;
@@ -14248,7 +14252,8 @@ async function loadStructuredDataFromSupabase(options = {}) {
       preferredContractors: preferredContractorRows,
       inventoryItems: inventoryItemRows,
       keys: keyRows,
-      keyLogs: keyLogRows
+      keyLogs: keyLogRows,
+      siteMaps: siteMapRows
     };
     if (structuredRowsMissingAssets(structuredRows)) {
       markSyncError("Structured cloud load returned related records but no equipment. Keeping/restoring the last known equipment list.");
@@ -14318,7 +14323,8 @@ async function peekStructuredCloudState() {
     { table: "preferred_contractors", timestamp: "updated_at", optional: true },
     { table: "inventory_items", timestamp: "updated_at", optional: true },
     { table: "keys", timestamp: "updated_at", optional: true },
-    { table: "key_logs", timestamp: "timestamp", optional: true }
+    { table: "key_logs", timestamp: "timestamp", optional: true },
+    { table: "site_maps", timestamp: "updated_at", optional: true }
   ];
   const rows = await Promise.all(tables.map(({ table, timestamp, optional }) =>
     optional ? fetchOptionalStructuredTimestampRows(table, timestamp) : fetchStructuredTimestampRows(table, timestamp)
@@ -14380,6 +14386,7 @@ function applyStructuredState(rows, updatedAt = "") {
     inventoryItems: (rows.inventoryItems || []).map(inventoryItemFromStructuredRow),
     keys: (rows.keys || []).map(keyFromStructuredRow),
     keyLogs: (rows.keyLogs || []).map(keyLogFromStructuredRow),
+    siteMaps: (rows.siteMaps || []).map(siteMapFromStructuredRow),
     users: localUsers,
     accessRequests: localAccessRequests,
     currentUserId: localCurrentUserId,
@@ -14628,6 +14635,21 @@ function keyLogFromStructuredRow(row) {
   };
 }
 
+function siteMapFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    ...payload,
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    name: row.name || payload.name || "",
+    image: row.image || payload.image || null,
+    pins: Array.isArray(row.pins) ? row.pins : Array.isArray(payload.pins) ? payload.pins : [],
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || ""
+  };
+}
+
 function groupStructuredHistoryByAsset(historyRows = []) {
   const grouped = new Map();
   historyRows.forEach((row) => {
@@ -14662,7 +14684,8 @@ function newestStructuredUpdatedAt(rows) {
     ...(rows.preferredContractors || []),
     ...(rows.inventoryItems || []),
     ...(rows.keys || []),
-    ...(rows.keyLogs || [])
+    ...(rows.keyLogs || []),
+    ...(rows.siteMaps || [])
   ]);
 }
 
@@ -14964,6 +14987,24 @@ function buildStructuredKeyLogRow(log, cloudLocationIds = null) {
   };
 }
 
+function buildStructuredSiteMapRow(map, cloudLocationIds = null) {
+  const locationId = map.locationId && (!cloudLocationIds || cloudLocationIds.has(map.locationId)) ? map.locationId : null;
+  return {
+    id: map.id,
+    customer_id: map.customerId || null,
+    location_id: locationId,
+    name: map.name || "",
+    image: map.image || null,
+    pins: Array.isArray(map.pins) ? map.pins : [],
+    created_at: map.createdAt || new Date().toISOString(),
+    updated_at: map.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({
+      ...map,
+      locationId: locationId || ""
+    })
+  };
+}
+
 async function syncSingleKeyToSupabase(key) {
   if (!STRUCTURED_DATA_SYNC_ENABLED || !key?.id || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
   const customerId = activeCloudCustomerId();
@@ -15012,6 +15053,7 @@ async function syncStructuredDataToSupabase() {
     const syncInventoryItems = (state.inventoryItems || []).filter(canSyncCustomerOwnedRecord);
     const syncKeys = (state.keys || []).filter(canSyncCustomerOwnedRecord);
     const syncKeyLogs = (state.keyLogs || []).filter(canSyncCustomerOwnedRecord);
+    const syncSiteMaps = (state.siteMaps || []).filter(canSyncCustomerOwnedRecord);
 
     await upsertStructuredRows("customers", syncCustomers.map((customer) => ({
       id: customer.id,
@@ -15207,6 +15249,18 @@ async function syncStructuredDataToSupabase() {
 
     await upsertStructuredRows("key_logs", cloudReadyKeyLogs.map((log) => buildStructuredKeyLogRow(log, cloudLocationIds)));
 
+    const cloudReadySiteMaps = syncSiteMaps.filter((map) =>
+      (!map.customerId || cloudCustomerIds.has(map.customerId)) &&
+      map.locationId &&
+      cloudLocationIds.has(map.locationId)
+    );
+    const skippedSiteMaps = syncSiteMaps.length - cloudReadySiteMaps.length;
+    if (skippedSiteMaps > 0) {
+      console.warn(`Skipped ${skippedSiteMaps} site map sync row(s) because their linked customer or location is missing locally.`);
+    }
+
+    await upsertStructuredRows("site_maps", cloudReadySiteMaps.map((map) => buildStructuredSiteMapRow(map, cloudLocationIds)));
+
     const historyRows = syncAssets.filter(canSyncHistoryRecord).flatMap((asset) => (asset.history || []).map((item) => ({
       id: item.id,
       pm_number: item.pmNumber || null,
@@ -15250,8 +15304,10 @@ async function upsertStructuredRows(table, rows) {
       markSyncError("NFC tag details saved inside equipment data. Run the NFC Supabase SQL to enable short NFC lookup columns.");
       return;
     }
-    if (["keys", "key_logs"].includes(table) && isMissingStructuredTableError(error)) {
-      markSyncError("Key custody is local only until supabase-key-custody.sql is run in Supabase.");
+    if (["keys", "key_logs", "site_maps"].includes(table) && isMissingStructuredTableError(error)) {
+      markSyncError(table === "site_maps"
+        ? "Site maps are local only until supabase-site-maps.sql is run in Supabase."
+        : "Key custody is local only until supabase-key-custody.sql is run in Supabase.");
       return;
     }
     const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
@@ -16563,12 +16619,23 @@ async function storeSiteMapImageFile(file, dataUrl, sourceName = "") {
   const blob = dataUrlToBlob(dataUrl);
   const uploadFile = new File([blob], replaceFileExtension(file.name || "site-map.jpg", "jpg"), { type: "image/jpeg" });
   const stored = await uploadFileToSupabaseStorage(uploadFile, "site-maps");
-  return stored || {
+  return stored ? {
+    ...stored,
+    originalName: sourceName || file.name,
+    storageStatus: "cloud",
+    cloudReady: true
+  } : {
     name: uploadFile.name,
     originalName: sourceName || file.name,
     type: "image/jpeg",
-    dataUrl
+    dataUrl,
+    storageStatus: "local",
+    cloudReady: false
   };
+}
+
+function siteMapImageIsCloudReady(image) {
+  return Boolean(image?.cloudReady || image?.path || image?.storageKey || image?.storage_key || image?.url || image?.publicUrl || image?.public_url);
 }
 
 async function readDocumentFile(file, expectedType) {
