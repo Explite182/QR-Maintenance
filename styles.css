@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260802-site-map-cloud-sync */
+/* SiteWorks styles version: 20260802-site-map-controls-align */
 
 :root {
   --ink: #172126;
@@ -2875,22 +2875,39 @@ textarea {
 .site-map-toolbar {
   display: grid;
   grid-template-columns: minmax(180px, 1.1fr) minmax(220px, 1.1fr) minmax(180px, 1fr) auto;
-  gap: 12px;
+  column-gap: 12px;
+  row-gap: 6px;
   align-items: end;
 }
 
-.site-map-toolbar label {
+.site-map-field {
   display: grid;
   gap: 6px;
   color: var(--muted);
   font-weight: 800;
+  align-self: end;
+}
+
+.site-map-field input,
+.site-map-field select {
+  min-height: 42px;
+}
+
+.site-map-help {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .site-map-actions {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: end;
   flex-wrap: wrap;
+  align-self: end;
+  min-height: 42px;
 }
 
 .site-map-layout {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260802-site-map-cloud-sync">
+    <link rel="stylesheet" href="/styles.css?v=20260802-site-map-controls-align">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -781,16 +781,15 @@
         </div>
         <div class="site-map-body" data-panel-body>
           <div class="site-map-toolbar">
-            <label>
+            <label class="site-map-field site-map-file-field">
               Map file
               <input id="siteMapImageInput" type="file" accept="image/*,application/pdf,.pdf">
-              <small>PDF, PNG, or JPG. Original PDF floor plans usually look best.</small>
             </label>
-            <label>
+            <label class="site-map-field">
               Equipment
               <select id="siteMapPinAsset"></select>
             </label>
-            <label>
+            <label class="site-map-field">
               Pin label
               <input id="siteMapPinLabel" placeholder="Optional label">
             </label>
@@ -798,6 +797,7 @@
               <button id="siteMapAddPinBtn" type="button" class="primary mini">Add Pin</button>
               <button id="siteMapClearBtn" type="button" class="secondary mini">Clear Map</button>
             </div>
+            <small class="site-map-help">PDF, PNG, or JPG. Original PDF floor plans usually look best.</small>
           </div>
           <p id="siteMapStatus" class="inline-status"></p>
           <div class="site-map-layout">
@@ -1565,7 +1565,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script src="/app.js?v=20260802-site-map-cloud-sync"></script>
+  <script src="/app.js?v=20260802-site-map-controls-align"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
