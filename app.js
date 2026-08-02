@@ -6625,16 +6625,18 @@ async function handleSiteMapImageChange() {
     return;
   }
   try {
-    const image = await readPhoto(file);
+    updateSiteMapStatus(isPdfFile(file) ? "Converting PDF page 1 into a site map..." : "Preparing site map image...");
+    const image = await readSiteMapFile(file);
     map.image = image;
     map.name = siteMapScopeLabel(map);
     map.updatedAt = new Date().toISOString();
     pendingSiteMapPin = false;
     saveState();
     renderSiteMap();
-    updateSiteMapStatus("Map image saved. Choose equipment, then Add Pin.");
+    updateSiteMapStatus(isPdfFile(file) ? "PDF map saved. Choose equipment, then Add Pin." : "Map image saved. Choose equipment, then Add Pin.");
   } catch (error) {
-    updateSiteMapStatus("Map image could not be loaded.");
+    console.warn("Site map file could not be loaded.", error);
+    updateSiteMapStatus(error?.message || "Map file could not be loaded.");
   } finally {
     if (els.siteMapImageInput) els.siteMapImageInput.value = "";
   }
@@ -16425,6 +16427,58 @@ async function readGalleryPhoto(file) {
   return storeResizedPhotoFile(file, dataUrl, "equipment-gallery");
 }
 
+function isPdfFile(file) {
+  return Boolean(file && (file.type === "application/pdf" || file.name?.toLowerCase().endsWith(".pdf")));
+}
+
+async function readSiteMapFile(file) {
+  if (!file) return null;
+  if (isPdfFile(file)) {
+    return renderSiteMapPdf(file);
+  }
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Please choose a PNG, JPG, or PDF site map.");
+  }
+  const rawDataUrl = await fileToDataUrl(file);
+  const dataUrl = await resizePhotoDataUrl(rawDataUrl, 3200, 0.88);
+  return storeSiteMapImageFile(file, dataUrl);
+}
+
+async function renderSiteMapPdf(file) {
+  const pdfjs = window.pdfjsLib;
+  if (!pdfjs?.getDocument) {
+    throw new Error("PDF support is still loading. Wait a moment, then choose the PDF again.");
+  }
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfjs.GlobalWorkerOptions.workerSrc || "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  const data = await fileToArrayBuffer(file);
+  const pdfDocument = await pdfjs.getDocument({ data }).promise;
+  const page = await pdfDocument.getPage(1);
+  const baseViewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(4, Math.max(2, 3200 / Math.max(baseViewport.width, baseViewport.height)));
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const context = canvas.getContext("2d", { alpha: false });
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: context, viewport }).promise;
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+  return storeSiteMapImageFile(new File([dataUrlToBlob(dataUrl)], replaceFileExtension(file.name || "site-map.pdf", "jpg"), { type: "image/jpeg" }), dataUrl, file.name);
+}
+
+async function storeSiteMapImageFile(file, dataUrl, sourceName = "") {
+  const blob = dataUrlToBlob(dataUrl);
+  const uploadFile = new File([blob], replaceFileExtension(file.name || "site-map.jpg", "jpg"), { type: "image/jpeg" });
+  const stored = await uploadFileToSupabaseStorage(uploadFile, "site-maps");
+  return stored || {
+    name: uploadFile.name,
+    originalName: sourceName || file.name,
+    type: "image/jpeg",
+    dataUrl
+  };
+}
+
 async function readDocumentFile(file, expectedType) {
   if (!file) return null;
   const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
@@ -16583,6 +16637,15 @@ function fileToDataUrl(file) {
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+function fileToArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
   });
 }
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260801-site-map-zoom">
+    <link rel="stylesheet" href="/styles.css?v=20260802-site-map-pdf">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -782,8 +782,9 @@
         <div class="site-map-body" data-panel-body>
           <div class="site-map-toolbar">
             <label>
-              Map image
-              <input id="siteMapImageInput" type="file" accept="image/*">
+              Map file
+              <input id="siteMapImageInput" type="file" accept="image/*,application/pdf,.pdf">
+              <small>PDF, PNG, or JPG. Original PDF floor plans usually look best.</small>
             </label>
             <label>
               Equipment
@@ -1563,7 +1564,8 @@
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/app.js?v=20260801-site-map-pin-overlay"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="/app.js?v=20260802-site-map-pdf"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
