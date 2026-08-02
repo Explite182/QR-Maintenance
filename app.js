@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260801-pm-dropdown-nav";
+const SITEWORKS_APP_VERSION = "20260802-site-map-pin-hover";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -6592,9 +6592,11 @@ function renderSiteMap() {
             ${pins.map((pin, index) => {
               const asset = getRawAsset(pin.assetId);
               const title = pin.label || asset?.name || `Pin ${index + 1}`;
+              const tooltip = renderSiteMapPinTooltip(pin, index, asset, title);
               return `
-                <button type="button" class="site-map-pin" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" title="${escapeAttribute(title)}">
+                <button type="button" class="site-map-pin" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" aria-label="${escapeAttribute(title)}">
                   <span>${index + 1}</span>
+                  ${tooltip}
                 </button>
               `;
             }).join("")}
@@ -6622,6 +6624,30 @@ function renderSiteMap() {
       }).join("")
       : `<p class="metric-dropdown-empty">No equipment pins on this map yet.</p>`;
   }
+}
+
+function renderSiteMapPinTooltip(pin, index, asset, title) {
+  if (!asset) {
+    return `
+      <span class="site-map-pin-tooltip" role="tooltip">
+        <strong>${escapeHtml(title || `Pin ${index + 1}`)}</strong>
+        <small>Equipment missing</small>
+      </span>
+    `;
+  }
+  const due = getDueInfo(asset);
+  const openCount = openWorkOrdersForAsset(asset.id).length;
+  const locationName = getLocation(asset.locationId)?.name || "No location";
+  const equipmentId = getAssetEquipmentId(asset);
+  const typeLabel = asset.type || asset.category || asset.template || "Equipment";
+  return `
+    <span class="site-map-pin-tooltip" role="tooltip">
+      <strong>${escapeHtml(title || asset.name || `Pin ${index + 1}`)}</strong>
+      <small>${escapeHtml(equipmentId)}${typeLabel ? ` | ${escapeHtml(typeLabel)}` : ""}</small>
+      <small>${escapeHtml(locationName)}</small>
+      <small>${escapeHtml(due.label)}${openCount ? ` | ${openCount} open ticket${openCount === 1 ? "" : "s"}` : ""}</small>
+    </span>
+  `;
 }
 
 async function handleSiteMapImageChange() {
