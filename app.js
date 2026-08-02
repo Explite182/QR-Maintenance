@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260802-site-map-controls-align";
+const SITEWORKS_APP_VERSION = "20260802-site-map-scroll-restore";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -6561,6 +6561,10 @@ function renderSiteMap() {
   const map = getCurrentSiteMap(false);
   const assets = hasLocation ? filteredAssets() : [];
   const pins = Array.isArray(map?.pins) ? map.pins : [];
+  const previousViewport = els.siteMapCanvas?.querySelector("[data-site-map-viewport]");
+  const previousScroll = previousViewport
+    ? { left: previousViewport.scrollLeft, top: previousViewport.scrollTop }
+    : null;
   if (els.siteMapPinCount) els.siteMapPinCount.textContent = pins.length;
   if (els.siteMapImageInput) els.siteMapImageInput.disabled = !hasLocation;
   if (els.siteMapPinLabel) els.siteMapPinLabel.disabled = !hasLocation;
@@ -6604,6 +6608,17 @@ function renderSiteMap() {
         </div>
       `
       : `<div class="site-map-empty">Upload a site or floor plan image to start mapping equipment.</div>`;
+    if (previousScroll && imageUrl) {
+      const restoredViewport = els.siteMapCanvas.querySelector("[data-site-map-viewport]");
+      if (restoredViewport) {
+        const restoreScroll = () => {
+          restoredViewport.scrollLeft = previousScroll.left;
+          restoredViewport.scrollTop = previousScroll.top;
+        };
+        restoreScroll();
+        requestAnimationFrame(restoreScroll);
+      }
+    }
   }
   if (els.siteMapPinList) {
     els.siteMapPinList.innerHTML = !hasLocation
