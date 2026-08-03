@@ -7934,14 +7934,14 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(380px, 1.4fr);
+  grid-template-columns: minmax(320px, 0.9fr) minmax(480px, 1.4fr);
   gap: 16px;
   align-items: start;
 }
 
 .monitoring-results-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: minmax(360px, 1.25fr) minmax(300px, 1fr) minmax(300px, 1fr);
   gap: 16px;
   margin-top: 16px;
 }
@@ -8067,17 +8067,27 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .phase-toggle-row {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
 }
 
 .phase-toggle-row label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-weight: 800;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #d8e3e1);
+  border-radius: 8px;
+  background: rgba(245, 249, 248, 0.9);
+  line-height: 1.2;
+}
+
+.phase-toggle-row input[type="checkbox"] {
+  flex: 0 0 auto;
 }
 
 html[data-theme="dark"] .monitoring-card,
@@ -8107,16 +8117,36 @@ html[data-theme="dark"] .monitoring-channel-card.upstream-power-loss {
   background: rgba(96, 72, 22, 0.38);
 }
 
-@media (max-width: 900px) {
+html[data-theme="dark"] .phase-toggle-row label {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+@media (max-width: 1280px) {
   .monitoring-layout {
     grid-template-columns: 1fr;
   }
 
+  .monitoring-results-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
   .monitoring-record {
     display: grid;
   }
 
   .monitoring-record-actions {
     justify-content: flex-start;
+  }
+
+  .monitoring-record-actions .btn,
+  .monitoring-record-actions button {
+    flex: 1 1 auto;
+  }
+
+  .phase-toggle-row {
+    grid-template-columns: 1fr;
   }
 }
