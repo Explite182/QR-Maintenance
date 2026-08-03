@@ -8068,26 +8068,37 @@ html[data-theme="dark"] .sync-banner small {
 
 .phase-toggle-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   align-items: stretch;
 }
 
 .phase-toggle-row label {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  column-gap: 10px;
   font-weight: 800;
   min-height: 44px;
-  padding: 8px 10px;
+  min-width: 0;
+  padding: 10px 12px;
   border: 1px solid var(--line, #d8e3e1);
   border-radius: 8px;
   background: rgba(245, 249, 248, 0.9);
   line-height: 1.2;
+  overflow: visible;
 }
 
 .phase-toggle-row input[type="checkbox"] {
-  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.phase-toggle-row span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 html[data-theme="dark"] .monitoring-card,
