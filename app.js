@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260802-site-map-scroll-restore";
+const SITEWORKS_APP_VERSION = "20260802-header-sync-polish";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -13308,7 +13308,7 @@ async function initializeRealtimeSync() {
     return;
   }
   if (!window.supabase?.createClient) {
-    setSyncBanner("stale", "Timed refresh active", "Supabase Realtime helper did not load.", 5000);
+    setSyncBanner("refresh", "Cloud refresh active", "Live updates are reconnecting. Timed checks are still running.", 5000);
     return;
   }
   try {
@@ -13338,13 +13338,13 @@ async function initializeRealtimeSync() {
         setSyncBanner("live", "Live sync connected", "Updates from other devices will appear automatically.", 3600);
       } else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
         realtimeConnected = false;
-        setSyncBanner("stale", "Timed refresh active", "Live sync is not connected right now.", 5000);
+        setSyncBanner("refresh", "Cloud refresh active", "Live updates are reconnecting. Timed checks are still running.", 5000);
       }
       renderSyncHealth();
     });
   } catch (error) {
     realtimeConnected = false;
-    setSyncBanner("stale", "Timed refresh active", error?.message || "Realtime setup failed.", 5000);
+    setSyncBanner("refresh", "Cloud refresh active", "Live updates are reconnecting. Timed checks are still running.", 5000);
     console.warn("Supabase Realtime sync was not started.", error);
     renderSyncHealth();
   }

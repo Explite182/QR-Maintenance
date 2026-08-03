@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260802-site-map-scroll-restore */
+/* SiteWorks styles version: 20260802-header-sync-polish */
 
 :root {
   --ink: #172126;
@@ -213,6 +213,15 @@ html[data-theme="dark"] body {
   box-shadow: 0 0 0 4px rgba(180, 95, 6, 0.14);
 }
 
+.sync-banner.is-refresh {
+  border-left-color: var(--accent);
+}
+
+.sync-banner.is-refresh .sync-banner-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
 .login-qr-report {
   display: grid;
   gap: 8px;
@@ -389,7 +398,7 @@ textarea:disabled {
 
 .header-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-end;
   gap: 12px;
   min-width: 0;
@@ -414,8 +423,9 @@ textarea:disabled {
 .user-switcher {
   display: grid;
   gap: 6px;
-  flex: 0 0 320px;
-  min-width: 320px;
+  flex: 1 1 280px;
+  min-width: 220px;
+  max-width: 330px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
@@ -447,23 +457,30 @@ textarea:disabled {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  flex: 0 0 116px;
-  width: 116px;
+  flex: 0 1 230px;
+  width: auto;
+  max-width: 230px;
+  min-width: 112px;
   min-height: 44px;
   padding: 0 16px;
   background: #f8fbfa;
   border: 1px solid var(--line);
   border-radius: 999px;
+  overflow: hidden;
   white-space: nowrap;
 }
 
 .user-chip span {
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   line-height: 1;
+  text-overflow: ellipsis;
 }
 
 .user-chip strong {
+  flex: 0 0 auto;
   font-size: 13px;
   line-height: 1;
 }
