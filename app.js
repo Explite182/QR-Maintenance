@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260803-breaker-monitoring-phase1";
+const SITEWORKS_APP_VERSION = "20260803-monitoring-save-feedback";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
 const MONITORING_DEFAULT_HEARTBEAT_SECONDS = 120;
 const MONITORING_DEFAULT_DELAY_SECONDS = 30;
@@ -3571,66 +3571,82 @@ async function hashMonitoringApiKey(apiKey) {
 
 async function handleMonitoringDeviceSubmit(form) {
   ensureMonitoringCollections();
-  if (!canManageWorkOrders()) return;
   const elements = monitoringElements();
-  const panel = getAsset(elements.devicePanel?.value);
-  if (!panel || !isElectricalPanelAsset(panel)) {
-    if (elements.deviceStatus) elements.deviceStatus.textContent = "Choose an electrical panel first.";
+  if (!canManageWorkOrders()) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Admin or manager access is required to save monitoring devices.";
     return;
   }
-  const uid = String(elements.deviceUid?.value || "").trim();
-  const name = String(elements.deviceName?.value || "").trim();
-  if (!uid || !name) {
-    if (elements.deviceStatus) elements.deviceStatus.textContent = "Device UID and name are required.";
-    return;
+  try {
+    const panel = getAsset(elements.devicePanel?.value);
+    if (!panel || !isElectricalPanelAsset(panel)) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "Choose an electrical panel first.";
+      return;
+    }
+    const uid = String(elements.deviceUid?.value || "").trim();
+    const name = String(elements.deviceName?.value || "").trim();
+    if (!uid || !name) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "Device UID and name are required.";
+      return;
+    }
+    const existingId = elements.deviceId?.value || "";
+    const duplicate = state.monitoringDevices.find(device => device.deviceUid === uid && device.id !== existingId);
+    if (duplicate) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "That device UID is already assigned.";
+      return;
+    }
+    const now = new Date().toISOString();
+    const apiKey = String(elements.deviceApiKey?.value || "").trim();
+    const device = existingId ? getMonitoringDevice(existingId) : {
+      id: makeId(),
+      createdAt: now,
+      onlineStatus: "offline",
+      sourcePhases: normalizeMonitoringSourcePhases()
+    };
+    if (!device) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "Device could not be found for editing.";
+      return;
+    }
+    device.customerId = panel.customerId;
+    device.locationId = panel.locationId;
+    device.panelAssetId = panel.id;
+    device.deviceUid = uid;
+    device.name = name;
+    device.model = String(elements.deviceModel?.value || "").trim();
+    device.firmwareVersion = String(elements.deviceFirmware?.value || "").trim();
+    device.heartbeatSeconds = Math.max(30, Number(elements.deviceHeartbeat?.value || MONITORING_DEFAULT_HEARTBEAT_SECONDS));
+    device.maintenanceMode = Boolean(elements.deviceMaintenance?.checked);
+    device.updatedAt = now;
+    if (apiKey) {
+      device.apiKeyHash = await hashMonitoringApiKey(apiKey);
+      device.apiKeyLast4 = apiKey.slice(-4);
+    }
+    if (!existingId) {
+      state.monitoringDevices.push(device);
+      addMonitoringEvent({ deviceId: device.id, panelAssetId: panel.id, type: "device-created", message: `${name} was added.` });
+    } else {
+      addMonitoringEvent({ deviceId: device.id, panelAssetId: panel.id, type: "device-updated", message: `${name} was updated.` });
+    }
+    addActivity("Monitoring device saved", `${device.name} assigned to ${panel.name}`);
+    saveState();
+    form.reset();
+    if (elements.deviceId) elements.deviceId.value = "";
+    render();
+    const nextElements = monitoringElements();
+    if (nextElements.deviceStatus) nextElements.deviceStatus.textContent = "Device saved.";
+  } catch (error) {
+    console.error("Monitoring device save failed", error);
+    if (elements.deviceStatus) elements.deviceStatus.textContent = `Device save failed: ${error?.message || "Unknown error"}`;
   }
-  const existingId = elements.deviceId?.value || "";
-  const duplicate = state.monitoringDevices.find(device => device.deviceUid === uid && device.id !== existingId);
-  if (duplicate) {
-    if (elements.deviceStatus) elements.deviceStatus.textContent = "That device UID is already assigned.";
-    return;
-  }
-  const now = new Date().toISOString();
-  const apiKey = String(elements.deviceApiKey?.value || "").trim();
-  const device = existingId ? getMonitoringDevice(existingId) : {
-    id: makeId(),
-    createdAt: now,
-    onlineStatus: "offline",
-    sourcePhases: normalizeMonitoringSourcePhases()
-  };
-  if (!device) return;
-  device.customerId = panel.customerId;
-  device.locationId = panel.locationId;
-  device.panelAssetId = panel.id;
-  device.deviceUid = uid;
-  device.name = name;
-  device.model = String(elements.deviceModel?.value || "").trim();
-  device.firmwareVersion = String(elements.deviceFirmware?.value || "").trim();
-  device.heartbeatSeconds = Math.max(30, Number(elements.deviceHeartbeat?.value || MONITORING_DEFAULT_HEARTBEAT_SECONDS));
-  device.maintenanceMode = Boolean(elements.deviceMaintenance?.checked);
-  device.updatedAt = now;
-  if (apiKey) {
-    device.apiKeyHash = await hashMonitoringApiKey(apiKey);
-    device.apiKeyLast4 = apiKey.slice(-4);
-  }
-  if (!existingId) {
-    state.monitoringDevices.push(device);
-    addMonitoringEvent({ deviceId: device.id, panelAssetId: panel.id, type: "device-created", message: `${name} was added.` });
-  } else {
-    addMonitoringEvent({ deviceId: device.id, panelAssetId: panel.id, type: "device-updated", message: `${name} was updated.` });
-  }
-  addActivity("Monitoring device saved", `${device.name} assigned to ${panel.name}`);
-  form.reset();
-  if (elements.deviceId) elements.deviceId.value = "";
-  if (elements.deviceStatus) elements.deviceStatus.textContent = "Device saved.";
-  await saveState();
-  render();
 }
 
 function handleMonitoringChannelSubmit(form) {
   ensureMonitoringCollections();
-  if (!canManageWorkOrders()) return;
   const elements = monitoringElements();
+  if (!canManageWorkOrders()) {
+    if (elements.channelStatus) elements.channelStatus.textContent = "Admin or manager access is required to map breaker channels.";
+    return;
+  }
+  try {
   const device = getMonitoringDevice(elements.channelDevice?.value);
   if (!device) {
     if (elements.channelStatus) elements.channelStatus.textContent = "Choose a device first.";
@@ -3672,11 +3688,20 @@ function handleMonitoringChannelSubmit(form) {
   if (elements.channelStatus) elements.channelStatus.textContent = "Channel mapped.";
   saveState();
   render();
+  } catch (error) {
+    console.error("Monitoring channel save failed", error);
+    if (elements.channelStatus) elements.channelStatus.textContent = `Channel save failed: ${error?.message || "Unknown error"}`;
+  }
 }
 
 function handleMonitoringSimulatorSubmit(form) {
   ensureMonitoringCollections();
   const elements = monitoringElements();
+  if (!canManageWorkOrders()) {
+    if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Admin or manager access is required to use the simulator.";
+    return;
+  }
+  try {
   const device = getMonitoringDevice(elements.simulatorDevice?.value);
   if (!device) {
     if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Choose a device first.";
@@ -3704,6 +3729,10 @@ function handleMonitoringSimulatorSubmit(form) {
   if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Simulator status applied.";
   saveState();
   render();
+  } catch (error) {
+    console.error("Monitoring simulator failed", error);
+    if (elements.simulatorStatus) elements.simulatorStatus.textContent = `Simulator failed: ${error?.message || "Unknown error"}`;
+  }
 }
 
 function ingestMonitoringStatus(payload, options = {}) {
