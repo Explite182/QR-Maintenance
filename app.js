@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260803-monitoring-save-feedback";
+const SITEWORKS_APP_VERSION = "20260803-mobile-dashboard-site-map-return";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
 const MONITORING_DEFAULT_HEARTBEAT_SECONDS = 120;
 const MONITORING_DEFAULT_DELAY_SECONDS = 30;
@@ -33,6 +33,14 @@ const PUBLIC_REPORT_SYNC_INTERVAL_MS = 30 * 1000;
 const CLOUD_REFRESH_INTERVAL_MS = 45 * 1000;
 const PUBLIC_REPORT_SYNC_MIN_AGE_MS = 10 * 1000;
 const REALTIME_REFRESH_DEBOUNCE_MS = 900;
+
+function makeId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const REALTIME_TABLES = [
   "customers",
   "locations",
@@ -226,6 +234,8 @@ const els = {
   newKeyBtn: document.getElementById("newKeyBtn"),
   mobilePmBtn: document.getElementById("mobilePmBtn"),
   mobilePmMenu: document.getElementById("mobilePmMenu"),
+  mobileInventoryBtn: document.getElementById("mobileInventoryBtn"),
+  mobileInventoryMenu: document.getElementById("mobileInventoryMenu"),
   mobileCreateBtn: document.getElementById("mobileCreateBtn"),
   mobileCreateMenu: document.getElementById("mobileCreateMenu"),
   newIssueDrawer: document.getElementById("newIssueDrawer"),
@@ -1020,6 +1030,20 @@ els.mobilePmMenu?.addEventListener("click", (event) => {
   event.stopPropagation();
   closeMobilePmMenu();
   openMobileTab(button.dataset.mobilePmTarget);
+});
+
+els.mobileInventoryBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleMobileInventoryMenu();
+});
+
+els.mobileInventoryMenu?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-mobile-inventory-target]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeMobileInventoryMenu();
+  openMobileInventoryTab(button.dataset.mobileInventoryTarget);
 });
 
 els.siteMapImageInput?.addEventListener("change", handleSiteMapImageChange);
@@ -2238,11 +2262,12 @@ els.createNewBtn?.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #inventoryCreateDrawer, #keyCreateDrawer, #createNewBtn, #createNewMenu, #mobilePmBtn, #mobilePmMenu, #mobileCreateBtn, #mobileCreateMenu")) return;
+  if (event.target.closest("#quickAddDrawer, #newIssueDrawer, #serviceRequestCreateDrawer, #inventoryCreateDrawer, #keyCreateDrawer, #createNewBtn, #createNewMenu, #mobilePmBtn, #mobilePmMenu, #mobileInventoryBtn, #mobileInventoryMenu, #mobileCreateBtn, #mobileCreateMenu")) return;
   closeTopActionDrawers();
   closeMetricMenus();
   closeCreateNewMenu();
   closeMobilePmMenu();
+  closeMobileInventoryMenu();
   closeMobileCreateMenu();
 });
 
@@ -3060,6 +3085,7 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     closePanelScheduleSheet();
     closeMobilePmMenu();
+    closeMobileInventoryMenu();
     closeMobileCreateMenu();
     openMobileTab(mobileTabButton.dataset.mobileTab);
     return;
@@ -4342,6 +4368,7 @@ function closeAllSidebarTargets() {
   });
   closeSidebarTarget("pmCalendarPanel");
   closeSidebarTarget("templatesPanel");
+  closeSidebarTarget("siteMapPanel");
   closeSidebarTarget("inventoryPanel");
 }
 
@@ -4353,6 +4380,7 @@ function closeOtherSidebarTargets(activeTargetId) {
   });
   if (activeTargetId !== "pmCalendarPanel") closeSidebarTarget("pmCalendarPanel");
   if (activeTargetId !== "templatesPanel") closeSidebarTarget("templatesPanel");
+  if (activeTargetId !== "siteMapPanel") closeSidebarTarget("siteMapPanel");
   if (activeTargetId !== "inventoryPanel") closeSidebarTarget("inventoryPanel");
 }
 
@@ -4522,6 +4550,7 @@ function setMobileTabState(targetId) {
     button.classList.toggle("is-active", button.dataset.mobileTab === targetId);
   });
   els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "templatesPanel" || targetId === "siteMapPanel");
+  els.mobileInventoryBtn?.classList.toggle("is-active", targetId === "inventoryPanel");
 }
 
 function closeSelectedAssetDrawers() {
@@ -4790,6 +4819,7 @@ function renderRole() {
   if (els.newInventoryBtn) els.newInventoryBtn.disabled = !canCreateInventory;
   if (els.newKeyBtn) els.newKeyBtn.disabled = !canCreateKey;
   renderMobilePmActions();
+  renderMobileInventoryActions();
   renderMobileCreateActions();
   syncPmSidebarMenuState();
   els.adminToolsDrawer.classList.toggle("hidden", !hasAdminToolsAccess);
@@ -6664,10 +6694,18 @@ function renderDashboard() {
 }
 
 function syncMobileMetricVisibility() {
-  document.querySelectorAll(".metric-menu-wrap").forEach((wrap) => {
+  const metricWraps = Array.from(document.querySelectorAll(".metric-menu-wrap"));
+  metricWraps.forEach((wrap) => {
     const value = Number(wrap.querySelector(".metric-card span")?.textContent?.trim() || "0");
     wrap.classList.toggle("mobile-empty-metric", value === 0);
   });
+  if (metricWraps.length && metricWraps.every((wrap) => wrap.classList.contains("mobile-empty-metric"))) {
+    const fallbackFilters = new Set(["dueNow", "overdue", "workOrders", "reportedIssues"]);
+    metricWraps.forEach((wrap) => {
+      const filter = wrap.querySelector("[data-dashboard-filter]")?.dataset.dashboardFilter || "";
+      if (fallbackFilters.has(filter)) wrap.classList.remove("mobile-empty-metric");
+    });
+  }
 }
 
 function renderPmCalendar() {
@@ -8420,6 +8458,7 @@ function toggleMobileCreateMenu() {
   closeMetricMenus();
   closeTopActionDrawers();
   closeMobilePmMenu();
+  closeMobileInventoryMenu();
   els.mobileCreateMenu.classList.toggle("hidden", !shouldOpen);
   els.mobileCreateBtn.classList.toggle("is-active", shouldOpen);
   els.mobileCreateBtn.setAttribute("aria-expanded", String(shouldOpen));
@@ -8431,16 +8470,36 @@ function toggleMobilePmMenu() {
   renderMobilePmActions();
   closeMetricMenus();
   closeTopActionDrawers();
+  closeMobileInventoryMenu();
   closeMobileCreateMenu();
   els.mobilePmMenu.classList.toggle("hidden", !shouldOpen);
   els.mobilePmBtn.classList.toggle("is-active", shouldOpen || isPmPanelOpen());
   els.mobilePmBtn.setAttribute("aria-expanded", String(shouldOpen));
 }
 
+function toggleMobileInventoryMenu() {
+  if (!els.mobileInventoryMenu || !els.mobileInventoryBtn) return;
+  const shouldOpen = els.mobileInventoryMenu.classList.contains("hidden");
+  renderMobileInventoryActions();
+  closeMetricMenus();
+  closeTopActionDrawers();
+  closeMobilePmMenu();
+  closeMobileCreateMenu();
+  els.mobileInventoryMenu.classList.toggle("hidden", !shouldOpen);
+  els.mobileInventoryBtn.classList.toggle("is-active", shouldOpen || isInventoryPanelOpen());
+  els.mobileInventoryBtn.setAttribute("aria-expanded", String(shouldOpen));
+}
+
 function closeMobilePmMenu() {
   els.mobilePmMenu?.classList.add("hidden");
   els.mobilePmBtn?.classList.toggle("is-active", isPmPanelOpen());
   els.mobilePmBtn?.setAttribute("aria-expanded", "false");
+}
+
+function closeMobileInventoryMenu() {
+  els.mobileInventoryMenu?.classList.add("hidden");
+  els.mobileInventoryBtn?.classList.toggle("is-active", isInventoryPanelOpen());
+  els.mobileInventoryBtn?.setAttribute("aria-expanded", "false");
 }
 
 function closeMobileCreateMenu() {
@@ -8485,6 +8544,20 @@ function renderMobileCreateActions() {
 function renderMobilePmActions() {
   els.mobilePmMenu?.querySelector("[data-mobile-pm-target='templatesPanel']")
     ?.classList.toggle("hidden", !canManageTemplateSetup());
+}
+
+function renderMobileInventoryActions() {
+  els.mobileInventoryMenu?.querySelector("[data-mobile-inventory-target='keys']")
+    ?.classList.toggle("hidden", !canManageKeys());
+}
+
+function openMobileInventoryTab(tab) {
+  if (tab === "keys") {
+    if (!canManageKeys()) return;
+    openInventorySidebarTab("keys");
+    return;
+  }
+  openInventorySidebarTab("items");
 }
 
 function runMobileCreateAction(action) {

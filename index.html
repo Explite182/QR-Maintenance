@@ -1606,7 +1606,7 @@
       <span class="mobile-tab-icon mobile-tab-equipment" aria-hidden="true"></span>
       <span>Equipment</span>
     </button>
-    <button type="button" class="mobile-tab-btn" data-mobile-tab="inventoryPanel">
+    <button type="button" class="mobile-tab-btn mobile-inventory-btn" id="mobileInventoryBtn" aria-expanded="false" aria-controls="mobileInventoryMenu">
       <span class="mobile-tab-icon mobile-tab-inventory" aria-hidden="true"></span>
       <span>Inventory</span>
     </button>
@@ -1633,6 +1633,10 @@
       <button type="button" data-mobile-pm-target="pmCalendarPanel">PM Calendar</button>
       <button type="button" data-mobile-pm-target="templatesPanel" data-template-nav>Templates</button>
       <button type="button" data-mobile-pm-target="siteMapPanel">Site Map</button>
+    </div>
+    <div id="mobileInventoryMenu" class="mobile-create-menu hidden" aria-label="Inventory">
+      <button type="button" data-mobile-inventory-target="items">Parts & Materials</button>
+      <button type="button" data-mobile-inventory-target="keys">Keys</button>
     </div>
   </nav>
 
