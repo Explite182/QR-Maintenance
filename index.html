@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260803-breaker-monitoring-phase1">
+    <link rel="stylesheet" href="/styles.css?v=20260803-monitoring-simulator-layout">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -1175,9 +1175,9 @@
                   <select id="monitoringSimulatorDevice"></select>
                 </label>
                 <div class="phase-toggle-row">
-                  <label><input id="monitoringSourceA" type="checkbox" checked> Phase A healthy</label>
-                  <label><input id="monitoringSourceB" type="checkbox" checked> Phase B healthy</label>
-                  <label><input id="monitoringSourceC" type="checkbox" checked> Phase C healthy</label>
+                  <label><input id="monitoringSourceA" type="checkbox" checked><span>Phase A healthy</span></label>
+                  <label><input id="monitoringSourceB" type="checkbox" checked><span>Phase B healthy</span></label>
+                  <label><input id="monitoringSourceC" type="checkbox" checked><span>Phase C healthy</span></label>
                 </div>
                 <label>
                   Energized physical channels
@@ -1737,7 +1737,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script src="/app.js?v=20260803-breaker-monitoring-phase1"></script>
+    <script src="/app.js?v=20260803-monitoring-cache-sentinel-fix"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
