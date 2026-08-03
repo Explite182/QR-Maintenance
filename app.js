@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260802-header-sync-polish";
+const SITEWORKS_APP_VERSION = "20260803-key-scan-auto-exit";
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -141,6 +141,7 @@ let publicKeyLookupState = {
   key: null,
   message: ""
 };
+let publicKeyExitTimer = null;
 let syncHealth = {
   lastCloudLoadAt: "",
   lastCloudSaveAt: "",
@@ -513,6 +514,7 @@ const els = {
   keyName: document.getElementById("keyName"),
   keyNumber: document.getElementById("keyNumber"),
   keyTagUid: document.getElementById("keyTagUid"),
+  keyAdditionalTagUids: document.getElementById("keyAdditionalTagUids"),
   keyStorageLocation: document.getElementById("keyStorageLocation"),
   keyNotes: document.getElementById("keyNotes"),
   keyStatus: document.getElementById("keyStatus"),
@@ -2143,6 +2145,7 @@ document.addEventListener("submit", (event) => {
   key.keyName = String(formData.get("keyName") || "").trim() || key.keyName;
   key.keyNumber = String(formData.get("keyNumber") || "").trim();
   key.uniqueTagId = normalizeNfcUid(formData.get("uniqueTagId")) || String(formData.get("uniqueTagId") || "").trim();
+  setKeyAdditionalTagUids(key, formData.get("additionalTagUids"));
   key.storageLocation = String(formData.get("storageLocation") || "").trim();
   key.notes = String(formData.get("notes") || "").trim();
   key.currentStatus = KEY_STATUS_OPTIONS.includes(String(formData.get("currentStatus"))) ? String(formData.get("currentStatus")) : key.currentStatus;
@@ -2748,6 +2751,7 @@ els.keyForm?.addEventListener("submit", async (event) => {
     customerId,
     locationId,
     uniqueTagId: normalizeNfcUid(els.keyTagUid.value) || els.keyTagUid.value.trim(),
+    additionalTagUids: normalizeKeyExtraTagUids(els.keyAdditionalTagUids?.value || ""),
     keyName,
     keyNumber: els.keyNumber.value.trim(),
     storageLocation: els.keyStorageLocation.value.trim(),
@@ -4418,13 +4422,15 @@ function renderKeyRecord(key) {
     : `<span class="status-badge badge-ok">Available</span>`;
   const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key.storageLocation || "Ready";
   const customerLabel = currentRole === "Admin" ? `${customer?.name || "No customer"} | ` : "";
+  const tagUids = getAllKeyTagUids(key);
+  const tagLabel = tagUids.length === 1 ? "1 NFC tag" : `${tagUids.length} NFC tags`;
   return `
     <details class="inventory-item inventory-item-drawer" ${key.id === focusedKeyId ? "open" : ""}>
       <summary data-key-summary="${escapeAttribute(key.id)}">
         <div class="inventory-main">
           <strong>${escapeHtml(key.keyName || key.name || "Key")}</strong>
           <small>${escapeHtml(customerLabel)}${escapeHtml(locationRecord?.name || "All locations")}${key.keyNumber ? ` | ${escapeHtml(key.keyNumber)}` : ""}</small>
-          ${key.uniqueTagId ? `<span>NFC UID ${escapeHtml(key.uniqueTagId)}</span>` : ""}
+          ${tagUids.length ? `<span>${escapeHtml(tagLabel)}${key.uniqueTagId ? ` | Primary ${escapeHtml(key.uniqueTagId)}` : ""}</span>` : ""}
           ${key.notes ? `<p>${escapeHtml(key.notes)}</p>` : ""}
         </div>
         <div class="inventory-stock">
@@ -4460,7 +4466,9 @@ function renderKeyRecord(key) {
 
 function renderKeyNfcStatus(key, canManage = false) {
   const uid = normalizeNfcUid(key.uniqueTagId || "");
-  const status = key.nfcStatus || (uid ? "assigned" : "unassigned");
+  const extraUids = getKeyAdditionalTagUids(key);
+  const tagUids = getAllKeyTagUids(key);
+  const status = key.nfcStatus || (tagUids.length ? "assigned" : "unassigned");
   const label = status.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   const written = key.nfcWrittenAt ? formatDateTime(new Date(key.nfcWrittenAt)) : "Not written";
   const verified = key.nfcVerifiedAt ? formatDateTime(new Date(key.nfcVerifiedAt)) : "Not verified";
@@ -4468,9 +4476,10 @@ function renderKeyNfcStatus(key, canManage = false) {
   return `
     <div class="asset-nfc-card key-nfc-card" data-key-nfc-status="${escapeAttribute(status)}">
       <div>
-        <strong>NFC tag</strong>
-        <span>${escapeHtml(label || "Unassigned")}</span>
-        <small>UID: ${escapeHtml(uid || "Not assigned")}</small>
+        <strong>NFC tags</strong>
+        <span>${escapeHtml(label || "Unassigned")}${tagUids.length ? ` | ${tagUids.length} assigned` : ""}</span>
+        <small>Primary UID: ${escapeHtml(uid || "Not assigned")}</small>
+        <small>Extra UIDs: ${escapeHtml(extraUids.length ? extraUids.join(", ") : "None")}</small>
         <small>Last written: ${escapeHtml(written)}</small>
         <small>Last verified: ${escapeHtml(verified)}</small>
       </div>
@@ -4506,6 +4515,10 @@ function renderKeyEditForm(key) {
           <input name="storageLocation" value="${escapeAttribute(key.storageLocation || "")}">
         </label>
       </div>
+      <label>
+        Extra NFC tag UIDs
+        <textarea name="additionalTagUids" rows="2" placeholder="One per line for box/home tags">${escapeHtml(getKeyAdditionalTagUids(key).join("\n"))}</textarea>
+      </label>
       <div class="form-grid">
         <label>
           Status
@@ -9092,7 +9105,7 @@ async function verifyAssetNfcTag(asset) {
 }
 
 function setKeyNfcMessage(key, message) {
-  key.nfcStatus = key.nfcStatus || (key.uniqueTagId ? "assigned" : "unassigned");
+  key.nfcStatus = key.nfcStatus || (getAllKeyTagUids(key).length ? "assigned" : "unassigned");
   key.nfcMessage = message;
   key.updatedAt = new Date().toISOString();
 }
@@ -9131,15 +9144,19 @@ async function writeKeyNfcTag(key) {
     if (!doesWrittenNfcUrlMatchKey(writtenUrl, key, expectedShortUrl, recordUrl)) {
       throw new Error("The bridge wrote a different URL than SiteWorks requested.");
     }
-    key.uniqueTagId = normalizeNfcUid(uid);
+    const normalizedUid = normalizeNfcUid(uid);
+    ensureKeyTagUidIsAvailable(key, normalizedUid);
+    const tagSlot = addKeyTagUid(key, normalizedUid);
     key.nfcUrl = normalizeUrlForNfcCompare(writtenUrl || expectedShortUrl);
     key.nfcStatus = "written";
     key.nfcWrittenAt = new Date().toISOString();
     key.nfcVerifiedAt = "";
-    key.nfcMessage = "Short NFC tag written from local ACR122U bridge.";
+    key.nfcMessage = tagSlot === "extra"
+      ? "Additional NFC tag written from local ACR122U bridge."
+      : "Short NFC tag written from local ACR122U bridge.";
     key.updatedAt = new Date().toISOString();
-    addKeyLog(key, "Check-In", `NFC tag written: ${key.uniqueTagId}.`);
-    addActivity("Key NFC tag written", `${key.keyName || key.name || "Key"} | ${key.uniqueTagId}`);
+    addKeyLog(key, "Check-In", `NFC tag written: ${normalizedUid}${tagSlot === "extra" ? " (additional tag)" : ""}.`);
+    addActivity("Key NFC tag written", `${key.keyName || key.name || "Key"} | ${normalizedUid}`);
     saveState();
     await syncSingleKeyToSupabase(key);
     render();
@@ -9151,15 +9168,13 @@ async function writeKeyNfcTag(key) {
 }
 
 async function verifyKeyNfcTag(key) {
-  const expectedUid = normalizeNfcUid(key.uniqueTagId || "");
   const recordUrl = getKeyRecordUrl(key.id);
-  const shortUrl = expectedUid ? getShortKeyUrl(expectedUid, key.id) : "";
   setKeyNfcMessage(key, "Hold the written tag on the ACR122U reader...");
   render();
   try {
-    const result = await callNfcBridgeWithFallback(["/nfc/verify", "/nfc/read"], {
-      expectedUid,
-      expectedUrl: shortUrl || recordUrl,
+    const result = await callNfcBridgeWithFallback(["/nfc/read", "/nfc/verify"], {
+      expectedUid: "",
+      expectedUrl: "",
       fallbackUrl: recordUrl,
       recordType: "key",
       recordId: key.id
@@ -9167,23 +9182,23 @@ async function verifyKeyNfcTag(key) {
     const uid = getNfcResponseUid(result);
     const tagUrl = getNfcResponseUrl(result);
     if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
-    if (expectedUid && normalizeNfcUid(uid) !== expectedUid) {
-      throw new Error(`UID mismatch. Expected ${expectedUid}, read ${normalizeNfcUid(uid)}.`);
-    }
     const normalizedUid = normalizeNfcUid(uid);
     const expectedShortUrl = getShortKeyUrl(normalizedUid, key.id);
     if (tagUrl && !doesWrittenNfcUrlMatchKey(tagUrl, key, expectedShortUrl, recordUrl)) {
       throw new Error("URL mismatch. The tag opens a different SiteWorks key record.");
     }
-    key.uniqueTagId = normalizedUid;
+    ensureKeyTagUidIsAvailable(key, normalizedUid);
+    const tagSlot = addKeyTagUid(key, normalizedUid);
     key.nfcUrl = normalizeUrlForNfcCompare(tagUrl || expectedShortUrl);
     key.nfcStatus = "verified";
     key.nfcVerifiedAt = new Date().toISOString();
     if (!key.nfcWrittenAt) key.nfcWrittenAt = key.nfcVerifiedAt;
-    key.nfcMessage = "Tag UID and URL match this key record.";
+    key.nfcMessage = tagSlot === "extra"
+      ? "Additional tag UID and URL match this key record."
+      : "Tag UID and URL match this key record.";
     key.updatedAt = new Date().toISOString();
-    addKeyLog(key, "Check-In", `NFC tag verified: ${key.uniqueTagId}.`);
-    addActivity("Key NFC tag verified", `${key.keyName || key.name || "Key"} | ${key.uniqueTagId}`);
+    addKeyLog(key, "Check-In", `NFC tag verified: ${normalizedUid}${tagSlot === "extra" ? " (additional tag)" : ""}.`);
+    addActivity("Key NFC tag verified", `${key.keyName || key.name || "Key"} | ${normalizedUid}`);
     saveState();
     await syncSingleKeyToSupabase(key);
     render();
@@ -9347,6 +9362,53 @@ function normalizeNfcUid(value) {
   return String(value || "").replace(/[^a-f0-9]/gi, "").toUpperCase();
 }
 
+function normalizeKeyExtraTagUids(value) {
+  const rawValues = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[\s,;]+/);
+  return [...new Set(rawValues.map(normalizeNfcUid).filter(Boolean))];
+}
+
+function getKeyAdditionalTagUids(key) {
+  return normalizeKeyExtraTagUids(
+    key?.additionalTagUids ||
+    key?.additional_tag_uids ||
+    key?.data?.additionalTagUids ||
+    key?.data?.additional_tag_uids ||
+    []
+  );
+}
+
+function setKeyAdditionalTagUids(key, tagUids = []) {
+  if (!key) return;
+  const primaryUid = normalizeNfcUid(key.uniqueTagId || "");
+  key.additionalTagUids = normalizeKeyExtraTagUids(tagUids).filter((uid) => uid !== primaryUid);
+}
+
+function getAllKeyTagUids(key) {
+  return [...new Set([
+    normalizeNfcUid(key?.uniqueTagId || ""),
+    ...getKeyAdditionalTagUids(key)
+  ].filter(Boolean))];
+}
+
+function addKeyTagUid(key, uid) {
+  const normalizedUid = normalizeNfcUid(uid);
+  if (!key || !normalizedUid) return "";
+  const primaryUid = normalizeNfcUid(key.uniqueTagId || "");
+  if (!primaryUid) {
+    key.uniqueTagId = normalizedUid;
+    setKeyAdditionalTagUids(key, getKeyAdditionalTagUids(key));
+    return "primary";
+  }
+  if (normalizedUid !== primaryUid) {
+    setKeyAdditionalTagUids(key, [...getKeyAdditionalTagUids(key), normalizedUid]);
+    return "extra";
+  }
+  setKeyAdditionalTagUids(key, getKeyAdditionalTagUids(key));
+  return "primary";
+}
+
 function getAssetNfcUid(asset) {
   return normalizeNfcUid(normalizeAssetNfcTag(asset?.nfcTag).uid || asset?.nfcUid || asset?.nfc_uid || "");
 }
@@ -9360,7 +9422,16 @@ function findAssetByNfcUid(uid) {
 function findKeyByNfcUid(uid) {
   const normalizedUid = normalizeNfcUid(uid);
   if (!normalizedUid) return null;
-  return (state.keys || []).find((key) => normalizeNfcUid(key.uniqueTagId) === normalizedUid) || null;
+  return (state.keys || []).find((key) => getAllKeyTagUids(key).includes(normalizedUid)) || null;
+}
+
+function ensureKeyTagUidIsAvailable(key, uid) {
+  const normalizedUid = normalizeNfcUid(uid);
+  if (!key || !normalizedUid) return;
+  const existingKey = findKeyByNfcUid(normalizedUid);
+  if (existingKey && existingKey.id !== key.id) {
+    throw new Error(`Tag UID ${normalizedUid} is already assigned to ${existingKey.keyName || existingKey.name || "another key"}.`);
+  }
 }
 
 function isShortNfcUrlForUid(value, uid) {
@@ -9398,9 +9469,11 @@ function doesNfcTagUrlMatchAsset(tag, recordUrl) {
 function doesWrittenNfcUrlMatchKey(writtenUrl, key, expectedShortUrl, recordUrl) {
   if (!writtenUrl) return true;
   const normalizedWrittenUrl = normalizeUrlForNfcCompare(writtenUrl);
+  const expectedUid = normalizeNfcUid(expectedShortUrl.split("/").pop());
   return normalizedWrittenUrl === normalizeUrlForNfcCompare(expectedShortUrl) ||
     normalizedWrittenUrl === normalizeUrlForNfcCompare(recordUrl) ||
-    isShortKeyUrlForUid(writtenUrl, normalizeNfcUid(key.uniqueTagId) || expectedShortUrl.split("/").pop());
+    isShortKeyUrlForUid(writtenUrl, expectedUid) ||
+    getAllKeyTagUids(key).some((uid) => isShortKeyUrlForUid(writtenUrl, uid));
 }
 
 function doesWrittenNfcUrlMatchAsset(writtenUrl, asset, expectedShortUrl, recordUrl) {
@@ -12968,15 +13041,38 @@ function getPublicKeyIdFromUrl() {
   return params.get("kid") || params.get("keyId") || "";
 }
 
+function getPublicKeyExitUrl() {
+  if (/sitesworks\.info$/i.test(location.hostname)) return PRODUCTION_SITE_URL;
+  if (location.protocol.startsWith("http")) return `${location.origin}/`;
+  return PRODUCTION_SITE_URL;
+}
+
 function clearPublicKeyUrlAfterAction() {
   clearRememberedScannedQrContext();
   focusedKeyId = "";
   if (inventoryTab === "keys") inventoryTab = "items";
   try {
-    history.replaceState(null, "", `${location.origin}${location.pathname}`);
+    history.replaceState(null, "", getPublicKeyExitUrl());
   } catch (error) {
     console.warn("Could not clear public key URL.", error);
   }
+}
+
+function schedulePublicKeyExitAfterAction() {
+  if (publicKeyExitTimer) clearTimeout(publicKeyExitTimer);
+  publicKeyExitTimer = setTimeout(() => {
+    publicKeyExitTimer = null;
+    try {
+      window.close();
+    } catch (error) {
+      console.warn("Could not close public key scan window.", error);
+    }
+    setTimeout(() => {
+      if (!document.hidden) {
+        window.location.replace(getPublicKeyExitUrl());
+      }
+    }, 250);
+  }, 1400);
 }
 
 function ensurePublicKeyScreenMarkup() {
@@ -13077,7 +13173,7 @@ async function submitPublicKeyAction(action) {
       loading: false,
       loaded: true,
       key: data,
-      message: action === "Check-Out" ? "Key checked out. Thank you. SiteWorks will open normally next time." : "Key checked in. Thank you. SiteWorks will open normally next time."
+      message: action === "Check-Out" ? "Key checked out. Thank you. Closing this scan page..." : "Key checked in. Thank you. Closing this scan page..."
     };
     actionCompleted = true;
     els.publicKeyNote.value = "";
@@ -13088,6 +13184,7 @@ async function submitPublicKeyAction(action) {
     renderPublicKeyScan();
     if (actionCompleted) {
       clearPublicKeyUrlAfterAction();
+      schedulePublicKeyExitAfterAction();
     }
   }
 }
@@ -14616,12 +14713,14 @@ function inventoryItemFromStructuredRow(row) {
 
 function keyFromStructuredRow(row) {
   const payload = structuredPayload(row);
+  const uniqueTagId = row.unique_tag_id || payload.uniqueTagId || payload.unique_tag_id || "";
   return {
     ...payload,
     id: row.id || payload.id,
     customerId: row.customer_id || payload.customerId || "",
     locationId: row.location_id || payload.locationId || "",
-    uniqueTagId: row.unique_tag_id || payload.uniqueTagId || payload.unique_tag_id || "",
+    uniqueTagId,
+    additionalTagUids: normalizeKeyExtraTagUids(payload.additionalTagUids || payload.additional_tag_uids || payload.extraTagUids || []).filter((uid) => uid !== normalizeNfcUid(uniqueTagId)),
     keyName: row.key_name || payload.keyName || payload.name || "",
     keyNumber: row.key_number || payload.keyNumber || "",
     storageLocation: row.storage_location || payload.storageLocation || "",
@@ -14962,6 +15061,7 @@ function leanCloudRecord(record) {
 
 function buildStructuredKeyRow(key, cloudLocationIds = null) {
   const locationId = key.locationId && (!cloudLocationIds || cloudLocationIds.has(key.locationId)) ? key.locationId : null;
+  const additionalTagUids = getKeyAdditionalTagUids(key);
   return {
     id: key.id,
     customer_id: key.customerId || null,
@@ -14978,6 +15078,8 @@ function buildStructuredKeyRow(key, cloudLocationIds = null) {
     updated_at: key.updatedAt || state.updatedAt || new Date().toISOString(),
     data: leanCloudRecord({
       ...key,
+      additionalTagUids,
+      additional_tag_uids: additionalTagUids,
       locationId: locationId || ""
     })
   };
