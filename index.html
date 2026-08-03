@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260803-key-scan-auto-exit">
+    <link rel="stylesheet" href="/styles.css?v=20260803-breaker-monitoring-phase1">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -206,6 +206,9 @@
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="siteMapPanel" aria-expanded="false">
             <span>Site Map</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="monitoringPanel" aria-expanded="false">
+            <span>Breaker Monitoring</span>
           </button>
           <div class="sidebar-nav-group" data-sidebar-group="inventory">
             <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-inventory-menu-toggle aria-expanded="false">
@@ -1042,6 +1045,167 @@
         </div>
       </section>
 
+      <section id="monitoringPanel" class="work-orders-panel monitoring-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="monitoringPanel">
+          <h2>Breaker Monitoring</h2>
+          <div class="panel-title-actions">
+            <span id="monitoringDeviceCount">0</span>
+          </div>
+        </div>
+        <div class="monitoring-body" data-panel-body>
+          <div class="monitoring-layout">
+            <section class="monitoring-card">
+              <h3>Monitoring Devices</h3>
+              <form id="monitoringDeviceForm" class="stack compact-form">
+                <input id="monitoringDeviceId" type="hidden">
+                <label>
+                  Existing electrical panel
+                  <select id="monitoringDevicePanel"></select>
+                </label>
+                <div class="form-grid">
+                  <label>
+                    Device UID
+                    <input id="monitoringDeviceUid" required placeholder="ESP32-CL16-PANEL-A">
+                  </label>
+                  <label>
+                    API key
+                    <input id="monitoringDeviceApiKey" placeholder="Leave blank to keep existing key">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Device name
+                    <input id="monitoringDeviceName" required placeholder="Panel A monitor">
+                  </label>
+                  <label>
+                    Model
+                    <input id="monitoringDeviceModel" placeholder="ESP32 or Modbus gateway">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Firmware
+                    <input id="monitoringDeviceFirmware" placeholder="1.0.0">
+                  </label>
+                  <label>
+                    Heartbeat seconds
+                    <input id="monitoringDeviceHeartbeat" type="number" min="30" step="1" value="120">
+                  </label>
+                </div>
+                <label class="check-row">
+                  <input id="monitoringDeviceMaintenance" type="checkbox">
+                  Maintenance mode
+                </label>
+                <button type="submit" class="primary">Save Device</button>
+                <p id="monitoringDeviceStatus" class="inline-status"></p>
+              </form>
+              <div id="monitoringDeviceList" class="monitoring-list"></div>
+            </section>
+
+            <section class="monitoring-card">
+              <h3>Channel Mapping</h3>
+              <form id="monitoringChannelForm" class="stack compact-form">
+                <div class="form-grid">
+                  <label>
+                    Device
+                    <select id="monitoringChannelDevice"></select>
+                  </label>
+                  <label>
+                    Panel circuit
+                    <select id="monitoringChannelCircuit"></select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Physical channel
+                    <input id="monitoringChannelNumber" required placeholder="1">
+                  </label>
+                  <label>
+                    Source phase
+                    <select id="monitoringChannelPhase">
+                      <option>A</option>
+                      <option>B</option>
+                      <option>C</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Poles
+                    <select id="monitoringChannelPoles">
+                      <option value="1">Single pole</option>
+                      <option value="2">Two pole</option>
+                      <option value="3">Three pole</option>
+                    </select>
+                  </label>
+                  <label>
+                    Alarm delay seconds
+                    <input id="monitoringChannelDelay" type="number" min="0" step="1" value="30">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Mode
+                    <select id="monitoringChannelMode">
+                      <option>Normal</option>
+                      <option>Maintenance</option>
+                      <option>Disabled</option>
+                    </select>
+                  </label>
+                  <label>
+                    Criticality
+                    <select id="monitoringChannelCriticality">
+                      <option>Normal</option>
+                      <option>Critical</option>
+                      <option>Life safety</option>
+                    </select>
+                  </label>
+                </div>
+                <button type="submit" class="primary">Map Channel</button>
+                <p id="monitoringChannelStatus" class="inline-status"></p>
+              </form>
+              <div id="monitoringChannelList" class="monitoring-list"></div>
+            </section>
+
+            <section class="monitoring-card">
+              <h3>Simulator</h3>
+              <form id="monitoringSimulatorForm" class="stack compact-form">
+                <label>
+                  Device
+                  <select id="monitoringSimulatorDevice"></select>
+                </label>
+                <div class="phase-toggle-row">
+                  <label><input id="monitoringSourceA" type="checkbox" checked> Phase A healthy</label>
+                  <label><input id="monitoringSourceB" type="checkbox" checked> Phase B healthy</label>
+                  <label><input id="monitoringSourceC" type="checkbox" checked> Phase C healthy</label>
+                </div>
+                <label>
+                  Energized physical channels
+                  <input id="monitoringClosedChannels" placeholder="1, 2, 3">
+                </label>
+                <button type="submit" class="primary">Send Simulated Status</button>
+                <p id="monitoringSimulatorStatus" class="inline-status"></p>
+              </form>
+            </section>
+          </div>
+
+          <div class="monitoring-results-grid">
+            <section class="monitoring-card monitoring-wide-card">
+              <h3>Live Panel Monitoring</h3>
+              <div id="monitoringLivePanel" class="monitoring-live-grid"></div>
+            </section>
+            <section class="monitoring-card">
+              <h3>Active Alerts</h3>
+              <div id="monitoringAlertList" class="monitoring-list"></div>
+            </section>
+            <section class="monitoring-card">
+              <h3>Breaker Event History</h3>
+              <div id="monitoringEventList" class="monitoring-list"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
         <section id="inventoryPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="inventoryPanel">
           <h2>Inventory</h2>
@@ -1569,7 +1733,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script src="/app.js?v=20260803-key-scan-auto-exit"></script>
+    <script src="/app.js?v=20260803-breaker-monitoring-phase1"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

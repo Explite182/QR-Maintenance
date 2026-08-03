@@ -7931,3 +7931,192 @@ html[data-theme="dark"] .sync-banner {
 html[data-theme="dark"] .sync-banner small {
   color: var(--muted);
 }
+
+.monitoring-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(380px, 1.4fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.monitoring-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.monitoring-card {
+  border: 1px solid var(--line, #d8e3e1);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--card, #fff);
+}
+
+.monitoring-card h3 {
+  margin: 0 0 10px;
+}
+
+.monitoring-list,
+.monitoring-live-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.monitoring-live-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.monitoring-record {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #dce8e6;
+  border-radius: 10px;
+  background: #fbfefe;
+}
+
+.monitoring-record.compact {
+  padding: 10px;
+}
+
+.monitoring-record.alert {
+  border-color: #f4c7c3;
+  background: #fff7f6;
+}
+
+.monitoring-record h4 {
+  margin: 0 0 4px;
+}
+
+.monitoring-record p {
+  margin: 2px 0;
+  color: #63717a;
+}
+
+.monitoring-record-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.monitoring-status-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-weight: 800;
+  background: #edf3f2;
+  color: #32404a;
+  border: 1px solid #d7e2df;
+}
+
+.monitoring-status-pill.online,
+.monitoring-status-pill.energized,
+.monitoring-status-pill.resolved {
+  background: #e6f7ee;
+  color: #08713f;
+  border-color: #b8e5ca;
+}
+
+.monitoring-status-pill.offline,
+.monitoring-status-pill.monitoring-offline,
+.monitoring-status-pill.suspected-trip {
+  background: #fff0ed;
+  color: #b12217;
+  border-color: #f0b5ad;
+}
+
+.monitoring-status-pill.acknowledged,
+.monitoring-status-pill.open,
+.monitoring-status-pill.upstream-power-loss {
+  background: #fff7df;
+  color: #8a5b00;
+  border-color: #efd08b;
+}
+
+.monitoring-channel-card {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border: 1px solid #dce8e6;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.monitoring-channel-card.energized {
+  border-color: #9ed9ba;
+  background: #effaf4;
+}
+
+.monitoring-channel-card.suspected-trip {
+  border-color: #f0aaa2;
+  background: #fff1ef;
+}
+
+.monitoring-channel-card.upstream-power-loss,
+.monitoring-channel-card.open {
+  border-color: #ead39b;
+  background: #fff9e8;
+}
+
+.phase-toggle-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.phase-toggle-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+}
+
+html[data-theme="dark"] .monitoring-card,
+html[data-theme="dark"] .monitoring-record,
+html[data-theme="dark"] .monitoring-channel-card {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .monitoring-record p,
+html[data-theme="dark"] .monitoring-channel-card small {
+  color: var(--muted);
+}
+
+html[data-theme="dark"] .monitoring-record.alert,
+html[data-theme="dark"] .monitoring-channel-card.suspected-trip {
+  background: rgba(93, 36, 32, 0.42);
+}
+
+html[data-theme="dark"] .monitoring-channel-card.energized {
+  background: rgba(20, 83, 56, 0.38);
+}
+
+html[data-theme="dark"] .monitoring-channel-card.open,
+html[data-theme="dark"] .monitoring-channel-card.upstream-power-loss {
+  background: rgba(96, 72, 22, 0.38);
+}
+
+@media (max-width: 900px) {
+  .monitoring-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .monitoring-record {
+    display: grid;
+  }
+
+  .monitoring-record-actions {
+    justify-content: flex-start;
+  }
+}
