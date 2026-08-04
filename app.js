@@ -58,6 +58,7 @@ const REALTIME_TABLES = [
   "public_reports"
 ];
 const KEY_STATUS_OPTIONS = ["Available", "Checked Out"];
+const DEFAULT_KEY_CHECKOUT_HOURS = 24;
 const MANAGER_ROLES = ["Manager", "Facility Manager"];
 const today = new Date();
 const DEFAULT_TEMPLATE_ITEMS = [
@@ -2054,16 +2055,19 @@ document.addEventListener("click", async (event) => {
     if (!key || !canManageKeyCustomer(key.customerId)) return;
     const action = actionButton.dataset.action || "";
     if (action === "checkout") {
+      const checkedOutAt = new Date();
       key.currentStatus = "Checked Out";
       key.currentHolderId = currentUser?.id || "";
       key.currentHolderName = currentUser?.name || currentUser?.username || "SiteWorks user";
-      addKeyLog(key, "Check-Out", `Checked out to ${key.currentHolderName}.`);
+      key.dueBackAt = buildKeyDueBackAt(key, checkedOutAt);
+      addKeyLog(key, "Check-Out", `Checked out to ${key.currentHolderName}. Due back ${formatKeyDueBack(key)}.`);
       addActivity("Key checked out", key.keyName || key.name);
     } else if (action === "checkin") {
       const priorHolder = key.currentHolderName || "holder";
       key.currentStatus = "Available";
       key.currentHolderId = "";
       key.currentHolderName = "";
+      key.dueBackAt = "";
       addKeyLog(key, "Check-In", `Checked in from ${priorHolder}.`);
       addActivity("Key checked in", key.keyName || key.name);
     }
@@ -2164,7 +2168,7 @@ document.addEventListener("submit", (event) => {
   render();
 });
 
-document.addEventListener("submit", (event) => {
+document.addEventListener("submit", async (event) => {
   const form = event.target.closest("[data-key-edit-form]");
   if (!form) return;
   event.preventDefault();
@@ -2176,18 +2180,22 @@ document.addEventListener("submit", (event) => {
   key.keyNumber = String(formData.get("keyNumber") || "").trim();
   key.uniqueTagId = normalizeNfcUid(formData.get("uniqueTagId")) || String(formData.get("uniqueTagId") || "").trim();
   setKeyAdditionalTagUids(key, formData.get("additionalTagUids"));
+  key.defaultCheckoutHours = normalizeKeyCheckoutHours(formData.get("defaultCheckoutHours"));
   key.storageLocation = String(formData.get("storageLocation") || "").trim();
   key.notes = String(formData.get("notes") || "").trim();
   key.currentStatus = KEY_STATUS_OPTIONS.includes(String(formData.get("currentStatus"))) ? String(formData.get("currentStatus")) : key.currentStatus;
   if (key.currentStatus === "Available") {
     key.currentHolderId = "";
     key.currentHolderName = "";
+    key.dueBackAt = "";
   } else {
     key.currentHolderName = String(formData.get("currentHolderName") || "").trim() || key.currentHolderName;
+    key.dueBackAt = parseKeyDueBackInput(formData.get("dueBackAt")) || key.dueBackAt || buildKeyDueBackAt(key);
   }
   key.updatedAt = new Date().toISOString();
   addActivity("Key edited", key.keyName || key.name);
   saveState();
+  await syncSingleKeyToSupabase(key);
   render();
 });
 
@@ -2789,6 +2797,8 @@ els.keyForm?.addEventListener("submit", async (event) => {
     currentStatus: "Available",
     currentHolderId: "",
     currentHolderName: "",
+    defaultCheckoutHours: DEFAULT_KEY_CHECKOUT_HOURS,
+    dueBackAt: "",
     notes: els.keyNotes.value.trim(),
     createdAt: now,
     updatedAt: now
@@ -5150,10 +5160,13 @@ function renderKeyRecord(key) {
   const locationRecord = getLocation(key.locationId);
   const canManage = canManageKeyCustomer(key.customerId);
   const keyUrl = getKeyUrl(key);
-  const checkedOut = key.currentStatus === "Checked Out";
-  const statusBadge = checkedOut
-    ? `<span class="status-badge badge-warn">Checked out</span>`
-    : `<span class="status-badge badge-ok">Available</span>`;
+  const checkedOut = isKeyCheckedOut(key);
+  const overdue = isKeyOverdue(key);
+  const statusBadge = overdue
+    ? `<span class="status-badge badge-warn">Overdue</span>`
+    : checkedOut
+      ? `<span class="status-badge badge-warn">Checked out</span>`
+      : `<span class="status-badge badge-ok">Available</span>`;
   const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key.storageLocation || "Ready";
   const customerLabel = currentRole === "Admin" ? `${customer?.name || "No customer"} | ` : "";
   const tagUids = getAllKeyTagUids(key);
@@ -5170,7 +5183,8 @@ function renderKeyRecord(key) {
         <div class="inventory-stock">
           <span>${statusBadge}</span>
           <strong>${escapeHtml(holder)}</strong>
-          <small>${escapeHtml(key.storageLocation || "No storage location")}</small>
+          <small>${escapeHtml(checkedOut ? getKeyDueLabel(key) : key.storageLocation || "No storage location")}</small>
+          ${!checkedOut ? `<small>${escapeHtml(formatKeyCheckoutWindow(key))}</small>` : ""}
         </div>
         <div class="inventory-actions">
           <button type="button" class="secondary mini" data-key-action="${escapeAttribute(key.id)}" data-action="${checkedOut ? "checkin" : "checkout"}" ${canManage ? "" : "disabled"}>${checkedOut ? "Check In" : "Check Out"}</button>
@@ -5265,6 +5279,16 @@ function renderKeyEditForm(key) {
           <input name="currentHolderName" value="${escapeAttribute(key.currentHolderName || "")}" placeholder="Person or company">
         </label>
       </div>
+      <div class="form-grid">
+        <label>
+          Default checkout hours
+          <input name="defaultCheckoutHours" type="number" min="1" max="8760" value="${escapeAttribute(normalizeKeyCheckoutHours(key.defaultCheckoutHours ?? key.default_checkout_hours))}">
+        </label>
+        <label>
+          Due back
+          <input name="dueBackAt" type="datetime-local" value="${escapeAttribute(formatDateTimeInput(getKeyDueBackAt(key)))}">
+        </label>
+      </div>
       <label>
         Notes
         <textarea name="notes" rows="3">${escapeHtml(key.notes || "")}</textarea>
@@ -5286,6 +5310,7 @@ function renderKeyLogList(key) {
         <article>
           <strong>${escapeHtml(log.action || "Key activity")}</strong>
           <small>${escapeHtml(formatDateTime(new Date(log.timestamp || log.createdAt || new Date())))} | ${escapeHtml(log.userName || "SiteWorks")}</small>
+          ${log.dueBackAt || log.due_back_at ? `<small>Due back ${escapeHtml(formatDateTime(new Date(log.dueBackAt || log.due_back_at)))}</small>` : ""}
           ${log.notes ? `<p>${escapeHtml(log.notes)}</p>` : ""}
         </article>
       `).join("")}
@@ -5304,6 +5329,7 @@ function addKeyLog(key, action, notes = "") {
       userName: currentUser?.name || currentUser?.username || "SiteWorks",
       action,
       notes,
+      dueBackAt: getKeyDueBackAt(key) || "",
       timestamp: new Date().toISOString()
     },
     ...(state.keyLogs || [])
@@ -10139,6 +10165,66 @@ function normalizeNfcUid(value) {
   return String(value || "").replace(/[^a-f0-9]/gi, "").toUpperCase();
 }
 
+function normalizeKeyCheckoutHours(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_KEY_CHECKOUT_HOURS;
+  return Math.min(Math.max(Math.round(parsed), 1), 8760);
+}
+
+function isKeyCheckedOut(key) {
+  return String(key?.currentStatus || key?.current_status || "") === "Checked Out";
+}
+
+function getKeyDueBackAt(key) {
+  return key?.dueBackAt || key?.due_back_at || "";
+}
+
+function buildKeyDueBackAt(key, baseDate = new Date()) {
+  const hours = normalizeKeyCheckoutHours(key?.defaultCheckoutHours ?? key?.default_checkout_hours);
+  return new Date(baseDate.getTime() + hours * 60 * 60 * 1000).toISOString();
+}
+
+function parseKeyDueBackInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : "";
+}
+
+function formatDateTimeInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function isKeyOverdue(key, now = new Date()) {
+  if (!isKeyCheckedOut(key)) return false;
+  const dueBackAt = getKeyDueBackAt(key);
+  if (!dueBackAt) return false;
+  const dueDate = new Date(dueBackAt);
+  return Number.isFinite(dueDate.getTime()) && dueDate.getTime() < now.getTime();
+}
+
+function formatKeyDueBack(key) {
+  const dueBackAt = getKeyDueBackAt(key);
+  if (!dueBackAt) return "not set";
+  const dueDate = new Date(dueBackAt);
+  return Number.isFinite(dueDate.getTime()) ? formatDateTime(dueDate) : "not set";
+}
+
+function formatKeyCheckoutWindow(key) {
+  return `Default checkout: ${normalizeKeyCheckoutHours(key?.defaultCheckoutHours ?? key?.default_checkout_hours)} hours`;
+}
+
+function getKeyDueLabel(key) {
+  if (!isKeyCheckedOut(key)) return key?.storageLocation || "No storage location";
+  const prefix = isKeyOverdue(key) ? "Overdue since" : "Due back";
+  return `${prefix} ${formatKeyDueBack(key)}`;
+}
+
 function normalizeKeyExtraTagUids(value) {
   const rawValues = Array.isArray(value)
     ? value
@@ -14481,7 +14567,7 @@ const siteworksApi = {
     if (normalizedUid) filters.push(`unique_tag_id=eq.${encodeURIComponent(normalizedUid)}`);
     if (keyId) filters.push(`id=eq.${encodeURIComponent(keyId)}`);
     for (const filter of filters) {
-      const response = await cloudApi.rest(`keys?${filter}&select=id,unique_tag_id,key_name,key_number,storage_location,current_status,current_holder_name,customer_id,location_id,updated_at&limit=1`, { forceAnon: true });
+      const response = await cloudApi.rest(`keys?${filter}&select=id,unique_tag_id,key_name,key_number,storage_location,current_status,current_holder_name,default_checkout_hours,due_back_at,customer_id,location_id,updated_at&limit=1`, { forceAnon: true });
       if (!response.ok) continue;
       const rows = await response.json();
       const row = rows?.[0];
@@ -14495,6 +14581,8 @@ const siteworksApi = {
           storage_location: row.storage_location,
           current_status: row.current_status,
           current_holder_name: row.current_holder_name,
+          default_checkout_hours: row.default_checkout_hours,
+          due_back_at: row.due_back_at,
           customer_id: row.customer_id,
           customer_name: "",
           location_id: row.location_id,
@@ -15504,6 +15592,8 @@ function keyFromStructuredRow(row) {
     currentStatus: row.current_status || payload.currentStatus || "Available",
     currentHolderId: row.current_holder_id || payload.currentHolderId || "",
     currentHolderName: row.current_holder_name || payload.currentHolderName || "",
+    defaultCheckoutHours: normalizeKeyCheckoutHours(row.default_checkout_hours ?? payload.defaultCheckoutHours ?? payload.default_checkout_hours),
+    dueBackAt: row.due_back_at || payload.dueBackAt || payload.due_back_at || "",
     notes: row.notes || payload.notes || "",
     createdAt: row.created_at || payload.createdAt || "",
     updatedAt: row.updated_at || payload.updatedAt || ""
@@ -15522,7 +15612,8 @@ function keyLogFromStructuredRow(row) {
     action: row.action || payload.action || "Check-In",
     notes: row.notes || payload.notes || "",
     timestamp: row.timestamp || payload.timestamp || payload.createdAt || "",
-    ...payload
+    ...payload,
+    dueBackAt: row.due_back_at || payload.dueBackAt || payload.due_back_at || ""
   };
 }
 
@@ -15839,6 +15930,8 @@ function leanCloudRecord(record) {
 function buildStructuredKeyRow(key, cloudLocationIds = null) {
   const locationId = key.locationId && (!cloudLocationIds || cloudLocationIds.has(key.locationId)) ? key.locationId : null;
   const additionalTagUids = getKeyAdditionalTagUids(key);
+  const defaultCheckoutHours = normalizeKeyCheckoutHours(key.defaultCheckoutHours ?? key.default_checkout_hours);
+  const dueBackAt = getKeyDueBackAt(key) || null;
   return {
     id: key.id,
     customer_id: key.customerId || null,
@@ -15850,6 +15943,8 @@ function buildStructuredKeyRow(key, cloudLocationIds = null) {
     current_status: KEY_STATUS_OPTIONS.includes(key.currentStatus) ? key.currentStatus : "Available",
     current_holder_id: isUuid(key.currentHolderId) ? key.currentHolderId : null,
     current_holder_name: key.currentHolderName || "",
+    default_checkout_hours: defaultCheckoutHours,
+    due_back_at: dueBackAt,
     notes: key.notes || "",
     created_at: key.createdAt || new Date().toISOString(),
     updated_at: key.updatedAt || state.updatedAt || new Date().toISOString(),
@@ -15857,6 +15952,10 @@ function buildStructuredKeyRow(key, cloudLocationIds = null) {
       ...key,
       additionalTagUids,
       additional_tag_uids: additionalTagUids,
+      defaultCheckoutHours,
+      default_checkout_hours: defaultCheckoutHours,
+      dueBackAt: dueBackAt || "",
+      due_back_at: dueBackAt || "",
       locationId: locationId || ""
     })
   };
@@ -15864,6 +15963,7 @@ function buildStructuredKeyRow(key, cloudLocationIds = null) {
 
 function buildStructuredKeyLogRow(log, cloudLocationIds = null) {
   const locationId = log.locationId && (!cloudLocationIds || cloudLocationIds.has(log.locationId)) ? log.locationId : null;
+  const dueBackAt = log.dueBackAt || log.due_back_at || null;
   return {
     id: log.id,
     key_id: log.keyId,
@@ -15873,9 +15973,12 @@ function buildStructuredKeyLogRow(log, cloudLocationIds = null) {
     user_name: log.userName || "",
     action: log.action === "Check-Out" ? "Check-Out" : "Check-In",
     notes: log.notes || "",
+    due_back_at: dueBackAt,
     timestamp: log.timestamp || log.createdAt || new Date().toISOString(),
     data: leanCloudRecord({
       ...log,
+      dueBackAt: dueBackAt || "",
+      due_back_at: dueBackAt || "",
       locationId: locationId || ""
     })
   };
@@ -16672,6 +16775,8 @@ function normalizeState(input) {
     currentStatus: KEY_STATUS_OPTIONS.includes(key.currentStatus) ? key.currentStatus : "Available",
     currentHolderId: key.currentHolderId || "",
     currentHolderName: key.currentHolderName || "",
+    defaultCheckoutHours: normalizeKeyCheckoutHours(key.defaultCheckoutHours ?? key.default_checkout_hours),
+    dueBackAt: key.dueBackAt || key.due_back_at || "",
     notes: key.notes || "",
     createdAt: key.createdAt || new Date().toISOString(),
     updatedAt: key.updatedAt || key.createdAt || new Date().toISOString()
@@ -16687,6 +16792,7 @@ function normalizeState(input) {
     userName: log.userName || "",
     action: log.action === "Check-Out" ? "Check-Out" : "Check-In",
     notes: log.notes || "",
+    dueBackAt: log.dueBackAt || log.due_back_at || "",
     timestamp: log.timestamp || log.createdAt || new Date().toISOString()
   })).filter((log) => log.keyId);
 
