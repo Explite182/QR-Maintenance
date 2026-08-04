@@ -3542,7 +3542,7 @@ function ensureMonitoringCollections() {
 }
 
 function allElectricalPanelAssetsForMonitoring() {
-  return state.assets
+  return (state.assets || [])
     .filter(asset => canSeeAsset(asset) && isElectricalPanelAsset(asset))
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 }
@@ -3552,6 +3552,38 @@ function getMonitoringDevice(deviceId) {
   return state.monitoringDevices.find(device => device.id === deviceId);
 }
 
+function normalizeMonitoringDevice(device) {
+  if (!device) return null;
+  const panelAssetId = device.panelAssetId || device.panel_asset_id || device.panelId || device.panel_id || device.assetId || device.asset_id || "";
+  const panel = panelAssetId ? getAsset(panelAssetId) : null;
+  const panelCustomerId = panel?.customerId || panel?.customer_id || "";
+  const panelLocationId = panel?.locationId || panel?.location_id || "";
+  return {
+    ...device,
+    panelAssetId,
+    customerId: device.customerId || device.customer_id || panelCustomerId,
+    locationId: device.locationId || device.location_id || panelLocationId,
+    deviceUid: device.deviceUid || device.device_uid || device.uid || "",
+    name: device.name || device.deviceName || device.device_name || "",
+    model: device.model || "",
+    firmwareVersion: device.firmwareVersion || device.firmware_version || "",
+    heartbeatSeconds: Math.max(30, Number(device.heartbeatSeconds || device.heartbeat_seconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS)),
+    maintenanceMode: Boolean(device.maintenanceMode ?? device.maintenance_mode),
+    onlineStatus: device.onlineStatus || device.online_status || "offline",
+    lastSeenAt: device.lastSeenAt || device.last_seen_at || "",
+    apiKeyLast4: device.apiKeyLast4 || device.api_key_last4 || ""
+  };
+}
+
+function monitoringRecordMatchesCurrentView(record, fallback = null) {
+  if (!record) return false;
+  const customerId = record.customerId || record.customer_id || fallback?.customerId || fallback?.customer_id || "";
+  const locationId = record.locationId || record.location_id || fallback?.locationId || fallback?.location_id || "";
+  if (selectedCustomerId !== ALL_CUSTOMERS && customerId && customerId !== selectedCustomerId) return false;
+  if (selectedLocationId !== ALL_LOCATIONS && locationId && locationId !== selectedLocationId) return false;
+  return true;
+}
+
 function getMonitoringChannel(channelId) {
   ensureMonitoringCollections();
   return state.monitoringChannels.find(channel => channel.id === channelId);
@@ -3559,13 +3591,14 @@ function getMonitoringChannel(channelId) {
 
 function visibleMonitoringDevices() {
   ensureMonitoringCollections();
-  return state.monitoringDevices.filter(device => {
-    const panel = getAsset(device.panelAssetId);
-    if (!panel) return false;
-    if (selectedCustomerId !== ALL_CUSTOMERS && panel.customerId !== selectedCustomerId) return false;
-    if (selectedLocationId !== ALL_LOCATIONS && panel.locationId !== selectedLocationId) return false;
-    return true;
-  });
+  return state.monitoringDevices
+    .map(normalizeMonitoringDevice)
+    .filter(device => {
+      const panel = device?.panelAssetId ? getAsset(device.panelAssetId) : null;
+      if (panel) return canSeeAsset(panel) && monitoringRecordMatchesCurrentView(panel, device);
+      if (!monitoringRecordMatchesCurrentView(device)) return false;
+      return !device.customerId || canSeeCustomer(device.customerId);
+    });
 }
 
 function monitoringChannelsForDevice(deviceId) {
@@ -3627,7 +3660,7 @@ async function handleMonitoringDeviceSubmit(form) {
       return;
     }
     const existingId = elements.deviceId?.value || "";
-    const duplicate = state.monitoringDevices.find(device => device.deviceUid === uid && device.id !== existingId);
+    const duplicate = state.monitoringDevices.find(device => normalizeMonitoringDevice(device)?.deviceUid === uid && device.id !== existingId);
     if (duplicate) {
       if (elements.deviceStatus) elements.deviceStatus.textContent = "That device UID is already assigned.";
       return;
@@ -3644,8 +3677,8 @@ async function handleMonitoringDeviceSubmit(form) {
       if (elements.deviceStatus) elements.deviceStatus.textContent = "Device could not be found for editing.";
       return;
     }
-    device.customerId = panel.customerId;
-    device.locationId = panel.locationId;
+    device.customerId = panel.customerId || panel.customer_id || "";
+    device.locationId = panel.locationId || panel.location_id || "";
     device.panelAssetId = panel.id;
     device.deviceUid = uid;
     device.name = name;
@@ -3685,7 +3718,7 @@ function handleMonitoringChannelSubmit(form) {
     return;
   }
   try {
-  const device = getMonitoringDevice(elements.channelDevice?.value);
+  const device = normalizeMonitoringDevice(getMonitoringDevice(elements.channelDevice?.value));
   if (!device) {
     if (elements.channelStatus) elements.channelStatus.textContent = "Choose a device first.";
     return;
@@ -3740,7 +3773,7 @@ function handleMonitoringSimulatorSubmit(form) {
     return;
   }
   try {
-  const device = getMonitoringDevice(elements.simulatorDevice?.value);
+  const device = normalizeMonitoringDevice(getMonitoringDevice(elements.simulatorDevice?.value));
   if (!device) {
     if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Choose a device first.";
     return;
@@ -3960,7 +3993,7 @@ function createMonitoringWorkOrder(alertId) {
 }
 
 function loadMonitoringDeviceForm(deviceId) {
-  const device = getMonitoringDevice(deviceId);
+  const device = normalizeMonitoringDevice(getMonitoringDevice(deviceId));
   const elements = monitoringElements();
   if (!device || !elements.deviceForm) return;
   elements.deviceId.value = device.id;
@@ -4003,10 +4036,16 @@ function renderMonitoring() {
   const elements = monitoringElements();
   if (!elements.deviceList) return;
   const panels = allElectricalPanelAssetsForMonitoring();
-  const panelOptions = panels.map(panel => `<option value="${escapeHtml(panel.id)}">${escapeHtml(panel.name)} - ${escapeHtml(getLocation(panel.locationId)?.name || "Unknown location")}</option>`).join("");
+  const panelOptions = panels.map(panel => {
+    const locationId = panel.locationId || panel.location_id || "";
+    return `<option value="${escapeHtml(panel.id)}">${escapeHtml(panel.name)} - ${escapeHtml(getLocation(locationId)?.name || "Unknown location")}</option>`;
+  }).join("");
   if (elements.devicePanel && elements.devicePanel.innerHTML !== panelOptions) elements.devicePanel.innerHTML = panelOptions;
   const devices = visibleMonitoringDevices();
-  const deviceOptions = devices.map(device => `<option value="${escapeHtml(device.id)}">${escapeHtml(device.name)} - ${escapeHtml(getAsset(device.panelAssetId)?.name || "Panel")}</option>`).join("");
+  const deviceOptions = devices.map(device => {
+    const panel = getAsset(device.panelAssetId);
+    return `<option value="${escapeHtml(device.id)}">${escapeHtml(device.name)} - ${escapeHtml(panel?.name || "Panel")}</option>`;
+  }).join("");
   const selectedChannelDevice = elements.channelDevice?.value || "";
   const selectedSimulatorDevice = elements.simulatorDevice?.value || "";
   if (elements.channelDevice) {
@@ -4027,7 +4066,7 @@ function renderMonitoring() {
 
 function renderMonitoringCircuitOptions(deviceId) {
   const elements = monitoringElements();
-  const device = getMonitoringDevice(deviceId);
+  const device = normalizeMonitoringDevice(getMonitoringDevice(deviceId));
   const panel = device ? getAsset(device.panelAssetId) : null;
   const circuits = Array.isArray(panel?.panelSchedule) ? panel.panelSchedule : [];
   if (!elements.channelCircuit) return;
