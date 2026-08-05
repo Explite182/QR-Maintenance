@@ -3545,6 +3545,8 @@ function monitoringElements() {
     channelForm: document.getElementById("monitoringChannelForm"),
     channelDevice: document.getElementById("monitoringChannelDevice"),
     channelCircuit: document.getElementById("monitoringChannelCircuit"),
+    channelCircuitManualWrap: document.getElementById("monitoringChannelCircuitManualWrap"),
+    channelCircuitManual: document.getElementById("monitoringChannelCircuitManual"),
     channelNumber: document.getElementById("monitoringChannelNumber"),
     channelPhase: document.getElementById("monitoringChannelPhase"),
     channelPoles: document.getElementById("monitoringChannelPoles"),
@@ -3787,7 +3789,7 @@ function handleMonitoringChannelSubmit(form) {
     if (elements.channelStatus) elements.channelStatus.textContent = "Choose a device first.";
     return;
   }
-  const circuitNumber = String(elements.channelCircuit?.value || "").trim();
+  const circuitNumber = String(elements.channelCircuit?.value || elements.channelCircuitManual?.value || "").trim();
   const physicalChannel = String(elements.channelNumber?.value || "").trim();
   if (!circuitNumber || !physicalChannel) {
     if (elements.channelStatus) elements.channelStatus.textContent = "Circuit and channel are required.";
@@ -4143,7 +4145,11 @@ function renderMonitoringCircuitOptions(deviceId) {
   const elements = monitoringElements();
   const device = normalizeMonitoringDevice(getMonitoringDevice(deviceId));
   const panel = device ? getAsset(device.panelAssetId) : null;
-  const circuits = Array.isArray(panel?.panelSchedule) ? panel.panelSchedule : [];
+  const circuits = Array.isArray(panel?.electricalPanelSchedule?.circuits)
+    ? panel.electricalPanelSchedule.circuits
+    : Array.isArray(panel?.panelSchedule)
+      ? panel.panelSchedule
+      : [];
   if (!elements.channelCircuit) return;
   elements.channelCircuit.innerHTML = circuits.length
     ? circuits.map(circuit => {
@@ -4151,7 +4157,14 @@ function renderMonitoringCircuitOptions(deviceId) {
         const label = [cct, circuit.load || circuit.description || circuit.loadServed || ""].filter(Boolean).join(" - ");
         return `<option value="${escapeHtml(cct)}">${escapeHtml(label || cct)}</option>`;
       }).join("")
-    : `<option value="">No panel circuits found</option>`;
+    : `<option value="">Manual circuit entry</option>`;
+  elements.channelCircuit.disabled = !circuits.length;
+  elements.channelCircuitManualWrap?.classList.toggle("hidden", Boolean(circuits.length));
+  if (elements.channelCircuitManual) {
+    elements.channelCircuitManual.disabled = Boolean(circuits.length);
+    elements.channelCircuitManual.required = !circuits.length;
+    if (circuits.length) elements.channelCircuitManual.value = "";
+  }
 }
 
 function renderMonitoringDeviceList(devices) {
