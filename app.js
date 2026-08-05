@@ -3645,7 +3645,12 @@ function visibleMonitoringDevices() {
 function monitoringChannelsForDevice(deviceId) {
   ensureMonitoringCollections();
   const needle = String(deviceId || "");
-  return state.monitoringChannels.filter(channel => String(channel.deviceId || channel.device_id || "") === needle);
+  return state.monitoringChannels.filter(channel => {
+    const normalizedDeviceId = String(channel.deviceId || channel.device_id || "");
+    if (normalizedDeviceId === needle) return true;
+    const device = getMonitoringDevice(normalizedDeviceId);
+    return Boolean(device && (String(device.id || "") === needle || String(device.deviceUid || "") === needle));
+  });
 }
 
 function normalizeMonitoringSourcePhases(phases = {}) {
@@ -3838,11 +3843,17 @@ function handleMonitoringSimulatorSubmit(form) {
     return;
   }
   const formData = new FormData(form);
+  const mappedChannels = monitoringChannelsForDevice(device.id);
+  if (!mappedChannels.length) {
+    if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Map at least one breaker channel for this device first.";
+    return;
+  }
   const closedChannels = String(formData.get("closedChannels") || "")
-    .split(",")
-    .map(value => value.trim())
+    .split(/[\s,]+/)
+    .map(value => value.trim().toLowerCase())
     .filter(Boolean);
   ingestMonitoringStatus({
+    deviceId: device.id,
     deviceUid: device.deviceUid,
     timestamp: new Date().toISOString(),
     healthStatus: "ok",
@@ -3851,14 +3862,17 @@ function handleMonitoringSimulatorSubmit(form) {
       B: formData.has("sourceB"),
       C: formData.has("sourceC")
     },
-    channels: monitoringChannelsForDevice(device.id).map(channel => ({
+    channels: mappedChannels.map(channel => ({
       channel: channel.physicalChannel,
-      closed: closedChannels.includes(String(channel.physicalChannel))
+      closed: closedChannels.includes(String(channel.physicalChannel).toLowerCase())
     }))
   }, { simulated: true });
-  if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Simulator status applied.";
+  const successMessage = `Simulator status applied to ${mappedChannels.length} channel${mappedChannels.length === 1 ? "" : "s"}.`;
+  if (elements.simulatorStatus) elements.simulatorStatus.textContent = successMessage;
   saveState();
   render();
+  const nextElements = monitoringElements();
+  if (nextElements.simulatorStatus) nextElements.simulatorStatus.textContent = successMessage;
   } catch (error) {
     console.error("Monitoring simulator failed", error);
     if (elements.simulatorStatus) elements.simulatorStatus.textContent = `Simulator failed: ${error?.message || "Unknown error"}`;
