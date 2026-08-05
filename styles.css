@@ -8009,7 +8009,7 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-results-grid {
   display: grid;
-  grid-template-columns: minmax(360px, 1.25fr) minmax(300px, 1fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(300px, 0.8fr) minmax(360px, 1.2fr);
   gap: 16px;
   margin-top: 16px;
 }
@@ -8025,6 +8025,51 @@ html[data-theme="dark"] .sync-banner small {
   margin: 0 0 10px;
 }
 
+.monitoring-panel-live-card {
+  display: grid;
+  gap: 14px;
+}
+
+.monitoring-panel-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, auto) minmax(260px, 420px);
+  gap: 14px;
+  align-items: end;
+}
+
+.monitoring-panel-toolbar h3 {
+  margin: 0;
+}
+
+.monitoring-panel-toolbar label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.monitoring-setup-drawer {
+  margin-top: 16px;
+  border: 1px solid var(--line, #d8e3e1);
+  border-radius: 10px;
+  background: var(--card, #fff);
+}
+
+.monitoring-setup-drawer > summary {
+  cursor: pointer;
+  padding: 14px;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.monitoring-setup-drawer[open] > summary {
+  border-bottom: 1px solid var(--line, #d8e3e1);
+}
+
+.monitoring-setup-drawer .monitoring-layout {
+  padding: 14px;
+}
+
 .monitoring-list,
 .monitoring-live-grid {
   display: grid;
@@ -8032,7 +8077,7 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-live-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
 .monitoring-record {
@@ -8270,6 +8315,10 @@ html[data-theme="dark"] .phase-toggle-row label {
 }
 
 @media (max-width: 900px) {
+  .monitoring-panel-toolbar {
+    grid-template-columns: 1fr;
+  }
+
   .monitoring-record {
     display: grid;
   }

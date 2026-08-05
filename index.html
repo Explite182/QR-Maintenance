@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260804-monitoring-live-visibility-fix">
+    <link rel="stylesheet" href="/styles.css?v=20260804-monitoring-panel-view">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -1069,8 +1069,21 @@
           </div>
         </div>
         <div class="monitoring-body" data-panel-body>
-          <div class="monitoring-layout">
-            <section class="monitoring-card">
+          <section class="monitoring-card monitoring-panel-live-card">
+            <div class="monitoring-panel-toolbar">
+              <h3>Live Panel Status</h3>
+              <label>
+                Panel
+                <select id="monitoringPanelSelect"></select>
+              </label>
+            </div>
+            <div id="monitoringLivePanel" class="monitoring-live-grid"></div>
+          </section>
+
+          <details class="monitoring-setup-drawer">
+            <summary>Setup monitoring devices, channels, and simulator</summary>
+            <div class="monitoring-layout">
+              <section class="monitoring-card">
               <h3>Monitoring Devices</h3>
               <form id="monitoringDeviceForm" class="stack compact-form">
                 <input id="monitoringDeviceId" type="hidden">
@@ -1116,9 +1129,9 @@
                 <p id="monitoringDeviceStatus" class="inline-status"></p>
               </form>
               <div id="monitoringDeviceList" class="monitoring-list"></div>
-            </section>
+              </section>
 
-            <section class="monitoring-card">
+              <section class="monitoring-card">
               <h3>Channel Mapping</h3>
               <form id="monitoringChannelForm" class="stack compact-form">
                 <div class="form-grid">
@@ -1185,9 +1198,9 @@
                 <p id="monitoringChannelStatus" class="inline-status"></p>
               </form>
               <div id="monitoringChannelList" class="monitoring-list"></div>
-            </section>
+              </section>
 
-            <section class="monitoring-card">
+              <section class="monitoring-card">
               <h3>Simulator</h3>
               <form id="monitoringSimulatorForm" class="stack compact-form">
                 <label>
@@ -1206,14 +1219,11 @@
                 <button type="submit" class="primary">Send Simulated Status</button>
                 <p id="monitoringSimulatorStatus" class="inline-status"></p>
               </form>
-            </section>
-          </div>
+              </section>
+            </div>
+          </details>
 
           <div class="monitoring-results-grid">
-            <section class="monitoring-card monitoring-wide-card">
-              <h3>Live Panel Monitoring</h3>
-              <div id="monitoringLivePanel" class="monitoring-live-grid"></div>
-            </section>
             <section class="monitoring-card">
               <h3>Active Alerts</h3>
               <div id="monitoringAlertList" class="monitoring-list"></div>
@@ -1757,7 +1767,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script src="/app.js?v=20260804-monitoring-manual-channel-fix"></script>
+    <script src="/app.js?v=20260804-monitoring-panel-view"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260804-monitoring-live-visibility-fix";
+const SITEWORKS_APP_VERSION = "20260804-monitoring-panel-view";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -106,6 +106,7 @@ let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
 let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
+let selectedMonitoringPanelId = "";
 let assetQuery = "";
 let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
@@ -3526,6 +3527,10 @@ document.addEventListener("change", (event) => {
   if (target.id === "monitoringChannelDevice" || target.id === "monitoringSimulatorDevice") {
     renderMonitoring();
   }
+  if (target.id === "monitoringPanelSelect") {
+    selectedMonitoringPanelId = target.value || "";
+    renderMonitoring();
+  }
 });
 
 function monitoringElements() {
@@ -3558,6 +3563,7 @@ function monitoringElements() {
     simulatorForm: document.getElementById("monitoringSimulatorForm"),
     simulatorDevice: document.getElementById("monitoringSimulatorDevice"),
     simulatorStatus: document.getElementById("monitoringSimulatorStatus"),
+    panelSelect: document.getElementById("monitoringPanelSelect"),
     livePanel: document.getElementById("monitoringLivePanel"),
     alertList: document.getElementById("monitoringAlertList"),
     eventList: document.getElementById("monitoringEventList")
@@ -4109,7 +4115,7 @@ function renderMonitoring() {
   if (!currentUser) return;
   ensureMonitoringCollections();
   const elements = monitoringElements();
-  if (!elements.deviceList) return;
+  if (!elements.livePanel) return;
   const panels = allElectricalPanelAssetsForMonitoring();
   const panelOptions = panels.map(panel => {
     const locationId = panel.locationId || panel.location_id || "";
@@ -4117,6 +4123,14 @@ function renderMonitoring() {
   }).join("");
   if (elements.devicePanel && elements.devicePanel.innerHTML !== panelOptions) elements.devicePanel.innerHTML = panelOptions;
   const devices = visibleMonitoringDevices();
+  const selectablePanels = monitoringSelectablePanels(devices);
+  if (!selectedMonitoringPanelId || !selectablePanels.some(panel => String(panel.id || "") === String(selectedMonitoringPanelId))) {
+    selectedMonitoringPanelId = selectablePanels[0]?.id || "";
+  }
+  renderMonitoringPanelSelect(selectablePanels);
+  const selectedDevices = selectedMonitoringPanelId
+    ? devices.filter(device => String(device.panelAssetId || "") === String(selectedMonitoringPanelId))
+    : devices;
   const deviceOptions = devices.map(device => {
     const panel = getAsset(device.panelAssetId);
     return `<option value="${escapeHtml(device.id)}">${escapeHtml(device.name)} - ${escapeHtml(panel?.name || "Panel")}</option>`;
@@ -4136,9 +4150,31 @@ function renderMonitoring() {
   renderMonitoringCircuitOptions(elements.channelDevice?.value || devices[0]?.id || "");
   renderMonitoringDeviceList(devices);
   renderMonitoringChannelList(devices);
-  renderMonitoringLivePanel(devices);
-  renderMonitoringAlerts(devices);
-  renderMonitoringEvents(devices);
+  renderMonitoringLivePanel(selectedDevices);
+  renderMonitoringAlerts(selectedDevices);
+  renderMonitoringEvents(selectedDevices);
+}
+
+function monitoringSelectablePanels(devices = []) {
+  const panelsById = new Map();
+  devices.forEach(device => {
+    const panel = getAsset(device.panelAssetId);
+    if (!panel?.id) return;
+    panelsById.set(panel.id, panel);
+  });
+  return [...panelsById.values()].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+function renderMonitoringPanelSelect(panels = []) {
+  const elements = monitoringElements();
+  if (!elements.panelSelect) return;
+  elements.panelSelect.innerHTML = panels.length
+    ? panels.map(panel => {
+      const locationName = getLocation(panel.locationId || panel.location_id || "")?.name || "Unknown location";
+      return `<option value="${escapeHtml(panel.id)}">${escapeHtml(panel.name || "Panel")} - ${escapeHtml(locationName)}</option>`;
+    }).join("")
+    : `<option value="">Add a monitoring device first</option>`;
+  elements.panelSelect.value = selectedMonitoringPanelId || "";
 }
 
 function renderMonitoringCircuitOptions(deviceId) {
