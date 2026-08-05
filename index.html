@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260805-monitoring-device-channel-scope">
+    <link rel="stylesheet" href="/styles.css?v=20260805-monitoring-engine">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -1104,6 +1104,20 @@
                 </div>
                 <div class="form-grid">
                   <label>
+                    Source phase A channel
+                    <input id="monitoringSourcePhaseAChannel" placeholder="Dedicated source input or blank">
+                  </label>
+                  <label>
+                    Source phase B channel
+                    <input id="monitoringSourcePhaseBChannel" placeholder="Dedicated source input or blank">
+                  </label>
+                  <label>
+                    Source phase C channel
+                    <input id="monitoringSourcePhaseCChannel" placeholder="Dedicated source input or blank">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
                     Device name
                     <input id="monitoringDeviceName" required placeholder="Panel A monitor">
                   </label>
@@ -1126,10 +1140,15 @@
                   <input id="monitoringDeviceMaintenance" type="checkbox">
                   Maintenance mode
                 </label>
+                <div class="monitoring-key-actions">
+                  <button id="monitoringRotateKeyBtn" type="button" class="secondary mini">Rotate API Key</button>
+                  <p id="monitoringGeneratedApiKey" class="inline-status"></p>
+                </div>
                 <button type="submit" class="primary">Save Device</button>
                 <p id="monitoringDeviceStatus" class="inline-status"></p>
               </form>
               <div id="monitoringDeviceList" class="monitoring-list"></div>
+              <div id="monitoringDeviceDetails" class="monitoring-device-details"></div>
               </section>
 
               <section class="monitoring-card">
@@ -1238,6 +1257,7 @@
                 <button type="submit" class="primary">Send Simulated Status</button>
                 <p id="monitoringSimulatorStatus" class="inline-status"></p>
               </form>
+              <div id="monitoringSimulatorHistory" class="monitoring-simulator-history"></div>
               </section>
             </div>
           </details>
@@ -1786,7 +1806,8 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script src="/app.js?v=20260805-monitoring-device-channel-scope"></script>
+  <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
+    <script src="/app.js?v=20260805-monitoring-engine"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

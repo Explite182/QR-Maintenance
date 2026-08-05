@@ -8084,6 +8084,71 @@ html[data-theme="dark"] .sync-banner small {
   padding: 14px;
 }
 
+.monitoring-key-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.monitoring-detail-drawer {
+  margin-top: 12px;
+  border: 1px solid var(--line, #d8e3e1);
+  border-radius: 8px;
+  background: #fbfefe;
+}
+
+.monitoring-detail-drawer > summary {
+  cursor: pointer;
+  padding: 12px;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.monitoring-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.monitoring-detail-grid div,
+.monitoring-detail-block {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--line, #d8e3e1);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.monitoring-detail-block {
+  margin: 0 12px 12px;
+}
+
+.monitoring-detail-grid span,
+.monitoring-detail-block span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.monitoring-detail-grid strong,
+.monitoring-detail-block p {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.monitoring-detail-block pre {
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #23333a;
+  font-size: 0.78rem;
+}
+
 .monitoring-panel-live-card {
   display: grid;
   gap: 14px;
