@@ -8117,7 +8117,7 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-panel-rail-label,
-.monitoring-panel-row {
+.monitoring-panel-board {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
   gap: 8px;
@@ -8137,16 +8137,28 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-panel-bus {
   width: 18px;
-  min-height: 54px;
+  min-height: 100%;
   border-radius: 999px;
   background: linear-gradient(180deg, #879b96, #bfccc9);
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
 }
 
+.monitoring-breaker-column {
+  display: grid;
+  grid-auto-rows: minmax(112px, auto);
+  gap: 6px;
+}
+
 .monitoring-breaker-slot {
   position: relative;
-  min-height: 54px;
+  min-height: 112px;
   padding: 8px 10px;
+  align-content: center;
+}
+
+.monitoring-breaker-slot.multi-pole {
+  border-width: 2px;
+  box-shadow: inset 0 0 0 1px rgba(20, 163, 92, 0.12);
 }
 
 .monitoring-breaker-slot.right {

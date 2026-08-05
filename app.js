@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260804-monitoring-breaker-detail";
+const SITEWORKS_APP_VERSION = "20260804-monitoring-multipole-visual";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4414,32 +4414,58 @@ function renderMonitoringLivePanel(devices) {
       ${current ? `<span><small>Main current</small><strong>${escapeHtml(current)}</strong></span>` : ""}
     </div>
   ` : "";
-  const rows = Array.from({ length: rowCount }, (_, index) => {
-    const oddCircuit = index * 2 + 1;
-    const evenCircuit = oddCircuit + 1;
-    return `
-      <div class="monitoring-panel-row">
-        ${renderMonitoringBreakerSlot(oddCircuit, channelByCircuit.get(oddCircuit), panel, "left")}
-        <div class="monitoring-panel-bus" aria-hidden="true"></div>
-        ${renderMonitoringBreakerSlot(evenCircuit, channelByCircuit.get(evenCircuit), panel, "right")}
-      </div>
-    `;
-  }).join("");
+  const oddCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 1);
+  const evenCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 2);
   elements.livePanel.innerHTML = `
     ${meterHtml}
     <div class="monitoring-panel-mockup" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
       <div class="monitoring-panel-rail-label"><span>Odd circuits</span><span>Even circuits</span></div>
-      ${rows}
+      <div class="monitoring-panel-board">
+        <div class="monitoring-breaker-column">
+          ${renderMonitoringBreakerColumn(oddCircuits, channelByCircuit, panel, "left")}
+        </div>
+        <div class="monitoring-panel-bus" aria-hidden="true"></div>
+        <div class="monitoring-breaker-column">
+          ${renderMonitoringBreakerColumn(evenCircuits, channelByCircuit, panel, "right")}
+        </div>
+      </div>
     </div>
   `;
 }
 
-function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null, side = "left") {
+function renderMonitoringBreakerColumn(circuitNumbers = [], channelByCircuit, panel = null, side = "left") {
+  const renderedChannelIds = new Set();
+  return circuitNumbers.map((circuitNumber) => {
+    const channel = channelByCircuit.get(circuitNumber);
+    if (channel) {
+      const channelKey = channel.id || `${channel.deviceId}-${channel.physicalChannel}-${channel.circuitNumber}`;
+      if (renderedChannelIds.has(channelKey)) return "";
+      renderedChannelIds.add(channelKey);
+    }
+    const span = channel ? monitoringBreakerSpanForSide(channel, side) : 1;
+    return renderMonitoringBreakerSlot(circuitNumber, channel, panel, side, span);
+  }).join("");
+}
+
+function monitoringBreakerSpanForSide(channel = {}, side = "left") {
+  const wantOdd = side === "left";
+  const sideCircuits = parseMonitoringCircuitNumbers(channel.circuitNumber)
+    .filter(number => wantOdd ? number % 2 === 1 : number % 2 === 0)
+    .sort((a, b) => a - b);
+  if (sideCircuits.length >= 2) {
+    return Math.max(1, Math.floor((sideCircuits.at(-1) - sideCircuits[0]) / 2) + 1);
+  }
+  return Math.max(1, Number(channel.poleCount || 1));
+}
+
+function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null, side = "left", span = 1) {
   const state = channel?.lastDerivedState || "not-monitored";
   const label = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
   const phaseText = channel ? `Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${monitoringChannelPhaseLabel(channel)}` : "";
   const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber);
   const tooltipLabel = circuitLabel || "No panel label saved";
+  const spanStyle = span > 1 ? ` style="grid-row: span ${span};"` : "";
+  const multiClass = span > 1 ? " multi-pole" : "";
   const content = `
     <span>Circuit ${escapeHtml(circuitNumber)}</span>
     <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
@@ -4448,13 +4474,13 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   `;
   if (!channel) {
     return `
-      <button type="button" class="monitoring-breaker-slot monitoring-channel-card not-monitored ${escapeAttribute(side)}" data-monitoring-breaker-detail="" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}">
+      <button type="button" class="monitoring-breaker-slot monitoring-channel-card not-monitored ${escapeAttribute(side)}" data-monitoring-breaker-detail="" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}"${spanStyle}>
         ${content}
       </button>
     `;
   }
   return `
-    <button type="button" class="monitoring-breaker-slot monitoring-channel-card ${monitoringStatusClass(state)} ${escapeAttribute(side)}" data-monitoring-breaker-detail="${escapeAttribute(channel.id)}" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}">
+    <button type="button" class="monitoring-breaker-slot monitoring-channel-card ${monitoringStatusClass(state)} ${escapeAttribute(side)}${multiClass}" data-monitoring-breaker-detail="${escapeAttribute(channel.id)}" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}"${spanStyle}>
       ${content}
     </button>
   `;
