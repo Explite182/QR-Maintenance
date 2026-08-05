@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260803-monitoring-cache-sentinel-fix";
+const SITEWORKS_APP_VERSION = "20260804-monitoring-manual-channel-fix";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3789,8 +3789,8 @@ function handleMonitoringChannelSubmit(form) {
     if (elements.channelStatus) elements.channelStatus.textContent = "Choose a device first.";
     return;
   }
-  const circuitNumber = String(elements.channelCircuit?.value || elements.channelCircuitManual?.value || "").trim();
   const physicalChannel = String(elements.channelNumber?.value || "").trim();
+  const circuitNumber = String(elements.channelCircuit?.value || elements.channelCircuitManual?.value || physicalChannel || "").trim();
   if (!circuitNumber || !physicalChannel) {
     if (elements.channelStatus) elements.channelStatus.textContent = "Circuit and channel are required.";
     return;
@@ -4151,13 +4151,25 @@ function renderMonitoringCircuitOptions(deviceId) {
       ? panel.panelSchedule
       : [];
   if (!elements.channelCircuit) return;
+  if (!circuits.length && !elements.channelCircuitManualWrap && elements.channelCircuit.insertAdjacentHTML) {
+    const label = document.createElement("label");
+    label.id = "monitoringChannelCircuitManualWrap";
+    label.textContent = "Circuit number";
+    const input = document.createElement("input");
+    input.id = "monitoringChannelCircuitManual";
+    input.placeholder = "1";
+    label.appendChild(input);
+    elements.channelCircuit.closest("label")?.after(label);
+    elements.channelCircuitManualWrap = label;
+    elements.channelCircuitManual = input;
+  }
   elements.channelCircuit.innerHTML = circuits.length
     ? circuits.map(circuit => {
         const cct = String(circuit.cct || circuit.circuit || circuit.number || "");
         const label = [cct, circuit.load || circuit.description || circuit.loadServed || ""].filter(Boolean).join(" - ");
         return `<option value="${escapeHtml(cct)}">${escapeHtml(label || cct)}</option>`;
       }).join("")
-    : `<option value="">Manual circuit entry</option>`;
+    : `<option value="">Manual circuit entry or use physical channel</option>`;
   elements.channelCircuit.disabled = !circuits.length;
   elements.channelCircuitManualWrap?.classList.toggle("hidden", Boolean(circuits.length));
   if (elements.channelCircuitManual) {
