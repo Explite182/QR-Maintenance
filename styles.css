@@ -7120,14 +7120,26 @@ body.panel-schedule-open {
     grid-template-columns: 1fr;
   }
 
+  .site-map-body {
+    gap: 10px;
+  }
+
+  .site-map-filters {
+    gap: 8px;
+  }
+
   .site-map-filter-group {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    padding-bottom: 2px;
+    overflow: visible;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-bottom: 0;
   }
 
   .site-map-filter-chip {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-height: 36px;
+    padding: 0 12px;
+    white-space: normal;
   }
 
   .site-map-actions {
@@ -7137,17 +7149,17 @@ body.panel-schedule-open {
 
   .site-map-canvas,
   .site-map-empty {
-    min-height: 320px;
+    min-height: 240px;
   }
 
   .site-map-viewport {
-    height: min(62vh, 520px);
-    min-height: 320px;
-    padding: 12px;
+    height: min(46vh, 390px);
+    min-height: 240px;
+    padding: 10px;
   }
 
   .site-map-image {
-    min-height: 300px;
+    min-height: 220px;
   }
 
   .site-map-controls {
@@ -7158,6 +7170,15 @@ body.panel-schedule-open {
 
   .site-map-pin-list {
     max-height: none;
+  }
+
+  .site-map-pin-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .site-map-pin-row > button:last-child {
+    justify-self: stretch;
   }
 
   .global-search-results {
@@ -8023,6 +8044,44 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-card h3 {
   margin: 0 0 10px;
+}
+
+.monitoring-result-drawer {
+  padding: 0;
+}
+
+.monitoring-result-drawer > summary {
+  cursor: pointer;
+  padding: 14px;
+  color: var(--ink);
+  font-size: 1.08rem;
+  font-weight: 900;
+  list-style: none;
+}
+
+.monitoring-result-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.monitoring-result-drawer > summary::before {
+  content: "▶";
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  transform: translateY(-1px);
+}
+
+.monitoring-result-drawer[open] > summary {
+  border-bottom: 1px solid var(--line, #d8e3e1);
+}
+
+.monitoring-result-drawer[open] > summary::before {
+  content: "▼";
+}
+
+.monitoring-result-drawer .monitoring-list {
+  padding: 14px;
 }
 
 .monitoring-panel-live-card {

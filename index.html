@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260804-monitoring-schedule-labels">
+    <link rel="stylesheet" href="/styles.css?v=20260805-monitoring-result-drawers">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -1243,14 +1243,14 @@
           </details>
 
           <div class="monitoring-results-grid">
-            <section class="monitoring-card">
-              <h3>Active Alerts</h3>
+            <details class="monitoring-card monitoring-result-drawer">
+              <summary>Active Alerts</summary>
               <div id="monitoringAlertList" class="monitoring-list"></div>
-            </section>
-            <section class="monitoring-card">
-              <h3>Breaker Event History</h3>
+            </details>
+            <details class="monitoring-card monitoring-result-drawer">
+              <summary>Breaker Event History</summary>
               <div id="monitoringEventList" class="monitoring-list"></div>
-            </section>
+            </details>
           </div>
         </div>
       </section>
@@ -1786,7 +1786,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script src="/app.js?v=20260804-monitoring-schedule-labels"></script>
+    <script src="/app.js?v=20260805-monitoring-result-drawers"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
