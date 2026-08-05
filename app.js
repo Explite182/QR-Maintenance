@@ -14,13 +14,15 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260805-monitoring-engine";
+const SITEWORKS_APP_VERSION = "20260805-monitoring-cloud";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
 const MONITORING_DEFAULT_HEARTBEAT_SECONDS = 120;
 const MONITORING_DEFAULT_DELAY_SECONDS = 30;
-const MONITORING_LIVE_STATUS_API = "/api/breaker-monitor/status";
+const MONITORING_LIVE_STATUS_API = SITEWORKS_API_BASE_URL
+  ? `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/breaker-monitor/status`
+  : "";
 const MONITORING_LIVE_SYNC_INTERVAL_MS = 5000;
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
@@ -57,6 +59,10 @@ const REALTIME_TABLES = [
   "inventory_items",
   "keys",
   "key_logs",
+  "monitoring_devices",
+  "monitoring_channels",
+  "monitoring_events",
+  "monitoring_alerts",
   "public_reports"
 ];
 const KEY_STATUS_OPTIONS = ["Available", "Checked Out"];
@@ -3475,7 +3481,7 @@ document.addEventListener("submit", async (event) => {
   }
   if (form.id === "monitoringChannelForm") {
     event.preventDefault();
-    handleMonitoringChannelSubmit(form);
+    await handleMonitoringChannelSubmit(form);
   }
   if (form.id === "monitoringSimulatorForm") {
     event.preventDefault();
@@ -3767,7 +3773,7 @@ function monitoringApiStatusToEvent(row, deviceIdByApiId) {
 }
 
 async function syncMonitoringStatusFromApi() {
-  if (document.hidden || !currentUser) return;
+  if (!MONITORING_LIVE_STATUS_API || document.hidden || !currentUser) return;
   ensureMonitoringCollections();
   try {
     const response = await fetch(MONITORING_LIVE_STATUS_API, { cache: "no-store" });
@@ -4010,6 +4016,13 @@ async function rotateMonitoringDeviceKey() {
   device.updatedAt = new Date().toISOString();
   addMonitoringEvent({ deviceId: device.id, panelAssetId: device.panelAssetId, type: "api-key-rotated", message: `${device.name} API key was rotated.` });
   saveState();
+  try {
+    await syncMonitoringDeviceToSupabase(device, newKey);
+  } catch (error) {
+    console.warn("Monitoring key cloud save failed", error);
+    if (elements.generatedApiKey) elements.generatedApiKey.textContent = `New API key, shown once: ${newKey}. Cloud save needs attention.`;
+    return;
+  }
   render();
   const nextElements = monitoringElements();
   if (nextElements.generatedApiKey) {
@@ -4047,6 +4060,10 @@ async function handleMonitoringDeviceSubmit(form) {
     }
     const now = new Date().toISOString();
     const apiKey = String(elements.deviceApiKey?.value || "").trim();
+    if (apiKey && apiKey.length < 16) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "API key must be at least 16 characters for ESP32 cloud testing.";
+      return;
+    }
     const device = existingId ? getMonitoringDevice(existingId) : {
       id: makeId(),
       createdAt: now,
@@ -4091,6 +4108,13 @@ async function handleMonitoringDeviceSubmit(form) {
     addActivity("Monitoring device saved", `${device.name} assigned to ${panel.name}`);
     const savedDeviceId = String(device.id || "");
     saveState();
+    let cloudSaved = false;
+    try {
+      cloudSaved = await syncMonitoringDeviceToSupabase(device, apiKey);
+    } catch (error) {
+      console.warn("Monitoring device cloud save failed", error);
+      if (elements.deviceStatus) elements.deviceStatus.textContent = `Device saved locally, but cloud save failed: ${error?.message || "Unknown error"}`;
+    }
     form.reset();
     if (elements.deviceId) elements.deviceId.value = "";
     render();
@@ -4106,7 +4130,9 @@ async function handleMonitoringDeviceSubmit(form) {
     }
     if (nextElements.deviceStatus) {
       nextElements.deviceStatus.textContent = savedDeviceIsVisible
-        ? "Device saved. It is ready for channel mapping and simulator testing."
+        ? cloudSaved
+          ? "Device saved to SiteWorks. It is ready for channel mapping and ESP32 testing."
+          : "Device saved locally. Cloud save will retry with the normal sync."
         : "Device saved, but it is hidden by the current customer or location filter.";
     }
   } catch (error) {
@@ -4115,7 +4141,7 @@ async function handleMonitoringDeviceSubmit(form) {
   }
 }
 
-function handleMonitoringChannelSubmit(form) {
+async function handleMonitoringChannelSubmit(form) {
   ensureMonitoringCollections();
   const elements = monitoringElements();
   if (!canManageWorkOrders()) {
@@ -4183,9 +4209,20 @@ function handleMonitoringChannelSubmit(form) {
   addActivity("Monitoring channel mapped", `${device.name} channel ${physicalChannel} -> circuit ${circuitNumber}`);
   form.reset();
   if (elements.channelDevice) elements.channelDevice.value = device.id;
-  if (elements.channelStatus) elements.channelStatus.textContent = "Channel mapped.";
   saveState();
+  let cloudSaved = false;
+  try {
+    cloudSaved = await syncMonitoringChannelsToSupabase(created.records);
+  } catch (error) {
+    console.warn("Monitoring channel cloud save failed", error);
+  }
   render();
+  const nextElements = monitoringElements();
+  if (nextElements.channelStatus) {
+    nextElements.channelStatus.textContent = cloudSaved
+      ? "Channel mapped to SiteWorks."
+      : "Channel mapped locally. Cloud save will retry with the normal sync.";
+  }
   } catch (error) {
     console.error("Monitoring channel save failed", error);
     if (elements.channelStatus) elements.channelStatus.textContent = `Channel save failed: ${error?.message || "Unknown error"}`;
@@ -15212,10 +15249,17 @@ function structuredTableScopeQuery(table) {
   if (!customerId) return "";
   if (table === "customers") return `id=eq.${encodeURIComponent(customerId)}`;
   if (table === "pm_templates") return customerScopeQuery("customer_id", { includeShared: true });
-  if (["locations", "assets", "work_orders", "service_requests", "preferred_contractors", "inventory_items", "keys", "key_logs"].includes(table)) {
+  if (["locations", "assets", "work_orders", "service_requests", "preferred_contractors", "inventory_items", "keys", "key_logs", "monitoring_devices", "monitoring_channels", "monitoring_events", "monitoring_alerts"].includes(table)) {
     return customerScopeQuery("customer_id");
   }
   return "";
+}
+
+function structuredTableSelectColumns(table) {
+  if (table === "monitoring_devices") {
+    return "id,customer_id,location_id,panel_asset_id,device_uid,api_key_last4,name,model,firmware_version,online_status,health_status,source_phases,heartbeat_seconds,maintenance_mode,last_seen_at,created_at,updated_at,data";
+  }
+  return "*";
 }
 
 function canSyncCustomerOwnedRecord(record) {
@@ -15470,7 +15514,7 @@ const siteworksApi = {
     }
     const scope = structuredTableScopeQuery(table);
     const query = [
-      "select=*",
+      `select=${structuredTableSelectColumns(table)}`,
       `order=${encodeURIComponent(order)}`,
       scope
     ].filter(Boolean).join("&");
@@ -16034,7 +16078,11 @@ async function loadStructuredDataFromSupabase(options = {}) {
       inventoryItemRows,
       keyRows,
       keyLogRows,
-      siteMapRows
+      siteMapRows,
+      monitoringDeviceRows,
+      monitoringChannelRows,
+      monitoringEventRows,
+      monitoringAlertRows
     ] = await Promise.all([
       fetchStructuredRows("customers", "updated_at.asc"),
       fetchStructuredRows("locations", "updated_at.asc"),
@@ -16047,11 +16095,15 @@ async function loadStructuredDataFromSupabase(options = {}) {
       fetchOptionalStructuredRows("inventory_items", "updated_at.asc"),
       fetchOptionalStructuredRows("keys", "updated_at.asc"),
       fetchOptionalStructuredRows("key_logs", "timestamp.asc"),
-      fetchOptionalStructuredRows("site_maps", "updated_at.asc")
+      fetchOptionalStructuredRows("site_maps", "updated_at.asc"),
+      fetchOptionalStructuredRows("monitoring_devices", "updated_at.asc"),
+      fetchOptionalStructuredRows("monitoring_channels", "updated_at.asc"),
+      fetchOptionalStructuredRows("monitoring_events", "created_at.desc"),
+      fetchOptionalStructuredRows("monitoring_alerts", "updated_at.desc")
     ]);
     structuredDataLoading = false;
     structuredDataReady = true;
-    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length || inventoryItemRows.length || keyRows.length || keyLogRows.length || siteMapRows.length;
+    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length || inventoryItemRows.length || keyRows.length || keyLogRows.length || siteMapRows.length || monitoringDeviceRows.length || monitoringChannelRows.length || monitoringEventRows.length || monitoringAlertRows.length;
     if (!hasRows) {
       if (hasSharedMaintenanceData(state)) scheduleStructuredDataSync(0);
       return false;
@@ -16068,7 +16120,11 @@ async function loadStructuredDataFromSupabase(options = {}) {
       inventoryItems: inventoryItemRows,
       keys: keyRows,
       keyLogs: keyLogRows,
-      siteMaps: siteMapRows
+      siteMaps: siteMapRows,
+      monitoringDevices: monitoringDeviceRows,
+      monitoringChannels: monitoringChannelRows,
+      monitoringEvents: monitoringEventRows,
+      monitoringAlerts: monitoringAlertRows
     };
     if (structuredRowsMissingAssets(structuredRows)) {
       markSyncError("Structured cloud load returned related records but no equipment. Keeping/restoring the last known equipment list.");
@@ -16139,7 +16195,11 @@ async function peekStructuredCloudState() {
     { table: "inventory_items", timestamp: "updated_at", optional: true },
     { table: "keys", timestamp: "updated_at", optional: true },
     { table: "key_logs", timestamp: "timestamp", optional: true },
-    { table: "site_maps", timestamp: "updated_at", optional: true }
+    { table: "site_maps", timestamp: "updated_at", optional: true },
+    { table: "monitoring_devices", timestamp: "updated_at", optional: true },
+    { table: "monitoring_channels", timestamp: "updated_at", optional: true },
+    { table: "monitoring_events", timestamp: "created_at", optional: true },
+    { table: "monitoring_alerts", timestamp: "updated_at", optional: true }
   ];
   const rows = await Promise.all(tables.map(({ table, timestamp, optional }) =>
     optional ? fetchOptionalStructuredTimestampRows(table, timestamp) : fetchStructuredTimestampRows(table, timestamp)
@@ -16202,6 +16262,10 @@ function applyStructuredState(rows, updatedAt = "") {
     keys: (rows.keys || []).map(keyFromStructuredRow),
     keyLogs: (rows.keyLogs || []).map(keyLogFromStructuredRow),
     siteMaps: (rows.siteMaps || []).map(siteMapFromStructuredRow),
+    monitoringDevices: (rows.monitoringDevices || []).map(monitoringDeviceFromStructuredRow),
+    monitoringChannels: (rows.monitoringChannels || []).map(monitoringChannelFromStructuredRow),
+    monitoringEvents: (rows.monitoringEvents || []).map(monitoringEventFromStructuredRow).slice(0, 1000),
+    monitoringAlerts: (rows.monitoringAlerts || []).map(monitoringAlertFromStructuredRow),
     users: localUsers,
     accessRequests: localAccessRequests,
     currentUserId: localCurrentUserId,
@@ -16465,6 +16529,114 @@ function siteMapFromStructuredRow(row) {
     name: row.name || payload.name || "",
     image: row.image || payload.image || null,
     pins: Array.isArray(row.pins) ? row.pins : Array.isArray(payload.pins) ? payload.pins : [],
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || ""
+  };
+}
+
+function monitoringDeviceFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    ...payload,
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    panelAssetId: row.panel_asset_id || payload.panelAssetId || "",
+    deviceUid: row.device_uid || payload.deviceUid || "",
+    apiKeyHash: "",
+    apiKeyLast4: row.api_key_last4 || payload.apiKeyLast4 || "",
+    name: row.name || payload.name || "Breaker monitor",
+    model: row.model || payload.model || "",
+    firmwareVersion: row.firmware_version || payload.firmwareVersion || "",
+    onlineStatus: row.online_status || payload.onlineStatus || "offline",
+    healthStatus: row.health_status || payload.healthStatus || "",
+    sourcePhases: normalizeMonitoringSourcePhases(row.source_phases || payload.sourcePhases),
+    sourcePhaseChannels: monitoringEngine()?.normalizeSourcePhaseChannels
+      ? monitoringEngine().normalizeSourcePhaseChannels(payload.sourcePhaseChannels || payload.source_phase_channels)
+      : (payload.sourcePhaseChannels || payload.source_phase_channels || { A: "", B: "", C: "" }),
+    heartbeatSeconds: Math.max(30, Number(row.heartbeat_seconds || payload.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS)),
+    maintenanceMode: Boolean(row.maintenance_mode ?? payload.maintenanceMode),
+    rawPayloads: row.data?.last_payload
+      ? [{ receivedAt: row.last_seen_at || row.updated_at || new Date().toISOString(), payload: row.data.last_payload }]
+      : Array.isArray(payload.rawPayloads) ? payload.rawPayloads.slice(0, 20) : [],
+    recentErrors: Array.isArray(payload.recentErrors) ? payload.recentErrors.slice(0, 20) : [],
+    lastSeenAt: row.last_seen_at || payload.lastSeenAt || "",
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || ""
+  };
+}
+
+function monitoringChannelFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  const poleCount = Math.max(1, Math.min(3, Number(row.pole_count || payload.poleCount || 1)));
+  const sourcePhases = getMonitoringChannelPhaseList({
+    ...payload,
+    sourcePhase: row.source_phase || payload.sourcePhase || "A",
+    poleCount
+  });
+  return {
+    ...payload,
+    id: row.id || payload.id,
+    deviceId: row.device_id || payload.deviceId || "",
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    panelAssetId: row.panel_asset_id || payload.panelAssetId || "",
+    breakerGroupId: payload.breakerGroupId || payload.breaker_group_id || "",
+    breakerPoleCount: Math.max(1, Math.min(3, Number(payload.breakerPoleCount || payload.breaker_pole_count || poleCount))),
+    poleIndex: Math.max(1, Math.min(3, Number(payload.poleIndex || payload.pole_index || 1))),
+    circuitNumber: String(row.circuit_number || payload.circuitNumber || "").trim(),
+    physicalChannel: String(row.physical_channel || payload.physicalChannel || "").trim(),
+    sourcePhase: sourcePhases[0] || row.source_phase || "A",
+    sourcePhases,
+    poleCount,
+    monitoringMode: row.monitoring_mode || payload.monitoringMode || "normal",
+    criticality: row.criticality || payload.criticality || "normal",
+    alarmDelaySeconds: Math.max(0, Number(row.alarm_delay_seconds || payload.alarmDelaySeconds || MONITORING_DEFAULT_DELAY_SECONDS)),
+    lastRawState: row.last_raw_state ?? payload.lastRawState ?? null,
+    lastDerivedState: row.last_derived_state || payload.lastDerivedState || "open",
+    firstAbsentAt: row.first_absent_at || payload.firstAbsentAt || "",
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || ""
+  };
+}
+
+function monitoringEventFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    deviceId: row.device_id || payload.deviceId || "",
+    channelId: row.channel_id || payload.channelId || "",
+    panelAssetId: row.panel_asset_id || payload.panelAssetId || "",
+    circuitNumber: row.circuit_number || payload.circuitNumber || "",
+    type: row.event_type || payload.type || "device-status",
+    state: row.new_state || payload.state || "",
+    previousState: row.previous_state || payload.previousState || "",
+    message: payload.message || (row.circuit_number ? `Circuit ${row.circuit_number} is ${monitoringStateLabel(row.new_state)}.` : "Breaker monitor reported status."),
+    data: row.payload || payload.data || {},
+    createdAt: row.created_at || payload.createdAt || ""
+  };
+}
+
+function monitoringAlertFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    ...payload,
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    deviceId: row.device_id || payload.deviceId || "",
+    channelId: row.channel_id || payload.channelId || "",
+    panelAssetId: row.panel_asset_id || payload.panelAssetId || "",
+    circuitNumber: row.circuit_number || payload.circuitNumber || "",
+    type: row.alert_type || payload.type || "suspected-trip",
+    severity: row.severity || payload.severity || "medium",
+    status: row.status || payload.status || "open",
+    title: payload.title || "Breaker monitoring alert",
+    message: payload.message || "",
+    acknowledgedAt: row.acknowledged_at || payload.acknowledgedAt || "",
+    resolvedAt: row.resolved_at || payload.resolvedAt || "",
     createdAt: row.created_at || payload.createdAt || "",
     updatedAt: row.updated_at || payload.updatedAt || ""
   };
@@ -16840,6 +17012,137 @@ function buildStructuredSiteMapRow(map, cloudLocationIds = null) {
   };
 }
 
+function buildMonitoringDeviceRow(device, cloudLocationIds = null) {
+  const locationId = device.locationId && (!cloudLocationIds || cloudLocationIds.has(device.locationId)) ? device.locationId : null;
+  return {
+    id: device.id,
+    customer_id: device.customerId || null,
+    location_id: locationId,
+    panel_asset_id: device.panelAssetId,
+    device_uid: device.deviceUid || "",
+    api_key_last4: device.apiKeyLast4 || null,
+    name: device.name || "Breaker monitor",
+    model: device.model || "",
+    firmware_version: device.firmwareVersion || "",
+    online_status: device.onlineStatus || "offline",
+    health_status: device.healthStatus || "",
+    source_phases: normalizeMonitoringSourcePhases(device.sourcePhases),
+    heartbeat_seconds: Math.max(30, Number(device.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS)),
+    maintenance_mode: Boolean(device.maintenanceMode),
+    last_seen_at: device.lastSeenAt || null,
+    created_at: device.createdAt || new Date().toISOString(),
+    updated_at: device.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({
+      ...device,
+      apiKeyHash: "",
+      locationId: locationId || "",
+      rawPayloads: Array.isArray(device.rawPayloads) ? device.rawPayloads.slice(0, 20) : [],
+      recentErrors: Array.isArray(device.recentErrors) ? device.recentErrors.slice(0, 20) : []
+    })
+  };
+}
+
+function buildMonitoringChannelRow(channel, cloudLocationIds = null) {
+  const device = getMonitoringDevice(channel.deviceId);
+  const locationId = (channel.locationId || device?.locationId || "") && (!cloudLocationIds || cloudLocationIds.has(channel.locationId || device?.locationId)) ? (channel.locationId || device?.locationId) : null;
+  const sourcePhases = getMonitoringChannelPhaseList(channel);
+  return {
+    id: channel.id,
+    device_id: channel.deviceId,
+    customer_id: channel.customerId || device?.customerId || null,
+    location_id: locationId,
+    panel_asset_id: channel.panelAssetId || device?.panelAssetId || null,
+    circuit_number: String(channel.circuitNumber || ""),
+    physical_channel: String(channel.physicalChannel || ""),
+    source_phase: sourcePhases[0] || channel.sourcePhase || "A",
+    pole_count: Math.max(1, Math.min(3, Number(channel.poleCount || 1))),
+    monitoring_mode: channel.monitoringMode || "normal",
+    criticality: channel.criticality || "normal",
+    alarm_delay_seconds: Math.max(0, Number(channel.alarmDelaySeconds || MONITORING_DEFAULT_DELAY_SECONDS)),
+    last_raw_state: channel.lastRawState ?? null,
+    last_derived_state: channel.lastDerivedState || "open",
+    first_absent_at: channel.firstAbsentAt || null,
+    created_at: channel.createdAt || new Date().toISOString(),
+    updated_at: channel.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({
+      ...channel,
+      customerId: channel.customerId || device?.customerId || "",
+      locationId: locationId || "",
+      panelAssetId: channel.panelAssetId || device?.panelAssetId || "",
+      sourcePhases
+    })
+  };
+}
+
+function buildMonitoringEventRow(event, cloudLocationIds = null) {
+  const device = getMonitoringDevice(event.deviceId);
+  const locationId = (event.locationId || device?.locationId || "") && (!cloudLocationIds || cloudLocationIds.has(event.locationId || device?.locationId)) ? (event.locationId || device?.locationId) : null;
+  return {
+    id: event.id,
+    customer_id: event.customerId || device?.customerId || null,
+    location_id: locationId,
+    device_id: isUuid(event.deviceId) ? event.deviceId : null,
+    channel_id: isUuid(event.channelId) ? event.channelId : null,
+    panel_asset_id: event.panelAssetId || device?.panelAssetId || null,
+    circuit_number: event.circuitNumber || null,
+    event_type: event.type || "device-status",
+    previous_state: event.previousState || null,
+    new_state: event.state || null,
+    payload: leanCloudRecord({ ...event, locationId: locationId || "" }),
+    created_at: event.createdAt || new Date().toISOString()
+  };
+}
+
+function buildMonitoringAlertRow(alert, cloudLocationIds = null) {
+  const device = getMonitoringDevice(alert.deviceId);
+  const locationId = (alert.locationId || device?.locationId || "") && (!cloudLocationIds || cloudLocationIds.has(alert.locationId || device?.locationId)) ? (alert.locationId || device?.locationId) : null;
+  return {
+    id: alert.id,
+    customer_id: alert.customerId || device?.customerId || null,
+    location_id: locationId,
+    device_id: isUuid(alert.deviceId) ? alert.deviceId : null,
+    channel_id: isUuid(alert.channelId) ? alert.channelId : null,
+    panel_asset_id: alert.panelAssetId || device?.panelAssetId || null,
+    circuit_number: alert.circuitNumber || null,
+    alert_type: alert.type || "suspected-trip",
+    severity: alert.severity || "medium",
+    status: alert.status === "resolved" ? "resolved" : alert.status === "acknowledged" ? "acknowledged" : "open",
+    acknowledged_at: alert.acknowledgedAt || null,
+    resolved_at: alert.resolvedAt || null,
+    created_at: alert.createdAt || new Date().toISOString(),
+    updated_at: alert.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({ ...alert, locationId: locationId || "" })
+  };
+}
+
+async function setMonitoringDeviceKeyInSupabase(deviceId, apiKey) {
+  if (!deviceId || !apiKey || !hasAuthenticatedCloudSession()) return false;
+  const response = await cloudApi.rest("rpc/siteworks_monitoring_set_device_api_key", {
+    method: "POST",
+    body: JSON.stringify({
+      p_device_id: deviceId,
+      p_api_key: apiKey
+    })
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return true;
+}
+
+async function syncMonitoringDeviceToSupabase(device, apiKey = "") {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !device?.id || !SUPABASE_URL || !SUPABASE_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
+  const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
+  await upsertStructuredRows("monitoring_devices", [buildMonitoringDeviceRow(device, cloudLocationIds)]);
+  if (apiKey) await setMonitoringDeviceKeyInSupabase(device.id, apiKey);
+  return true;
+}
+
+async function syncMonitoringChannelsToSupabase(channels = []) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !channels.length || !SUPABASE_URL || !SUPABASE_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
+  const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
+  await upsertStructuredRows("monitoring_channels", channels.map((channel) => buildMonitoringChannelRow(channel, cloudLocationIds)));
+  return true;
+}
+
 async function syncSingleKeyToSupabase(key) {
   if (!STRUCTURED_DATA_SYNC_ENABLED || !key?.id || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
   const customerId = activeCloudCustomerId();
@@ -16889,6 +17192,11 @@ async function syncStructuredDataToSupabase() {
     const syncKeys = (state.keys || []).filter(canSyncCustomerOwnedRecord);
     const syncKeyLogs = (state.keyLogs || []).filter(canSyncCustomerOwnedRecord);
     const syncSiteMaps = (state.siteMaps || []).filter(canSyncCustomerOwnedRecord);
+    const syncMonitoringDevices = (state.monitoringDevices || []).filter(canSyncCustomerOwnedRecord);
+    const syncMonitoringDeviceIds = new Set(syncMonitoringDevices.map((device) => device.id).filter(Boolean));
+    const syncMonitoringChannels = (state.monitoringChannels || []).filter((channel) => syncMonitoringDeviceIds.has(channel.deviceId));
+    const syncMonitoringEvents = (state.monitoringEvents || []).filter((event) => !event.deviceId || syncMonitoringDeviceIds.has(event.deviceId)).slice(0, 250);
+    const syncMonitoringAlerts = (state.monitoringAlerts || []).filter((alert) => !alert.deviceId || syncMonitoringDeviceIds.has(alert.deviceId));
 
     await upsertStructuredRows("customers", syncCustomers.map((customer) => ({
       id: customer.id,
@@ -17095,6 +17403,23 @@ async function syncStructuredDataToSupabase() {
     }
 
     await upsertStructuredRows("site_maps", cloudReadySiteMaps.map((map) => buildStructuredSiteMapRow(map, cloudLocationIds)));
+
+    const cloudReadyMonitoringDevices = syncMonitoringDevices.filter((device) =>
+      device.customerId &&
+      cloudCustomerIds.has(device.customerId) &&
+      device.panelAssetId &&
+      cloudAssetIds.has(device.panelAssetId) &&
+      (!device.locationId || cloudLocationIds.has(device.locationId))
+    );
+    const cloudMonitoringDeviceIds = new Set(cloudReadyMonitoringDevices.map((device) => device.id).filter(Boolean));
+    const cloudReadyMonitoringChannels = syncMonitoringChannels.filter((channel) =>
+      cloudMonitoringDeviceIds.has(channel.deviceId) &&
+      (channel.panelAssetId || getMonitoringDevice(channel.deviceId)?.panelAssetId)
+    );
+    await upsertStructuredRows("monitoring_devices", cloudReadyMonitoringDevices.map((device) => buildMonitoringDeviceRow(device, cloudLocationIds)));
+    await upsertStructuredRows("monitoring_channels", cloudReadyMonitoringChannels.map((channel) => buildMonitoringChannelRow(channel, cloudLocationIds)));
+    await upsertStructuredRows("monitoring_events", syncMonitoringEvents.filter((event) => event.id).map((event) => buildMonitoringEventRow(event, cloudLocationIds)));
+    await upsertStructuredRows("monitoring_alerts", syncMonitoringAlerts.filter((alert) => alert.id).map((alert) => buildMonitoringAlertRow(alert, cloudLocationIds)));
 
     const historyRows = syncAssets.filter(canSyncHistoryRecord).flatMap((asset) => (asset.history || []).map((item) => ({
       id: item.id,
