@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260804-monitoring-panel-view">
+    <link rel="stylesheet" href="/styles.css?v=20260804-monitoring-phase-selectors">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -1154,11 +1154,29 @@
                     <input id="monitoringChannelNumber" required placeholder="1">
                   </label>
                   <label>
-                    Source phase
+                    Phase 1
                     <select id="monitoringChannelPhase">
                       <option>A</option>
                       <option>B</option>
                       <option>C</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-grid monitoring-phase-selector-row">
+                  <label id="monitoringChannelPhase2Wrap" class="hidden">
+                    Phase 2
+                    <select id="monitoringChannelPhase2">
+                      <option>A</option>
+                      <option selected>B</option>
+                      <option>C</option>
+                    </select>
+                  </label>
+                  <label id="monitoringChannelPhase3Wrap" class="hidden">
+                    Phase 3
+                    <select id="monitoringChannelPhase3">
+                      <option>A</option>
+                      <option>B</option>
+                      <option selected>C</option>
                     </select>
                   </label>
                 </div>
@@ -1767,7 +1785,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script src="/app.js?v=20260804-monitoring-panel-view"></script>
+    <script src="/app.js?v=20260804-monitoring-phase-selectors"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

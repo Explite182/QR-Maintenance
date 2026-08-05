@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260804-monitoring-panel-view";
+const SITEWORKS_APP_VERSION = "20260804-monitoring-phase-selectors";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3527,6 +3527,9 @@ document.addEventListener("change", (event) => {
   if (target.id === "monitoringChannelDevice" || target.id === "monitoringSimulatorDevice") {
     renderMonitoring();
   }
+  if (target.id === "monitoringChannelPoles") {
+    syncMonitoringPhaseSelectors();
+  }
   if (target.id === "monitoringPanelSelect") {
     selectedMonitoringPanelId = target.value || "";
     renderMonitoring();
@@ -3554,6 +3557,10 @@ function monitoringElements() {
     channelCircuitManual: document.getElementById("monitoringChannelCircuitManual"),
     channelNumber: document.getElementById("monitoringChannelNumber"),
     channelPhase: document.getElementById("monitoringChannelPhase"),
+    channelPhase2Wrap: document.getElementById("monitoringChannelPhase2Wrap"),
+    channelPhase2: document.getElementById("monitoringChannelPhase2"),
+    channelPhase3Wrap: document.getElementById("monitoringChannelPhase3Wrap"),
+    channelPhase3: document.getElementById("monitoringChannelPhase3"),
     channelPoles: document.getElementById("monitoringChannelPoles"),
     channelDelay: document.getElementById("monitoringChannelDelay"),
     channelMode: document.getElementById("monitoringChannelMode"),
@@ -3667,6 +3674,45 @@ function normalizeMonitoringSourcePhases(phases = {}) {
     result[phase] = phases[phase] !== false;
   });
   return result;
+}
+
+function normalizeMonitoringPhase(value = "") {
+  const phase = String(value || "").trim().toUpperCase();
+  return MONITORING_SOURCE_PHASES.includes(phase) ? phase : "";
+}
+
+function getMonitoringChannelSourcePhases(elements, poleCount = 1) {
+  const selected = [
+    normalizeMonitoringPhase(elements.channelPhase?.value || "A"),
+    normalizeMonitoringPhase(elements.channelPhase2?.value || "B"),
+    normalizeMonitoringPhase(elements.channelPhase3?.value || "C")
+  ].filter(Boolean);
+  return selected.slice(0, Math.max(1, Math.min(3, Number(poleCount) || 1)));
+}
+
+function getMonitoringChannelPhaseList(channel = {}) {
+  const phases = Array.isArray(channel.sourcePhases)
+    ? channel.sourcePhases.map(normalizeMonitoringPhase).filter(Boolean)
+    : String(channel.sourcePhases || "")
+      .split(/[\s,/-]+/)
+      .map(normalizeMonitoringPhase)
+      .filter(Boolean);
+  const fallback = normalizeMonitoringPhase(channel.sourcePhase) || "A";
+  const count = Math.max(1, Math.min(3, Number(channel.poleCount || phases.length || 1)));
+  return (phases.length ? phases : [fallback]).slice(0, count);
+}
+
+function monitoringChannelPhaseLabel(channel = {}) {
+  return getMonitoringChannelPhaseList(channel).join("/") || "A";
+}
+
+function syncMonitoringPhaseSelectors() {
+  const elements = monitoringElements();
+  const poleCount = Math.max(1, Number(elements.channelPoles?.value || 1));
+  elements.channelPhase2Wrap?.classList.toggle("hidden", poleCount < 2);
+  elements.channelPhase3Wrap?.classList.toggle("hidden", poleCount < 3);
+  if (elements.channelPhase2) elements.channelPhase2.disabled = poleCount < 2;
+  if (elements.channelPhase3) elements.channelPhase3.disabled = poleCount < 3;
 }
 
 function monitoringStateLabel(stateValue) {
@@ -3797,6 +3843,8 @@ function handleMonitoringChannelSubmit(form) {
   }
   const physicalChannel = String(elements.channelNumber?.value || "").trim();
   const circuitNumber = String(elements.channelCircuit?.value || elements.channelCircuitManual?.value || physicalChannel || "").trim();
+  const poleCount = Math.max(1, Number(elements.channelPoles?.value || 1));
+  const sourcePhases = getMonitoringChannelSourcePhases(elements, poleCount);
   if (!circuitNumber || !physicalChannel) {
     if (elements.channelStatus) elements.channelStatus.textContent = "Circuit and channel are required.";
     return;
@@ -3812,8 +3860,9 @@ function handleMonitoringChannelSubmit(form) {
     panelAssetId: device.panelAssetId,
     circuitNumber,
     physicalChannel,
-    sourcePhase: String(elements.channelPhase?.value || "A"),
-    poleCount: Math.max(1, Number(elements.channelPoles?.value || 1)),
+    sourcePhase: sourcePhases[0] || "A",
+    sourcePhases,
+    poleCount,
     alarmDelaySeconds: Math.max(0, Number(elements.channelDelay?.value || MONITORING_DEFAULT_DELAY_SECONDS)),
     monitoringMode: String(elements.channelMode?.value || "normal"),
     criticality: String(elements.channelCriticality?.value || "normal"),
@@ -3931,7 +3980,8 @@ function deriveMonitoringChannelState(device, channel, rawClosed, timestamp) {
   if (device.maintenanceMode || channel.monitoringMode === "maintenance") return "maintenance-mode";
   if (channel.monitoringMode === "disabled") return "disabled";
   if (device.onlineStatus === "offline") return "monitoring-offline";
-  if (device.sourcePhases?.[channel.sourcePhase] === false) {
+  const sourcePhases = getMonitoringChannelPhaseList(channel);
+  if (sourcePhases.some(phase => device.sourcePhases?.[phase] === false)) {
     channel.firstAbsentAt = "";
     return "upstream-power-loss";
   }
@@ -4148,6 +4198,7 @@ function renderMonitoring() {
     elements.simulatorDevice.value = simulatorDeviceStillVisible ? selectedSimulatorDevice : (devices[0]?.id || "");
   }
   renderMonitoringCircuitOptions(elements.channelDevice?.value || devices[0]?.id || "");
+  syncMonitoringPhaseSelectors();
   renderMonitoringDeviceList(devices);
   renderMonitoringChannelList(devices);
   renderMonitoringLivePanel(selectedDevices);
@@ -4246,7 +4297,7 @@ function renderMonitoringChannelList(devices) {
       <div class="monitoring-record">
         <div>
           <h4>${escapeHtml(device?.name || "Device")} channel ${escapeHtml(channel.physicalChannel)}</h4>
-          <p>Circuit ${escapeHtml(channel.circuitNumber)} | Phase ${escapeHtml(channel.sourcePhase)} | ${escapeHtml(channel.poleCount)} pole</p>
+          <p>Circuit ${escapeHtml(channel.circuitNumber)} | Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${escapeHtml(monitoringChannelPhaseLabel(channel))} | ${escapeHtml(channel.poleCount)} pole</p>
           <p>${escapeHtml(channel.monitoringMode)} | ${escapeHtml(channel.criticality)} | ${escapeHtml(channel.alarmDelaySeconds)}s delay</p>
         </div>
         <div class="monitoring-record-actions">
@@ -4268,7 +4319,7 @@ function renderMonitoringLivePanel(devices) {
       <button type="button" class="monitoring-channel-card ${monitoringStatusClass(channel.lastDerivedState)}" data-open-asset="${escapeHtml(channel.panelAssetId)}">
         <span>Circuit ${escapeHtml(channel.circuitNumber)}</span>
         <strong class="monitoring-channel-state">${escapeHtml(monitoringStateLabel(channel.lastDerivedState))}</strong>
-        <small>${escapeHtml(panel?.name || "Panel")} | ${escapeHtml(device?.name || "Device")}</small>
+        <small>Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${escapeHtml(monitoringChannelPhaseLabel(channel))} | ${escapeHtml(panel?.name || "Panel")} | ${escapeHtml(device?.name || "Device")}</small>
       </button>`;
   }).join("") : `<p class="muted">Map a device channel to a panel circuit to see live breaker status.</p>`;
 }
@@ -17132,24 +17183,29 @@ function normalizeState(input) {
     updatedAt: device.updatedAt || device.createdAt || new Date().toISOString()
   })).filter((device) => device.name && device.deviceUid && device.panelAssetId);
 
-  normalized.monitoringChannels = normalized.monitoringChannels.map((channel) => ({
-    ...channel,
-    id: channel.id || crypto.randomUUID(),
-    deviceId: channel.deviceId || "",
-    panelAssetId: channel.panelAssetId || channel.assetId || "",
-    circuitNumber: String(channel.circuitNumber || channel.circuit || "").trim(),
-    physicalChannel: String(channel.physicalChannel || channel.channel || "").trim(),
-    sourcePhase: MONITORING_SOURCE_PHASES.includes(channel.sourcePhase) ? channel.sourcePhase : "A",
-    poleCount: Math.max(1, Number(channel.poleCount || 1)),
-    monitoringMode: channel.monitoringMode || "normal",
-    criticality: channel.criticality || "normal",
-    alarmDelaySeconds: Math.max(0, Number(channel.alarmDelaySeconds || MONITORING_DEFAULT_DELAY_SECONDS)),
-    lastRawState: channel.lastRawState ?? null,
-    lastDerivedState: channel.lastDerivedState || "open",
-    firstAbsentAt: channel.firstAbsentAt || "",
-    createdAt: channel.createdAt || new Date().toISOString(),
-    updatedAt: channel.updatedAt || channel.createdAt || new Date().toISOString()
-  })).filter((channel) => channel.deviceId && channel.circuitNumber && channel.physicalChannel);
+  normalized.monitoringChannels = normalized.monitoringChannels.map((channel) => {
+    const poleCount = Math.max(1, Math.min(3, Number(channel.poleCount || 1)));
+    const sourcePhases = getMonitoringChannelPhaseList({ ...channel, poleCount });
+    return {
+      ...channel,
+      id: channel.id || crypto.randomUUID(),
+      deviceId: channel.deviceId || "",
+      panelAssetId: channel.panelAssetId || channel.assetId || "",
+      circuitNumber: String(channel.circuitNumber || channel.circuit || "").trim(),
+      physicalChannel: String(channel.physicalChannel || channel.channel || "").trim(),
+      sourcePhase: sourcePhases[0] || "A",
+      sourcePhases,
+      poleCount,
+      monitoringMode: channel.monitoringMode || "normal",
+      criticality: channel.criticality || "normal",
+      alarmDelaySeconds: Math.max(0, Number(channel.alarmDelaySeconds || MONITORING_DEFAULT_DELAY_SECONDS)),
+      lastRawState: channel.lastRawState ?? null,
+      lastDerivedState: channel.lastDerivedState || "open",
+      firstAbsentAt: channel.firstAbsentAt || "",
+      createdAt: channel.createdAt || new Date().toISOString(),
+      updatedAt: channel.updatedAt || channel.createdAt || new Date().toISOString()
+    };
+  }).filter((channel) => channel.deviceId && channel.circuitNumber && channel.physicalChannel);
 
   normalized.monitoringEvents = normalized.monitoringEvents.map((event) => ({
     ...event,

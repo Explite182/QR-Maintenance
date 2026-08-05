@@ -8267,6 +8267,10 @@ html[data-theme="dark"] .sync-banner small {
   overflow-wrap: break-word;
 }
 
+.monitoring-phase-selector-row {
+  align-items: end;
+}
+
 html[data-theme="dark"] .monitoring-card,
 html[data-theme="dark"] .monitoring-record,
 html[data-theme="dark"] .monitoring-channel-card {
