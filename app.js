@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260804-monitoring-manual-channel-fix";
+const SITEWORKS_APP_VERSION = "20260804-monitoring-live-visibility-fix";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4231,7 +4231,7 @@ function renderMonitoringLivePanel(devices) {
     return `
       <button type="button" class="monitoring-channel-card ${monitoringStatusClass(channel.lastDerivedState)}" data-open-asset="${escapeHtml(channel.panelAssetId)}">
         <span>Circuit ${escapeHtml(channel.circuitNumber)}</span>
-        <strong>${escapeHtml(monitoringStateLabel(channel.lastDerivedState))}</strong>
+        <strong class="monitoring-channel-state">${escapeHtml(monitoringStateLabel(channel.lastDerivedState))}</strong>
         <small>${escapeHtml(panel?.name || "Panel")} | ${escapeHtml(device?.name || "Device")}</small>
       </button>`;
   }).join("") : `<p class="muted">Map a device channel to a panel circuit to see live breaker status.</p>`;

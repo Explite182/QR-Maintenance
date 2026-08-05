@@ -8109,29 +8109,82 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-channel-card {
   display: grid;
-  gap: 4px;
+  gap: 8px;
   text-align: left;
   border: 1px solid #dce8e6;
   border-radius: 10px;
   background: #fff;
+  color: #14202a;
   padding: 12px;
   cursor: pointer;
+  box-shadow: none;
+}
+
+.monitoring-channel-card span {
+  color: #32404a;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.monitoring-channel-card strong {
+  color: #101820;
+  font-size: 1.18rem;
+  line-height: 1.15;
+}
+
+.monitoring-channel-card small {
+  color: #4e5f68;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.monitoring-channel-state {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  border: 1px solid #d7e2df;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .monitoring-channel-card.energized {
   border-color: #9ed9ba;
-  background: #effaf4;
+  background: #edf9f2;
+  border-left: 6px solid #14a35c;
 }
 
 .monitoring-channel-card.suspected-trip {
   border-color: #f0aaa2;
-  background: #fff1ef;
+  background: #fff0ed;
+  border-left: 6px solid #dc2f22;
 }
 
 .monitoring-channel-card.upstream-power-loss,
 .monitoring-channel-card.open {
   border-color: #ead39b;
-  background: #fff9e8;
+  background: #fff7df;
+  border-left: 6px solid #d99000;
+}
+
+.monitoring-channel-card.energized .monitoring-channel-state {
+  border-color: #b8e5ca;
+  background: #dff5e9;
+  color: #08713f;
+}
+
+.monitoring-channel-card.suspected-trip .monitoring-channel-state {
+  border-color: #f0b5ad;
+  background: #ffe1dd;
+  color: #a92016;
+}
+
+.monitoring-channel-card.open .monitoring-channel-state,
+.monitoring-channel-card.upstream-power-loss .monitoring-channel-state {
+  border-color: #efd08b;
+  background: #ffefbd;
+  color: #7a4d00;
 }
 
 .phase-toggle-row {
@@ -8180,6 +8233,11 @@ html[data-theme="dark"] .monitoring-channel-card {
 html[data-theme="dark"] .monitoring-record p,
 html[data-theme="dark"] .monitoring-channel-card small {
   color: var(--muted);
+}
+
+html[data-theme="dark"] .monitoring-channel-card span,
+html[data-theme="dark"] .monitoring-channel-card strong {
+  color: var(--ink);
 }
 
 html[data-theme="dark"] .monitoring-record.alert,
