@@ -114,6 +114,9 @@ let assetRegisterTab = "active";
 let inventoryTab = focusedKeyId ? "keys" : "items";
 let pendingSiteMapPin = false;
 let siteMapZoom = 1;
+let siteMapLayerFilter = "all";
+let siteMapAreaFilter = "all";
+let siteMapViewportMemory = { left: 0, top: 0 };
 let siteMapDragState = null;
 let siteMapDragSuppressClick = false;
 let assetPageSize = 25;
@@ -271,6 +274,8 @@ const els = {
   siteMapImageInput: document.getElementById("siteMapImageInput"),
   siteMapPinAsset: document.getElementById("siteMapPinAsset"),
   siteMapPinLabel: document.getElementById("siteMapPinLabel"),
+  siteMapPinArea: document.getElementById("siteMapPinArea"),
+  siteMapPinLayer: document.getElementById("siteMapPinLayer"),
   siteMapAddPinBtn: document.getElementById("siteMapAddPinBtn"),
   siteMapClearBtn: document.getElementById("siteMapClearBtn"),
   siteMapCanvas: document.getElementById("siteMapCanvas"),
@@ -564,9 +569,16 @@ const els = {
 
 moveTopActionDrawers();
 window.setTimeout(() => {
-  render();
-  if (currentUser && isScannedItemUrl()) {
-    focusScannedAssetContext() || focusScannedInventoryContext() || focusScannedKeyContext();
+  try {
+    render();
+    if (currentUser && isScannedItemUrl()) {
+      focusScannedAssetContext() || focusScannedInventoryContext() || focusScannedKeyContext();
+    }
+  } catch (error) {
+    console.error("SiteWorks startup render failed.", error);
+    if (els.loginError) {
+      els.loginError.textContent = `SiteWorks startup error: ${error?.message || error}`;
+    }
   }
 }, 0);
 window.setTimeout(syncLoginQrReportPrompt, 0);
@@ -2343,6 +2355,9 @@ els.newUserCustomer?.addEventListener("change", () => {
 
 els.locationFilter.addEventListener("change", () => {
   selectedLocationId = els.locationFilter.value;
+  siteMapLayerFilter = "all";
+  siteMapAreaFilter = "all";
+  siteMapViewportMemory = { left: 0, top: 0 };
   selectedId = null;
   clearSelectedAssetUrl();
   assetPage = 1;
@@ -3082,6 +3097,19 @@ document.addEventListener("click", (event) => {
   if (siteMapPinDeleteButton) {
     event.preventDefault();
     deleteSiteMapPin(siteMapPinDeleteButton.dataset.deleteSiteMapPin);
+    return;
+  }
+
+  const siteMapFilterButton = event.target.closest("[data-site-map-filter]");
+  if (siteMapFilterButton) {
+    event.preventDefault();
+    updateSiteMapViewportMemory();
+    if (siteMapFilterButton.dataset.siteMapFilter === "layer") {
+      siteMapLayerFilter = siteMapFilterButton.dataset.siteMapValue || "all";
+    } else if (siteMapFilterButton.dataset.siteMapFilter === "area") {
+      siteMapAreaFilter = siteMapFilterButton.dataset.siteMapValue || "all";
+    }
+    renderSiteMap();
     return;
   }
 
@@ -4395,6 +4423,7 @@ function setSidebarTargetButtonState(targetId, isOpen) {
 function closeSidebarTarget(targetId) {
   const target = document.getElementById(targetId);
   if (!target) return;
+  const wasSiteMapOpen = targetId === "siteMapPanel" && isPanelVisiblyOpen("siteMapPanel");
   if (targetId === "assetRegisterDrawer" && els.assetPanel?.classList.contains("floating-asset-panel")) {
     els.assetPanel.classList.add("hidden");
     els.assetPanel.classList.remove("floating-asset-panel", "is-collapsed");
@@ -4413,6 +4442,7 @@ function closeSidebarTarget(targetId) {
   if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
   if (targetId === "pmCalendarPanel" || targetId === "templatesPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
+  if (wasSiteMapOpen) restoreMobileDashboardAfterSiteMapClose();
 }
 
 function openSidebarTarget(targetId) {
@@ -4473,6 +4503,16 @@ function syncCalendarFocusState() {
   const siteMapOpen = isPanelVisiblyOpen("siteMapPanel");
   els.appShell?.classList.toggle("calendar-focus", calendarOpen);
   els.appShell?.classList.toggle("site-map-focus", siteMapOpen);
+}
+
+function restoreMobileDashboardAfterSiteMapClose() {
+  if (!window.matchMedia("(max-width: 760px)").matches) return;
+  if (currentRole === "Customer") return;
+  els.dashboardPanel?.classList.remove("hidden");
+  renderDashboard();
+  window.requestAnimationFrame(() => {
+    els.dashboardPanel?.classList.remove("hidden");
+  });
 }
 
 function isPanelVisiblyOpen(panelId) {
@@ -6680,7 +6720,8 @@ function normalizeIssueStatus(value) {
 
 function normalizeImportedTicketDueDate(value, status = "Open") {
   const cleanDate = normalizeCsvDate(value);
-  if (cleanDate) return parseLocalDate(cleanDate).toISOString();
+  const parsedDate = cleanDate ? parseLocalDate(cleanDate) : null;
+  if (parsedDate) return parsedDate.toISOString();
   return addDays(new Date(), status === "Waiting parts" ? 14 : 7).toISOString();
 }
 
@@ -7387,6 +7428,91 @@ function siteMapScopeLabel(map = null) {
   return `${customer} | ${location}`;
 }
 
+function normalizeSiteMapLayer(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text || text === "auto" || text === "all") return "";
+  if (["life", "life safety", "life_safety", "fire", "fire safety"].includes(text)) return "life-safety";
+  if (["fitness equipment", "equipment", "gym"].includes(text)) return "fitness";
+  if (["future tenant", "tenant", "construction", "future construction"].includes(text)) return "construction";
+  if (["electrical", "hvac", "plumbing", "fitness"].includes(text)) return text;
+  return "";
+}
+
+function siteMapLayerLabel(layer = "") {
+  const labels = {
+    electrical: "Electrical",
+    hvac: "HVAC",
+    "life-safety": "Life safety",
+    plumbing: "Plumbing",
+    fitness: "Fitness equipment",
+    construction: "Future tenant / construction"
+  };
+  return labels[normalizeSiteMapLayer(layer)] || "General";
+}
+
+function inferSiteMapLayer(asset = null) {
+  const text = [asset?.type, asset?.category, asset?.template, asset?.name, asset?.equipmentId]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/\b(panel|breaker|electrical|meter|transformer|switchgear|lighting)\b/.test(text)) return "electrical";
+  if (/\b(hvac|rtu|ahu|fan|furnace|boiler|chiller|heat pump|condenser)\b/.test(text)) return "hvac";
+  if (/\b(fire|alarm|sprinkler|exit|emergency|life safety|extinguisher)\b/.test(text)) return "life-safety";
+  if (/\b(plumb|pump|water|drain|toilet|sink|valve|backflow)\b/.test(text)) return "plumbing";
+  if (/\b(treadmill|elliptical|bike|rower|strength|fitness|cardio|gym)\b/.test(text)) return "fitness";
+  return "";
+}
+
+function getSiteMapPinArea(pin = {}) {
+  return String(pin.area || pin.zone || pin.locationArea || "").trim();
+}
+
+function getSiteMapPinLayer(pin = {}, asset = null) {
+  return normalizeSiteMapLayer(pin.layer || pin.system || pin.category) || inferSiteMapLayer(asset);
+}
+
+function siteMapPinMatchesFilters(pin = {}, asset = null) {
+  const layer = getSiteMapPinLayer(pin, asset) || "";
+  const area = getSiteMapPinArea(pin).toLowerCase();
+  const layerMatches = siteMapLayerFilter === "all" || layer === siteMapLayerFilter;
+  const areaMatches = siteMapAreaFilter === "all" || area === siteMapAreaFilter;
+  return layerMatches && areaMatches;
+}
+
+function updateSiteMapViewportMemory() {
+  const viewport = els.siteMapCanvas?.querySelector("[data-site-map-viewport]");
+  if (!viewport) return;
+  siteMapViewportMemory = { left: viewport.scrollLeft, top: viewport.scrollTop };
+}
+
+function renderSiteMapFilters(pins = []) {
+  const areas = [...new Set(pins.map(getSiteMapPinArea).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  if (siteMapAreaFilter !== "all" && !areas.some((area) => area.toLowerCase() === siteMapAreaFilter)) {
+    siteMapAreaFilter = "all";
+  }
+  const layers = ["electrical", "hvac", "life-safety", "plumbing", "fitness", "construction"];
+  const layerButtons = [
+    `<button type="button" class="site-map-filter-chip${siteMapLayerFilter === "all" ? " is-active" : ""}" data-site-map-filter="layer" data-site-map-value="all">All layers</button>`,
+    ...layers.map((layer) => `
+      <button type="button" class="site-map-filter-chip site-map-filter-${escapeAttribute(layer)}${siteMapLayerFilter === layer ? " is-active" : ""}" data-site-map-filter="layer" data-site-map-value="${escapeAttribute(layer)}">${escapeHtml(siteMapLayerLabel(layer))}</button>
+    `)
+  ].join("");
+  const areaButtons = [
+    `<button type="button" class="site-map-filter-chip${siteMapAreaFilter === "all" ? " is-active" : ""}" data-site-map-filter="area" data-site-map-value="all">All zones</button>`,
+    ...areas.map((area) => {
+      const value = area.toLowerCase();
+      return `<button type="button" class="site-map-filter-chip${siteMapAreaFilter === value ? " is-active" : ""}" data-site-map-filter="area" data-site-map-value="${escapeAttribute(value)}">${escapeHtml(area)}</button>`;
+    })
+  ].join("");
+  return `
+    <div class="site-map-filters" aria-label="Site map filters">
+      <div class="site-map-filter-group">${layerButtons}</div>
+      <div class="site-map-filter-group">${areaButtons}</div>
+    </div>
+  `;
+}
+
 function getCurrentSiteMap(create = false) {
   const { customerId, locationId } = currentSiteMapScope();
   if (!customerId || !locationId) return null;
@@ -7414,13 +7540,13 @@ function renderSiteMap() {
   const map = getCurrentSiteMap(false);
   const assets = hasLocation ? filteredAssets() : [];
   const pins = Array.isArray(map?.pins) ? map.pins : [];
-  const previousViewport = els.siteMapCanvas?.querySelector("[data-site-map-viewport]");
-  const previousScroll = previousViewport
-    ? { left: previousViewport.scrollLeft, top: previousViewport.scrollTop }
-    : null;
-  if (els.siteMapPinCount) els.siteMapPinCount.textContent = pins.length;
+  updateSiteMapViewportMemory();
+  const visiblePins = pins.filter((pin) => siteMapPinMatchesFilters(pin, getRawAsset(pin.assetId)));
+  if (els.siteMapPinCount) els.siteMapPinCount.textContent = visiblePins.length === pins.length ? pins.length : `${visiblePins.length}/${pins.length}`;
   if (els.siteMapImageInput) els.siteMapImageInput.disabled = !hasLocation;
   if (els.siteMapPinLabel) els.siteMapPinLabel.disabled = !hasLocation;
+  if (els.siteMapPinArea) els.siteMapPinArea.disabled = !hasLocation;
+  if (els.siteMapPinLayer) els.siteMapPinLayer.disabled = !hasLocation;
   if (els.siteMapAddPinBtn) els.siteMapAddPinBtn.disabled = !hasLocation;
   if (els.siteMapClearBtn) els.siteMapClearBtn.disabled = !hasLocation;
   if (els.siteMapPinAsset) {
@@ -7446,12 +7572,14 @@ function renderSiteMap() {
         <div class="site-map-viewport" data-site-map-viewport>
           <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%;">
             <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(map?.name || "Site map")}">
-            ${pins.map((pin, index) => {
+            ${visiblePins.map((pin, index) => {
               const asset = getRawAsset(pin.assetId);
               const title = pin.label || asset?.name || `Pin ${index + 1}`;
               const tooltip = renderSiteMapPinTooltip(pin, index, asset, title);
+              const layer = getSiteMapPinLayer(pin, asset);
+              const layerClass = layer ? ` site-map-pin-${layer}` : "";
               return `
-                <button type="button" class="site-map-pin" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" aria-label="${escapeAttribute(title)}">
+                <button type="button" class="site-map-pin${layerClass}" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" aria-label="${escapeAttribute(title)}">
                   <span>${index + 1}</span>
                   ${tooltip}
                 </button>
@@ -7461,12 +7589,12 @@ function renderSiteMap() {
         </div>
       `
       : `<div class="site-map-empty">Upload a site or floor plan image to start mapping equipment.</div>`;
-    if (previousScroll && imageUrl) {
+    if (imageUrl) {
       const restoredViewport = els.siteMapCanvas.querySelector("[data-site-map-viewport]");
       if (restoredViewport) {
         const restoreScroll = () => {
-          restoredViewport.scrollLeft = previousScroll.left;
-          restoredViewport.scrollTop = previousScroll.top;
+          restoredViewport.scrollLeft = siteMapViewportMemory.left;
+          restoredViewport.scrollTop = siteMapViewportMemory.top;
         };
         restoreScroll();
         requestAnimationFrame(restoreScroll);
@@ -7477,19 +7605,22 @@ function renderSiteMap() {
     els.siteMapPinList.innerHTML = !hasLocation
       ? `<p class="metric-dropdown-empty">Site maps are saved per location. Select a location above to continue.</p>`
       : pins.length
-      ? pins.map((pin, index) => {
+      ? `${renderSiteMapFilters(pins)}${visiblePins.length ? visiblePins.map((pin, index) => {
         const asset = getRawAsset(pin.assetId);
         const locationName = asset ? getLocation(asset.locationId)?.name || "No location" : "Equipment missing";
+        const area = getSiteMapPinArea(pin);
+        const layer = siteMapLayerLabel(getSiteMapPinLayer(pin, asset));
         return `
           <article class="site-map-pin-row">
             <button type="button" class="site-map-pin-open" data-open-site-map-pin="${escapeAttribute(pin.assetId)}">
               <strong>${index + 1}. ${escapeHtml(pin.label || asset?.name || "Equipment pin")}</strong>
               <span>${escapeHtml(locationName)}${asset?.equipmentId ? ` | ${escapeHtml(asset.equipmentId)}` : ""}</span>
+              <span>${escapeHtml(layer)}${area ? ` | ${escapeHtml(area)}` : ""}</span>
             </button>
             <button type="button" class="secondary mini" data-delete-site-map-pin="${escapeAttribute(pin.id)}">Remove</button>
           </article>
         `;
-      }).join("")
+      }).join("") : `<p class="metric-dropdown-empty">No pins match these filters.</p>`}`
       : `<p class="metric-dropdown-empty">No equipment pins on this map yet.</p>`;
   }
 }
@@ -7508,10 +7639,13 @@ function renderSiteMapPinTooltip(pin, index, asset, title) {
   const locationName = getLocation(asset.locationId)?.name || "No location";
   const equipmentId = getAssetEquipmentId(asset);
   const typeLabel = asset.type || asset.category || asset.template || "Equipment";
+  const area = getSiteMapPinArea(pin);
+  const layer = siteMapLayerLabel(getSiteMapPinLayer(pin, asset));
   return `
     <span class="site-map-pin-tooltip" role="tooltip">
       <strong>${escapeHtml(title || asset.name || `Pin ${index + 1}`)}</strong>
       <small>${escapeHtml(equipmentId)}${typeLabel ? ` | ${escapeHtml(typeLabel)}` : ""}</small>
+      <small>${escapeHtml(layer)}${area ? ` | ${escapeHtml(area)}` : ""}</small>
       <small>${escapeHtml(locationName)}</small>
       <small>${escapeHtml(due.label)}${openCount ? ` | ${openCount} open ticket${openCount === 1 ? "" : "s"}` : ""}</small>
     </span>
@@ -7643,11 +7777,15 @@ function addSiteMapPinFromEvent(event) {
   const y = clampPercent(((event.clientY - rect.top) / rect.height) * 100);
   const assetId = els.siteMapPinAsset?.value || "";
   const label = els.siteMapPinLabel?.value.trim() || "";
+  const area = els.siteMapPinArea?.value.trim() || "";
+  const layer = normalizeSiteMapLayer(els.siteMapPinLayer?.value || "") || inferSiteMapLayer(getRawAsset(assetId));
   map.pins = Array.isArray(map.pins) ? map.pins : [];
   map.pins.push({
     id: crypto.randomUUID(),
     assetId,
     label,
+    area,
+    layer,
     x,
     y,
     createdAt: new Date().toISOString()
@@ -7655,6 +7793,8 @@ function addSiteMapPinFromEvent(event) {
   map.updatedAt = new Date().toISOString();
   pendingSiteMapPin = false;
   if (els.siteMapPinLabel) els.siteMapPinLabel.value = "";
+  if (els.siteMapPinArea) els.siteMapPinArea.value = "";
+  if (els.siteMapPinLayer) els.siteMapPinLayer.value = "";
   saveState();
   renderSiteMap();
   updateSiteMapStatus("Pin added.");
@@ -7671,10 +7811,11 @@ function deleteSiteMapPin(pinId) {
 }
 
 function changeSiteMapZoom(action = "") {
+  updateSiteMapViewportMemory();
   if (action === "reset") {
     siteMapZoom = 1;
   } else if (action === "in") {
-    siteMapZoom = Math.min(3, Math.round((siteMapZoom + 0.25) * 100) / 100);
+    siteMapZoom = Math.min(5, Math.round((siteMapZoom + 0.25) * 100) / 100);
   } else if (action === "out") {
     siteMapZoom = Math.max(0.75, Math.round((siteMapZoom - 0.25) * 100) / 100);
   }
@@ -12983,8 +13124,10 @@ function getUser(id) {
 }
 
 function getDueInfo(asset) {
-  const last = asset.history[0]?.completedAt ? new Date(asset.history[0].completedAt) : new Date(asset.createdAt);
-  const nextDate = asset.nextPmDate ? parseLocalDate(asset.nextPmDate) : addDays(last, asset.frequencyDays);
+  const lastCandidate = asset.history[0]?.completedAt ? new Date(asset.history[0].completedAt) : new Date(asset.createdAt);
+  const last = Number.isFinite(lastCandidate.getTime()) ? lastCandidate : today;
+  const parsedNextDate = asset.nextPmDate ? parseLocalDate(asset.nextPmDate) : null;
+  const nextDate = parsedNextDate || addDays(last, Number(asset.frequencyDays) || 30);
   const daysUntil = Math.ceil((startOfDay(nextDate) - startOfDay(today)) / 86400000);
 
   if (daysUntil < 0) {
@@ -16881,6 +17024,8 @@ function normalizeState(input) {
         id: pin.id || crypto.randomUUID(),
         assetId: pin.assetId || "",
         label: pin.label || "",
+        area: getSiteMapPinArea(pin),
+        layer: normalizeSiteMapLayer(pin.layer || pin.system || pin.category),
         x: clampPercent(pin.x),
         y: clampPercent(pin.y),
         createdAt: pin.createdAt || new Date().toISOString()
@@ -18113,36 +18258,67 @@ function safeDocumentLink(value) {
 }
 
 function addDays(date, days) {
-  const copy = new Date(date);
-  copy.setDate(copy.getDate() + days);
+  const copy = new Date((coerceValidDate(date) || today).getTime());
+  const dayCount = Number(days);
+  copy.setDate(copy.getDate() + (Number.isFinite(dayCount) ? dayCount : 0));
   return copy;
 }
 
 function startOfDay(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const safeDate = coerceValidDate(date) || today;
+  return new Date(safeDate.getFullYear(), safeDate.getMonth(), safeDate.getDate());
 }
 
 function parseLocalDate(value) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
+  if (value instanceof Date) return coerceValidDate(value);
+  const cleanValue = String(value || "").trim();
+  if (!cleanValue) return null;
+  const dateMatch = cleanValue.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!dateMatch) {
+    const parsed = new Date(cleanValue);
+    return coerceValidDate(parsed);
+  }
+  const [, yearValue, monthValue, dayValue] = dateMatch;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return null;
+  return parsed;
+}
+
+function coerceValidDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function fallbackDateLabel() {
+  return "Not set";
 }
 
 function toDateInputValue(date) {
+  const safeDate = coerceValidDate(date) || today;
   const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `${safeDate.getFullYear()}-${pad(safeDate.getMonth() + 1)}-${pad(safeDate.getDate())}`;
 }
 
 function formatDate(date) {
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date);
+  const safeDate = coerceValidDate(date);
+  if (!safeDate) return fallbackDateLabel();
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(safeDate);
 }
 
 function formatDateTime(date) {
+  const safeDate = coerceValidDate(date);
+  if (!safeDate) return fallbackDateLabel();
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit"
-  }).format(date);
+  }).format(safeDate);
 }
 
 function getCurrentUserLabel() {

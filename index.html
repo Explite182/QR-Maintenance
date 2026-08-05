@@ -796,6 +796,22 @@
               Pin label
               <input id="siteMapPinLabel" placeholder="Optional label">
             </label>
+            <label class="site-map-field">
+              Zone / area
+              <input id="siteMapPinArea" placeholder="Reception, Mech Room">
+            </label>
+            <label class="site-map-field">
+              Layer
+              <select id="siteMapPinLayer">
+                <option value="">Auto</option>
+                <option value="electrical">Electrical</option>
+                <option value="hvac">HVAC</option>
+                <option value="life-safety">Life safety</option>
+                <option value="plumbing">Plumbing</option>
+                <option value="fitness">Fitness equipment</option>
+                <option value="construction">Future tenant / construction</option>
+              </select>
+            </label>
             <div class="site-map-actions">
               <button id="siteMapAddPinBtn" type="button" class="primary mini">Add Pin</button>
               <button id="siteMapClearBtn" type="button" class="secondary mini">Clear Map</button>
