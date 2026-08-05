@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260804-monitoring-panel-mockup";
+const SITEWORKS_APP_VERSION = "20260804-monitoring-breaker-detail";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3480,6 +3480,13 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const breakerDetail = event.target.closest("[data-monitoring-breaker-detail]");
+  if (breakerDetail) {
+    event.preventDefault();
+    showMonitoringBreakerDetail(breakerDetail.dataset.monitoringBreakerDetail, breakerDetail.dataset.monitoringBreakerCircuit);
+    return;
+  }
+
   const openPanelAsset = event.target.closest("[data-open-asset]");
   if (openPanelAsset) {
     const asset = getAsset(openPanelAsset.dataset.openAsset);
@@ -3572,6 +3579,7 @@ function monitoringElements() {
     simulatorStatus: document.getElementById("monitoringSimulatorStatus"),
     panelSelect: document.getElementById("monitoringPanelSelect"),
     livePanel: document.getElementById("monitoringLivePanel"),
+    breakerDetail: document.getElementById("monitoringBreakerDetail"),
     alertList: document.getElementById("monitoringAlertList"),
     eventList: document.getElementById("monitoringEventList")
   };
@@ -3734,12 +3742,47 @@ function monitoringChannelByCircuitMap(channels = []) {
   return map;
 }
 
+function monitoringPanelCircuitLabel(panel = null, circuitNumber = "") {
+  const circuits = Array.isArray(panel?.electricalPanelSchedule?.circuits)
+    ? panel.electricalPanelSchedule.circuits
+    : Array.isArray(panel?.panelSchedule)
+      ? panel.panelSchedule
+      : [];
+  const circuit = circuits.find(item => String(item.number || item.cct || item.circuit || "").trim() === String(circuitNumber).trim());
+  return panelCircuitLoadText(circuit) || circuit?.description || circuit?.loadServed || "";
+}
+
 function monitoringMainMeterValue(device = null, names = []) {
   for (const name of names) {
     const value = device?.[name] ?? device?.telemetry?.[name] ?? device?.latestTelemetry?.[name];
     if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
   }
   return "";
+}
+
+function showMonitoringBreakerDetail(channelId = "", circuitNumber = "") {
+  const elements = monitoringElements();
+  if (!elements.breakerDetail) return;
+  const channel = getMonitoringChannel(channelId);
+  const panel = getAsset(channel?.panelAssetId || selectedMonitoringPanelId);
+  const device = channel ? getMonitoringDevice(channel.deviceId) : null;
+  const label = monitoringPanelCircuitLabel(panel, circuitNumber) || "No panel label saved";
+  const status = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
+  elements.breakerDetail.classList.remove("hidden");
+  elements.breakerDetail.innerHTML = `
+    <div>
+      <span>Circuit ${escapeHtml(circuitNumber || channel?.circuitNumber || "")}</span>
+      <strong>${escapeHtml(status)}</strong>
+      <small>${escapeHtml(label)}</small>
+    </div>
+    <dl>
+      <div><dt>Panel</dt><dd>${escapeHtml(panel?.name || "Panel")}</dd></div>
+      <div><dt>Phase</dt><dd>${escapeHtml(channel ? monitoringChannelPhaseLabel(channel) : "Not mapped")}</dd></div>
+      <div><dt>Physical channel</dt><dd>${escapeHtml(channel?.physicalChannel || "Not mapped")}</dd></div>
+      <div><dt>Device</dt><dd>${escapeHtml(device?.name || "No monitor")}</dd></div>
+      <div><dt>Last update</dt><dd>${escapeHtml(channel?.updatedAt ? formatDateTime(channel.updatedAt) : "Not monitored")}</dd></div>
+    </dl>
+  `;
 }
 
 function syncMonitoringPhaseSelectors() {
@@ -4348,6 +4391,8 @@ function renderMonitoringChannelList(devices) {
 
 function renderMonitoringLivePanel(devices) {
   const elements = monitoringElements();
+  elements.breakerDetail?.classList.add("hidden");
+  if (elements.breakerDetail) elements.breakerDetail.innerHTML = "";
   const deviceIds = new Set(devices.map(device => String(device.id)));
   const channels = state.monitoringChannels.filter(channel => deviceIds.has(String(channel.deviceId || channel.device_id || "")));
   const panel = selectedMonitoringPanelId
@@ -4393,16 +4438,23 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   const state = channel?.lastDerivedState || "not-monitored";
   const label = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
   const phaseText = channel ? `Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${monitoringChannelPhaseLabel(channel)}` : "";
+  const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber);
+  const tooltipLabel = circuitLabel || "No panel label saved";
   const content = `
     <span>Circuit ${escapeHtml(circuitNumber)}</span>
     <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
     <small>${escapeHtml(phaseText || panel?.name || "No monitor")}</small>
+    <em class="monitoring-breaker-tooltip">${escapeHtml(tooltipLabel)}</em>
   `;
   if (!channel) {
-    return `<div class="monitoring-breaker-slot monitoring-channel-card not-monitored ${escapeAttribute(side)}">${content}</div>`;
+    return `
+      <button type="button" class="monitoring-breaker-slot monitoring-channel-card not-monitored ${escapeAttribute(side)}" data-monitoring-breaker-detail="" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}">
+        ${content}
+      </button>
+    `;
   }
   return `
-    <button type="button" class="monitoring-breaker-slot monitoring-channel-card ${monitoringStatusClass(state)} ${escapeAttribute(side)}" data-open-asset="${escapeHtml(channel.panelAssetId)}">
+    <button type="button" class="monitoring-breaker-slot monitoring-channel-card ${monitoringStatusClass(state)} ${escapeAttribute(side)}" data-monitoring-breaker-detail="${escapeAttribute(channel.id)}" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}">
       ${content}
     </button>
   `;
