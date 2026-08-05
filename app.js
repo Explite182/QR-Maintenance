@@ -20,6 +20,8 @@ const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
 const MONITORING_DEFAULT_HEARTBEAT_SECONDS = 120;
 const MONITORING_DEFAULT_DELAY_SECONDS = 30;
+const MONITORING_LIVE_STATUS_API = "/api/breaker-monitor/status";
+const MONITORING_LIVE_SYNC_INTERVAL_MS = 5000;
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
@@ -590,6 +592,8 @@ window.setTimeout(initializeRealtimeSync, 1200);
 window.setInterval(syncPublicReportsFromSupabase, PUBLIC_REPORT_SYNC_INTERVAL_MS);
 window.setInterval(refreshCloudDataFromSupabase, CLOUD_REFRESH_INTERVAL_MS);
 window.setInterval(runMonitoringOfflineCheck, 60000);
+window.setInterval(syncMonitoringStatusFromApi, MONITORING_LIVE_SYNC_INTERVAL_MS);
+window.setTimeout(syncMonitoringStatusFromApi, 1500);
 initPasswordRecoveryFromUrl();
 
 window.addEventListener("hashchange", () => {
@@ -3692,6 +3696,145 @@ function monitoringChannelsForDevice(deviceId) {
     const device = getMonitoringDevice(normalizedDeviceId);
     return Boolean(device && (String(device.id || "") === needle || String(device.deviceUid || "") === needle));
   });
+}
+
+function normalizeApiMonitoringChannelName(value = "") {
+  const text = String(value || "").trim().toUpperCase();
+  if (!text) return "";
+  return text.startsWith("DI") ? text.slice(2) : text;
+}
+
+function monitoringApiStatusToDevice(row) {
+  return {
+    id: row.id,
+    customerId: row.customerId || row.customer_id || "",
+    locationId: row.locationId || row.location_id || "",
+    panelAssetId: row.panelAssetId || row.panel_asset_id || "",
+    deviceUid: row.deviceUid || row.device_uid || "",
+    name: row.name || "Breaker monitor",
+    model: row.model || "",
+    firmwareVersion: row.firmwareVersion || row.firmware_version || "",
+    heartbeatSeconds: row.heartbeatSeconds || row.heartbeat_seconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS,
+    maintenanceMode: Boolean(row.maintenanceMode ?? row.maintenance_mode),
+    onlineStatus: row.onlineStatus || row.online_status || "unknown",
+    healthStatus: row.healthStatus || row.health_status || "",
+    lastSeenAt: row.lastSeenAt || row.last_seen_at || "",
+    updatedAt: row.updatedAt || row.updated_at || "",
+    sourcePhases: normalizeMonitoringSourcePhases(row.sourcePhases || row.source_phases),
+    sourcePhaseChannels: row.sourcePhaseChannels || row.source_phase_channels || { A: "", B: "", C: "" },
+    rawPayloads: row.data?.last_payload ? [{ receivedAt: row.lastSeenAt || row.updatedAt || new Date().toISOString(), payload: row.data.last_payload }] : []
+  };
+}
+
+function monitoringApiStatusToChannel(row, deviceId) {
+  return {
+    id: row.id,
+    deviceId,
+    panelAssetId: row.panelAssetId || row.panel_asset_id || "",
+    circuitNumber: String(row.circuitNumber || row.circuit_number || ""),
+    physicalChannel: normalizeApiMonitoringChannelName(row.physicalChannel || row.physical_channel || ""),
+    sourcePhase: row.sourcePhase || row.source_phase || "A",
+    sourcePhases: [row.sourcePhase || row.source_phase || "A"],
+    poleCount: row.poleCount || row.pole_count || 1,
+    alarmDelaySeconds: row.alarmDelaySeconds || row.alarm_delay_seconds || MONITORING_DEFAULT_DELAY_SECONDS,
+    monitoringMode: row.monitoringMode || row.monitoring_mode || "normal",
+    criticality: row.criticality || "normal",
+    lastRawState: row.lastRawState ?? row.last_raw_state ?? null,
+    lastDerivedState: row.lastDerivedState || row.last_derived_state || "open",
+    firstAbsentAt: row.firstAbsentAt || row.first_absent_at || "",
+    updatedAt: row.updatedAt || row.updated_at || "",
+    data: row.data || {}
+  };
+}
+
+function monitoringApiStatusToEvent(row, deviceIdByApiId) {
+  const eventType = row.eventType || row.event_type || "device-status";
+  const circuitNumber = row.circuitNumber || row.circuit_number || "";
+  const newState = row.newState || row.new_state || "";
+  return {
+    id: row.id,
+    deviceId: deviceIdByApiId.get(String(row.deviceId || row.device_id || "")) || row.deviceId || row.device_id || "",
+    channelId: row.channelId || row.channel_id || "",
+    circuitNumber,
+    type: eventType,
+    state: newState,
+    message: eventType === "channel-state" && circuitNumber
+      ? `Circuit ${circuitNumber} is ${monitoringStateLabel(newState)}.`
+      : "Breaker monitor reported status.",
+    data: row.payload || {},
+    createdAt: row.createdAt || row.created_at || new Date().toISOString()
+  };
+}
+
+async function syncMonitoringStatusFromApi() {
+  if (document.hidden || !currentUser) return;
+  ensureMonitoringCollections();
+  try {
+    const response = await fetch(MONITORING_LIVE_STATUS_API, { cache: "no-store" });
+    if (!response.ok) return;
+    const body = await response.json();
+    if (!Array.isArray(body.devices) || !Array.isArray(body.channels)) return;
+
+    const deviceIdByApiId = new Map();
+    let changed = false;
+
+    body.devices.forEach((row) => {
+      const incoming = monitoringApiStatusToDevice(row);
+      if (!incoming.deviceUid) return;
+      const existing = state.monitoringDevices.find((device) => {
+        const normalized = normalizeMonitoringDevice(device);
+        return normalized?.deviceUid === incoming.deviceUid || String(normalized?.id || "") === String(incoming.id);
+      });
+      const localId = existing?.id || incoming.id || makeId();
+      deviceIdByApiId.set(String(incoming.id || ""), localId);
+      const next = { ...(existing || {}), ...incoming, id: localId };
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        state.monitoringDevices.push(next);
+      }
+      changed = true;
+    });
+
+    body.channels.forEach((row) => {
+      const apiDeviceId = String(row.deviceId || row.device_id || "");
+      const localDeviceId = deviceIdByApiId.get(apiDeviceId) || apiDeviceId;
+      const incoming = monitoringApiStatusToChannel(row, localDeviceId);
+      if (!incoming.deviceId || !incoming.physicalChannel) return;
+      const existing = state.monitoringChannels.find((channel) => {
+        return String(channel.id || "") === String(incoming.id)
+          || (
+            String(channel.deviceId || channel.device_id || "") === String(incoming.deviceId)
+            && normalizeApiMonitoringChannelName(channel.physicalChannel || channel.physical_channel || "") === incoming.physicalChannel
+          )
+          || (
+            String(channel.panelAssetId || channel.panel_asset_id || "") === String(incoming.panelAssetId)
+            && String(channel.circuitNumber || channel.circuit_number || "") === String(incoming.circuitNumber)
+          );
+      });
+      const next = { ...(existing || {}), ...incoming };
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        state.monitoringChannels.push(next);
+      }
+      changed = true;
+    });
+
+    if (Array.isArray(body.events)) {
+      const existingEventIds = new Set(state.monitoringEvents.map((event) => String(event.id || "")));
+      body.events.slice(0, 20).reverse().forEach((row) => {
+        if (!row.id || existingEventIds.has(String(row.id))) return;
+        state.monitoringEvents.unshift(monitoringApiStatusToEvent(row, deviceIdByApiId));
+        changed = true;
+      });
+      state.monitoringEvents = state.monitoringEvents.slice(0, 1000);
+    }
+
+    if (changed) renderMonitoring();
+  } catch (error) {
+    console.warn("Monitoring live status sync failed", error);
+  }
 }
 
 function monitoringEngine() {
