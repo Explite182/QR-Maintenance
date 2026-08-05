@@ -3549,21 +3549,29 @@ function allElectricalPanelAssetsForMonitoring() {
 
 function getMonitoringDevice(deviceId) {
   ensureMonitoringCollections();
-  return state.monitoringDevices.find(device => device.id === deviceId);
+  const needle = String(deviceId || "");
+  if (!needle) return null;
+  return state.monitoringDevices.find(device => {
+    const normalized = normalizeMonitoringDevice(device);
+    return normalized?.id === needle || normalized?.deviceUid === needle;
+  }) || null;
 }
 
 function normalizeMonitoringDevice(device) {
   if (!device) return null;
-  const panelAssetId = device.panelAssetId || device.panel_asset_id || device.panelId || device.panel_id || device.assetId || device.asset_id || "";
+  const deviceUid = String(device.deviceUid || device.device_uid || device.uid || "").trim();
+  const id = String(device.id || device.deviceId || device.device_id || device.monitoringDeviceId || device.monitoring_device_id || deviceUid || "").trim();
+  const panelAssetId = String(device.panelAssetId || device.panel_asset_id || device.panelId || device.panel_id || device.assetId || device.asset_id || "").trim();
   const panel = panelAssetId ? getAsset(panelAssetId) : null;
   const panelCustomerId = panel?.customerId || panel?.customer_id || "";
   const panelLocationId = panel?.locationId || panel?.location_id || "";
   return {
     ...device,
+    id,
     panelAssetId,
     customerId: device.customerId || device.customer_id || panelCustomerId,
     locationId: device.locationId || device.location_id || panelLocationId,
-    deviceUid: device.deviceUid || device.device_uid || device.uid || "",
+    deviceUid: deviceUid || id || "",
     name: device.name || device.deviceName || device.device_name || "",
     model: device.model || "",
     firmwareVersion: device.firmwareVersion || device.firmware_version || "",
@@ -3577,10 +3585,10 @@ function normalizeMonitoringDevice(device) {
 
 function monitoringRecordMatchesCurrentView(record, fallback = null) {
   if (!record) return false;
-  const customerId = record.customerId || record.customer_id || fallback?.customerId || fallback?.customer_id || "";
-  const locationId = record.locationId || record.location_id || fallback?.locationId || fallback?.location_id || "";
-  if (selectedCustomerId !== ALL_CUSTOMERS && customerId && customerId !== selectedCustomerId) return false;
-  if (selectedLocationId !== ALL_LOCATIONS && locationId && locationId !== selectedLocationId) return false;
+  const customerId = String(record.customerId || record.customer_id || fallback?.customerId || fallback?.customer_id || "");
+  const locationId = String(record.locationId || record.location_id || fallback?.locationId || fallback?.location_id || "");
+  if (selectedCustomerId !== ALL_CUSTOMERS && customerId && customerId !== String(selectedCustomerId)) return false;
+  if (selectedLocationId !== ALL_LOCATIONS && locationId && locationId !== String(selectedLocationId)) return false;
   return true;
 }
 
@@ -3591,11 +3599,16 @@ function getMonitoringChannel(channelId) {
 
 function visibleMonitoringDevices() {
   ensureMonitoringCollections();
+  const visiblePanelIds = new Set(allElectricalPanelAssetsForMonitoring().map(panel => String(panel.id || "")));
   return state.monitoringDevices
     .map(normalizeMonitoringDevice)
     .filter(device => {
+      if (!device?.id) return false;
       const panel = device?.panelAssetId ? getAsset(device.panelAssetId) : null;
-      if (panel) return canSeeAsset(panel) && monitoringRecordMatchesCurrentView(panel, device);
+      if (panel) {
+        const panelId = String(panel.id || "");
+        return canSeeAsset(panel) && (visiblePanelIds.has(panelId) || monitoringRecordMatchesCurrentView(panel, device));
+      }
       if (!monitoringRecordMatchesCurrentView(device)) return false;
       return !device.customerId || canSeeCustomer(device.customerId);
     });
@@ -3603,7 +3616,8 @@ function visibleMonitoringDevices() {
 
 function monitoringChannelsForDevice(deviceId) {
   ensureMonitoringCollections();
-  return state.monitoringChannels.filter(channel => channel.deviceId === deviceId);
+  const needle = String(deviceId || "");
+  return state.monitoringChannels.filter(channel => String(channel.deviceId || channel.device_id || "") === needle);
 }
 
 function normalizeMonitoringSourcePhases(phases = {}) {
@@ -3659,8 +3673,11 @@ async function handleMonitoringDeviceSubmit(form) {
       if (elements.deviceStatus) elements.deviceStatus.textContent = "Device UID and name are required.";
       return;
     }
-    const existingId = elements.deviceId?.value || "";
-    const duplicate = state.monitoringDevices.find(device => normalizeMonitoringDevice(device)?.deviceUid === uid && device.id !== existingId);
+    const existingId = String(elements.deviceId?.value || "");
+    const duplicate = state.monitoringDevices.find(device => {
+      const normalized = normalizeMonitoringDevice(device);
+      return normalized?.deviceUid === uid && String(normalized?.id || "") !== existingId;
+    });
     if (duplicate) {
       if (elements.deviceStatus) elements.deviceStatus.textContent = "That device UID is already assigned.";
       return;
@@ -3698,12 +3715,26 @@ async function handleMonitoringDeviceSubmit(form) {
       addMonitoringEvent({ deviceId: device.id, panelAssetId: panel.id, type: "device-updated", message: `${name} was updated.` });
     }
     addActivity("Monitoring device saved", `${device.name} assigned to ${panel.name}`);
+    const savedDeviceId = String(device.id || "");
     saveState();
     form.reset();
     if (elements.deviceId) elements.deviceId.value = "";
     render();
     const nextElements = monitoringElements();
-    if (nextElements.deviceStatus) nextElements.deviceStatus.textContent = "Device saved.";
+    const savedDevices = visibleMonitoringDevices();
+    const savedDeviceIsVisible = savedDevices.some(item => String(item.id || "") === savedDeviceId);
+    if (savedDeviceIsVisible) {
+      if (nextElements.channelDevice) {
+        nextElements.channelDevice.value = savedDeviceId;
+        renderMonitoringCircuitOptions(savedDeviceId);
+      }
+      if (nextElements.simulatorDevice) nextElements.simulatorDevice.value = savedDeviceId;
+    }
+    if (nextElements.deviceStatus) {
+      nextElements.deviceStatus.textContent = savedDeviceIsVisible
+        ? "Device saved. It is ready for channel mapping and simulator testing."
+        : "Device saved, but it is hidden by the current customer or location filter.";
+    }
   } catch (error) {
     console.error("Monitoring device save failed", error);
     if (elements.deviceStatus) elements.deviceStatus.textContent = `Device save failed: ${error?.message || "Unknown error"}`;
@@ -4050,11 +4081,13 @@ function renderMonitoring() {
   const selectedSimulatorDevice = elements.simulatorDevice?.value || "";
   if (elements.channelDevice) {
     elements.channelDevice.innerHTML = deviceOptions || `<option value="">Add a device first</option>`;
-    if (selectedChannelDevice) elements.channelDevice.value = selectedChannelDevice;
+    const channelDeviceStillVisible = devices.some(device => String(device.id || "") === String(selectedChannelDevice));
+    elements.channelDevice.value = channelDeviceStillVisible ? selectedChannelDevice : (devices[0]?.id || "");
   }
   if (elements.simulatorDevice) {
     elements.simulatorDevice.innerHTML = deviceOptions || `<option value="">Add a device first</option>`;
-    if (selectedSimulatorDevice) elements.simulatorDevice.value = selectedSimulatorDevice;
+    const simulatorDeviceStillVisible = devices.some(device => String(device.id || "") === String(selectedSimulatorDevice));
+    elements.simulatorDevice.value = simulatorDeviceStillVisible ? selectedSimulatorDevice : (devices[0]?.id || "");
   }
   renderMonitoringCircuitOptions(elements.channelDevice?.value || devices[0]?.id || "");
   renderMonitoringDeviceList(devices);
@@ -4102,8 +4135,8 @@ function renderMonitoringDeviceList(devices) {
 
 function renderMonitoringChannelList(devices) {
   const elements = monitoringElements();
-  const deviceIds = new Set(devices.map(device => device.id));
-  const channels = state.monitoringChannels.filter(channel => deviceIds.has(channel.deviceId));
+  const deviceIds = new Set(devices.map(device => String(device.id)));
+  const channels = state.monitoringChannels.filter(channel => deviceIds.has(String(channel.deviceId || channel.device_id || "")));
   elements.channelList.innerHTML = channels.length ? channels.map(channel => {
     const device = getMonitoringDevice(channel.deviceId);
     return `
@@ -4123,8 +4156,8 @@ function renderMonitoringChannelList(devices) {
 
 function renderMonitoringLivePanel(devices) {
   const elements = monitoringElements();
-  const deviceIds = new Set(devices.map(device => device.id));
-  const channels = state.monitoringChannels.filter(channel => deviceIds.has(channel.deviceId));
+  const deviceIds = new Set(devices.map(device => String(device.id)));
+  const channels = state.monitoringChannels.filter(channel => deviceIds.has(String(channel.deviceId || channel.device_id || "")));
   elements.livePanel.innerHTML = channels.length ? channels.map(channel => {
     const panel = getAsset(channel.panelAssetId);
     const device = getMonitoringDevice(channel.deviceId);
@@ -4139,8 +4172,8 @@ function renderMonitoringLivePanel(devices) {
 
 function renderMonitoringAlerts(devices) {
   const elements = monitoringElements();
-  const deviceIds = new Set(devices.map(device => device.id));
-  const alerts = state.monitoringAlerts.filter(alert => deviceIds.has(alert.deviceId) && alert.status !== "resolved");
+  const deviceIds = new Set(devices.map(device => String(device.id)));
+  const alerts = state.monitoringAlerts.filter(alert => deviceIds.has(String(alert.deviceId || alert.device_id || "")) && alert.status !== "resolved");
   elements.alertList.innerHTML = alerts.length ? alerts.map(alert => `
     <div class="monitoring-record alert">
       <div>
@@ -4158,8 +4191,8 @@ function renderMonitoringAlerts(devices) {
 
 function renderMonitoringEvents(devices) {
   const elements = monitoringElements();
-  const deviceIds = new Set(devices.map(device => device.id));
-  const events = state.monitoringEvents.filter(event => !event.deviceId || deviceIds.has(event.deviceId)).slice(0, 50);
+  const deviceIds = new Set(devices.map(device => String(device.id)));
+  const events = state.monitoringEvents.filter(event => !event.deviceId || deviceIds.has(String(event.deviceId || event.device_id || ""))).slice(0, 50);
   elements.eventList.innerHTML = events.length ? events.map(event => `
     <div class="monitoring-record compact">
       <div>
