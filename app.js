@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260804-monitoring-phase-selectors";
+const SITEWORKS_APP_VERSION = "20260804-monitoring-panel-mockup";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3706,6 +3706,42 @@ function monitoringChannelPhaseLabel(channel = {}) {
   return getMonitoringChannelPhaseList(channel).join("/") || "A";
 }
 
+function parseMonitoringCircuitNumbers(value = "") {
+  return String(value || "")
+    .split(/[\s,;/]+/)
+    .map(item => Number(String(item).replace(/\D/g, "")))
+    .filter(number => Number.isInteger(number) && number > 0);
+}
+
+function monitoringPanelCircuitCount(panel = null, channels = []) {
+  const schedule = panel?.electricalPanelSchedule || {};
+  const scheduledCount = Number(schedule.circuitCount || panel?.panelSchedule?.circuitCount || 0);
+  const maxMapped = channels.reduce((max, channel) => {
+    const circuitMax = parseMonitoringCircuitNumbers(channel.circuitNumber).reduce((innerMax, number) => Math.max(innerMax, number), 0);
+    return Math.max(max, circuitMax);
+  }, 0);
+  const count = Math.max(scheduledCount || 0, maxMapped || 0, 42);
+  return count % 2 === 0 ? count : count + 1;
+}
+
+function monitoringChannelByCircuitMap(channels = []) {
+  const map = new Map();
+  channels.forEach(channel => {
+    parseMonitoringCircuitNumbers(channel.circuitNumber).forEach(number => {
+      if (!map.has(number)) map.set(number, channel);
+    });
+  });
+  return map;
+}
+
+function monitoringMainMeterValue(device = null, names = []) {
+  for (const name of names) {
+    const value = device?.[name] ?? device?.telemetry?.[name] ?? device?.latestTelemetry?.[name];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
+  }
+  return "";
+}
+
 function syncMonitoringPhaseSelectors() {
   const elements = monitoringElements();
   const poleCount = Math.max(1, Number(elements.channelPoles?.value || 1));
@@ -3945,6 +3981,8 @@ function ingestMonitoringStatus(payload, options = {}) {
   device.onlineStatus = "online";
   device.healthStatus = payload.healthStatus || "ok";
   device.sourcePhases = normalizeMonitoringSourcePhases(payload.sourcePhases);
+  device.mainVoltage = payload.mainVoltage ?? payload.main_voltage ?? payload.voltage ?? payload.lineVoltage ?? payload.line_voltage ?? device.mainVoltage ?? "";
+  device.mainCurrent = payload.mainCurrent ?? payload.main_current ?? payload.current ?? payload.loadCurrent ?? payload.load_current ?? payload.amps ?? payload.amperage ?? device.mainCurrent ?? "";
   device.updatedAt = new Date().toISOString();
   const channelStates = new Map((payload.channels || []).map(channel => [String(channel.channel), Boolean(channel.closed)]));
   monitoringChannelsForDevice(device.id).forEach(channel => {
@@ -4312,16 +4350,62 @@ function renderMonitoringLivePanel(devices) {
   const elements = monitoringElements();
   const deviceIds = new Set(devices.map(device => String(device.id)));
   const channels = state.monitoringChannels.filter(channel => deviceIds.has(String(channel.deviceId || channel.device_id || "")));
-  elements.livePanel.innerHTML = channels.length ? channels.map(channel => {
-    const panel = getAsset(channel.panelAssetId);
-    const device = getMonitoringDevice(channel.deviceId);
+  const panel = selectedMonitoringPanelId
+    ? getAsset(selectedMonitoringPanelId)
+    : getAsset(devices[0]?.panelAssetId || channels[0]?.panelAssetId);
+  if (!panel && !channels.length) {
+    elements.livePanel.innerHTML = `<p class="muted">Add a monitoring device to select a panel and see its breaker layout.</p>`;
+    return;
+  }
+  const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
+  const circuitCount = monitoringPanelCircuitCount(panel, channels);
+  const channelByCircuit = monitoringChannelByCircuitMap(channels);
+  const rowCount = Math.ceil(circuitCount / 2);
+  const voltage = monitoringMainMeterValue(primaryDevice, ["mainVoltage", "main_voltage", "voltage", "lineVoltage", "line_voltage"]);
+  const current = monitoringMainMeterValue(primaryDevice, ["mainCurrent", "main_current", "current", "loadCurrent", "load_current", "amps", "amperage"]);
+  const meterHtml = voltage || current ? `
+    <div class="monitoring-main-meter">
+      ${voltage ? `<span><small>Main voltage</small><strong>${escapeHtml(voltage)}</strong></span>` : ""}
+      ${current ? `<span><small>Main current</small><strong>${escapeHtml(current)}</strong></span>` : ""}
+    </div>
+  ` : "";
+  const rows = Array.from({ length: rowCount }, (_, index) => {
+    const oddCircuit = index * 2 + 1;
+    const evenCircuit = oddCircuit + 1;
     return `
-      <button type="button" class="monitoring-channel-card ${monitoringStatusClass(channel.lastDerivedState)}" data-open-asset="${escapeHtml(channel.panelAssetId)}">
-        <span>Circuit ${escapeHtml(channel.circuitNumber)}</span>
-        <strong class="monitoring-channel-state">${escapeHtml(monitoringStateLabel(channel.lastDerivedState))}</strong>
-        <small>Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${escapeHtml(monitoringChannelPhaseLabel(channel))} | ${escapeHtml(panel?.name || "Panel")} | ${escapeHtml(device?.name || "Device")}</small>
-      </button>`;
-  }).join("") : `<p class="muted">Map a device channel to a panel circuit to see live breaker status.</p>`;
+      <div class="monitoring-panel-row">
+        ${renderMonitoringBreakerSlot(oddCircuit, channelByCircuit.get(oddCircuit), panel, "left")}
+        <div class="monitoring-panel-bus" aria-hidden="true"></div>
+        ${renderMonitoringBreakerSlot(evenCircuit, channelByCircuit.get(evenCircuit), panel, "right")}
+      </div>
+    `;
+  }).join("");
+  elements.livePanel.innerHTML = `
+    ${meterHtml}
+    <div class="monitoring-panel-mockup" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
+      <div class="monitoring-panel-rail-label"><span>Odd circuits</span><span>Even circuits</span></div>
+      ${rows}
+    </div>
+  `;
+}
+
+function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null, side = "left") {
+  const state = channel?.lastDerivedState || "not-monitored";
+  const label = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
+  const phaseText = channel ? `Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${monitoringChannelPhaseLabel(channel)}` : "";
+  const content = `
+    <span>Circuit ${escapeHtml(circuitNumber)}</span>
+    <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
+    <small>${escapeHtml(phaseText || panel?.name || "No monitor")}</small>
+  `;
+  if (!channel) {
+    return `<div class="monitoring-breaker-slot monitoring-channel-card not-monitored ${escapeAttribute(side)}">${content}</div>`;
+  }
+  return `
+    <button type="button" class="monitoring-breaker-slot monitoring-channel-card ${monitoringStatusClass(state)} ${escapeAttribute(side)}" data-open-asset="${escapeHtml(channel.panelAssetId)}">
+      ${content}
+    </button>
+  `;
 }
 
 function renderMonitoringAlerts(devices) {
