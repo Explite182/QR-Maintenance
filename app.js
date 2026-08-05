@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260804-monitoring-multipole-visual";
+const SITEWORKS_APP_VERSION = "20260804-monitoring-schedule-labels";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3594,7 +3594,7 @@ function ensureMonitoringCollections() {
 
 function allElectricalPanelAssetsForMonitoring() {
   return (state.assets || [])
-    .filter(asset => canSeeAsset(asset) && isElectricalPanelAsset(asset))
+    .filter(asset => canSeeAsset(asset) && isElectricalPanelAsset(asset) && monitoringRecordMatchesCurrentView(asset))
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 }
 
@@ -3638,7 +3638,8 @@ function monitoringRecordMatchesCurrentView(record, fallback = null) {
   if (!record) return false;
   const customerId = String(record.customerId || record.customer_id || fallback?.customerId || fallback?.customer_id || "");
   const locationId = String(record.locationId || record.location_id || fallback?.locationId || fallback?.location_id || "");
-  if (selectedCustomerId !== ALL_CUSTOMERS && customerId && customerId !== String(selectedCustomerId)) return false;
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS) return false;
+  if (!customerId || customerId !== String(selectedCustomerId)) return false;
   if (selectedLocationId !== ALL_LOCATIONS && locationId && locationId !== String(selectedLocationId)) return false;
   return true;
 }
@@ -3658,7 +3659,7 @@ function visibleMonitoringDevices() {
       const panel = device?.panelAssetId ? getAsset(device.panelAssetId) : null;
       if (panel) {
         const panelId = String(panel.id || "");
-        return canSeeAsset(panel) && (visiblePanelIds.has(panelId) || monitoringRecordMatchesCurrentView(panel, device));
+        return canSeeAsset(panel) && visiblePanelIds.has(panelId) && monitoringRecordMatchesCurrentView(panel, device);
       }
       if (!monitoringRecordMatchesCurrentView(device)) return false;
       return !device.customerId || canSeeCustomer(device.customerId);
@@ -4248,11 +4249,13 @@ function renderMonitoring() {
   const elements = monitoringElements();
   if (!elements.livePanel) return;
   const panels = allElectricalPanelAssetsForMonitoring();
-  const panelOptions = panels.map(panel => {
+  const hasCustomerScope = Boolean(selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS);
+  const panelOptions = panels.length ? panels.map(panel => {
     const locationId = panel.locationId || panel.location_id || "";
     return `<option value="${escapeHtml(panel.id)}">${escapeHtml(panel.name)} - ${escapeHtml(getLocation(locationId)?.name || "Unknown location")}</option>`;
-  }).join("");
+  }).join("") : `<option value="">${hasCustomerScope ? "No electrical panels for this customer" : "Choose a customer first"}</option>`;
   if (elements.devicePanel && elements.devicePanel.innerHTML !== panelOptions) elements.devicePanel.innerHTML = panelOptions;
+  if (elements.devicePanel) elements.devicePanel.disabled = !hasCustomerScope || !panels.length;
   const devices = visibleMonitoringDevices();
   const selectablePanels = monitoringSelectablePanels(devices);
   if (!selectedMonitoringPanelId || !selectablePanels.some(panel => String(panel.id || "") === String(selectedMonitoringPanelId))) {
@@ -4416,7 +4419,15 @@ function renderMonitoringLivePanel(devices) {
   ` : "";
   const oddCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 1);
   const evenCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 2);
+  const panelCustomer = getCustomer(panel?.customerId || panel?.customer_id || "");
+  const panelLocation = getLocation(panel?.locationId || panel?.location_id || "");
+  const panelContext = [panelLocation?.name, panelCustomer?.name].filter(Boolean).join(" | ");
   elements.livePanel.innerHTML = `
+    <div class="monitoring-panel-top-label">
+      <span>Live panel status</span>
+      <strong>${escapeHtml(panel?.name || "Selected panel")}</strong>
+      ${panelContext ? `<small>${escapeHtml(panelContext)}</small>` : ""}
+    </div>
     ${meterHtml}
     <div class="monitoring-panel-mockup" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
       <div class="monitoring-panel-rail-label"><span>Odd circuits</span><span>Even circuits</span></div>
@@ -4464,12 +4475,14 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   const phaseText = channel ? `Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${monitoringChannelPhaseLabel(channel)}` : "";
   const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber);
   const tooltipLabel = circuitLabel || "No panel label saved";
+  const faceLabel = circuitLabel || panel?.name || "No panel label saved";
   const spanStyle = span > 1 ? ` style="grid-row: span ${span};"` : "";
   const multiClass = span > 1 ? " multi-pole" : "";
   const content = `
     <span>Circuit ${escapeHtml(circuitNumber)}</span>
     <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
-    <small>${escapeHtml(phaseText || panel?.name || "No monitor")}</small>
+    <small class="monitoring-breaker-load-label">${escapeHtml(faceLabel)}</small>
+    ${phaseText ? `<small class="monitoring-breaker-phase-label">${escapeHtml(phaseText)}</small>` : ""}
     <em class="monitoring-breaker-tooltip">${escapeHtml(tooltipLabel)}</em>
   `;
   if (!channel) {
@@ -17323,27 +17336,31 @@ function normalizeState(input) {
     updatedAt: map.updatedAt || map.createdAt || new Date().toISOString()
   })).filter((map) => map.customerId);
 
-  normalized.monitoringDevices = normalized.monitoringDevices.map((device) => ({
-    ...device,
-    id: device.id || crypto.randomUUID(),
-    customerId: device.customerId || normalized.customers[0]?.id || "",
-    locationId: device.locationId || "",
-    panelAssetId: device.panelAssetId || device.assetId || "",
-    deviceUid: String(device.deviceUid || device.device_uid || "").trim(),
-    apiKeyHash: device.apiKeyHash || "",
-    apiKeyLast4: device.apiKeyLast4 || "",
-    name: device.name || "",
-    model: device.model || "",
-    firmwareVersion: device.firmwareVersion || device.firmware_version || "",
-    onlineStatus: device.onlineStatus || "offline",
-    healthStatus: device.healthStatus || "",
-    sourcePhases: normalizeMonitoringSourcePhases(device.sourcePhases),
-    lastSeenAt: device.lastSeenAt || device.last_seen_at || "",
-    heartbeatSeconds: Math.max(30, Number(device.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS)),
-    maintenanceMode: Boolean(device.maintenanceMode),
-    createdAt: device.createdAt || new Date().toISOString(),
-    updatedAt: device.updatedAt || device.createdAt || new Date().toISOString()
-  })).filter((device) => device.name && device.deviceUid && device.panelAssetId);
+  normalized.monitoringDevices = normalized.monitoringDevices.map((device) => {
+    const panelAssetId = String(device.panelAssetId || device.panel_asset_id || device.assetId || device.asset_id || "");
+    const panel = normalized.assets.find((asset) => String(asset.id || "") === panelAssetId);
+    return {
+      ...device,
+      id: device.id || crypto.randomUUID(),
+      customerId: device.customerId || device.customer_id || panel?.customerId || panel?.customer_id || normalized.customers[0]?.id || "",
+      locationId: device.locationId || device.location_id || panel?.locationId || panel?.location_id || "",
+      panelAssetId,
+      deviceUid: String(device.deviceUid || device.device_uid || "").trim(),
+      apiKeyHash: device.apiKeyHash || "",
+      apiKeyLast4: device.apiKeyLast4 || "",
+      name: device.name || "",
+      model: device.model || "",
+      firmwareVersion: device.firmwareVersion || device.firmware_version || "",
+      onlineStatus: device.onlineStatus || "offline",
+      healthStatus: device.healthStatus || "",
+      sourcePhases: normalizeMonitoringSourcePhases(device.sourcePhases),
+      lastSeenAt: device.lastSeenAt || device.last_seen_at || "",
+      heartbeatSeconds: Math.max(30, Number(device.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS)),
+      maintenanceMode: Boolean(device.maintenanceMode),
+      createdAt: device.createdAt || new Date().toISOString(),
+      updatedAt: device.updatedAt || device.createdAt || new Date().toISOString()
+    };
+  }).filter((device) => device.name && device.deviceUid && device.panelAssetId);
 
   normalized.monitoringChannels = normalized.monitoringChannels.map((channel) => {
     const poleCount = Math.max(1, Math.min(3, Number(channel.poleCount || 1)));

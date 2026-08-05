@@ -8032,13 +8032,14 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-panel-toolbar {
   display: grid;
-  grid-template-columns: minmax(180px, auto) minmax(260px, 420px);
+  grid-template-columns: minmax(260px, 420px) minmax(180px, 1fr) minmax(260px, 420px);
   gap: 14px;
   align-items: end;
 }
 
 .monitoring-panel-toolbar h3 {
   margin: 0;
+  text-align: center;
 }
 
 .monitoring-panel-toolbar label {
@@ -8078,10 +8079,41 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-live-grid {
   grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+.monitoring-panel-top-label {
+  display: grid;
+  width: min(100%, 980px);
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid #b9d8d1;
+  border-radius: 8px;
+  background: #f7fbfa;
+  text-align: center;
+}
+
+.monitoring-panel-top-label span {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.monitoring-panel-top-label strong {
+  color: var(--ink);
+  font-size: 1.12rem;
+  line-height: 1.2;
+}
+
+.monitoring-panel-top-label small {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .monitoring-main-meter {
   display: flex;
+  width: min(100%, 980px);
   gap: 10px;
   flex-wrap: wrap;
   padding: 12px;
@@ -8109,7 +8141,9 @@ html[data-theme="dark"] .sync-banner small {
 .monitoring-panel-mockup {
   display: grid;
   gap: 6px;
+  width: min(100%, 980px);
   max-width: 980px;
+  margin: 0 auto;
   padding: 12px;
   border: 1px solid #cad8d5;
   border-radius: 10px;
@@ -8178,6 +8212,23 @@ html[data-theme="dark"] .sync-banner small {
   color: #7d8b92;
 }
 
+.monitoring-breaker-load-label,
+.monitoring-breaker-phase-label {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.monitoring-breaker-load-label {
+  color: #2f4149;
+  line-height: 1.25;
+}
+
+.monitoring-breaker-phase-label {
+  margin-top: 3px;
+  color: #52656d;
+  font-size: 0.78rem;
+}
+
 .monitoring-breaker-tooltip {
   position: absolute;
   z-index: 8;
@@ -8214,6 +8265,7 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-breaker-detail {
   display: grid;
+  width: min(100%, 980px);
   gap: 10px;
   padding: 12px;
   border: 1px solid #cad8d5;

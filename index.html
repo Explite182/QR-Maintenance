@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260804-monitoring-multipole-visual">
+    <link rel="stylesheet" href="/styles.css?v=20260804-monitoring-schedule-labels">
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -1071,11 +1071,11 @@
         <div class="monitoring-body" data-panel-body>
           <section class="monitoring-card monitoring-panel-live-card">
             <div class="monitoring-panel-toolbar">
-              <h3>Live Panel Status</h3>
               <label>
                 Panel
                 <select id="monitoringPanelSelect"></select>
               </label>
+              <h3>Live Panel Status</h3>
             </div>
             <div id="monitoringLivePanel" class="monitoring-live-grid"></div>
             <div id="monitoringBreakerDetail" class="monitoring-breaker-detail hidden"></div>
@@ -1786,7 +1786,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script src="/app.js?v=20260804-monitoring-multipole-visual"></script>
+    <script src="/app.js?v=20260804-monitoring-schedule-labels"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
