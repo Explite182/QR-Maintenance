@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260805-monitoring-result-drawers";
+const SITEWORKS_APP_VERSION = "20260805-monitoring-device-channel-scope";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3723,8 +3723,8 @@ function parseMonitoringCircuitNumbers(value = "") {
 }
 
 function monitoringPanelCircuitCount(panel = null, channels = []) {
-  const schedule = panel?.electricalPanelSchedule || {};
-  const scheduledCount = Number(schedule.circuitCount || panel?.panelSchedule?.circuitCount || 0);
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const scheduledCount = Number(schedule.circuitCount || 0);
   const maxMapped = channels.reduce((max, channel) => {
     const circuitMax = parseMonitoringCircuitNumbers(channel.circuitNumber).reduce((innerMax, number) => Math.max(innerMax, number), 0);
     return Math.max(max, circuitMax);
@@ -3744,11 +3744,8 @@ function monitoringChannelByCircuitMap(channels = []) {
 }
 
 function monitoringPanelCircuitLabel(panel = null, circuitNumber = "") {
-  const circuits = Array.isArray(panel?.electricalPanelSchedule?.circuits)
-    ? panel.electricalPanelSchedule.circuits
-    : Array.isArray(panel?.panelSchedule)
-      ? panel.panelSchedule
-      : [];
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
   const circuit = circuits.find(item => String(item.number || item.cct || item.circuit || "").trim() === String(circuitNumber).trim());
   return panelCircuitLoadText(circuit) || circuit?.description || circuit?.loadServed || "";
 }
@@ -4284,7 +4281,7 @@ function renderMonitoring() {
   renderMonitoringCircuitOptions(elements.channelDevice?.value || devices[0]?.id || "");
   syncMonitoringPhaseSelectors();
   renderMonitoringDeviceList(devices);
-  renderMonitoringChannelList(devices);
+  renderMonitoringChannelList(devices, elements.channelDevice?.value || devices[0]?.id || "");
   renderMonitoringLivePanel(selectedDevices);
   renderMonitoringAlerts(selectedDevices);
   renderMonitoringEvents(selectedDevices);
@@ -4316,11 +4313,8 @@ function renderMonitoringCircuitOptions(deviceId) {
   const elements = monitoringElements();
   const device = normalizeMonitoringDevice(getMonitoringDevice(deviceId));
   const panel = device ? getAsset(device.panelAssetId) : null;
-  const circuits = Array.isArray(panel?.electricalPanelSchedule?.circuits)
-    ? panel.electricalPanelSchedule.circuits
-    : Array.isArray(panel?.panelSchedule)
-      ? panel.panelSchedule
-      : [];
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
   if (!elements.channelCircuit) return;
   if (!circuits.length && !elements.channelCircuitManualWrap && elements.channelCircuit.insertAdjacentHTML) {
     const label = document.createElement("label");
@@ -4337,7 +4331,7 @@ function renderMonitoringCircuitOptions(deviceId) {
   elements.channelCircuit.innerHTML = circuits.length
     ? circuits.map(circuit => {
         const cct = String(circuit.cct || circuit.circuit || circuit.number || "");
-        const label = [cct, circuit.load || circuit.description || circuit.loadServed || ""].filter(Boolean).join(" - ");
+        const label = [cct, panelCircuitLoadText(circuit) || circuit.description || circuit.loadServed || ""].filter(Boolean).join(" - ");
         return `<option value="${escapeHtml(cct)}">${escapeHtml(label || cct)}</option>`;
       }).join("")
     : `<option value="">Manual circuit entry or use physical channel</option>`;
@@ -4371,10 +4365,15 @@ function renderMonitoringDeviceList(devices) {
   }).join("") : `<p class="muted">No monitoring devices for this view yet.</p>`;
 }
 
-function renderMonitoringChannelList(devices) {
+function renderMonitoringChannelList(devices, selectedDeviceId = "") {
   const elements = monitoringElements();
   const deviceIds = new Set(devices.map(device => String(device.id)));
-  const channels = state.monitoringChannels.filter(channel => deviceIds.has(String(channel.deviceId || channel.device_id || "")));
+  const selectedId = String(selectedDeviceId || "");
+  const channels = state.monitoringChannels.filter(channel => {
+    const channelDeviceId = String(channel.deviceId || channel.device_id || "");
+    if (!deviceIds.has(channelDeviceId)) return false;
+    return !selectedId || channelDeviceId === selectedId;
+  });
   elements.channelList.innerHTML = channels.length ? channels.map(channel => {
     const device = getMonitoringDevice(channel.deviceId);
     return `
@@ -4389,7 +4388,7 @@ function renderMonitoringChannelList(devices) {
           <button type="button" data-monitoring-delete-channel="${escapeHtml(channel.id)}">Remove</button>
         </div>
       </div>`;
-  }).join("") : `<p class="muted">No mapped breaker channels yet.</p>`;
+  }).join("") : `<p class="muted">No mapped breaker channels for this device yet.</p>`;
 }
 
 function renderMonitoringLivePanel(devices) {
