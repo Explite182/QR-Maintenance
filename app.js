@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260805-monitoring-edge-live";
+const SITEWORKS_APP_VERSION = "20260805-monitoring-key-repair";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3521,6 +3521,10 @@ document.addEventListener("click", (event) => {
     rotateMonitoringDeviceKey();
     return;
   }
+  if (event.target.closest("#monitoringRepairKeyBtn")) {
+    repairMonitoringCloudKey();
+    return;
+  }
   const deleteChannel = event.target.closest("[data-monitoring-delete-channel]");
   if (deleteChannel) {
     deleteMonitoringChannel(deleteChannel.dataset.monitoringDeleteChannel);
@@ -3568,6 +3572,7 @@ function monitoringElements() {
     sourcePhaseBChannel: document.getElementById("monitoringSourcePhaseBChannel"),
     sourcePhaseCChannel: document.getElementById("monitoringSourcePhaseCChannel"),
     rotateKeyBtn: document.getElementById("monitoringRotateKeyBtn"),
+    repairKeyBtn: document.getElementById("monitoringRepairKeyBtn"),
     generatedApiKey: document.getElementById("monitoringGeneratedApiKey"),
     deviceName: document.getElementById("monitoringDeviceName"),
     deviceModel: document.getElementById("monitoringDeviceModel"),
@@ -4121,6 +4126,52 @@ async function rotateMonitoringDeviceKey() {
   const nextElements = monitoringElements();
   if (nextElements.generatedApiKey) {
     nextElements.generatedApiKey.textContent = `New API key, shown once: ${newKey}`;
+  }
+}
+
+async function repairMonitoringCloudKey() {
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  const apiKey = String(elements.deviceApiKey?.value || "").trim();
+  const uid = String(elements.deviceUid?.value || "").trim();
+  const deviceId = String(elements.deviceId?.value || elements.channelDevice?.value || "");
+  const device = getMonitoringDevice(deviceId) || state.monitoringDevices.find((item) => normalizeMonitoringDevice(item)?.deviceUid === uid);
+  if (!uid && !device?.deviceUid) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Enter or edit the device UID first.";
+    return;
+  }
+  if (!apiKey || apiKey.length < 16) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Paste the ESP32 API key first. It must be at least 16 characters.";
+    return;
+  }
+  try {
+    if (device) {
+      await syncMonitoringDeviceToSupabase({
+        ...device,
+        deviceUid: uid || device.deviceUid,
+        apiKeyLast4: apiKey.slice(-4),
+        updatedAt: new Date().toISOString()
+      }, apiKey);
+      device.apiKeyHash = await hashMonitoringApiKey(apiKey);
+      device.apiKeyLast4 = apiKey.slice(-4);
+      device.updatedAt = new Date().toISOString();
+      saveState();
+    } else {
+      await setMonitoringDeviceKeyInSupabaseByUid(uid, apiKey);
+    }
+    if (elements.deviceStatus) {
+      elements.deviceStatus.textContent = `Cloud key repaired. ESP32 key must end in ${apiKey.slice(-4)}.`;
+    }
+    const nextElements = monitoringElements();
+    if (nextElements.generatedApiKey) nextElements.generatedApiKey.textContent = "";
+  } catch (error) {
+    console.warn("Monitoring cloud key repair failed", error);
+    if (elements.deviceStatus) {
+      const message = String(error?.message || "Unknown error");
+      elements.deviceStatus.textContent = message.includes("siteworks_monitoring_set_device_api_key_by_uid")
+        ? "Cloud key repair needs the new Supabase SQL file run first."
+        : `Cloud key repair failed: ${message}`;
+    }
   }
 }
 
@@ -17222,11 +17273,31 @@ async function setMonitoringDeviceKeyInSupabase(deviceId, apiKey) {
   return true;
 }
 
+async function setMonitoringDeviceKeyInSupabaseByUid(deviceUid, apiKey) {
+  if (!deviceUid || !apiKey || !hasAuthenticatedCloudSession()) return false;
+  const response = await cloudApi.rest("rpc/siteworks_monitoring_set_device_api_key_by_uid", {
+    method: "POST",
+    body: JSON.stringify({
+      p_device_uid: deviceUid,
+      p_api_key: apiKey
+    })
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return true;
+}
+
 async function syncMonitoringDeviceToSupabase(device, apiKey = "") {
   if (!STRUCTURED_DATA_SYNC_ENABLED || !device?.id || !SUPABASE_URL || !SUPABASE_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
   const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
   await upsertStructuredRows("monitoring_devices", [buildMonitoringDeviceRow(device, cloudLocationIds)]);
-  if (apiKey) await setMonitoringDeviceKeyInSupabase(device.id, apiKey);
+  if (apiKey) {
+    try {
+      await setMonitoringDeviceKeyInSupabaseByUid(device.deviceUid, apiKey);
+    } catch (error) {
+      console.warn("Monitoring key by UID failed; trying device id.", error);
+      await setMonitoringDeviceKeyInSupabase(device.id, apiKey);
+    }
+  }
   return true;
 }
 
