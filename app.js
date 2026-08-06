@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-site-map-pinch";
+const SITEWORKS_APP_VERSION = "20260806-single-location-default";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -2351,7 +2351,7 @@ els.nextAssetPageBtn.addEventListener("click", () => {
 els.customerFilter.addEventListener("change", () => {
   selectedCustomerId = els.customerFilter.value;
   selectedContractorCustomerId = selectedCustomerId;
-  selectedLocationId = "all";
+  selectedLocationId = defaultLocationSelection();
   selectedId = null;
   clearSelectedAssetUrl();
   assetPage = 1;
@@ -7038,7 +7038,7 @@ function renderTemplateRouteCompletionForm(template, route = normalizeTemplateRo
 
 function renderLocationOptions() {
   const locations = locationsForCustomer(selectedCustomerId);
-  const canUseAllLocations = !isLocationScopedUser();
+  const canUseAllLocations = !isLocationScopedUser() && locations.length !== 1;
   els.locationFilter.innerHTML = [
     ...(canUseAllLocations ? [`<option value="all">All locations</option>`] : []),
     ...locations.map((locationRecord) => `<option value="${locationRecord.id}">${escapeHtml(locationRecord.name)}</option>`)
@@ -7048,6 +7048,7 @@ function renderLocationOptions() {
     : canUseAllLocations
       ? "all"
       : locations[0]?.id || "";
+  selectedLocationId = els.locationFilter.value || defaultLocationSelection();
 }
 
 function renderAssetLocationOptions() {
@@ -13637,7 +13638,9 @@ function isLocationScopedUser() {
 }
 
 function defaultLocationSelection() {
-  return isLocationScopedUser() ? currentUser.locationId : "all";
+  if (isLocationScopedUser()) return currentUser.locationId;
+  const visibleLocations = locationsForCustomer(selectedCustomerId);
+  return visibleLocations.length === 1 ? visibleLocations[0].id : "all";
 }
 
 function restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId) {
@@ -13662,7 +13665,7 @@ function restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId)
 
   selectedLocationId = previousLocationId !== "all" && visibleLocations.some((locationRecord) => locationRecord.id === previousLocationId)
     ? previousLocationId
-    : "all";
+    : defaultLocationSelection();
 }
 
 function ensureSelection() {
@@ -13682,7 +13685,10 @@ function ensureSelection() {
 
   const visibleLocations = locationsForCustomer(selectedCustomerId);
   if (selectedLocationId !== "all" && !visibleLocations.some((locationRecord) => locationRecord.id === selectedLocationId)) {
-    selectedLocationId = "all";
+    selectedLocationId = defaultLocationSelection();
+  }
+  if (selectedLocationId === "all" && visibleLocations.length === 1 && !isLocationScopedUser()) {
+    selectedLocationId = visibleLocations[0].id;
   }
   if (isLocationScopedUser() && visibleLocations.some((locationRecord) => locationRecord.id === currentUser.locationId)) {
     selectedLocationId = currentUser.locationId;
