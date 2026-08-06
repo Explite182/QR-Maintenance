@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260805-monitoring-key-repair";
+const SITEWORKS_APP_VERSION = "20260806-monitoring-admin-setup";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3563,6 +3563,7 @@ document.addEventListener("change", (event) => {
 
 function monitoringElements() {
   return {
+    setupDrawer: document.querySelector(".monitoring-setup-drawer"),
     deviceForm: document.getElementById("monitoringDeviceForm"),
     deviceId: document.getElementById("monitoringDeviceId"),
     devicePanel: document.getElementById("monitoringDevicePanel"),
@@ -4103,6 +4104,10 @@ function generateMonitoringApiKey() {
 async function rotateMonitoringDeviceKey() {
   ensureMonitoringCollections();
   const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.generatedApiKey) elements.generatedApiKey.textContent = "Admin access is required to rotate monitoring keys.";
+    return;
+  }
   const deviceId = String(elements.deviceId?.value || elements.channelDevice?.value || "");
   const device = getMonitoringDevice(deviceId);
   if (!device) {
@@ -4132,6 +4137,10 @@ async function rotateMonitoringDeviceKey() {
 async function repairMonitoringCloudKey() {
   ensureMonitoringCollections();
   const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Admin access is required to repair monitoring keys.";
+    return;
+  }
   const apiKey = String(elements.deviceApiKey?.value || "").trim();
   const uid = String(elements.deviceUid?.value || "").trim();
   const deviceId = String(elements.deviceId?.value || elements.channelDevice?.value || "");
@@ -4178,8 +4187,8 @@ async function repairMonitoringCloudKey() {
 async function handleMonitoringDeviceSubmit(form) {
   ensureMonitoringCollections();
   const elements = monitoringElements();
-  if (!canManageWorkOrders()) {
-    if (elements.deviceStatus) elements.deviceStatus.textContent = "Admin or manager access is required to save monitoring devices.";
+  if (!canManageMonitoringSetup()) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Admin access is required to save monitoring devices.";
     return;
   }
   try {
@@ -4289,8 +4298,8 @@ async function handleMonitoringDeviceSubmit(form) {
 async function handleMonitoringChannelSubmit(form) {
   ensureMonitoringCollections();
   const elements = monitoringElements();
-  if (!canManageWorkOrders()) {
-    if (elements.channelStatus) elements.channelStatus.textContent = "Admin or manager access is required to map breaker channels.";
+  if (!canManageMonitoringSetup()) {
+    if (elements.channelStatus) elements.channelStatus.textContent = "Admin access is required to map breaker channels.";
     return;
   }
   try {
@@ -4377,8 +4386,8 @@ async function handleMonitoringChannelSubmit(form) {
 function handleMonitoringSimulatorSubmit(form) {
   ensureMonitoringCollections();
   const elements = monitoringElements();
-  if (!canManageWorkOrders()) {
-    if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Admin or manager access is required to use the simulator.";
+  if (!canManageMonitoringSetup()) {
+    if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Admin access is required to use the simulator.";
     return;
   }
   try {
@@ -4656,6 +4665,7 @@ function loadMonitoringDeviceForm(deviceId) {
 }
 
 function deleteMonitoringDevice(deviceId) {
+  if (!canManageMonitoringSetup()) return;
   const device = getMonitoringDevice(deviceId);
   if (!device || !window.confirm(`Delete monitoring device "${device.name}" and its channel mappings?`)) return;
   state.monitoringDevices = state.monitoringDevices.filter(item => item.id !== deviceId);
@@ -4667,6 +4677,7 @@ function deleteMonitoringDevice(deviceId) {
 }
 
 function deleteMonitoringChannel(channelId) {
+  if (!canManageMonitoringSetup()) return;
   const channel = getMonitoringChannel(channelId);
   if (!channel) return;
   state.monitoringChannels = state.monitoringChannels.filter(item => item.id !== channelId);
@@ -4681,6 +4692,11 @@ function renderMonitoring() {
   ensureMonitoringCollections();
   const elements = monitoringElements();
   if (!elements.livePanel) return;
+  const canSetupMonitoring = canManageMonitoringSetup();
+  if (elements.setupDrawer) {
+    elements.setupDrawer.classList.toggle("hidden", !canSetupMonitoring);
+    if (!canSetupMonitoring) elements.setupDrawer.open = false;
+  }
   const panels = allElectricalPanelAssetsForMonitoring();
   const hasCustomerScope = Boolean(selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS);
   const panelOptions = panels.length ? panels.map(panel => {
@@ -14544,6 +14560,10 @@ function canCompletePm() {
 
 function canManageWorkOrders() {
   return currentRole === "Admin" || isManagerRole();
+}
+
+function canManageMonitoringSetup() {
+  return currentRole === "Admin";
 }
 
 function canDeleteWorkOrders() {
