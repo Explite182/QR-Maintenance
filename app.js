@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260805-monitoring-cloud";
+const SITEWORKS_APP_VERSION = "20260805-monitoring-edge-live";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3773,7 +3773,11 @@ function monitoringApiStatusToEvent(row, deviceIdByApiId) {
 }
 
 async function syncMonitoringStatusFromApi() {
-  if (!MONITORING_LIVE_STATUS_API || document.hidden || !currentUser) return;
+  if (document.hidden || !currentUser) return;
+  if (!MONITORING_LIVE_STATUS_API) {
+    await syncMonitoringStatusFromSupabase();
+    return;
+  }
   ensureMonitoringCollections();
   try {
     const response = await fetch(MONITORING_LIVE_STATUS_API, { cache: "no-store" });
@@ -3840,6 +3844,96 @@ async function syncMonitoringStatusFromApi() {
     if (changed) renderMonitoring();
   } catch (error) {
     console.warn("Monitoring live status sync failed", error);
+  }
+}
+
+async function syncMonitoringStatusFromSupabase() {
+  ensureMonitoringCollections();
+  try {
+    const [
+      deviceRows,
+      channelRows,
+      eventRows,
+      alertRows
+    ] = await Promise.all([
+      fetchOptionalStructuredRows("monitoring_devices", "updated_at.desc"),
+      fetchOptionalStructuredRows("monitoring_channels", "updated_at.desc"),
+      fetchOptionalStructuredRows("monitoring_events", "created_at.desc"),
+      fetchOptionalStructuredRows("monitoring_alerts", "updated_at.desc")
+    ]);
+    let changed = false;
+    const deviceIdByCloudId = new Map();
+
+    deviceRows.forEach((row) => {
+      const incoming = monitoringDeviceFromStructuredRow(row);
+      if (!incoming.deviceUid) return;
+      const existing = state.monitoringDevices.find((device) => {
+        const normalized = normalizeMonitoringDevice(device);
+        return normalized?.deviceUid === incoming.deviceUid || String(normalized?.id || "") === String(incoming.id);
+      });
+      const localId = existing?.id || incoming.id || makeId();
+      deviceIdByCloudId.set(String(incoming.id || ""), localId);
+      const next = { ...(existing || {}), ...incoming, id: localId };
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        state.monitoringDevices.push(next);
+      }
+      changed = true;
+    });
+
+    channelRows.forEach((row) => {
+      const incoming = monitoringChannelFromStructuredRow(row);
+      const localDeviceId = deviceIdByCloudId.get(String(incoming.deviceId || "")) || incoming.deviceId;
+      incoming.deviceId = localDeviceId;
+      if (!incoming.deviceId || !incoming.physicalChannel) return;
+      const existing = state.monitoringChannels.find((channel) => {
+        return String(channel.id || "") === String(incoming.id)
+          || (
+            String(channel.deviceId || channel.device_id || "") === String(incoming.deviceId)
+            && normalizeApiMonitoringChannelName(channel.physicalChannel || channel.physical_channel || "") === normalizeApiMonitoringChannelName(incoming.physicalChannel)
+          );
+      });
+      const next = { ...(existing || {}), ...incoming };
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        state.monitoringChannels.push(next);
+      }
+      changed = true;
+    });
+
+    const existingEventIds = new Set(state.monitoringEvents.map((event) => String(event.id || "")));
+    eventRows.slice(0, 50).reverse().forEach((row) => {
+      if (!row.id || existingEventIds.has(String(row.id))) return;
+      const event = monitoringEventFromStructuredRow(row);
+      event.deviceId = deviceIdByCloudId.get(String(event.deviceId || "")) || event.deviceId;
+      state.monitoringEvents.unshift(event);
+      changed = true;
+    });
+    state.monitoringEvents = state.monitoringEvents.slice(0, 1000);
+
+    const alertIds = new Set();
+    alertRows.forEach((row) => {
+      const incoming = monitoringAlertFromStructuredRow(row);
+      incoming.deviceId = deviceIdByCloudId.get(String(incoming.deviceId || "")) || incoming.deviceId;
+      if (!incoming.id) return;
+      alertIds.add(String(incoming.id));
+      const existing = state.monitoringAlerts.find((alert) => String(alert.id || "") === String(incoming.id));
+      if (existing) {
+        Object.assign(existing, { ...existing, ...incoming });
+      } else {
+        state.monitoringAlerts.push(incoming);
+      }
+      changed = true;
+    });
+
+    if (changed) {
+      persistLocalStateOnly(false);
+      renderMonitoring();
+    }
+  } catch (error) {
+    console.warn("Monitoring Supabase status sync failed", error);
   }
 }
 
