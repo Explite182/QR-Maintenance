@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-single-location-default";
+const SITEWORKS_APP_VERSION = "20260806-site-map-pinch-center";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8661,17 +8661,32 @@ function applySiteMapZoomAtPoint(nextZoom, viewport, clientX, clientY) {
   const currentRect = stage.getBoundingClientRect();
   if (!currentRect.width || !currentRect.height) return;
   const viewportRect = viewport.getBoundingClientRect();
-  const ratioX = Math.max(0, Math.min(1, (clientX - currentRect.left) / currentRect.width));
-  const ratioY = Math.max(0, Math.min(1, (clientY - currentRect.top) / currentRect.height));
-  const localX = clientX - viewportRect.left;
-  const localY = clientY - viewportRect.top;
+  const currentStageLeft = currentRect.left - viewportRect.left + viewport.scrollLeft;
+  const currentStageTop = currentRect.top - viewportRect.top + viewport.scrollTop;
+  const contentX = viewport.scrollLeft + (clientX - viewportRect.left);
+  const contentY = viewport.scrollTop + (clientY - viewportRect.top);
+  const ratioX = Math.max(0, Math.min(1, (contentX - currentStageLeft) / currentRect.width));
+  const ratioY = Math.max(0, Math.min(1, (contentY - currentStageTop) / currentRect.height));
+  const fingerX = clientX - viewportRect.left;
+  const fingerY = clientY - viewportRect.top;
+  const beforeScrollWidth = viewport.scrollWidth;
+  const beforeScrollHeight = viewport.scrollHeight;
   siteMapZoom = nextZoom;
   stage.style.width = `${Math.round(siteMapZoom * 100)}%`;
   const label = els.siteMapCanvas?.querySelector("[data-site-map-zoom-label]");
   if (label) label.textContent = `${Math.round(siteMapZoom * 100)}%`;
   requestAnimationFrame(() => {
-    viewport.scrollLeft = Math.max(0, stage.offsetWidth * ratioX - localX);
-    viewport.scrollTop = Math.max(0, stage.offsetHeight * ratioY - localY);
+    const nextRect = stage.getBoundingClientRect();
+    const nextStageLeft = nextRect.left - viewportRect.left + viewport.scrollLeft;
+    const nextStageTop = nextRect.top - viewportRect.top + viewport.scrollTop;
+    let nextLeft = nextStageLeft + nextRect.width * ratioX - fingerX;
+    let nextTop = nextStageTop + nextRect.height * ratioY - fingerY;
+    if (viewport.scrollWidth === beforeScrollWidth && viewport.scrollHeight === beforeScrollHeight) {
+      nextLeft = viewport.scrollLeft;
+      nextTop = viewport.scrollTop;
+    }
+    viewport.scrollLeft = Math.max(0, nextLeft);
+    viewport.scrollTop = Math.max(0, nextTop);
     updateSiteMapViewportMemory();
   });
 }
