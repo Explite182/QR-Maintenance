@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-panel-monitor-mobile";
+const SITEWORKS_APP_VERSION = "20260806-site-map-pinch";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -128,6 +128,8 @@ let siteMapAreaFilter = "all";
 let siteMapViewportMemory = { left: 0, top: 0 };
 let siteMapDragState = null;
 let siteMapDragSuppressClick = false;
+let siteMapTouchPointers = new Map();
+let siteMapPinchState = null;
 let assetPageSize = 25;
 let assetPage = 1;
 let selectedPrintAssetIds = new Set();
@@ -8386,7 +8388,7 @@ function renderSiteMap() {
       ? `
         <div class="site-map-controls" aria-label="Site map zoom controls">
           <button type="button" class="secondary mini" data-site-map-zoom="out">-</button>
-          <span>${escapeHtml(zoomLabel)}</span>
+          <span data-site-map-zoom-label>${escapeHtml(zoomLabel)}</span>
           <button type="button" class="secondary mini" data-site-map-zoom="in">+</button>
           <button type="button" class="secondary mini" data-site-map-zoom="reset">Reset</button>
         </div>
@@ -8527,9 +8529,23 @@ function startSiteMapPinPlacement() {
 function startSiteMapDrag(event) {
   if (pendingSiteMapPin) return;
   if (event.button !== undefined && event.button !== 0) return;
-  if (event.target.closest(".site-map-controls, .site-map-pin, button, input, select, textarea, label")) return;
+  const isTouch = event.pointerType === "touch";
+  if (event.target.closest(".site-map-controls, input, select, textarea, label")) return;
+  if (!isTouch && event.target.closest(".site-map-pin, button")) return;
+  if (isTouch && event.target.closest("button:not(.site-map-pin)")) return;
   const viewport = event.target.closest("[data-site-map-viewport]");
   if (!viewport) return;
+  if (isTouch) {
+    siteMapTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    viewport.setPointerCapture?.(event.pointerId);
+    if (siteMapTouchPointers.size >= 2) {
+      beginSiteMapPinch(viewport);
+      siteMapDragState = null;
+      viewport.classList.add("is-dragging");
+      event.preventDefault();
+      return;
+    }
+  }
   const canScroll = viewport.scrollWidth > viewport.clientWidth || viewport.scrollHeight > viewport.clientHeight;
   if (!canScroll) return;
   siteMapDragState = {
@@ -8547,6 +8563,15 @@ function startSiteMapDrag(event) {
 }
 
 function moveSiteMapDrag(event) {
+  if (event.pointerType === "touch" && siteMapTouchPointers.has(event.pointerId)) {
+    siteMapTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (siteMapPinchState && siteMapTouchPointers.size >= 2) {
+      moveSiteMapPinch();
+      siteMapDragSuppressClick = true;
+      event.preventDefault();
+      return;
+    }
+  }
   if (!siteMapDragState || siteMapDragState.pointerId !== event.pointerId) return;
   const dx = event.clientX - siteMapDragState.startX;
   const dy = event.clientY - siteMapDragState.startY;
@@ -8560,6 +8585,21 @@ function moveSiteMapDrag(event) {
 }
 
 function endSiteMapDrag(event) {
+  if (event.pointerType === "touch") {
+    const hadTouchPointer = siteMapTouchPointers.delete(event.pointerId);
+    if (siteMapPinchState && siteMapTouchPointers.size < 2) {
+      const viewport = siteMapPinchState.viewport;
+      siteMapPinchState = null;
+      siteMapDragSuppressClick = true;
+      viewport?.classList.remove("is-dragging");
+      window.setTimeout(() => {
+        siteMapDragSuppressClick = false;
+      }, 80);
+    }
+    if (hadTouchPointer) {
+      event.target?.releasePointerCapture?.(event.pointerId);
+    }
+  }
   if (!siteMapDragState || siteMapDragState.pointerId !== event.pointerId) return;
   const viewport = siteMapDragState.viewport;
   const moved = siteMapDragState.moved;
@@ -8571,6 +8611,68 @@ function endSiteMapDrag(event) {
       siteMapDragSuppressClick = false;
     }, 0);
   }
+}
+
+function siteMapTouchPair() {
+  const points = [...siteMapTouchPointers.values()];
+  if (points.length < 2) return null;
+  return [points[0], points[1]];
+}
+
+function siteMapTouchDistance(pair) {
+  const [first, second] = pair;
+  return Math.hypot(second.x - first.x, second.y - first.y);
+}
+
+function siteMapTouchCenter(pair) {
+  const [first, second] = pair;
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2
+  };
+}
+
+function beginSiteMapPinch(viewport) {
+  const pair = siteMapTouchPair();
+  if (!pair) return;
+  const distance = siteMapTouchDistance(pair);
+  if (distance <= 0) return;
+  siteMapPinchState = {
+    viewport,
+    startDistance: distance,
+    startZoom: siteMapZoom
+  };
+}
+
+function moveSiteMapPinch() {
+  const pair = siteMapTouchPair();
+  if (!pair || !siteMapPinchState) return;
+  const distance = siteMapTouchDistance(pair);
+  if (distance <= 0 || siteMapPinchState.startDistance <= 0) return;
+  const center = siteMapTouchCenter(pair);
+  const nextZoom = Math.max(0.75, Math.min(5, Math.round(siteMapPinchState.startZoom * (distance / siteMapPinchState.startDistance) * 100) / 100));
+  applySiteMapZoomAtPoint(nextZoom, siteMapPinchState.viewport, center.x, center.y);
+}
+
+function applySiteMapZoomAtPoint(nextZoom, viewport, clientX, clientY) {
+  const stage = viewport?.querySelector("[data-site-map-stage]");
+  if (!viewport || !stage || !Number.isFinite(nextZoom)) return;
+  const currentRect = stage.getBoundingClientRect();
+  if (!currentRect.width || !currentRect.height) return;
+  const viewportRect = viewport.getBoundingClientRect();
+  const ratioX = Math.max(0, Math.min(1, (clientX - currentRect.left) / currentRect.width));
+  const ratioY = Math.max(0, Math.min(1, (clientY - currentRect.top) / currentRect.height));
+  const localX = clientX - viewportRect.left;
+  const localY = clientY - viewportRect.top;
+  siteMapZoom = nextZoom;
+  stage.style.width = `${Math.round(siteMapZoom * 100)}%`;
+  const label = els.siteMapCanvas?.querySelector("[data-site-map-zoom-label]");
+  if (label) label.textContent = `${Math.round(siteMapZoom * 100)}%`;
+  requestAnimationFrame(() => {
+    viewport.scrollLeft = Math.max(0, stage.offsetWidth * ratioX - localX);
+    viewport.scrollTop = Math.max(0, stage.offsetHeight * ratioY - localY);
+    updateSiteMapViewportMemory();
+  });
 }
 
 function addSiteMapPinFromEvent(event) {
@@ -8632,6 +8734,7 @@ function deleteSiteMapPin(pinId) {
 }
 
 function changeSiteMapZoom(action = "") {
+  const viewport = els.siteMapCanvas?.querySelector("[data-site-map-viewport]");
   updateSiteMapViewportMemory();
   if (action === "reset") {
     siteMapZoom = 1;
@@ -8640,7 +8743,12 @@ function changeSiteMapZoom(action = "") {
   } else if (action === "out") {
     siteMapZoom = Math.max(0.75, Math.round((siteMapZoom - 0.25) * 100) / 100);
   }
-  renderSiteMap();
+  if (viewport && action !== "reset") {
+    const rect = viewport.getBoundingClientRect();
+    applySiteMapZoomAtPoint(siteMapZoom, viewport, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  } else {
+    renderSiteMap();
+  }
 }
 
 function clearCurrentSiteMap() {
