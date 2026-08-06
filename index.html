@@ -208,7 +208,7 @@
             <span>Site Map</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="monitoringPanel" aria-expanded="false">
-            <span>Breaker Monitoring</span>
+            <span>Panel Monitor</span>
           </button>
           <div class="sidebar-nav-group" data-sidebar-group="inventory">
             <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-inventory-menu-toggle aria-expanded="false">
@@ -1063,7 +1063,7 @@
 
       <section id="monitoringPanel" class="work-orders-panel monitoring-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="monitoringPanel">
-          <h2>Breaker Monitoring</h2>
+          <h2>Panel Monitor</h2>
           <div class="panel-title-actions">
             <span id="monitoringDeviceCount">0</span>
           </div>
@@ -1269,7 +1269,7 @@
               <div id="monitoringAlertList" class="monitoring-list"></div>
             </details>
             <details class="monitoring-card monitoring-result-drawer">
-              <summary>Breaker Event History</summary>
+              <summary>Panel Event History</summary>
               <div id="monitoringEventList" class="monitoring-list"></div>
             </details>
           </div>
@@ -1703,6 +1703,7 @@
       <button type="button" data-mobile-pm-target="pmCalendarPanel">PM Calendar</button>
       <button type="button" data-mobile-pm-target="templatesPanel" data-template-nav>Templates</button>
       <button type="button" data-mobile-pm-target="siteMapPanel">Site Map</button>
+      <button type="button" data-mobile-pm-target="monitoringPanel">Panel Monitor</button>
     </div>
     <div id="mobileInventoryMenu" class="mobile-create-menu hidden" aria-label="Inventory">
       <button type="button" data-mobile-inventory-target="items">Parts & Materials</button>
@@ -1808,7 +1809,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-    <script src="/app.js?v=20260806-monitoring-admin-setup"></script>
+    <script src="/app.js?v=20260806-panel-monitor-mobile"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

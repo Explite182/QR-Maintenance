@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-monitoring-admin-setup";
+const SITEWORKS_APP_VERSION = "20260806-panel-monitor-mobile";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3723,7 +3723,7 @@ function monitoringApiStatusToDevice(row) {
     locationId: row.locationId || row.location_id || "",
     panelAssetId: row.panelAssetId || row.panel_asset_id || "",
     deviceUid: row.deviceUid || row.device_uid || "",
-    name: row.name || "Breaker monitor",
+    name: row.name || "Panel monitor",
     model: row.model || "",
     firmwareVersion: row.firmwareVersion || row.firmware_version || "",
     heartbeatSeconds: row.heartbeatSeconds || row.heartbeat_seconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS,
@@ -3772,7 +3772,7 @@ function monitoringApiStatusToEvent(row, deviceIdByApiId) {
     state: newState,
     message: eventType === "channel-state" && circuitNumber
       ? `Circuit ${circuitNumber} is ${monitoringStateLabel(newState)}.`
-      : "Breaker monitor reported status.",
+      : "Panel monitor reported status.",
     data: row.payload || {},
     createdAt: row.createdAt || row.created_at || new Date().toISOString()
   };
@@ -16710,7 +16710,7 @@ function monitoringDeviceFromStructuredRow(row) {
     deviceUid: row.device_uid || payload.deviceUid || "",
     apiKeyHash: "",
     apiKeyLast4: row.api_key_last4 || payload.apiKeyLast4 || "",
-    name: row.name || payload.name || "Breaker monitor",
+    name: row.name || payload.name || "Panel monitor",
     model: row.model || payload.model || "",
     firmwareVersion: row.firmware_version || payload.firmwareVersion || "",
     onlineStatus: row.online_status || payload.onlineStatus || "offline",
@@ -16778,7 +16778,7 @@ function monitoringEventFromStructuredRow(row) {
     type: row.event_type || payload.type || "device-status",
     state: row.new_state || payload.state || "",
     previousState: row.previous_state || payload.previousState || "",
-    message: payload.message || (row.circuit_number ? `Circuit ${row.circuit_number} is ${monitoringStateLabel(row.new_state)}.` : "Breaker monitor reported status."),
+    message: payload.message || (row.circuit_number ? `Circuit ${row.circuit_number} is ${monitoringStateLabel(row.new_state)}.` : "Panel monitor reported status."),
     data: row.payload || payload.data || {},
     createdAt: row.created_at || payload.createdAt || ""
   };
@@ -16798,7 +16798,7 @@ function monitoringAlertFromStructuredRow(row) {
     type: row.alert_type || payload.type || "suspected-trip",
     severity: row.severity || payload.severity || "medium",
     status: row.status || payload.status || "open",
-    title: payload.title || "Breaker monitoring alert",
+    title: payload.title || "Panel monitor alert",
     message: payload.message || "",
     acknowledgedAt: row.acknowledged_at || payload.acknowledgedAt || "",
     resolvedAt: row.resolved_at || payload.resolvedAt || "",
@@ -17186,7 +17186,7 @@ function buildMonitoringDeviceRow(device, cloudLocationIds = null) {
     panel_asset_id: device.panelAssetId,
     device_uid: device.deviceUid || "",
     api_key_last4: device.apiKeyLast4 || null,
-    name: device.name || "Breaker monitor",
+    name: device.name || "Panel monitor",
     model: device.model || "",
     firmware_version: device.firmwareVersion || "",
     online_status: device.onlineStatus || "offline",
@@ -18250,7 +18250,7 @@ function normalizeState(input) {
     breakerGroupId: alert.breakerGroupId || alert.breaker_group_id || "",
     status: alert.status || "active",
     severity: alert.severity || "normal",
-    title: alert.title || "Breaker monitoring alert",
+    title: alert.title || "Panel monitor alert",
     message: alert.message || "",
     createdAt: alert.createdAt || new Date().toISOString(),
     acknowledgedAt: alert.acknowledgedAt || "",
