@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-site-map-pinch-center";
+const SITEWORKS_APP_VERSION = "20260806-site-map-overlays";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -125,6 +125,8 @@ let pendingSiteMapPin = false;
 let siteMapZoom = 1;
 let siteMapLayerFilter = "all";
 let siteMapAreaFilter = "all";
+let siteMapOverlayMode = "normal";
+let selectedSiteMapOverlayAssetId = "";
 let siteMapViewportMemory = { left: 0, top: 0 };
 let siteMapDragState = null;
 let siteMapDragSuppressClick = false;
@@ -2370,6 +2372,8 @@ els.locationFilter.addEventListener("change", () => {
   selectedLocationId = els.locationFilter.value;
   siteMapLayerFilter = "all";
   siteMapAreaFilter = "all";
+  siteMapOverlayMode = "normal";
+  selectedSiteMapOverlayAssetId = "";
   siteMapViewportMemory = { left: 0, top: 0 };
   selectedId = null;
   clearSelectedAssetUrl();
@@ -3102,6 +3106,9 @@ document.addEventListener("click", (event) => {
   const siteMapPinButton = event.target.closest("[data-open-site-map-pin]");
   if (siteMapPinButton) {
     event.preventDefault();
+    if (siteMapOverlayMode === "breaker-feed") {
+      selectedSiteMapOverlayAssetId = siteMapPinButton.dataset.openSiteMapPin || "";
+    }
     openSiteMapAsset(siteMapPinButton.dataset.openSiteMapPin);
     return;
   }
@@ -3122,6 +3129,16 @@ document.addEventListener("click", (event) => {
     } else if (siteMapFilterButton.dataset.siteMapFilter === "area") {
       siteMapAreaFilter = siteMapFilterButton.dataset.siteMapValue || "all";
     }
+    renderSiteMap();
+    return;
+  }
+
+  const siteMapOverlayButton = event.target.closest("[data-site-map-overlay]");
+  if (siteMapOverlayButton) {
+    event.preventDefault();
+    updateSiteMapViewportMemory();
+    siteMapOverlayMode = normalizeSiteMapOverlayMode(siteMapOverlayButton.dataset.siteMapOverlay);
+    if (siteMapOverlayMode !== "breaker-feed") selectedSiteMapOverlayAssetId = "";
     renderSiteMap();
     return;
   }
@@ -8303,6 +8320,184 @@ function siteMapPinMatchesFilters(pin = {}, asset = null) {
   return layerMatches && areaMatches;
 }
 
+function normalizeSiteMapOverlayMode(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  return ["open-tickets", "pm-due", "electrical-issues", "breaker-feed", "pm-route"].includes(text) ? text : "normal";
+}
+
+function siteMapOverlayLabel(mode = siteMapOverlayMode) {
+  const labels = {
+    normal: "Normal",
+    "open-tickets": "Open tickets",
+    "pm-due": "PM due",
+    "electrical-issues": "Electrical issues",
+    "breaker-feed": "Breaker feed",
+    "pm-route": "PM route"
+  };
+  return labels[normalizeSiteMapOverlayMode(mode)] || labels.normal;
+}
+
+function siteMapPinKey(pin = {}, index = 0) {
+  return pin.id || pin.assetId || `pin-${index}`;
+}
+
+function getSiteMapAssetOpenTickets(asset = null) {
+  return asset?.id ? openWorkOrdersForAsset(asset.id) : [];
+}
+
+function isSiteMapPmDue(asset = null) {
+  if (!asset) return false;
+  const due = getDueInfo(asset);
+  return Number(due.daysUntil) <= 7;
+}
+
+function isSiteMapElectricalIssue(asset = null, pin = {}) {
+  const layer = getSiteMapPinLayer(pin, asset);
+  const tickets = getSiteMapAssetOpenTickets(asset);
+  const text = [
+    layer,
+    asset?.name,
+    asset?.type,
+    asset?.category,
+    asset?.template,
+    asset?.equipmentId,
+    ...tickets.flatMap((ticket) => [ticket.title, ticket.summary, ticket.description, ticket.issue, ticket.priority, ticket.category, ticket.source])
+  ].filter(Boolean).join(" ").toLowerCase();
+  return /\b(electrical|breaker|panel|power|voltage|phase|outlet|lighting|trip|tripped|meter|transformer)\b/.test(text);
+}
+
+function getSiteMapBreakerText(asset = null) {
+  if (!asset) return "";
+  const directValues = [
+    asset.breaker,
+    asset.breakerNumber,
+    asset.breakerCircuit,
+    asset.circuit,
+    asset.circuitNumber,
+    asset.panelCircuit,
+    asset.electricalPanel,
+    asset.electricalPanelName,
+    asset.panel,
+    asset.panelName,
+    asset.powerSource,
+    asset.servedBy
+  ];
+  const nestedSources = [asset.details, asset.customFields, asset.electrical, asset.power].filter(Boolean);
+  nestedSources.forEach((source) => {
+    directValues.push(
+      source.breaker,
+      source.breakerNumber,
+      source.breakerCircuit,
+      source.circuit,
+      source.circuitNumber,
+      source.panelCircuit,
+      source.electricalPanel,
+      source.electricalPanelName,
+      source.panel,
+      source.panelName,
+      source.powerSource,
+      source.servedBy
+    );
+  });
+  return directValues
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function getSiteMapRoutePins(pins = []) {
+  const candidates = pins.filter((pin) => {
+    const asset = getRawAsset(pin.assetId);
+    return asset && isSiteMapPmDue(asset);
+  });
+  const routePins = candidates.length ? candidates : pins.filter((pin) => getRawAsset(pin.assetId));
+  const remaining = [...routePins].sort((a, b) => (Number(a.y) + Number(a.x)) - (Number(b.y) + Number(b.x)));
+  const ordered = [];
+  let current = remaining.shift();
+  while (current) {
+    ordered.push(current);
+    let nextIndex = -1;
+    let bestDistance = Infinity;
+    remaining.forEach((pin, index) => {
+      const distance = Math.hypot(Number(pin.x) - Number(current.x), Number(pin.y) - Number(current.y));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        nextIndex = index;
+      }
+    });
+    current = nextIndex >= 0 ? remaining.splice(nextIndex, 1)[0] : null;
+  }
+  return ordered;
+}
+
+function renderSiteMapRouteOverlay(routePins = []) {
+  if (siteMapOverlayMode !== "pm-route" || routePins.length < 2) return "";
+  const points = routePins.map((pin) => `${clampPercent(pin.x)},${clampPercent(pin.y)}`).join(" ");
+  return `
+    <svg class="site-map-route-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="${escapeAttribute(points)}"></polyline>
+    </svg>
+  `;
+}
+
+function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexByPinKey = new Map()) {
+  const mode = normalizeSiteMapOverlayMode(siteMapOverlayMode);
+  const openTickets = getSiteMapAssetOpenTickets(asset);
+  const due = asset ? getDueInfo(asset) : null;
+  const routeStop = routeIndexByPinKey.get(siteMapPinKey(pin, index));
+  const breakerText = getSiteMapBreakerText(asset);
+  const selectedBreakerText = getSiteMapBreakerText(getRawAsset(selectedSiteMapOverlayAssetId));
+  const info = {
+    className: "",
+    marker: String(index + 1),
+    summary: "",
+    detail: ""
+  };
+  if (mode === "open-tickets") {
+    info.marker = openTickets.length ? String(openTickets.length) : String(index + 1);
+    info.summary = openTickets.length ? `${openTickets.length} open ticket${openTickets.length === 1 ? "" : "s"}` : "No open tickets";
+    info.className = openTickets.length > 1 ? " site-map-pin-overlay-danger" : openTickets.length ? " site-map-pin-overlay-warn" : " site-map-pin-dimmed";
+  } else if (mode === "pm-due") {
+    const dueSoon = due && Number(due.daysUntil) <= 7;
+    info.marker = due && Number(due.daysUntil) <= 0 ? "!" : String(index + 1);
+    info.summary = due?.label || "No PM status";
+    info.className = dueSoon ? (Number(due.daysUntil) <= 0 ? " site-map-pin-overlay-danger" : " site-map-pin-overlay-warn") : " site-map-pin-dimmed";
+  } else if (mode === "electrical-issues") {
+    const electrical = isSiteMapElectricalIssue(asset, pin);
+    info.marker = electrical && openTickets.length ? String(openTickets.length) : "E";
+    info.summary = electrical ? (openTickets.length ? "Electrical ticket or issue" : "Electrical area") : "No electrical issue";
+    info.className = electrical ? (openTickets.length ? " site-map-pin-overlay-danger" : " site-map-pin-overlay-warn") : " site-map-pin-dimmed";
+  } else if (mode === "breaker-feed") {
+    const isSelected = selectedSiteMapOverlayAssetId && asset?.id === selectedSiteMapOverlayAssetId;
+    const isRelated = selectedBreakerText && breakerText && breakerText === selectedBreakerText && !isSelected;
+    info.marker = "B";
+    info.summary = breakerText || "No breaker feed saved";
+    info.detail = selectedBreakerText ? `Selected feed: ${selectedBreakerText}` : "Tap equipment to focus its breaker feed.";
+    info.className = breakerText ? " site-map-pin-overlay-feed" : " site-map-pin-dimmed";
+    if (isSelected) info.className += " site-map-pin-breaker-selected";
+    if (isRelated) info.className += " site-map-pin-breaker-related";
+    if (selectedBreakerText && !isSelected && !isRelated) info.className += " site-map-pin-dimmed";
+  } else if (mode === "pm-route") {
+    info.marker = routeStop ? String(routeStop) : String(index + 1);
+    info.summary = routeStop ? `Route stop ${routeStop}` : "Not on route";
+    info.className = routeStop ? " site-map-pin-route" : " site-map-pin-dimmed";
+  }
+  return info;
+}
+
+function renderSiteMapOverlaySummary(visiblePins = [], routePins = []) {
+  const mode = normalizeSiteMapOverlayMode(siteMapOverlayMode);
+  if (mode === "normal") return "";
+  const summary = {
+    "open-tickets": `${visiblePins.reduce((sum, pin) => sum + getSiteMapAssetOpenTickets(getRawAsset(pin.assetId)).length, 0)} open ticket markers in this view.`,
+    "pm-due": `${visiblePins.filter((pin) => isSiteMapPmDue(getRawAsset(pin.assetId))).length} PM stops due soon or overdue.`,
+    "electrical-issues": `${visiblePins.filter((pin) => isSiteMapElectricalIssue(getRawAsset(pin.assetId), pin)).length} electrical-related markers.`,
+    "breaker-feed": selectedSiteMapOverlayAssetId ? "Tap another pin to compare breaker feed information." : "Tap a pin to focus its breaker feed information.",
+    "pm-route": `${routePins.length} stop${routePins.length === 1 ? "" : "s"} in the current route.`
+  }[mode];
+  return `<p class="site-map-overlay-summary"><strong>${escapeHtml(siteMapOverlayLabel(mode))}:</strong> ${escapeHtml(summary || "")}</p>`;
+}
+
 function updateSiteMapViewportMemory() {
   const viewport = els.siteMapCanvas?.querySelector("[data-site-map-viewport]");
   if (!viewport) return;
@@ -8315,6 +8510,11 @@ function renderSiteMapFilters(pins = []) {
   if (siteMapAreaFilter !== "all" && !areas.some((area) => area.toLowerCase() === siteMapAreaFilter)) {
     siteMapAreaFilter = "all";
   }
+  siteMapOverlayMode = normalizeSiteMapOverlayMode(siteMapOverlayMode);
+  const overlays = ["normal", "open-tickets", "pm-due", "electrical-issues", "breaker-feed", "pm-route"];
+  const overlayButtons = overlays.map((mode) => `
+    <button type="button" class="site-map-filter-chip site-map-overlay-chip${siteMapOverlayMode === mode ? " is-active" : ""}" data-site-map-overlay="${escapeAttribute(mode)}">${escapeHtml(siteMapOverlayLabel(mode))}</button>
+  `).join("");
   const layers = ["electrical", "hvac", "life-safety", "plumbing", "fitness", "construction"];
   const layerButtons = [
     `<button type="button" class="site-map-filter-chip${siteMapLayerFilter === "all" ? " is-active" : ""}" data-site-map-filter="layer" data-site-map-value="all">All layers</button>`,
@@ -8331,6 +8531,7 @@ function renderSiteMapFilters(pins = []) {
   ].join("");
   return `
     <div class="site-map-filters" aria-label="Site map filters">
+      <div class="site-map-filter-group site-map-overlay-group">${overlayButtons}</div>
       <div class="site-map-filter-group">${layerButtons}</div>
       <div class="site-map-filter-group">${areaButtons}</div>
     </div>
@@ -8366,6 +8567,8 @@ function renderSiteMap() {
   const pins = Array.isArray(map?.pins) ? map.pins : [];
   updateSiteMapViewportMemory();
   const visiblePins = pins.filter((pin) => siteMapPinMatchesFilters(pin, getRawAsset(pin.assetId)));
+  const routePins = siteMapOverlayMode === "pm-route" ? getSiteMapRoutePins(visiblePins) : [];
+  const routeIndexByPinKey = new Map(routePins.map((pin, index) => [siteMapPinKey(pin, index), index + 1]));
   if (els.siteMapPinCount) els.siteMapPinCount.textContent = visiblePins.length === pins.length ? pins.length : `${visiblePins.length}/${pins.length}`;
   if (els.siteMapImageInput) els.siteMapImageInput.disabled = !hasLocation;
   if (els.siteMapPinLabel) els.siteMapPinLabel.disabled = !hasLocation;
@@ -8396,15 +8599,17 @@ function renderSiteMap() {
         <div class="site-map-viewport" data-site-map-viewport>
           <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%;">
             <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(map?.name || "Site map")}">
+            ${renderSiteMapRouteOverlay(routePins)}
             ${visiblePins.map((pin, index) => {
               const asset = getRawAsset(pin.assetId);
               const title = pin.label || asset?.name || `Pin ${index + 1}`;
-              const tooltip = renderSiteMapPinTooltip(pin, index, asset, title);
+              const overlayInfo = getSiteMapPinOverlayInfo(pin, index, asset, routeIndexByPinKey);
+              const tooltip = renderSiteMapPinTooltip(pin, index, asset, title, overlayInfo);
               const layer = getSiteMapPinLayer(pin, asset);
               const layerClass = layer ? ` site-map-pin-${layer}` : "";
               return `
-                <button type="button" class="site-map-pin${layerClass}" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" aria-label="${escapeAttribute(title)}">
-                  <span>${index + 1}</span>
+                <button type="button" class="site-map-pin${layerClass}${overlayInfo.className}" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" aria-label="${escapeAttribute(title)}">
+                  <span>${escapeHtml(overlayInfo.marker)}</span>
                   ${tooltip}
                 </button>
               `;
@@ -8429,17 +8634,19 @@ function renderSiteMap() {
     els.siteMapPinList.innerHTML = !hasLocation
       ? `<p class="metric-dropdown-empty">Site maps are saved per location. Select a location above to continue.</p>`
       : pins.length
-      ? `${renderSiteMapFilters(pins)}${visiblePins.length ? visiblePins.map((pin, index) => {
+      ? `${renderSiteMapFilters(pins)}${renderSiteMapOverlaySummary(visiblePins, routePins)}${visiblePins.length ? visiblePins.map((pin, index) => {
         const asset = getRawAsset(pin.assetId);
         const locationName = asset ? getLocation(asset.locationId)?.name || "No location" : "Equipment missing";
         const area = getSiteMapPinArea(pin);
         const layer = siteMapLayerLabel(getSiteMapPinLayer(pin, asset));
+        const overlayInfo = getSiteMapPinOverlayInfo(pin, index, asset, routeIndexByPinKey);
         return `
           <article class="site-map-pin-row">
             <button type="button" class="site-map-pin-open" data-open-site-map-pin="${escapeAttribute(pin.assetId)}">
-              <strong>${index + 1}. ${escapeHtml(pin.label || asset?.name || "Equipment pin")}</strong>
+              <strong>${escapeHtml(overlayInfo.marker)}. ${escapeHtml(pin.label || asset?.name || "Equipment pin")}</strong>
               <span>${escapeHtml(locationName)}${asset?.equipmentId ? ` | ${escapeHtml(asset.equipmentId)}` : ""}</span>
               <span>${escapeHtml(layer)}${area ? ` | ${escapeHtml(area)}` : ""}</span>
+              ${overlayInfo.summary ? `<span>${escapeHtml(overlayInfo.summary)}</span>` : ""}
             </button>
             <button type="button" class="secondary mini" data-delete-site-map-pin="${escapeAttribute(pin.id)}">Remove</button>
           </article>
@@ -8449,7 +8656,7 @@ function renderSiteMap() {
   }
 }
 
-function renderSiteMapPinTooltip(pin, index, asset, title) {
+function renderSiteMapPinTooltip(pin, index, asset, title, overlayInfo = null) {
   if (!asset) {
     return `
       <span class="site-map-pin-tooltip" role="tooltip">
@@ -8472,6 +8679,8 @@ function renderSiteMapPinTooltip(pin, index, asset, title) {
       <small>${escapeHtml(layer)}${area ? ` | ${escapeHtml(area)}` : ""}</small>
       <small>${escapeHtml(locationName)}</small>
       <small>${escapeHtml(due.label)}${openCount ? ` | ${openCount} open ticket${openCount === 1 ? "" : "s"}` : ""}</small>
+      ${overlayInfo?.summary ? `<small>${escapeHtml(siteMapOverlayLabel())}: ${escapeHtml(overlayInfo.summary)}</small>` : ""}
+      ${overlayInfo?.detail ? `<small>${escapeHtml(overlayInfo.detail)}</small>` : ""}
     </span>
   `;
 }

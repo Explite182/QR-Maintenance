@@ -3052,7 +3052,7 @@ textarea {
 
 .site-map-pin {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   width: 34px;
   height: 34px;
   min-height: 34px;
@@ -3087,6 +3087,56 @@ textarea {
 
 .site-map-pin-construction {
   background: #7c3aed;
+}
+
+.site-map-route-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.site-map-route-overlay polyline {
+  fill: none;
+  stroke: rgba(20, 122, 106, 0.78);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 2.6 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.site-map-pin-overlay-warn {
+  background: #f59e0b;
+}
+
+.site-map-pin-overlay-danger {
+  background: #dc2626;
+}
+
+.site-map-pin-overlay-feed {
+  background: #334155;
+}
+
+.site-map-pin-route {
+  background: #147a6a;
+}
+
+.site-map-pin-dimmed {
+  opacity: 0.38;
+}
+
+.site-map-pin-breaker-selected {
+  outline: 4px solid rgba(15, 23, 42, 0.72);
+  outline-offset: 3px;
+}
+
+.site-map-pin-breaker-related {
+  outline: 4px solid rgba(20, 122, 106, 0.55);
+  outline-offset: 3px;
 }
 
 .site-map-pin > span:first-child {
@@ -3175,6 +3225,11 @@ textarea {
   flex-wrap: wrap;
 }
 
+.site-map-overlay-group {
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
 .site-map-filter-chip {
   min-height: 30px;
   padding: 0 10px;
@@ -3190,6 +3245,26 @@ textarea {
 .site-map-filter-chip.is-active {
   border-color: rgba(20, 122, 106, 0.35);
   background: rgba(20, 122, 106, 0.12);
+  color: var(--accent-strong);
+}
+
+.site-map-overlay-chip {
+  border-color: rgba(51, 65, 85, 0.18);
+  color: #334155;
+}
+
+.site-map-overlay-summary {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(20, 122, 106, 0.2);
+  border-radius: 8px;
+  background: rgba(20, 122, 106, 0.08);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.site-map-overlay-summary strong {
   color: var(--accent-strong);
 }
 
@@ -3241,6 +3316,15 @@ html[data-theme="dark"] .site-map-controls {
 
 html[data-theme="dark"] .site-map-filter-chip {
   background: #121c26;
+}
+
+html[data-theme="dark"] .site-map-overlay-chip {
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .site-map-overlay-summary {
+  border-color: rgba(55, 213, 184, 0.2);
+  background: rgba(55, 213, 184, 0.08);
 }
 
 html[data-theme="dark"] .site-map-pin-tooltip {
