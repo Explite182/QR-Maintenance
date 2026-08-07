@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-site-map-storage-safe-pin";
+const SITEWORKS_APP_VERSION = "20260806-panel-label-on-face";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4996,15 +4996,8 @@ function renderMonitoringLivePanel(devices) {
   ` : "";
   const oddCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 1);
   const evenCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 2);
-  const panelCustomer = getCustomer(panel?.customerId || panel?.customer_id || "");
   const panelLocation = getLocation(panel?.locationId || panel?.location_id || "");
-  const panelContext = [panelLocation?.name, panelCustomer?.name].filter(Boolean).join(" | ");
   elements.livePanel.innerHTML = `
-    <div class="monitoring-panel-top-label">
-      <span>Live panel status</span>
-      <strong>${escapeHtml(panel?.name || "Selected panel")}</strong>
-      ${panelContext ? `<small>${escapeHtml(panelContext)}</small>` : ""}
-    </div>
     ${meterHtml}
     <div class="monitoring-panel-mockup" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
       ${renderMonitoringPanelCabinetLabel(panel, panelLocation)}

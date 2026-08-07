@@ -8481,35 +8481,6 @@ html[data-theme="dark"] .sync-banner small {
   justify-items: center;
 }
 
-.monitoring-panel-top-label {
-  display: grid;
-  width: min(100%, 980px);
-  gap: 3px;
-  padding: 12px 14px;
-  border: 1px solid #b9d8d1;
-  border-radius: 8px;
-  background: #f7fbfa;
-  text-align: center;
-}
-
-.monitoring-panel-top-label span {
-  color: var(--accent);
-  font-size: 0.78rem;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.monitoring-panel-top-label strong {
-  color: var(--ink);
-  font-size: 1.12rem;
-  line-height: 1.2;
-}
-
-.monitoring-panel-top-label small {
-  color: var(--muted);
-  font-weight: 800;
-}
-
 .monitoring-main-meter {
   display: flex;
   width: min(100%, 980px);
