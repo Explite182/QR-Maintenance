@@ -8784,7 +8784,7 @@ html[data-theme="dark"] .sync-banner small {
   display: grid;
   min-width: 74px;
   min-height: 30px;
-  grid-template-columns: 30px 40px;
+  grid-template-columns: 30px 44px;
   gap: 3px;
   align-items: center;
   justify-content: center;
@@ -8820,10 +8820,13 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-breaker-number small {
-  color: #dce6e3;
-  font-size: 0.56rem;
+  border-color: #cfd8d4;
+  background: linear-gradient(180deg, #f7f4ea, #d9d4c8);
+  color: #10181b;
+  font-size: 0.58rem;
   font-weight: 900;
   line-height: 1;
+  text-shadow: none;
 }
 
 .monitoring-breaker-slot.right > span,
