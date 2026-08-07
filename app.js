@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-monitoring-schedule-poles";
+const SITEWORKS_APP_VERSION = "20260806-storage-full-startup-safe";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -19307,7 +19307,8 @@ function persistLocalStateOnly(showStorageWarning = true) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (retryError) {
       if (showStorageWarning) showStorageFullWarning();
-      throw retryError;
+      console.warn("Local browser storage is full; continuing without a local save.", retryError);
+      return false;
     }
   }
   try {
@@ -19315,6 +19316,7 @@ function persistLocalStateOnly(showStorageWarning = true) {
   } catch (error) {
     console.warn("Auto backup skipped because browser storage is full.", error);
   }
+  return true;
 }
 
 function showStorageFullWarning() {
