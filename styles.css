@@ -10096,6 +10096,30 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
   left: 5px;
 }
 
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right .monitoring-breaker-handle::before {
+  content: "OFF";
+  right: 5px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right .monitoring-breaker-handle::after {
+  content: "ON";
+  left: 5px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.energized .monitoring-breaker-handle span {
+  left: 5px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.open .monitoring-breaker-handle span,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.upstream-power-loss .monitoring-breaker-handle span,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.not-monitored .monitoring-breaker-handle span {
+  left: 50px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.suspected-trip .monitoring-breaker-handle span {
+  left: 28px;
+}
+
 .monitoring-panel-mockup.generated-template .monitoring-breaker-number {
   min-width: 74px;
   grid-template-columns: 30px 40px;
