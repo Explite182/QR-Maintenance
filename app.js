@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-right-breaker-mirror";
+const SITEWORKS_APP_VERSION = "20260807-locations-cloud-message";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -18793,6 +18793,12 @@ async function upsertStructuredRows(table, rows) {
         ? "Site maps are local only until supabase-site-maps.sql is run in Supabase."
         : "Key custody is local only until supabase-key-custody.sql is run in Supabase.");
       return;
+    }
+    if (table === "locations" && isRowLevelSecurityError(error)) {
+      const message = "Location cloud save is blocked. Run supabase-locations-rls-fix.sql in Supabase.";
+      markSyncError(message);
+      console.warn("Location cloud save skipped because Supabase denied location table writes.", error);
+      throw new Error(message);
     }
     if (table === "customers" && isRowLevelSecurityError(error)) {
       console.warn("Customer cloud save skipped because Supabase denied customer table writes.", error);
