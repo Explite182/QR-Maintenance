@@ -8524,13 +8524,12 @@ html[data-theme="dark"] .sync-banner small {
     radial-gradient(circle at calc(100% - 18px) 18px, #1d2223 0 4px, transparent 5px),
     radial-gradient(circle at 18px calc(100% - 18px), #1d2223 0 4px, transparent 5px),
     radial-gradient(circle at calc(100% - 18px) calc(100% - 18px), #1d2223 0 4px, transparent 5px),
-    linear-gradient(rgba(137, 140, 133, 0.72), rgba(137, 140, 133, 0.72)),
-    url("./panel-monitor-background.png") center / cover no-repeat,
-    linear-gradient(90deg, transparent 0 11%, rgba(24, 27, 28, 0.28) 11.2% 11.5%, transparent 11.7% 34%, rgba(255, 255, 255, 0.08) 34.2% 34.5%, rgba(0, 0, 0, 0.18) 34.6% 34.9%, transparent 35.1% 66%, rgba(255, 255, 255, 0.07) 66.1% 66.4%, rgba(0, 0, 0, 0.2) 66.5% 66.8%, transparent 67% 88%, rgba(24, 27, 28, 0.28) 88.2% 88.5%, transparent 88.7%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 6px),
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.025) 0 1px, transparent 1px 7px),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.08)),
-    linear-gradient(90deg, #7d817c 0 34%, #8a8d87 34% 66%, #737874 66% 100%);
+    linear-gradient(90deg, transparent 0 11%, rgba(24, 27, 28, 0.34) 11.2% 11.55%, rgba(255, 255, 255, 0.12) 11.6% 11.85%, transparent 12.05% 34%, rgba(255, 255, 255, 0.14) 34.2% 34.45%, rgba(0, 0, 0, 0.2) 34.5% 34.85%, transparent 35.1% 66%, rgba(255, 255, 255, 0.11) 66.1% 66.35%, rgba(0, 0, 0, 0.22) 66.42% 66.8%, transparent 67% 88%, rgba(255, 255, 255, 0.12) 88.05% 88.25%, rgba(24, 27, 28, 0.34) 88.35% 88.7%, transparent 88.9%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.028) 0 1px, transparent 1px 7px),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(0, 0, 0, 0.1)),
+    radial-gradient(circle at 48% 38%, rgba(255, 255, 255, 0.14), transparent 34%),
+    linear-gradient(90deg, #848883 0 34%, #979a93 34% 66%, #7b807b 66% 100%);
   box-shadow:
     inset 0 0 0 2px rgba(255, 255, 255, 0.16),
     inset 0 0 0 8px rgba(31, 34, 35, 0.24),
@@ -9441,9 +9440,15 @@ html[data-theme="dark"] .monitoring-main-meter strong {
 html[data-theme="dark"] .monitoring-panel-mockup {
   border-color: var(--line);
   background:
-    linear-gradient(rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.72)),
-    url("./panel-monitor-background.png") center / cover no-repeat,
-    linear-gradient(90deg, rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.36) 49%, rgba(148, 163, 184, 0.22) 50%, rgba(15, 23, 42, 0.36) 51%, rgba(15, 23, 42, 0.55));
+    radial-gradient(circle at 18px 18px, #0d1418 0 4px, transparent 5px),
+    radial-gradient(circle at calc(100% - 18px) 18px, #0d1418 0 4px, transparent 5px),
+    radial-gradient(circle at 18px calc(100% - 18px), #0d1418 0 4px, transparent 5px),
+    radial-gradient(circle at calc(100% - 18px) calc(100% - 18px), #0d1418 0 4px, transparent 5px),
+    linear-gradient(90deg, transparent 0 11%, rgba(2, 6, 10, 0.45) 11.2% 11.55%, rgba(148, 163, 184, 0.14) 11.6% 11.85%, transparent 12.05% 34%, rgba(148, 163, 184, 0.14) 34.2% 34.45%, rgba(2, 6, 10, 0.32) 34.5% 34.85%, transparent 35.1% 66%, rgba(148, 163, 184, 0.13) 66.1% 66.35%, rgba(2, 6, 10, 0.34) 66.42% 66.8%, transparent 67% 88%, rgba(148, 163, 184, 0.13) 88.05% 88.25%, rgba(2, 6, 10, 0.45) 88.35% 88.7%, transparent 88.9%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.045) 0 1px, transparent 1px 7px),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.18)),
+    linear-gradient(90deg, #313a3c 0 34%, #3e4647 34% 66%, #2b3436 66% 100%);
 }
 
 html[data-theme="dark"] .monitoring-breaker-slot.not-monitored {
