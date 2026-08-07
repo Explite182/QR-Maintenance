@@ -8661,6 +8661,10 @@ html[data-theme="dark"] .sync-banner small {
   border-left-width: 1px;
 }
 
+.monitoring-panel-mockup.generated-template .monitoring-channel-state {
+  display: none;
+}
+
 .monitoring-panel-mockup.generated-template .monitoring-breaker-load-label,
 .monitoring-panel-mockup.generated-template .monitoring-breaker-number,
 .monitoring-panel-mockup.generated-template .monitoring-breaker-handle,
@@ -9976,4 +9980,174 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
 
 html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-amps {
   color: rgba(255, 255, 255, 0.92);
+}
+
+.monitoring-panel-mockup.generated-template {
+  --breaker-row-height: clamp(22px, calc(710px / var(--monitoring-panel-rows, 21)), 34px);
+  --breaker-row-gap: clamp(2px, calc(58px / var(--monitoring-panel-rows, 21)), 4px);
+  gap: 7px;
+  padding: 20px 24px 22px;
+  border-color: #303738;
+  background:
+    radial-gradient(circle at 18px 18px, #192022 0 4px, transparent 5px),
+    radial-gradient(circle at calc(100% - 18px) 18px, #192022 0 4px, transparent 5px),
+    linear-gradient(90deg, transparent 0 33.4%, rgba(31, 35, 36, 0.28) 33.6% 33.9%, rgba(255, 255, 255, 0.12) 34% 34.18%, transparent 34.38% 65.75%, rgba(255, 255, 255, 0.1) 65.9% 66.08%, rgba(31, 35, 36, 0.28) 66.18% 66.5%, transparent 66.7%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 9px),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(0, 0, 0, 0.08)),
+    linear-gradient(90deg, #868b86 0 34%, #999d96 34% 66%, #818780 66% 100%);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.13),
+    inset 0 0 0 7px rgba(31, 34, 35, 0.2),
+    inset 0 0 30px rgba(0, 0, 0, 0.14),
+    0 14px 34px rgba(15, 23, 42, 0.16);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-panel-board,
+.monitoring-panel-mockup.generated-template .monitoring-panel-rail-label {
+  grid-template-columns: minmax(430px, 1fr) 205px minmax(430px, 1fr);
+  gap: 22px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-column {
+  padding-top: 106px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-column::before {
+  top: 98px;
+  width: 128px;
+  border-color: #0b0f10;
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px calc(var(--breaker-row-height, 34px) + var(--breaker-row-gap, 4px))),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 15px),
+    linear-gradient(90deg, #030505, #151b1d 48%, #030505);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 0 24px rgba(0, 0, 0, 0.62),
+    0 3px 7px rgba(0, 0, 0, 0.26);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot {
+  grid-template-columns: 74px minmax(155px, 1fr) 92px;
+  gap: 5px;
+  padding: 1px 3px;
+  border-color: rgba(24, 30, 32, 0.2);
+  background: rgba(210, 211, 204, 0.12);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.14);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right {
+  grid-template-columns: 92px minmax(155px, 1fr) 74px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right .monitoring-breaker-handle {
+  grid-column: 1;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right .monitoring-breaker-load-label {
+  grid-column: 2;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right > span,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right .monitoring-breaker-number {
+  grid-column: 3;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-load-label {
+  min-height: calc(var(--breaker-row-height, 34px) - 5px);
+  padding: 3px 9px;
+  border-color: rgba(80, 78, 72, 0.5);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.045), transparent 11px, transparent calc(100% - 11px), rgba(0, 0, 0, 0.045)),
+    linear-gradient(180deg, #f5f3ec, #ddd9cf);
+  color: #161b1e;
+  font-size: clamp(0.58rem, 0.67vw, 0.76rem);
+  letter-spacing: 0;
+  line-height: 1.05;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-handle {
+  width: 90px;
+  height: calc(var(--breaker-row-height, 34px) - 6px);
+  border-color: #06090a;
+  background:
+    linear-gradient(180deg, #111719 0 20%, #030505 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.055),
+    inset 0 -7px 10px rgba(0, 0, 0, 0.48),
+    0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-handle span {
+  top: 4px;
+  width: 32px;
+  height: calc(var(--breaker-row-height, 34px) - 14px);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-channel-card.energized .monitoring-breaker-handle span {
+  left: 50px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-channel-card.open .monitoring-breaker-handle span,
+.monitoring-panel-mockup.generated-template .monitoring-channel-card.upstream-power-loss .monitoring-breaker-handle span,
+.monitoring-panel-mockup.generated-template .monitoring-channel-card.not-monitored .monitoring-breaker-handle span {
+  left: 5px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-number {
+  min-width: 74px;
+  grid-template-columns: 30px 40px;
+  gap: 4px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-number b,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-number small {
+  min-height: calc(var(--breaker-row-height, 34px) - 6px);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-number small {
+  font-size: clamp(0.48rem, 0.55vw, 0.62rem);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-panel-center {
+  min-height: calc((var(--breaker-row-height, 34px) + var(--breaker-row-gap, 4px)) * var(--monitoring-panel-rows, 21) + 106px);
+  gap: 10px;
+  padding-top: 56px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-fed-label {
+  min-height: 38px;
+  opacity: 0.92;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-main-disconnect-label {
+  padding: 9px 14px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-main-disconnect {
+  width: 96px;
+  height: 132px;
+  padding-top: 12px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-main-disconnect i {
+  width: 46px;
+  height: 64px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-service-label {
+  width: 166px;
+  padding: 7px 9px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-danger-label {
+  width: 154px;
+  padding-bottom: 7px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-panel-nameplate {
+  width: 166px;
+  padding: 10px 12px;
 }
