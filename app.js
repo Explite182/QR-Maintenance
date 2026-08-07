@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-panel-face-live-monitor";
+const SITEWORKS_APP_VERSION = "20260806-site-map-pin-placement-fix";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -127,7 +127,7 @@ let assetTemplateFilter = "all";
 let assetSort = "due";
 let assetRegisterTab = "active";
 let inventoryTab = focusedKeyId ? "keys" : "items";
-let pendingSiteMapPin = false;
+let pendingSiteMapPin = null;
 let siteMapZoom = 1;
 let siteMapLayerFilter = "all";
 let siteMapAreaFilter = "all";
@@ -3158,7 +3158,7 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     updateSiteMapViewportMemory();
     siteMapLevelId = normalizeSiteMapLevelId(siteMapLevelButton.dataset.siteMapLevel);
-    pendingSiteMapPin = false;
+    pendingSiteMapPin = null;
     siteMapZoom = 1;
     siteMapViewportMemory = { left: 0, top: 0 };
     renderSiteMap();
@@ -8886,6 +8886,7 @@ function renderSiteMap() {
   const zoomLabel = `${Math.round(siteMapZoom * 100)}%`;
   if (els.siteMapCanvas) {
     els.siteMapCanvas.classList.toggle("has-map", Boolean(imageUrl));
+    els.siteMapCanvas.classList.toggle("is-placing-pin", Boolean(pendingSiteMapPin));
     els.siteMapCanvas.classList.toggle("is-clean-map", Boolean(siteMapCleanView));
     els.siteMapCanvas.innerHTML = !hasLocation
       ? `<div class="site-map-empty">Choose a location to view or create its site map.</div>`
@@ -9012,7 +9013,7 @@ async function handleSiteMapImageChange() {
     ensureSiteMapLevels(map, true);
     map.name = siteMapScopeLabel(map);
     map.updatedAt = new Date().toISOString();
-    pendingSiteMapPin = false;
+    pendingSiteMapPin = null;
     saveState();
     renderSiteMap();
     updateSiteMapStatus(siteMapImageIsCloudReady(image)
@@ -9043,12 +9044,20 @@ function startSiteMapPinPlacement() {
     renderSiteMap();
     return;
   }
-  if (!els.siteMapPinAsset?.value && !els.siteMapPinLabel?.value.trim()) {
+  const label = els.siteMapPinLabel?.value.trim() || "";
+  if (!selectedAssetId && !label) {
     updateSiteMapStatus("Choose equipment or enter a label before placing a pin.");
     return;
   }
-  pendingSiteMapPin = true;
-  updateSiteMapStatus("Tap the map where this equipment belongs.");
+  const asset = getRawAsset(selectedAssetId);
+  pendingSiteMapPin = {
+    assetId: selectedAssetId,
+    label,
+    area: els.siteMapPinArea?.value.trim() || "",
+    layer: normalizeSiteMapLayer(els.siteMapPinLayer?.value || "") || inferSiteMapLayer(asset)
+  };
+  renderSiteMap();
+  updateSiteMapStatus(`Tap the map where ${asset?.name || label || "this pin"} belongs.`);
 }
 
 function startSiteMapDrag(event) {
@@ -9114,7 +9123,7 @@ function endSiteMapDrag(event) {
     const hadTouchPointer = siteMapTouchPointers.delete(event.pointerId);
     if (siteMapPinchState && siteMapTouchPointers.size < 2) {
       const viewport = siteMapPinchState.viewport;
-      siteMapPinchState = null;
+    siteMapPinchState = null;
       siteMapDragSuppressClick = true;
       viewport?.classList.remove("is-dragging");
       window.setTimeout(() => {
@@ -9234,19 +9243,20 @@ function addSiteMapPinFromEvent(event) {
   const stage = event.target.closest("[data-site-map-stage]") || els.siteMapCanvas.querySelector("[data-site-map-stage]");
   if (!stage) {
     updateSiteMapStatus("Upload a map image first.");
-    pendingSiteMapPin = false;
+    pendingSiteMapPin = null;
     return;
   }
   const rect = stage.getBoundingClientRect();
   const x = clampPercent(((event.clientX - rect.left) / rect.width) * 100);
   const y = clampPercent(((event.clientY - rect.top) / rect.height) * 100);
-  const assetId = els.siteMapPinAsset?.value || "";
-  const label = els.siteMapPinLabel?.value.trim() || "";
-  const area = els.siteMapPinArea?.value.trim() || "";
-  const layer = normalizeSiteMapLayer(els.siteMapPinLayer?.value || "") || inferSiteMapLayer(getRawAsset(assetId));
+  const pendingPin = pendingSiteMapPin && typeof pendingSiteMapPin === "object" ? pendingSiteMapPin : {};
+  const assetId = pendingPin.assetId || els.siteMapPinAsset?.value || "";
+  const label = pendingPin.label || els.siteMapPinLabel?.value.trim() || "";
+  const area = pendingPin.area || els.siteMapPinArea?.value.trim() || "";
+  const layer = normalizeSiteMapLayer(pendingPin.layer || els.siteMapPinLayer?.value || "") || inferSiteMapLayer(getRawAsset(assetId));
   activeLevel.pins = Array.isArray(activeLevel.pins) ? activeLevel.pins : [];
   if (assetId && getAllSiteMapPins(map).some((pin) => pin.assetId === assetId)) {
-    pendingSiteMapPin = false;
+    pendingSiteMapPin = null;
     renderSiteMap();
     updateSiteMapStatus("That equipment is already pinned on this map.");
     return;
@@ -9264,7 +9274,7 @@ function addSiteMapPinFromEvent(event) {
   activeLevel.updatedAt = new Date().toISOString();
   ensureSiteMapLevels(map, true);
   map.updatedAt = new Date().toISOString();
-  pendingSiteMapPin = false;
+  pendingSiteMapPin = null;
   if (els.siteMapPinLabel) els.siteMapPinLabel.value = "";
   if (els.siteMapPinArea) els.siteMapPinArea.value = "";
   if (els.siteMapPinLayer) els.siteMapPinLayer.value = "";
@@ -9321,7 +9331,7 @@ function clearCurrentSiteMap() {
   activeLevel.updatedAt = new Date().toISOString();
   ensureSiteMapLevels(map, true);
   map.updatedAt = new Date().toISOString();
-  pendingSiteMapPin = false;
+  pendingSiteMapPin = null;
   saveState();
   renderSiteMap();
   updateSiteMapStatus("Map cleared.");
