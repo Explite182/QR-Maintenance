@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-storage-warning-banner";
+const SITEWORKS_APP_VERSION = "20260806-site-map-panel-live";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8605,6 +8605,22 @@ function getSiteMapBreakerCircuitNumbers(asset = null) {
 
 function getSiteMapAssetMonitoringChannels(asset = null) {
   if (!asset) return [];
+  const assetId = String(asset.id || "");
+  if (assetId && isElectricalPanelAsset(asset)) {
+    const panelDeviceIds = new Set(
+      (state.monitoringDevices || [])
+        .map(normalizeMonitoringDevice)
+        .filter((device) => String(device?.panelAssetId || "") === assetId)
+        .map((device) => String(device.id || device.deviceUid || ""))
+        .filter(Boolean)
+    );
+    const panelChannels = (state.monitoringChannels || []).filter((channel) => {
+      const channelPanelId = String(channel.panelAssetId || channel.panel_asset_id || "");
+      const channelDeviceId = String(channel.deviceId || channel.device_id || "");
+      return channelPanelId === assetId || panelDeviceIds.has(channelDeviceId);
+    });
+    if (panelChannels.length) return panelChannels;
+  }
   const breakerCircuits = getSiteMapBreakerCircuitNumbers(asset);
   if (!breakerCircuits.length) return [];
   const panelText = getSiteMapBreakerText(asset).toLowerCase();
