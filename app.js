@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-site-map-visual-clarity";
+const SITEWORKS_APP_VERSION = "20260806-panel-monitor-background";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -128,6 +128,7 @@ let siteMapAreaFilter = "all";
 let siteMapOverlayMode = "normal";
 let selectedSiteMapOverlayAssetId = "";
 let siteMapCleanView = false;
+let siteMapLevelId = "main";
 let siteMapViewportMemory = { left: 0, top: 0 };
 let siteMapDragState = null;
 let siteMapDragSuppressClick = false;
@@ -292,6 +293,7 @@ const els = {
   siteMapPinLayer: document.getElementById("siteMapPinLayer"),
   siteMapAddPinBtn: document.getElementById("siteMapAddPinBtn"),
   siteMapClearBtn: document.getElementById("siteMapClearBtn"),
+  siteMapLevelTabs: document.getElementById("siteMapLevelTabs"),
   siteMapCanvas: document.getElementById("siteMapCanvas"),
   siteMapPinList: document.getElementById("siteMapPinList"),
   siteMapStatus: document.getElementById("siteMapStatus"),
@@ -2375,6 +2377,7 @@ els.locationFilter.addEventListener("change", () => {
   siteMapAreaFilter = "all";
   siteMapOverlayMode = "normal";
   selectedSiteMapOverlayAssetId = "";
+  siteMapLevelId = "main";
   siteMapViewportMemory = { left: 0, top: 0 };
   selectedId = null;
   clearSelectedAssetUrl();
@@ -3141,6 +3144,25 @@ document.addEventListener("click", (event) => {
     siteMapOverlayMode = normalizeSiteMapOverlayMode(siteMapOverlayButton.dataset.siteMapOverlay);
     if (siteMapOverlayMode !== "breaker-feed") selectedSiteMapOverlayAssetId = "";
     renderSiteMap();
+    return;
+  }
+
+  const siteMapLevelButton = event.target.closest("[data-site-map-level]");
+  if (siteMapLevelButton) {
+    event.preventDefault();
+    updateSiteMapViewportMemory();
+    siteMapLevelId = normalizeSiteMapLevelId(siteMapLevelButton.dataset.siteMapLevel);
+    pendingSiteMapPin = false;
+    siteMapZoom = 1;
+    siteMapViewportMemory = { left: 0, top: 0 };
+    renderSiteMap();
+    return;
+  }
+
+  const siteMapLevelAddButton = event.target.closest("[data-site-map-level-add]");
+  if (siteMapLevelAddButton) {
+    event.preventDefault();
+    addSiteMapLevel();
     return;
   }
 
@@ -8272,11 +8294,112 @@ function isSiteMapLocationSelected() {
   return Boolean(selectedLocationId && selectedLocationId !== "all");
 }
 
+const SITE_MAP_DEFAULT_LEVELS = [
+  { id: "main", name: "Main floor", type: "floor" },
+  { id: "roof", name: "Roof / RTUs", type: "roof" },
+  { id: "exterior", name: "Exterior", type: "exterior" },
+  { id: "emergency", name: "Emergency routes", type: "emergency" }
+];
+
 function siteMapScopeLabel(map = null) {
   const scope = map || currentSiteMapScope();
   const customer = getCustomer(scope.customerId)?.name || "Current customer";
   const location = scope.locationId ? getLocation(scope.locationId)?.name || "Selected location" : "Choose a location";
   return `${customer} | ${location}`;
+}
+
+function normalizeSiteMapLevelId(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "main";
+  return text
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 42) || "main";
+}
+
+function normalizeSiteMapPins(pins = []) {
+  return Array.isArray(pins)
+    ? pins.map((pin) => ({
+      ...pin,
+      id: pin.id || crypto.randomUUID(),
+      assetId: pin.assetId || "",
+      label: pin.label || "",
+      area: getSiteMapPinArea(pin),
+      layer: normalizeSiteMapLayer(pin.layer || pin.system || pin.category),
+      x: clampPercent(pin.x),
+      y: clampPercent(pin.y),
+      createdAt: pin.createdAt || new Date().toISOString()
+    })).filter((pin) => pin.assetId || pin.label)
+    : [];
+}
+
+function normalizeSiteMapLevel(level = {}, fallback = {}) {
+  const id = normalizeSiteMapLevelId(level.id || fallback.id || level.name || fallback.name);
+  return {
+    id,
+    name: String(level.name || fallback.name || "Map area").trim(),
+    type: String(level.type || fallback.type || id || "area").trim(),
+    image: level.image || null,
+    pins: normalizeSiteMapPins(level.pins),
+    createdAt: level.createdAt || new Date().toISOString(),
+    updatedAt: level.updatedAt || level.createdAt || new Date().toISOString()
+  };
+}
+
+function ensureSiteMapLevels(map = null, create = false) {
+  if (!map) return [];
+  const existing = Array.isArray(map.levels) ? map.levels : Array.isArray(map.areas) ? map.areas : [];
+  if (!existing.length && create) {
+    map.levels = SITE_MAP_DEFAULT_LEVELS.map((level) => normalizeSiteMapLevel({
+      ...level,
+      image: level.id === "main" ? map.image || null : null,
+      pins: level.id === "main" ? map.pins || [] : []
+    }, level));
+  } else if (existing.length) {
+    map.levels = existing.map((level) => normalizeSiteMapLevel(level));
+  }
+  if (create) {
+    const levelIds = new Set((map.levels || []).map((level) => level.id));
+    SITE_MAP_DEFAULT_LEVELS.forEach((level) => {
+      if (!levelIds.has(level.id)) map.levels.push(normalizeSiteMapLevel(level, level));
+    });
+  }
+  const main = (map.levels || []).find((level) => level.id === "main");
+  if (main) {
+    map.image = main.image || null;
+    map.pins = main.pins || [];
+  }
+  return map.levels || [];
+}
+
+function getActiveSiteMapLevel(map = null, create = false) {
+  const levels = ensureSiteMapLevels(map, create);
+  if (!levels.length) return null;
+  if (!levels.some((level) => level.id === siteMapLevelId)) siteMapLevelId = "main";
+  return levels.find((level) => level.id === siteMapLevelId) || levels[0] || null;
+}
+
+function getAllSiteMapPins(map = null) {
+  const levels = ensureSiteMapLevels(map, false);
+  return levels.length ? levels.flatMap((level) => level.pins || []) : Array.isArray(map?.pins) ? map.pins : [];
+}
+
+function renderSiteMapLevelTabs(map = null) {
+  const levels = ensureSiteMapLevels(map, true);
+  if (!levels.length) return "";
+  return `
+    ${levels.map((level) => {
+      const pinCount = Array.isArray(level.pins) ? level.pins.length : 0;
+      const hasImage = Boolean(mediaSource(level.image));
+      return `
+        <button type="button" class="site-map-level-tab${level.id === siteMapLevelId ? " is-active" : ""}" data-site-map-level="${escapeAttribute(level.id)}">
+          <span>${escapeHtml(level.name)}</span>
+          <small>${hasImage ? "Map" : "No map"}${pinCount ? ` | ${pinCount}` : ""}</small>
+        </button>
+      `;
+    }).join("")}
+    <button type="button" class="site-map-level-tab site-map-level-add" data-site-map-level-add>+ Area</button>
+  `;
 }
 
 function normalizeSiteMapLayer(value = "") {
@@ -8630,6 +8753,33 @@ function updateSiteMapViewportMemory() {
   siteMapViewportMemory = { left: viewport.scrollLeft, top: viewport.scrollTop };
 }
 
+function addSiteMapLevel() {
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before adding a map area.");
+    return;
+  }
+  const map = getCurrentSiteMap(true);
+  if (!map) return;
+  const name = prompt("Name this map area", "Mezzanine")?.trim();
+  if (!name) return;
+  const levels = ensureSiteMapLevels(map, true);
+  let id = normalizeSiteMapLevelId(name);
+  let suffix = 2;
+  while (levels.some((level) => level.id === id)) {
+    id = `${normalizeSiteMapLevelId(name)}-${suffix}`;
+    suffix += 1;
+  }
+  const level = normalizeSiteMapLevel({ id, name, type: "area", image: null, pins: [] });
+  levels.push(level);
+  map.updatedAt = new Date().toISOString();
+  siteMapLevelId = level.id;
+  siteMapZoom = 1;
+  siteMapViewportMemory = { left: 0, top: 0 };
+  saveState();
+  renderSiteMap();
+  updateSiteMapStatus(`${level.name} added. Upload a map file for this area when ready.`);
+}
+
 function renderSiteMapFilters(pins = []) {
   const areas = [...new Set(pins.map(getSiteMapPinArea).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
@@ -8688,10 +8838,13 @@ function getCurrentSiteMap(create = false) {
 function renderSiteMap() {
   if (!els.siteMapPanel) return;
   const hasLocation = isSiteMapLocationSelected();
-  const map = getCurrentSiteMap(false);
+  const map = hasLocation ? getCurrentSiteMap(true) : getCurrentSiteMap(false);
+  const levels = map ? ensureSiteMapLevels(map, true) : [];
+  const activeLevel = getActiveSiteMapLevel(map, true);
   const assets = hasLocation ? filteredAssets() : [];
-  const pins = Array.isArray(map?.pins) ? map.pins : [];
-  const pinnedAssetIds = new Set(pins.map((pin) => pin.assetId).filter(Boolean));
+  const pins = Array.isArray(activeLevel?.pins) ? activeLevel.pins : [];
+  const allPins = getAllSiteMapPins(map);
+  const pinnedAssetIds = new Set(allPins.map((pin) => pin.assetId).filter(Boolean));
   const availablePinAssets = assets.filter((asset) => !pinnedAssetIds.has(asset.id));
   updateSiteMapViewportMemory();
   const visiblePins = pins.filter((pin) => siteMapPinMatchesFilters(pin, getRawAsset(pin.assetId)));
@@ -8702,7 +8855,7 @@ function renderSiteMap() {
   if (els.siteMapPinLabel) els.siteMapPinLabel.disabled = !hasLocation;
   if (els.siteMapPinArea) els.siteMapPinArea.disabled = !hasLocation;
   if (els.siteMapPinLayer) els.siteMapPinLayer.disabled = !hasLocation;
-  if (els.siteMapAddPinBtn) els.siteMapAddPinBtn.disabled = !hasLocation || !availablePinAssets.length;
+  if (els.siteMapAddPinBtn) els.siteMapAddPinBtn.disabled = !hasLocation;
   if (els.siteMapClearBtn) els.siteMapClearBtn.disabled = !hasLocation;
   if (els.siteMapPinAsset) {
     els.siteMapPinAsset.disabled = !hasLocation || !availablePinAssets.length;
@@ -8710,7 +8863,10 @@ function renderSiteMap() {
       ? availablePinAssets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name || asset.equipmentId || "Equipment")} - ${escapeHtml(getLocation(asset.locationId)?.name || "No location")}</option>`).join("")
       : `<option value="">${hasLocation ? assets.length ? "All equipment is already pinned" : "No equipment in this location" : "Choose a location first"}</option>`;
   }
-  const imageUrl = mediaSource(map?.image);
+  if (els.siteMapLevelTabs) {
+    els.siteMapLevelTabs.innerHTML = hasLocation && map ? renderSiteMapLevelTabs(map) : "";
+  }
+  const imageUrl = mediaSource(activeLevel?.image);
   const zoomLabel = `${Math.round(siteMapZoom * 100)}%`;
   if (els.siteMapCanvas) {
     els.siteMapCanvas.classList.toggle("has-map", Boolean(imageUrl));
@@ -8728,7 +8884,7 @@ function renderSiteMap() {
         </div>
         <div class="site-map-viewport" data-site-map-viewport>
           <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%;">
-            <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(map?.name || "Site map")}">
+            <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(activeLevel?.name || map?.name || "Site map")}">
             ${renderSiteMapRouteOverlay(routePins)}
             ${visiblePins.map((pin, index) => {
               const asset = getRawAsset(pin.assetId);
@@ -8747,7 +8903,7 @@ function renderSiteMap() {
           </div>
         </div>
       `
-      : `<div class="site-map-empty">Upload a site or floor plan image to start mapping equipment.</div>`;
+      : `<div class="site-map-empty">Upload a site or floor plan image for ${escapeHtml(activeLevel?.name || "this map area")}.</div>`;
     if (imageUrl) {
       const restoredViewport = els.siteMapCanvas.querySelector("[data-site-map-viewport]");
       if (restoredViewport) {
@@ -8830,10 +8986,14 @@ async function handleSiteMapImageChange() {
     updateSiteMapStatus("Choose a location before adding a site map.");
     return;
   }
+  const activeLevel = getActiveSiteMapLevel(map, true);
+  if (!activeLevel) return;
   try {
     updateSiteMapStatus(isPdfFile(file) ? "Converting PDF page 1 into a site map..." : "Preparing site map image...");
     const image = await readSiteMapFile(file);
-    map.image = image;
+    activeLevel.image = image;
+    activeLevel.updatedAt = new Date().toISOString();
+    ensureSiteMapLevels(map, true);
     map.name = siteMapScopeLabel(map);
     map.updatedAt = new Date().toISOString();
     pendingSiteMapPin = false;
@@ -8856,12 +9016,13 @@ function startSiteMapPinPlacement() {
     return;
   }
   const map = getCurrentSiteMap(false);
-  if (!mediaSource(map?.image)) {
-    updateSiteMapStatus("Upload a map image first.");
+  const activeLevel = getActiveSiteMapLevel(map, true);
+  if (!mediaSource(activeLevel?.image)) {
+    updateSiteMapStatus("Upload a map image for this area first.");
     return;
   }
   const selectedAssetId = els.siteMapPinAsset?.value || "";
-  if (selectedAssetId && Array.isArray(map?.pins) && map.pins.some((pin) => pin.assetId === selectedAssetId)) {
+  if (selectedAssetId && getAllSiteMapPins(map).some((pin) => pin.assetId === selectedAssetId)) {
     updateSiteMapStatus("That equipment is already pinned on this map.");
     renderSiteMap();
     return;
@@ -9052,6 +9213,8 @@ function addSiteMapPinFromEvent(event) {
   }
   const map = getCurrentSiteMap(true);
   if (!map) return;
+  const activeLevel = getActiveSiteMapLevel(map, true);
+  if (!activeLevel) return;
   const stage = event.target.closest("[data-site-map-stage]") || els.siteMapCanvas.querySelector("[data-site-map-stage]");
   if (!stage) {
     updateSiteMapStatus("Upload a map image first.");
@@ -9065,14 +9228,14 @@ function addSiteMapPinFromEvent(event) {
   const label = els.siteMapPinLabel?.value.trim() || "";
   const area = els.siteMapPinArea?.value.trim() || "";
   const layer = normalizeSiteMapLayer(els.siteMapPinLayer?.value || "") || inferSiteMapLayer(getRawAsset(assetId));
-  map.pins = Array.isArray(map.pins) ? map.pins : [];
-  if (assetId && map.pins.some((pin) => pin.assetId === assetId)) {
+  activeLevel.pins = Array.isArray(activeLevel.pins) ? activeLevel.pins : [];
+  if (assetId && getAllSiteMapPins(map).some((pin) => pin.assetId === assetId)) {
     pendingSiteMapPin = false;
     renderSiteMap();
     updateSiteMapStatus("That equipment is already pinned on this map.");
     return;
   }
-  map.pins.push({
+  activeLevel.pins.push({
     id: crypto.randomUUID(),
     assetId,
     label,
@@ -9082,6 +9245,8 @@ function addSiteMapPinFromEvent(event) {
     y,
     createdAt: new Date().toISOString()
   });
+  activeLevel.updatedAt = new Date().toISOString();
+  ensureSiteMapLevels(map, true);
   map.updatedAt = new Date().toISOString();
   pendingSiteMapPin = false;
   if (els.siteMapPinLabel) els.siteMapPinLabel.value = "";
@@ -9094,8 +9259,11 @@ function addSiteMapPinFromEvent(event) {
 
 function deleteSiteMapPin(pinId) {
   const map = getCurrentSiteMap(false);
-  if (!map || !Array.isArray(map.pins)) return;
-  map.pins = map.pins.filter((pin) => pin.id !== pinId);
+  const activeLevel = getActiveSiteMapLevel(map, false);
+  if (!map || !activeLevel || !Array.isArray(activeLevel.pins)) return;
+  activeLevel.pins = activeLevel.pins.filter((pin) => pin.id !== pinId);
+  activeLevel.updatedAt = new Date().toISOString();
+  ensureSiteMapLevels(map, true);
   map.updatedAt = new Date().toISOString();
   saveState();
   renderSiteMap();
@@ -9126,13 +9294,16 @@ function clearCurrentSiteMap() {
     return;
   }
   const map = getCurrentSiteMap(false);
-  if (!map?.image && !map?.pins?.length) {
-    updateSiteMapStatus("No map to clear for this view.");
+  const activeLevel = getActiveSiteMapLevel(map, false);
+  if (!activeLevel?.image && !activeLevel?.pins?.length) {
+    updateSiteMapStatus("No map to clear for this area.");
     return;
   }
-  if (!confirm("Clear the current site map image and pins?")) return;
-  map.image = null;
-  map.pins = [];
+  if (!confirm(`Clear ${activeLevel.name || "this map area"} image and pins?`)) return;
+  activeLevel.image = null;
+  activeLevel.pins = [];
+  activeLevel.updatedAt = new Date().toISOString();
+  ensureSiteMapLevels(map, true);
   map.updatedAt = new Date().toISOString();
   pendingSiteMapPin = false;
   saveState();
@@ -17176,6 +17347,7 @@ function siteMapFromStructuredRow(row) {
     name: row.name || payload.name || "",
     image: row.image || payload.image || null,
     pins: Array.isArray(row.pins) ? row.pins : Array.isArray(payload.pins) ? payload.pins : [],
+    levels: Array.isArray(payload.levels) ? payload.levels : Array.isArray(payload.areas) ? payload.areas : [],
     createdAt: row.created_at || payload.createdAt || "",
     updatedAt: row.updated_at || payload.updatedAt || ""
   };
@@ -18626,29 +18798,22 @@ function normalizeState(input) {
     timestamp: log.timestamp || log.createdAt || new Date().toISOString()
   })).filter((log) => log.keyId);
 
-  normalized.siteMaps = normalized.siteMaps.map((map) => ({
-    ...map,
-    id: map.id || crypto.randomUUID(),
-    customerId: map.customerId || normalized.customers[0]?.id || "",
-    locationId: map.locationId || "",
-    name: map.name || "",
-    image: map.image || null,
-    pins: Array.isArray(map.pins)
-      ? map.pins.map((pin) => ({
-        ...pin,
-        id: pin.id || crypto.randomUUID(),
-        assetId: pin.assetId || "",
-        label: pin.label || "",
-        area: getSiteMapPinArea(pin),
-        layer: normalizeSiteMapLayer(pin.layer || pin.system || pin.category),
-        x: clampPercent(pin.x),
-        y: clampPercent(pin.y),
-        createdAt: pin.createdAt || new Date().toISOString()
-      })).filter((pin) => pin.assetId || pin.label)
-      : [],
-    createdAt: map.createdAt || new Date().toISOString(),
-    updatedAt: map.updatedAt || map.createdAt || new Date().toISOString()
-  })).filter((map) => map.customerId);
+  normalized.siteMaps = normalized.siteMaps.map((map) => {
+    const nextMap = {
+      ...map,
+      id: map.id || crypto.randomUUID(),
+      customerId: map.customerId || normalized.customers[0]?.id || "",
+      locationId: map.locationId || "",
+      name: map.name || "",
+      image: map.image || null,
+      pins: normalizeSiteMapPins(map.pins),
+      levels: Array.isArray(map.levels) ? map.levels : Array.isArray(map.areas) ? map.areas : [],
+      createdAt: map.createdAt || new Date().toISOString(),
+      updatedAt: map.updatedAt || map.createdAt || new Date().toISOString()
+    };
+    ensureSiteMapLevels(nextMap, true);
+    return nextMap;
+  }).filter((map) => map.customerId);
 
   normalized.monitoringDevices = normalized.monitoringDevices.map((device) => {
     const panelAssetId = String(device.panelAssetId || device.panel_asset_id || device.assetId || device.asset_id || "");
