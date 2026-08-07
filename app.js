@@ -14,10 +14,16 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-panel-monitor-breaker-handles";
+const SITEWORKS_APP_VERSION = "20260806-startup-site-map-levels-fix";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
+const SITE_MAP_DEFAULT_LEVELS = [
+  { id: "main", name: "Main floor", type: "floor" },
+  { id: "roof", name: "Roof / RTUs", type: "roof" },
+  { id: "exterior", name: "Exterior", type: "exterior" },
+  { id: "emergency", name: "Emergency routes", type: "emergency" }
+];
 const MONITORING_DEFAULT_HEARTBEAT_SECONDS = 120;
 const MONITORING_DEFAULT_DELAY_SECONDS = 30;
 const MONITORING_LIVE_STATUS_API = SITEWORKS_API_BASE_URL
@@ -8294,13 +8300,6 @@ function currentSiteMapScope() {
 function isSiteMapLocationSelected() {
   return Boolean(selectedLocationId && selectedLocationId !== "all");
 }
-
-const SITE_MAP_DEFAULT_LEVELS = [
-  { id: "main", name: "Main floor", type: "floor" },
-  { id: "roof", name: "Roof / RTUs", type: "roof" },
-  { id: "exterior", name: "Exterior", type: "exterior" },
-  { id: "emergency", name: "Emergency routes", type: "emergency" }
-];
 
 function siteMapScopeLabel(map = null) {
   const scope = map || currentSiteMapScope();
