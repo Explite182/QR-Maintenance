@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-site-map-no-duplicate-pins";
+const SITEWORKS_APP_VERSION = "20260806-site-map-visual-clarity";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -127,6 +127,7 @@ let siteMapLayerFilter = "all";
 let siteMapAreaFilter = "all";
 let siteMapOverlayMode = "normal";
 let selectedSiteMapOverlayAssetId = "";
+let siteMapCleanView = false;
 let siteMapViewportMemory = { left: 0, top: 0 };
 let siteMapDragState = null;
 let siteMapDragSuppressClick = false;
@@ -3147,6 +3148,15 @@ document.addEventListener("click", (event) => {
   if (siteMapZoomButton) {
     event.preventDefault();
     changeSiteMapZoom(siteMapZoomButton.dataset.siteMapZoom);
+    return;
+  }
+
+  const siteMapCleanButton = event.target.closest("[data-site-map-clean]");
+  if (siteMapCleanButton) {
+    event.preventDefault();
+    updateSiteMapViewportMemory();
+    siteMapCleanView = !siteMapCleanView;
+    renderSiteMap();
     return;
   }
 
@@ -8291,6 +8301,18 @@ function siteMapLayerLabel(layer = "") {
   return labels[normalizeSiteMapLayer(layer)] || "General";
 }
 
+function siteMapLayerMarker(layer = "") {
+  const markers = {
+    electrical: "E",
+    hvac: "H",
+    "life-safety": "LS",
+    plumbing: "P",
+    fitness: "F",
+    construction: "C"
+  };
+  return markers[normalizeSiteMapLayer(layer)] || "G";
+}
+
 function inferSiteMapLayer(asset = null) {
   const text = [asset?.type, asset?.category, asset?.template, asset?.name, asset?.equipmentId]
     .filter(Boolean)
@@ -8511,12 +8533,13 @@ function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexB
   const selectedBreakerText = getSiteMapBreakerText(getRawAsset(selectedSiteMapOverlayAssetId));
   const info = {
     className: "",
-    marker: String(index + 1),
+    marker: siteMapLayerMarker(getSiteMapPinLayer(pin, asset)),
     summary: "",
     detail: ""
   };
   if (mode === "live-status") {
     info.marker = liveStatus.key === "ok" ? "✓" : liveStatus.key === "danger" ? "!" : liveStatus.key === "offline" ? "O" : liveStatus.key === "sensor" ? "S" : String(index + 1);
+    info.marker = liveStatus.key === "ok" ? "OK" : liveStatus.key === "danger" ? "!" : liveStatus.key === "offline" ? "O" : liveStatus.key === "sensor" ? "S" : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
     info.summary = liveStatus.label;
     info.detail = liveStatus.detail || (liveStatus.channels.length ? `${liveStatus.channels.length} monitored channel${liveStatus.channels.length === 1 ? "" : "s"}` : "");
     info.className = liveStatus.key === "ok"
@@ -8529,12 +8552,12 @@ function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexB
             ? " site-map-pin-overlay-sensor"
             : " site-map-pin-dimmed";
   } else if (mode === "open-tickets") {
-    info.marker = openTickets.length ? String(openTickets.length) : String(index + 1);
+    info.marker = openTickets.length ? String(openTickets.length) : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
     info.summary = openTickets.length ? `${openTickets.length} open ticket${openTickets.length === 1 ? "" : "s"}` : "No open tickets";
     info.className = openTickets.length > 1 ? " site-map-pin-overlay-danger" : openTickets.length ? " site-map-pin-overlay-warn" : " site-map-pin-dimmed";
   } else if (mode === "pm-due") {
     const dueSoon = due && Number(due.daysUntil) <= 7;
-    info.marker = due && Number(due.daysUntil) <= 0 ? "!" : String(index + 1);
+    info.marker = due && Number(due.daysUntil) <= 0 ? "!" : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
     info.summary = due?.label || "No PM status";
     info.className = dueSoon ? (Number(due.daysUntil) <= 0 ? " site-map-pin-overlay-danger" : " site-map-pin-overlay-warn") : " site-map-pin-dimmed";
   } else if (mode === "electrical-issues") {
@@ -8553,7 +8576,7 @@ function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexB
     if (isRelated) info.className += " site-map-pin-breaker-related";
     if (selectedBreakerText && !isSelected && !isRelated) info.className += " site-map-pin-dimmed";
   } else if (mode === "pm-route") {
-    info.marker = routeStop ? String(routeStop) : String(index + 1);
+    info.marker = routeStop ? String(routeStop) : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
     info.summary = routeStop ? `Route stop ${routeStop}` : "Not on route";
     info.className = routeStop ? " site-map-pin-route" : " site-map-pin-dimmed";
   }
@@ -8572,6 +8595,33 @@ function renderSiteMapOverlaySummary(visiblePins = [], routePins = []) {
     "pm-route": `${routePins.length} stop${routePins.length === 1 ? "" : "s"} in the current route.`
   }[mode];
   return `<p class="site-map-overlay-summary"><strong>${escapeHtml(siteMapOverlayLabel(mode))}:</strong> ${escapeHtml(summary || "")}</p>`;
+}
+
+function renderSiteMapLegend(pins = []) {
+  const layers = ["electrical", "hvac", "life-safety", "plumbing", "fitness", "construction", ""];
+  const usedLayers = new Set(pins.map((pin) => getSiteMapPinLayer(pin, getRawAsset(pin.assetId)) || ""));
+  const layerItems = layers
+    .filter((layer) => layer || usedLayers.has(layer))
+    .map((layer) => {
+      const markerClass = layer ? ` site-map-legend-${layer}` : " site-map-legend-general";
+      return `
+        <span class="site-map-legend-item">
+          <span class="site-map-legend-marker${markerClass}">${escapeHtml(siteMapLayerMarker(layer))}</span>
+          <span>${escapeHtml(siteMapLayerLabel(layer))}</span>
+        </span>
+      `;
+    }).join("");
+  return `
+    <div class="site-map-legend" aria-label="Site map legend">
+      <strong>Legend</strong>
+      <div class="site-map-legend-grid">${layerItems}</div>
+      <div class="site-map-legend-grid site-map-legend-statuses">
+        <span class="site-map-legend-item"><span class="site-map-legend-marker site-map-legend-ok">OK</span><span>Live / energized</span></span>
+        <span class="site-map-legend-item"><span class="site-map-legend-marker site-map-legend-warn">!</span><span>Due, open, or warning</span></span>
+        <span class="site-map-legend-item"><span class="site-map-legend-marker site-map-legend-danger">!</span><span>Fault or trip</span></span>
+      </div>
+    </div>
+  `;
 }
 
 function updateSiteMapViewportMemory() {
@@ -8664,6 +8714,7 @@ function renderSiteMap() {
   const zoomLabel = `${Math.round(siteMapZoom * 100)}%`;
   if (els.siteMapCanvas) {
     els.siteMapCanvas.classList.toggle("has-map", Boolean(imageUrl));
+    els.siteMapCanvas.classList.toggle("is-clean-map", Boolean(siteMapCleanView));
     els.siteMapCanvas.innerHTML = !hasLocation
       ? `<div class="site-map-empty">Choose a location to view or create its site map.</div>`
       : imageUrl
@@ -8673,6 +8724,7 @@ function renderSiteMap() {
           <span data-site-map-zoom-label>${escapeHtml(zoomLabel)}</span>
           <button type="button" class="secondary mini" data-site-map-zoom="in">+</button>
           <button type="button" class="secondary mini" data-site-map-zoom="reset">Reset</button>
+          <button type="button" class="secondary mini site-map-clean-toggle${siteMapCleanView ? " is-active" : ""}" data-site-map-clean>${siteMapCleanView ? "Full plan" : "Clean plan"}</button>
         </div>
         <div class="site-map-viewport" data-site-map-viewport>
           <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%;">
@@ -8712,7 +8764,7 @@ function renderSiteMap() {
     els.siteMapPinList.innerHTML = !hasLocation
       ? `<p class="metric-dropdown-empty">Site maps are saved per location. Select a location above to continue.</p>`
       : pins.length
-      ? `${renderSiteMapFilters(pins)}${renderSiteMapOverlaySummary(visiblePins, routePins)}${visiblePins.length ? visiblePins.map((pin, index) => {
+      ? `${renderSiteMapFilters(pins)}${renderSiteMapLegend(pins)}${renderSiteMapOverlaySummary(visiblePins, routePins)}${visiblePins.length ? visiblePins.map((pin, index) => {
         const asset = getRawAsset(pin.assetId);
         const locationName = asset ? getLocation(asset.locationId)?.name || "No location" : "Equipment missing";
         const area = getSiteMapPinArea(pin);
