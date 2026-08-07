@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-monitoring-channel-edit";
+const SITEWORKS_APP_VERSION = "20260806-customer-rls-nonblocking";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -18543,11 +18543,21 @@ async function upsertStructuredRows(table, rows) {
         : "Key custody is local only until supabase-key-custody.sql is run in Supabase.");
       return;
     }
+    if (table === "customers" && isRowLevelSecurityError(error)) {
+      console.warn("Customer cloud save skipped because Supabase denied customer table writes.", error);
+      return;
+    }
     const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
     console.warn(`Structured Supabase sync skipped for ${table}.`, error);
     throw new Error(message);
   }
+}
+
+function isRowLevelSecurityError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+  return code === "42501" || message.includes("row-level security") || message.includes("violates row-level security policy");
 }
 
 function isMissingColumnError(error, columnName) {

@@ -8628,7 +8628,7 @@ html[data-theme="dark"] .sync-banner small {
   position: relative;
   display: grid;
   min-height: 38px;
-  grid-template-columns: 30px minmax(170px, 1fr) 88px 42px;
+  grid-template-columns: 58px minmax(150px, 1fr) 88px 42px;
   gap: 8px;
   align-items: center;
   padding: 2px 4px;
@@ -8644,7 +8644,7 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-breaker-slot.right {
-  grid-template-columns: 42px 88px minmax(170px, 1fr) 30px;
+  grid-template-columns: 42px 88px minmax(150px, 1fr) 58px;
   padding: 2px 4px;
   text-align: right;
 }
@@ -8782,9 +8782,12 @@ html[data-theme="dark"] .sync-banner small {
   grid-column: 1;
   grid-row: 1;
   display: grid;
-  min-width: 28px;
+  min-width: 56px;
   min-height: 30px;
-  place-items: center;
+  grid-template-columns: auto auto;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
   border: 1px solid #303333;
   background: #111517;
   color: #ffffff;
@@ -8793,18 +8796,17 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-breaker-number {
-  gap: 0;
   line-height: 1;
 }
 
 .monitoring-breaker-number b {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   line-height: 1;
 }
 
 .monitoring-breaker-number small {
   color: #cfd8d6;
-  font-size: 0.48rem;
+  font-size: 0.58rem;
   font-weight: 900;
   line-height: 1;
 }
@@ -8828,6 +8830,11 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-breaker-slot.blank-filler.right > span {
   grid-column: 2;
+}
+
+.monitoring-breaker-slot.blank-filler > span {
+  min-width: 28px;
+  grid-template-columns: 1fr;
 }
 
 .monitoring-breaker-blank-fill {
