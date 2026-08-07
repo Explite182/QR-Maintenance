@@ -4195,9 +4195,9 @@ const MONITORING_PANEL_TEMPLATES = {
     },
     zones: {
       left: {
-        row: { x: 6.82, width: 30.45, height: 2.65 },
+        row: { x: 6.82, width: 30.45, height: 3.05 },
         number: { x: 6.92, y: 5, width: 1.45, height: 90 },
-        amps: { x: 29.08, y: 6, width: 2.0, height: 34 },
+        amps: { x: 28.72, y: 0, width: 2.0, height: 28 },
         label: { x: 9.1, width: 15.65 },
         breaker: { x: 29.18, width: 2.25 },
         status: { x: 36.1, width: 1.0 },
@@ -4205,12 +4205,12 @@ const MONITORING_PANEL_TEMPLATES = {
         temperature: { x: 34.15, width: 2.55 }
       },
       right: {
-        row: { x: 58.7, width: 25.65, height: 2.65 },
+        row: { x: 58.7, width: 25.65, height: 3.05 },
         status: { x: 58.78, width: 1.0 },
         breaker: { x: 62.22, width: 2.25 },
         label: { x: 70.4, width: 11.75 },
         number: { x: 82.85, y: 5, width: 1.42, height: 90 },
-        amps: { x: 62.32, y: 6, width: 2.0, height: 34 },
+        amps: { x: 62.02, y: 0, width: 2.0, height: 28 },
         voltage: { x: 56.1, width: 2.55 },
         temperature: { x: 58.8, width: 2.55 }
       }
