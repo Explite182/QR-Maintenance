@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-startup-site-map-levels-fix";
+const SITEWORKS_APP_VERSION = "20260806-panel-face-live-monitor";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5012,13 +5012,29 @@ function renderMonitoringLivePanel(devices) {
         <div class="monitoring-breaker-column">
           ${renderMonitoringBreakerColumn(oddCircuits, channelByCircuit, panel, "left")}
         </div>
-        <div class="monitoring-panel-bus" aria-hidden="true"></div>
+        <div class="monitoring-panel-center" aria-hidden="true">
+          <span class="monitoring-main-disconnect-label">Main disconnect</span>
+          <span class="monitoring-main-disconnect">
+            <strong>${escapeHtml(monitoringMainBreakerLabel(panel))}</strong>
+            <i></i>
+          </span>
+          <span class="monitoring-panel-nameplate">${escapeHtml((panel?.name || "Panel").replace(/^Electrical\s+/i, ""))}</span>
+          <span class="monitoring-phase-card">
+            <b>A</b><b>B</b><b>C</b>
+          </span>
+        </div>
         <div class="monitoring-breaker-column">
           ${renderMonitoringBreakerColumn(evenCircuits, channelByCircuit, panel, "right")}
         </div>
       </div>
     </div>
   `;
+}
+
+function monitoringMainBreakerLabel(panel = null) {
+  const schedule = panel?.panelSchedule || panel?.panel_schedule || {};
+  const value = schedule.mainBreaker || schedule.main_breaker || panel?.mainBreaker || panel?.main_breaker || "";
+  return value ? String(value) : "Main";
 }
 
 function renderMonitoringBreakerColumn(circuitNumbers = [], channelByCircuit, panel = null, side = "left") {

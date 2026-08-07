@@ -8528,20 +8528,22 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-panel-mockup {
   position: relative;
-  overflow: hidden;
+  overflow: auto;
   display: grid;
-  gap: 6px;
-  width: min(100%, 980px);
-  max-width: 980px;
+  gap: 8px;
+  width: min(100%, 1180px);
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 12px;
-  border: 1px solid #cad8d5;
-  border-radius: 10px;
+  padding: 18px;
+  border: 2px solid #4d5659;
+  border-radius: 6px;
   background:
-    linear-gradient(rgba(247, 251, 250, 0.74), rgba(247, 251, 250, 0.74)),
-    url("./panel-monitor-background.png") center / cover no-repeat,
-    linear-gradient(90deg, #f7fbfa, #ffffff 49%, #eef5f3 50%, #ffffff 51%, #f7fbfa);
-  box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.2), 0 12px 30px rgba(15, 23, 42, 0.08);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.08)),
+    linear-gradient(90deg, #7d817c 0 34%, #8a8d87 34% 66%, #737874 66% 100%);
+  box-shadow:
+    inset 0 0 0 7px rgba(31, 34, 35, 0.22),
+    inset 0 0 42px rgba(0, 0, 0, 0.18),
+    0 14px 34px rgba(15, 23, 42, 0.18);
 }
 
 .monitoring-panel-rail-label,
@@ -8549,15 +8551,16 @@ html[data-theme="dark"] .sync-banner small {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(260px, 1fr) 190px minmax(260px, 1fr);
+  gap: 18px;
   align-items: stretch;
 }
 
 .monitoring-panel-rail-label {
-  color: #63717a;
+  color: #182126;
   font-size: 0.78rem;
   font-weight: 900;
+  text-transform: uppercase;
 }
 
 .monitoring-panel-rail-label span:last-child {
@@ -8565,63 +8568,65 @@ html[data-theme="dark"] .sync-banner small {
   text-align: right;
 }
 
-.monitoring-panel-bus {
-  width: 18px;
-  min-height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #879b96, #bfccc9);
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
-}
-
 .monitoring-breaker-column {
   display: grid;
-  grid-auto-rows: minmax(112px, auto);
-  gap: 6px;
+  grid-auto-rows: 34px;
+  gap: 4px;
+  align-content: start;
 }
 
 .monitoring-breaker-slot {
   position: relative;
-  min-height: 112px;
-  padding: 10px 10px 10px 64px;
-  align-content: center;
+  display: grid;
+  min-height: 34px;
+  grid-template-columns: 28px minmax(0, 1fr) 72px 46px;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 2px;
+  text-align: left;
 }
 
 .monitoring-breaker-slot.multi-pole {
   border-width: 2px;
-  box-shadow: inset 0 0 0 1px rgba(20, 163, 92, 0.12);
+  box-shadow:
+    inset 0 0 0 1px rgba(20, 163, 92, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.36);
 }
 
 .monitoring-breaker-slot.right {
-  padding: 10px 64px 10px 10px;
+  grid-template-columns: 46px 72px minmax(0, 1fr) 28px;
+  padding: 2px 4px;
   text-align: right;
 }
 
 .monitoring-breaker-handle {
-  position: absolute;
-  top: 50%;
-  left: 12px;
+  position: relative;
+  top: auto;
+  left: auto;
+  grid-column: 3;
   display: block;
-  width: 34px;
-  height: 72px;
+  width: 72px;
+  height: 28px;
   border: 1px solid #0b1115;
-  border-radius: 7px;
+  border-radius: 3px;
   background:
     linear-gradient(180deg, #30383c, #0e1417 52%, #050708);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 8px 18px rgba(15, 23, 42, 0.28);
-  transform: translateY(-50%);
+    0 2px 4px rgba(15, 23, 42, 0.32);
+  transform: none;
 }
 
 .monitoring-breaker-slot.right .monitoring-breaker-handle {
-  right: 12px;
-  left: auto;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .monitoring-breaker-handle::before,
 .monitoring-breaker-handle::after {
   position: absolute;
-  right: 4px;
+  top: 50%;
   color: rgba(255, 255, 255, 0.68);
   font-size: 0.45rem;
   font-style: normal;
@@ -8631,46 +8636,48 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-breaker-handle::before {
   content: "ON";
-  top: 8px;
+  right: 5px;
+  transform: translateY(-50%);
 }
 
 .monitoring-breaker-handle::after {
   content: "OFF";
-  bottom: 8px;
+  left: 5px;
+  transform: translateY(-50%);
 }
 
 .monitoring-breaker-handle span {
   position: absolute;
-  left: 5px;
-  width: 22px;
-  height: 30px;
+  top: 4px;
+  width: 28px;
+  height: 18px;
   border: 1px solid #050708;
-  border-radius: 5px;
+  border-radius: 3px;
   background:
     linear-gradient(180deg, #424b50, #151b1f);
   box-shadow:
     inset 0 8px 8px rgba(255, 255, 255, 0.08),
     inset 0 -8px 10px rgba(0, 0, 0, 0.36),
     0 3px 6px rgba(0, 0, 0, 0.28);
-  transition: top 0.18s ease, transform 0.18s ease, background 0.18s ease;
+  transition: left 0.18s ease, transform 0.18s ease, background 0.18s ease;
 }
 
 .monitoring-channel-card.energized .monitoring-breaker-handle span {
-  top: 7px;
+  left: 37px;
   background: linear-gradient(180deg, #4f5b60, #182126);
 }
 
 .monitoring-channel-card.open .monitoring-breaker-handle span,
 .monitoring-channel-card.upstream-power-loss .monitoring-breaker-handle span,
 .monitoring-channel-card.not-monitored .monitoring-breaker-handle span {
-  top: 35px;
+  left: 5px;
   background: linear-gradient(180deg, #31393d, #0f1518);
 }
 
 .monitoring-channel-card.suspected-trip .monitoring-breaker-handle span {
-  top: 21px;
+  left: 21px;
   background: linear-gradient(180deg, #6b2a24, #2a1110);
-  transform: rotate(-5deg);
+  transform: rotate(-3deg);
 }
 
 .monitoring-channel-card.monitoring-offline .monitoring-breaker-handle,
@@ -8680,8 +8687,8 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-breaker-slot.not-monitored {
-  border-color: #e0e8e6;
-  background: #f7faf9;
+  border-color: #c7cfcc;
+  background: rgba(244, 246, 245, 0.92);
   color: #8b9aa1;
   cursor: pointer;
 }
@@ -8699,13 +8706,169 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-breaker-load-label {
-  color: #2f4149;
-  line-height: 1.25;
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 28px;
+  padding: 6px 8px;
+  border: 1px solid #c7c7c2;
+  background: linear-gradient(180deg, #ffffff, #e9e6df);
+  color: #11181d;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.05;
+  text-transform: uppercase;
 }
 
 .monitoring-breaker-phase-label {
-  margin-top: 3px;
-  color: #52656d;
+  display: none;
+}
+
+.monitoring-breaker-slot > span {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  min-width: 24px;
+  min-height: 26px;
+  place-items: center;
+  border: 1px solid #303333;
+  background: #111517;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.monitoring-breaker-slot.right > span {
+  grid-column: 4;
+  grid-row: 1;
+}
+
+.monitoring-breaker-slot.right .monitoring-breaker-load-label {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.monitoring-channel-state {
+  grid-column: 4;
+  grid-row: 1;
+  min-height: 24px;
+  max-width: 46px;
+  justify-self: stretch;
+  justify-content: center;
+  overflow: hidden;
+  padding: 3px 4px;
+  border-radius: 3px;
+  font-size: 0;
+  line-height: 1;
+}
+
+.monitoring-channel-state::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: #c9d1d1;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16);
+}
+
+.monitoring-breaker-slot.right .monitoring-channel-state {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.monitoring-channel-card.energized .monitoring-channel-state::before {
+  background: #16a058;
+}
+
+.monitoring-channel-card.suspected-trip .monitoring-channel-state::before {
+  background: #d92c20;
+}
+
+.monitoring-channel-card.open .monitoring-channel-state::before,
+.monitoring-channel-card.upstream-power-loss .monitoring-channel-state::before {
+  background: #d99200;
+}
+
+.monitoring-panel-center {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  justify-items: center;
+  padding: 8px 10px;
+  border-left: 2px solid rgba(32, 37, 38, 0.35);
+  border-right: 2px solid rgba(32, 37, 38, 0.35);
+}
+
+.monitoring-main-disconnect-label {
+  display: block;
+  padding: 7px 12px;
+  border: 1px solid #173b57;
+  border-radius: 3px;
+  background: #0c4f83;
+  color: #ffffff;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.monitoring-main-disconnect {
+  display: grid;
+  width: 88px;
+  height: 130px;
+  justify-items: center;
+  padding: 10px 8px;
+  border: 4px solid #2b3030;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #1b2022, #080b0c);
+  color: #ffffff;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.28);
+}
+
+.monitoring-main-disconnect strong {
+  font-size: 0.98rem;
+  line-height: 1;
+}
+
+.monitoring-main-disconnect i {
+  display: block;
+  width: 42px;
+  height: 68px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #343a3d, #111517);
+  box-shadow: inset 0 12px 12px rgba(255, 255, 255, 0.08), inset 0 -12px 14px rgba(0, 0, 0, 0.4);
+}
+
+.monitoring-panel-nameplate {
+  display: block;
+  width: 150px;
+  padding: 9px 10px;
+  border: 2px solid #4d5555;
+  border-radius: 3px;
+  background: #111517;
+  color: #f5f5ef;
+  font-size: 1.08rem;
+  font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.monitoring-phase-card {
+  display: grid;
+  grid-template-columns: repeat(3, 32px);
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid #646b68;
+  border-radius: 3px;
+  background: rgba(245, 244, 238, 0.65);
+}
+
+.monitoring-phase-card b {
+  display: grid;
+  min-height: 26px;
+  place-items: center;
+  border: 1px solid #a9aaa4;
+  background: #ddd8cf;
+  color: #111517;
   font-size: 0.78rem;
 }
 
@@ -8947,6 +9110,52 @@ html[data-theme="dark"] .sync-banner small {
   border-color: #efd08b;
   background: #ffefbd;
   color: #7a4d00;
+}
+
+.monitoring-panel-mockup .monitoring-channel-card {
+  gap: 6px;
+  min-height: 34px;
+  padding: 2px 4px;
+  border: 1px solid rgba(24, 30, 32, 0.36);
+  border-radius: 2px;
+  background: rgba(229, 228, 220, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.monitoring-panel-mockup .monitoring-channel-card.energized,
+.monitoring-panel-mockup .monitoring-channel-card.suspected-trip,
+.monitoring-panel-mockup .monitoring-channel-card.upstream-power-loss,
+.monitoring-panel-mockup .monitoring-channel-card.open {
+  background: rgba(229, 228, 220, 0.52);
+  border-left: 0;
+}
+
+.monitoring-panel-mockup .monitoring-channel-card.energized {
+  border-color: rgba(22, 160, 88, 0.7);
+}
+
+.monitoring-panel-mockup .monitoring-channel-card.suspected-trip {
+  border-color: rgba(217, 44, 32, 0.72);
+}
+
+.monitoring-panel-mockup .monitoring-channel-card.open,
+.monitoring-panel-mockup .monitoring-channel-card.upstream-power-loss {
+  border-color: rgba(217, 146, 0, 0.72);
+}
+
+.monitoring-panel-mockup .monitoring-channel-card span {
+  color: #ffffff;
+  font-size: 0.72rem;
+}
+
+.monitoring-panel-mockup .monitoring-channel-card strong {
+  color: transparent;
+  font-size: 0;
+}
+
+.monitoring-panel-mockup .monitoring-channel-card small {
+  color: #11181d;
+  font-size: 0.72rem;
 }
 
 .phase-toggle-row {
