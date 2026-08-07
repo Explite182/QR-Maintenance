@@ -9769,3 +9769,134 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
 html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-number {
   color: #ffffff;
 }
+
+.monitoring-panel-mockup.image-template.ar-overlay {
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row {
+  opacity: 0.94;
+  mix-blend-mode: normal;
+}
+
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row:hover,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row:focus-visible,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.selected {
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.5), 0 0 14px rgba(59, 130, 246, 0.28);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.suspected-trip,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.open,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.upstream-power-loss,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.high-temperature {
+  box-shadow: 0 0 10px rgba(217, 44, 32, 0.18);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-overlay-number {
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-overlay-amps,
+.monitoring-panel-mockup.image-template .monitoring-overlay-voltage,
+.monitoring-panel-mockup.image-template .monitoring-overlay-temperature {
+  display: none !important;
+}
+
+.monitoring-panel-mockup.image-template .monitoring-overlay-voltage:not(:empty),
+.monitoring-panel-mockup.image-template .monitoring-overlay-temperature:not(:empty) {
+  display: none !important;
+}
+
+.monitoring-panel-mockup.image-template .monitoring-overlay-label {
+  padding: 0 0.24vw;
+  border: 0;
+  background: transparent;
+  color: rgba(5, 8, 10, 0.88);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.46);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.suspected-trip .monitoring-overlay-label,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.open .monitoring-overlay-label,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.upstream-power-loss .monitoring-overlay-label {
+  color: rgba(45, 8, 5, 0.92);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-overlay-breaker {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.monitoring-panel-mockup.image-template .monitoring-overlay-breaker::before,
+.monitoring-panel-mockup.image-template .monitoring-overlay-breaker::after {
+  content: none;
+}
+
+.monitoring-panel-mockup.image-template .monitoring-overlay-breaker i {
+  top: 22%;
+  left: 52%;
+  width: 31%;
+  height: 56%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 2px;
+  background: rgba(13, 18, 20, 0.9);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.18), 0 0 5px rgba(0, 0, 0, 0.28);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.open .monitoring-overlay-breaker i,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.upstream-power-loss .monitoring-overlay-breaker i,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.not-monitored .monitoring-overlay-breaker i {
+  left: 13%;
+  background: rgba(13, 18, 20, 0.78);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.suspected-trip .monitoring-overlay-breaker i {
+  left: 32%;
+  transform: translateY(-8%);
+  background: rgba(185, 38, 28, 0.88);
+  box-shadow: 0 0 0 1px rgba(255, 102, 88, 0.5), 0 0 10px rgba(220, 47, 34, 0.52);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-overlay-status {
+  width: 12px !important;
+  height: 12px !important;
+  top: 50% !important;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  background: rgba(136, 146, 150, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15), 0 0 4px rgba(0, 0, 0, 0.24);
+  transform: translateY(-50%);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-overlay-status::after {
+  width: 36%;
+  height: 36%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.energized .monitoring-overlay-status {
+  background: #18a45a;
+  box-shadow: 0 0 7px rgba(24, 164, 90, 0.46);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.suspected-trip .monitoring-overlay-status {
+  background: #d92c20;
+  box-shadow: 0 0 12px rgba(217, 44, 32, 0.7);
+}
+
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.open .monitoring-overlay-status,
+.monitoring-panel-mockup.image-template .monitoring-panel-overlay-row.upstream-power-loss .monitoring-overlay-status {
+  background: #d99200;
+  box-shadow: 0 0 10px rgba(217, 146, 0, 0.58);
+}
+
+html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-label {
+  color: rgba(5, 8, 10, 0.88);
+}
+
+html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-number {
+  color: rgba(255, 255, 255, 0.95);
+}

@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-panel-image-overlays";
+const SITEWORKS_APP_VERSION = "20260807-panel-ar-overlays";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4267,19 +4267,30 @@ function showMonitoringBreakerDetail(channelId = "", circuitNumber = "") {
   const channel = getMonitoringChannel(channelId);
   const panel = getAsset(channel?.panelAssetId || selectedMonitoringPanelId);
   const device = channel ? getMonitoringDevice(channel.deviceId) : null;
+  const circuit = circuitNumber || channel?.circuitNumber || "";
   const label = monitoringPanelCircuitLabel(panel, circuitNumber) || "No panel label saved";
+  const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber) || "Not entered";
+  const voltage = monitoringCircuitValue(channel, ["voltage", "lineVoltage", "line_voltage"]) || "Not reported";
+  const current = monitoringCircuitValue(channel, ["current", "amps", "amperage", "loadCurrent", "load_current"]) || "Not reported";
+  const temperature = monitoringCircuitValue(channel, ["temperature", "temp", "temperatureF", "temperature_f"]) || "Not reported";
+  const power = monitoringCircuitValue(channel, ["kw", "kW", "power", "powerKw", "power_kw"]) || "Not reported";
   const status = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
   elements.breakerDetail.classList.remove("hidden");
   elements.breakerDetail.innerHTML = `
     <div>
-      <span>Circuit ${escapeHtml(circuitNumber || channel?.circuitNumber || "")}</span>
+      <span>Circuit ${escapeHtml(circuit)}</span>
       <strong>${escapeHtml(status)}</strong>
       <small>${escapeHtml(label)}</small>
     </div>
     <dl>
       <div><dt>Panel</dt><dd>${escapeHtml(panel?.name || "Panel")}</dd></div>
+      <div><dt>Breaker size</dt><dd>${escapeHtml(breakerSize)}</dd></div>
       <div><dt>Phase</dt><dd>${escapeHtml(channel ? monitoringChannelPhaseLabel(channel) : "Not mapped")}</dd></div>
       <div><dt>Physical channel</dt><dd>${escapeHtml(channel?.physicalChannel || "Not mapped")}</dd></div>
+      <div><dt>Voltage</dt><dd>${escapeHtml(voltage)}</dd></div>
+      <div><dt>Current</dt><dd>${escapeHtml(current)}</dd></div>
+      <div><dt>Power</dt><dd>${escapeHtml(power)}</dd></div>
+      <div><dt>Temperature</dt><dd>${escapeHtml(temperature)}</dd></div>
       <div><dt>Device</dt><dd>${escapeHtml(device?.name || "No monitor")}</dd></div>
       <div><dt>Last update</dt><dd>${escapeHtml(channel?.updatedAt ? formatDateTime(channel.updatedAt) : "Not monitored")}</dd></div>
     </dl>
@@ -5242,13 +5253,11 @@ function renderMonitoringLivePanel(devices) {
       ${current ? `<span><small>Main current</small><strong>${escapeHtml(current)}</strong></span>` : ""}
     </div>
   ` : "";
-  const panelLocation = getLocation(panel?.locationId || panel?.location_id || "");
   elements.livePanel.innerHTML = `
     ${meterHtml}
-    <div class="monitoring-panel-mockup image-template" style="--panel-template-ratio:${escapeAttribute(template.aspectRatio)};" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
+    <div class="monitoring-panel-mockup image-template ar-overlay" style="--panel-template-ratio:${escapeAttribute(template.aspectRatio)};" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
       <img class="monitoring-panel-base-image" alt="" src="${escapeAttribute(template.backgroundImage)}">
       <div class="monitoring-panel-image-overlays">
-        ${renderMonitoringPanelCabinetLabel(panel, panelLocation)}
         ${renderMonitoringTemplateRows(template, channelByCircuit, panel)}
       </div>
     </div>
