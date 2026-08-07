@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-panel-label-on-face";
+const SITEWORKS_APP_VERSION = "20260806-storage-warning-banner";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -19122,7 +19122,13 @@ function showStorageFullWarning() {
   }
   if (storageFullWarningShown) return;
   storageFullWarningShown = true;
-  alert("The browser could not save this change because this iPad's browser storage is full. Try exporting a backup, then remove a few old photos or PDFs from equipment records.");
+  const message = "Browser storage is full";
+  const detail = "SiteWorks will keep trying cloud save. Remove old local photos or PDFs soon.";
+  if (typeof setSyncBanner === "function") {
+    setSyncBanner("stale", message, detail, 9000);
+  } else {
+    console.warn(`${message}: ${detail}`);
+  }
 }
 
 function shouldSuppressStorageFullWarning() {
