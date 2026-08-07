@@ -8628,8 +8628,8 @@ html[data-theme="dark"] .sync-banner small {
   position: relative;
   display: grid;
   min-height: 38px;
-  grid-template-columns: 58px minmax(150px, 1fr) 88px 42px;
-  gap: 8px;
+  grid-template-columns: 76px minmax(132px, 1fr) 88px 42px;
+  gap: 7px;
   align-items: center;
   padding: 2px 4px;
   border-radius: 2px;
@@ -8644,7 +8644,7 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-breaker-slot.right {
-  grid-template-columns: 42px 88px minmax(150px, 1fr) 58px;
+  grid-template-columns: 42px 88px minmax(132px, 1fr) 76px;
   padding: 2px 4px;
   text-align: right;
 }
@@ -8782,14 +8782,12 @@ html[data-theme="dark"] .sync-banner small {
   grid-column: 1;
   grid-row: 1;
   display: grid;
-  min-width: 56px;
+  min-width: 74px;
   min-height: 30px;
-  grid-template-columns: auto auto;
-  gap: 4px;
+  grid-template-columns: 30px 40px;
+  gap: 3px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #303333;
-  background: #111517;
   color: #ffffff;
   font-size: 0.84rem;
   font-weight: 900;
@@ -8799,14 +8797,31 @@ html[data-theme="dark"] .sync-banner small {
   line-height: 1;
 }
 
+.monitoring-breaker-slot > span:not(.monitoring-breaker-number) {
+  border: 1px solid #303333;
+  background: #111517;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.monitoring-breaker-number b,
+.monitoring-breaker-number small {
+  display: grid;
+  min-height: 30px;
+  place-items: center;
+  border: 1px solid #303333;
+  background: #111517;
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
 .monitoring-breaker-number b {
   font-size: 0.84rem;
   line-height: 1;
 }
 
 .monitoring-breaker-number small {
-  color: #cfd8d6;
-  font-size: 0.58rem;
+  color: #dce6e3;
+  font-size: 0.56rem;
   font-weight: 900;
   line-height: 1;
 }

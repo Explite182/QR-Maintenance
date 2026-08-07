@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-customer-rls-nonblocking";
+const SITEWORKS_APP_VERSION = "20260806-monitoring-schedule-poles";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3615,6 +3615,9 @@ document.addEventListener("change", (event) => {
   if (target.id === "monitoringChannelDevice" || target.id === "monitoringSimulatorDevice") {
     renderMonitoring();
   }
+  if (target.id === "monitoringChannelCircuit" || target.id === "monitoringChannelCircuitManual") {
+    applyMonitoringCircuitScheduleDefaults();
+  }
   if (target.id === "monitoringChannelPoles") {
     syncMonitoringPhaseSelectors();
   }
@@ -4094,6 +4097,77 @@ function monitoringPanelCircuitBreakerSize(panel = null, circuitNumber = "") {
   return value && value !== "-" ? value : "";
 }
 
+function monitoringPanelCircuitRecord(panel = null, circuitNumber = "") {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
+  const target = Number(String(circuitNumber || "").replace(/\D/g, ""));
+  return circuits.find((item) => {
+    const numbers = parseMonitoringCircuitNumbers(item.number || item.cct || item.circuit || "");
+    return numbers.includes(target);
+  }) || null;
+}
+
+function inferMonitoringPoleCountFromSchedule(panel = null, circuitNumber = "") {
+  const circuit = monitoringPanelCircuitRecord(panel, circuitNumber);
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
+  const numbers = parseMonitoringCircuitNumbers(circuit?.number || circuit?.cct || circuit?.circuit || circuitNumber);
+  const explicitCount = Math.max(...numbers.map(() => 1), numbers.length || 1);
+  const text = [
+    circuit?.poles,
+    circuit?.poleCount,
+    circuit?.breaker,
+    circuit?.breakerSize,
+    circuit?.amp,
+    circuit?.amps,
+    circuit?.amperage,
+    panelCircuitLoadText(circuit)
+  ].filter(Boolean).join(" ").toLowerCase();
+  const poleMatch = text.match(/\b([123])\s*(?:p|pole|poles)\b/);
+  if (poleMatch) return Math.max(1, Math.min(3, Number(poleMatch[1])));
+  if (explicitCount > 1) return Math.max(1, Math.min(3, explicitCount));
+
+  const baseNumber = Number(String(circuitNumber || "").replace(/\D/g, ""));
+  if (!baseNumber || !circuit) return 1;
+  const baseBreaker = String(circuit.breaker || circuit.breakerSize || circuit.amp || circuit.amps || circuit.amperage || "").trim().toLowerCase();
+  const baseLabel = String(panelCircuitLoadText(circuit) || circuit.description || circuit.loadServed || "").trim().toLowerCase();
+  if (!baseBreaker || !baseLabel || baseBreaker === "-" || baseLabel.includes("spare")) return 1;
+
+  let count = 1;
+  for (let offset = 2; offset <= 4; offset += 2) {
+    const next = circuits.find((item) => {
+      const itemNumbers = parseMonitoringCircuitNumbers(item.number || item.cct || item.circuit || "");
+      return itemNumbers.includes(baseNumber + offset);
+    });
+    const nextBreaker = String(next?.breaker || next?.breakerSize || next?.amp || next?.amps || next?.amperage || "").trim().toLowerCase();
+    const nextLabel = String(panelCircuitLoadText(next) || next?.description || next?.loadServed || "").trim().toLowerCase();
+    if (nextBreaker === baseBreaker && nextLabel === baseLabel) count += 1;
+    else break;
+  }
+  return Math.max(1, Math.min(3, count));
+}
+
+function expandMonitoringPhysicalChannels(value = "", poleCount = 1) {
+  const channels = monitoringEngine()?.parseList ? monitoringEngine().parseList(value) : String(value || "").split(/[\s,;/]+/).filter(Boolean);
+  const count = Math.max(1, Math.min(3, Number(poleCount) || 1));
+  if (channels.length === 1 && count > 1 && /^\d+$/.test(channels[0])) {
+    const start = Number(channels[0]);
+    return Array.from({ length: count }, (_, index) => String(start + index));
+  }
+  return channels;
+}
+
+function applyMonitoringCircuitScheduleDefaults() {
+  const elements = monitoringElements();
+  const device = normalizeMonitoringDevice(getMonitoringDevice(elements.channelDevice?.value));
+  const panel = device ? getAsset(device.panelAssetId) : null;
+  const circuitNumber = String(elements.channelCircuit?.value || elements.channelCircuitManual?.value || "").trim();
+  if (!panel || !circuitNumber) return;
+  const poleCount = inferMonitoringPoleCountFromSchedule(panel, circuitNumber);
+  if (elements.channelPoles) elements.channelPoles.value = String(poleCount);
+  syncMonitoringPhaseSelectors();
+}
+
 function monitoringMainMeterValue(device = null, names = []) {
   for (const name of names) {
     const value = device?.[name] ?? device?.telemetry?.[name] ?? device?.latestTelemetry?.[name];
@@ -4381,13 +4455,15 @@ async function handleMonitoringChannelSubmit(form) {
   }
   const physicalChannel = String(elements.channelNumber?.value || "").trim();
   const circuitNumber = String(elements.channelCircuit?.value || elements.channelCircuitManual?.value || physicalChannel || "").trim();
-  const poleCount = Math.max(1, Number(elements.channelPoles?.value || 1));
+  const schedulePoleCount = inferMonitoringPoleCountFromSchedule(getAsset(device.panelAssetId), circuitNumber);
+  const poleCount = Math.max(1, Math.min(3, Number(schedulePoleCount || elements.channelPoles?.value || 1)));
   const sourcePhases = getMonitoringChannelSourcePhases(elements, poleCount);
   if (!circuitNumber || !physicalChannel) {
     if (elements.channelStatus) elements.channelStatus.textContent = "Circuit and channel are required.";
     return;
   }
-  const physicalChannels = monitoringEngine()?.parseList ? monitoringEngine().parseList(physicalChannel) : physicalChannel.split(/[\s,;/]+/).filter(Boolean);
+  const physicalChannels = expandMonitoringPhysicalChannels(physicalChannel, poleCount);
+  const physicalChannelList = physicalChannels.join(",");
   const editingChannel = editingMonitoringChannelId ? getMonitoringChannel(editingMonitoringChannelId) : null;
   const editingGroupId = editingChannel?.breakerGroupId || editingChannel?.id || "";
   const duplicate = state.monitoringChannels.find(channel => {
@@ -4404,7 +4480,7 @@ async function handleMonitoringChannelSubmit(form) {
       deviceId: device.id,
       panelAssetId: device.panelAssetId,
       circuitNumber,
-      physicalChannel,
+      physicalChannel: physicalChannelList,
       sourcePhases,
       poleCount,
       alarmDelaySeconds: Math.max(0, Number(elements.channelDelay?.value || MONITORING_DEFAULT_DELAY_SECONDS)),
@@ -4416,7 +4492,7 @@ async function handleMonitoringChannelSubmit(form) {
       deviceId: device.id,
       panelAssetId: device.panelAssetId,
       circuitNumber,
-      physicalChannel,
+      physicalChannel: physicalChannelList,
       sourcePhase: sourcePhases[0] || "A",
       sourcePhases,
       poleCount,
@@ -4451,7 +4527,7 @@ async function handleMonitoringChannelSubmit(form) {
       message: `Channel ${channel.physicalChannel} mapped to circuit ${channel.circuitNumber || circuitNumber}.`
     });
   });
-  addActivity(replacedChannels.length ? "Monitoring channel updated" : "Monitoring channel mapped", `${device.name} channel ${physicalChannel} -> circuit ${circuitNumber}`);
+  addActivity(replacedChannels.length ? "Monitoring channel updated" : "Monitoring channel mapped", `${device.name} channel ${physicalChannelList} -> circuit ${circuitNumber}`);
   const replacedChannelIds = replacedChannels.map(channel => channel.id).filter(Boolean);
   editingMonitoringChannelId = "";
   form.reset();
