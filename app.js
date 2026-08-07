@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-ipad-panel-fit";
+const SITEWORKS_APP_VERSION = "20260807-panel-schedule-groups";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4063,6 +4063,39 @@ function parseMonitoringCircuitNumbers(value = "") {
     .filter(number => Number.isInteger(number) && number > 0);
 }
 
+function findPanelScheduleCircuit(circuits = [], circuitNumber = "") {
+  const target = Number(String(circuitNumber || "").replace(/\D/g, ""));
+  const targetText = String(circuitNumber || "").trim();
+  return circuits.find((item) => {
+    const rawNumber = String(item?.number || item?.cct || item?.circuit || "").trim();
+    if (target && parseMonitoringCircuitNumbers(rawNumber).includes(target)) return true;
+    return rawNumber === targetText;
+  }) || null;
+}
+
+function buildPanelCircuitMap(circuits = []) {
+  const byNumber = new Map();
+  circuits.forEach((circuit) => {
+    const rawNumber = String(circuit?.number || circuit?.cct || circuit?.circuit || "").trim();
+    const numbers = parseMonitoringCircuitNumbers(rawNumber);
+    if (!numbers.length && rawNumber) {
+      byNumber.set(rawNumber, circuit);
+      return;
+    }
+    numbers.forEach((number) => {
+      const key = String(number);
+      if (!byNumber.has(key)) {
+        byNumber.set(key, {
+          ...circuit,
+          number: key,
+          groupedNumber: rawNumber
+        });
+      }
+    });
+  });
+  return byNumber;
+}
+
 function monitoringPanelCircuitCount(panel = null, channels = []) {
   const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
   const scheduledCount = Number(schedule.circuitCount || 0);
@@ -4087,14 +4120,14 @@ function monitoringChannelByCircuitMap(channels = []) {
 function monitoringPanelCircuitLabel(panel = null, circuitNumber = "") {
   const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
   const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
-  const circuit = circuits.find(item => String(item.number || item.cct || item.circuit || "").trim() === String(circuitNumber).trim());
+  const circuit = findPanelScheduleCircuit(circuits, circuitNumber);
   return panelCircuitLoadText(circuit) || circuit?.description || circuit?.loadServed || "";
 }
 
 function monitoringPanelCircuitBreakerSize(panel = null, circuitNumber = "") {
   const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
   const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
-  const circuit = circuits.find(item => String(item.number || item.cct || item.circuit || "").trim() === String(circuitNumber).trim());
+  const circuit = findPanelScheduleCircuit(circuits, circuitNumber);
   const value = String(circuit?.breaker || circuit?.breakerSize || circuit?.amp || circuit?.amps || circuit?.amperage || "").trim();
   return value && value !== "-" ? value : "";
 }
@@ -4107,6 +4140,26 @@ function monitoringPanelCircuitRecord(panel = null, circuitNumber = "") {
     const numbers = parseMonitoringCircuitNumbers(item.number || item.cct || item.circuit || "");
     return numbers.includes(target);
   }) || null;
+}
+
+function monitoringPanelCircuitGroupNumbers(panel = null, circuitNumber = "", side = "left") {
+  const circuit = monitoringPanelCircuitRecord(panel, circuitNumber);
+  const wantOdd = side === "left";
+  return parseMonitoringCircuitNumbers(circuit?.number || circuit?.cct || circuit?.circuit || circuitNumber)
+    .filter((number) => wantOdd ? number % 2 === 1 : number % 2 === 0)
+    .sort((a, b) => a - b);
+}
+
+function monitoringPanelCircuitGroupSpan(panel = null, circuitNumber = "", side = "left") {
+  const groupNumbers = monitoringPanelCircuitGroupNumbers(panel, circuitNumber, side);
+  if (groupNumbers.length < 2) return 1;
+  return Math.max(1, Math.floor((groupNumbers.at(-1) - groupNumbers[0]) / 2) + 1);
+}
+
+function isFirstMonitoringPanelGroupCircuit(panel = null, circuitNumber = "", side = "left") {
+  const target = Number(String(circuitNumber || "").replace(/\D/g, ""));
+  const groupNumbers = monitoringPanelCircuitGroupNumbers(panel, circuitNumber, side);
+  return groupNumbers.length < 2 || groupNumbers[0] === target;
 }
 
 function inferMonitoringPoleCountFromSchedule(panel = null, circuitNumber = "") {
@@ -5394,13 +5447,15 @@ function renderMonitoringTemplateCircuit(template, circuitNumber, channel = null
 function renderMonitoringBreakerColumn(circuitNumbers = [], channelByCircuit, panel = null, side = "left") {
   const renderedChannelIds = new Set();
   return circuitNumbers.map((circuitNumber) => {
+    if (!isFirstMonitoringPanelGroupCircuit(panel, circuitNumber, side)) return "";
     const channel = channelByCircuit.get(circuitNumber);
     if (channel) {
       const channelKey = channel.id || `${channel.deviceId}-${channel.physicalChannel}-${channel.circuitNumber}`;
       if (renderedChannelIds.has(channelKey)) return "";
       renderedChannelIds.add(channelKey);
     }
-    const span = channel ? monitoringBreakerSpanForSide(channel, side) : 1;
+    const scheduleSpan = monitoringPanelCircuitGroupSpan(panel, circuitNumber, side);
+    const span = Math.max(scheduleSpan, channel ? monitoringBreakerSpanForSide(channel, side) : 1);
     return renderMonitoringBreakerSlot(circuitNumber, channel, panel, side, span);
   }).join("");
 }
@@ -12777,8 +12832,7 @@ function parsePanelSchedulePlainCsvRows(records) {
 function getNextPanelCircuitNumber() {
   if (!els.panelScheduleCircuitRows) return "1";
   const usedNumbers = [...els.panelScheduleCircuitRows.querySelectorAll('[name="circuitNumber"]')]
-    .map((input) => Number(input.value))
-    .filter((value) => Number.isFinite(value) && value > 0);
+    .flatMap((input) => parseMonitoringCircuitNumbers(input.value));
   const maxNumber = usedNumbers.length ? Math.max(...usedNumbers) : 0;
   return String(maxNumber + 1);
 }
@@ -12990,7 +13044,7 @@ function getCurrentPanelScheduleForPrint(asset) {
 }
 
 function buildPanelSchedulePrintRows(circuits = [], circuitCount = 42) {
-  const byNumber = new Map(circuits.map((circuit) => [String(circuit.number || "").trim(), circuit]));
+  const byNumber = buildPanelCircuitMap(circuits);
   const rowCount = normalizePanelCircuitCount(circuitCount) / 2;
   return Array.from({ length: rowCount }, (_, index) => {
     const leftNumber = String(index * 2 + 1);
@@ -17505,8 +17559,10 @@ function applyStructuredState(rows, updatedAt = "") {
   const localCurrentUserId = state.currentUserId || "";
   const localWorkOrders = state.workOrders || [];
   const nextAssets = rows.assets.map(assetFromStructuredRow);
+  const mergedAssetResult = mergeStructuredAssetsWithLocal(nextAssets, state.assets || []);
+  const mergedAssets = mergedAssetResult.assets;
   const historyByAsset = groupStructuredHistoryByAsset(rows.history);
-  nextAssets.forEach((asset) => {
+  mergedAssets.forEach((asset) => {
     if (!Array.isArray(asset.history) || !asset.history.length) {
       asset.history = historyByAsset.get(asset.id) || [];
     }
@@ -17517,7 +17573,7 @@ function applyStructuredState(rows, updatedAt = "") {
     customers: rows.customers.map(customerFromStructuredRow),
     locations: rows.locations.map(locationFromStructuredRow),
     templates: rows.templates.map(templateFromStructuredRow),
-    assets: nextAssets,
+    assets: mergedAssets,
     workOrders: mergeStructuredWorkOrdersWithLocalPublicReports(
       rows.workOrders.map(workOrderFromStructuredRow),
       localWorkOrders
@@ -17546,6 +17602,9 @@ function applyStructuredState(rows, updatedAt = "") {
   selectedId = getAssetIdFromUrl() || selectedId;
   persistLocalStateOnly(false);
   applyingSharedState = false;
+  if (mergedAssetResult.keptLocalChanges) {
+    scheduleStructuredDataSync(0);
+  }
   render();
   window.setTimeout(syncLoginQrReportPrompt, 0);
 }
@@ -17589,6 +17648,28 @@ function mergeStructuredSiteMapsWithLocal(structuredSiteMaps = [], localSiteMaps
     }
   });
   return [...merged.values()];
+}
+
+function mergeStructuredAssetsWithLocal(structuredAssets = [], localAssets = []) {
+  const merged = new Map();
+  let keptLocalChanges = false;
+  structuredAssets.forEach((asset) => {
+    if (!asset?.id) return;
+    merged.set(asset.id, asset);
+  });
+  localAssets.forEach((localAsset) => {
+    if (!localAsset?.id) return;
+    const remoteAsset = merged.get(localAsset.id);
+    if (!remoteAsset) return;
+    if (mapUpdatedTime(localAsset) > mapUpdatedTime(remoteAsset)) {
+      merged.set(localAsset.id, localAsset);
+      keptLocalChanges = true;
+    }
+  });
+  return {
+    assets: [...merged.values()],
+    keptLocalChanges
+  };
 }
 
 function structuredPayload(row) {
