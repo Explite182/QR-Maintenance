@@ -4165,6 +4165,10 @@ function applyMonitoringCircuitScheduleDefaults() {
   if (!panel || !circuitNumber) return;
   const poleCount = inferMonitoringPoleCountFromSchedule(panel, circuitNumber);
   if (elements.channelPoles) elements.channelPoles.value = String(poleCount);
+  if (elements.channelNumber) {
+    const expandedChannels = expandMonitoringPhysicalChannels(elements.channelNumber.value, poleCount);
+    if (expandedChannels.length > 1) elements.channelNumber.value = expandedChannels.join(",");
+  }
   syncMonitoringPhaseSelectors();
 }
 
@@ -4942,6 +4946,7 @@ function renderMonitoring() {
     elements.simulatorDevice.value = simulatorDeviceStillVisible ? selectedSimulatorDevice : (devices[0]?.id || "");
   }
   renderMonitoringCircuitOptions(elements.channelDevice?.value || devices[0]?.id || "");
+  if (!editingMonitoringChannelId) applyMonitoringCircuitScheduleDefaults();
   syncMonitoringPhaseSelectors();
   const channelSubmitButton = elements.channelForm?.querySelector('button[type="submit"]');
   if (channelSubmitButton) channelSubmitButton.textContent = editingMonitoringChannelId ? "Update Channel" : "Map Channel";
@@ -4983,6 +4988,7 @@ function renderMonitoringCircuitOptions(deviceId) {
   const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
   const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
   if (!elements.channelCircuit) return;
+  const selectedCircuit = String(elements.channelCircuit.value || "").trim();
   if (!circuits.length && !elements.channelCircuitManualWrap && elements.channelCircuit.insertAdjacentHTML) {
     const label = document.createElement("label");
     label.id = "monitoringChannelCircuitManualWrap";
@@ -5002,6 +5008,9 @@ function renderMonitoringCircuitOptions(deviceId) {
         return `<option value="${escapeHtml(cct)}">${escapeHtml(label || cct)}</option>`;
       }).join("")
     : `<option value="">Manual circuit entry or use physical channel</option>`;
+  if (selectedCircuit && [...elements.channelCircuit.options].some((option) => option.value === selectedCircuit)) {
+    elements.channelCircuit.value = selectedCircuit;
+  }
   elements.channelCircuit.disabled = !circuits.length;
   elements.channelCircuitManualWrap?.classList.toggle("hidden", Boolean(circuits.length));
   if (elements.channelCircuitManual) {
