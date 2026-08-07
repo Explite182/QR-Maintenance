@@ -8537,6 +8537,12 @@ html[data-theme="dark"] .sync-banner small {
     0 14px 34px rgba(15, 23, 42, 0.18);
 }
 
+.monitoring-panel-mockup.generated-template {
+  --breaker-row-height: clamp(24px, calc(760px / var(--monitoring-panel-rows, 21)), 38px);
+  --breaker-row-gap: clamp(3px, calc(92px / var(--monitoring-panel-rows, 21)), 5px);
+  min-width: 980px;
+}
+
 .monitoring-panel-cabinet-label {
   position: absolute;
   z-index: 2;
@@ -8593,8 +8599,8 @@ html[data-theme="dark"] .sync-banner small {
 .monitoring-breaker-column {
   position: relative;
   display: grid;
-  grid-auto-rows: 38px;
-  gap: 5px;
+  grid-auto-rows: var(--breaker-row-height, 38px);
+  gap: var(--breaker-row-gap, 5px);
   align-content: start;
   padding-top: 116px;
 }
@@ -8632,13 +8638,45 @@ html[data-theme="dark"] .sync-banner small {
 .monitoring-breaker-slot {
   position: relative;
   display: grid;
-  min-height: 38px;
+  min-height: var(--breaker-row-height, 38px);
   grid-template-columns: 76px minmax(132px, 1fr) 88px 42px;
   gap: 7px;
   align-items: center;
   padding: 2px 4px;
   border-radius: 2px;
   text-align: left;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot {
+  min-height: var(--breaker-row-height, 38px);
+  height: var(--breaker-row-height, 38px);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.energized,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.suspected-trip,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.open,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.upstream-power-loss {
+  background: rgba(210, 211, 204, 0.18);
+  border-left-width: 1px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-load-label,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-number,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-handle,
+.monitoring-panel-mockup.generated-template .monitoring-channel-state,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-blank-fill {
+  min-height: calc(var(--breaker-row-height, 38px) - 8px);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-load-label {
+  display: grid;
+  align-items: center;
+  padding-block: 4px;
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-handle {
+  height: calc(var(--breaker-row-height, 38px) - 8px);
 }
 
 .monitoring-breaker-slot.multi-pole {

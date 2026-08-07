@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-panel-template-align";
+const SITEWORKS_APP_VERSION = "20260807-generated-panel-monitor";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4190,12 +4190,12 @@ const MONITORING_PANEL_TEMPLATES = {
     circuitCount: 42,
     aspectRatio: "3 / 2",
     rows: {
-      left: { startY: 21.1, rowStep: 3.12 },
-      right: { startY: 21.1, rowStep: 3.12 }
+      left: { startY: 21.32, rowStep: 3.12 },
+      right: { startY: 21.32, rowStep: 3.12 }
     },
     zones: {
       left: {
-        row: { x: 6.82, width: 30.45, height: 3.05 },
+        row: { x: 6.82, width: 30.45, height: 2.78 },
         number: { x: 6.92, y: 5, width: 1.45, height: 90 },
         amps: { x: 28.72, y: 0, width: 2.0, height: 28 },
         label: { x: 9.1, width: 15.65 },
@@ -4205,7 +4205,7 @@ const MONITORING_PANEL_TEMPLATES = {
         temperature: { x: 34.15, width: 2.55 }
       },
       right: {
-        row: { x: 58.7, width: 25.65, height: 3.05 },
+        row: { x: 58.7, width: 25.65, height: 2.78 },
         status: { x: 58.78, width: 1.0 },
         breaker: { x: 62.22, width: 2.25 },
         label: { x: 70.4, width: 11.75 },
@@ -5244,8 +5244,9 @@ function renderMonitoringLivePanel(devices) {
   const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
   const circuitCount = monitoringPanelCircuitCount(panel, channels);
   const channelByCircuit = monitoringChannelByCircuitMap(channels);
-  const template = getMonitoringPanelTemplate(panel);
-  template.circuitCount = circuitCount;
+  const rowCount = Math.ceil(circuitCount / 2);
+  const oddCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 1).filter(number => number <= circuitCount);
+  const evenCircuits = Array.from({ length: rowCount }, (_, index) => (index + 1) * 2).filter(number => number <= circuitCount);
   const voltage = monitoringMainMeterValue(primaryDevice, ["mainVoltage", "main_voltage", "voltage", "lineVoltage", "line_voltage"]);
   const current = monitoringMainMeterValue(primaryDevice, ["mainCurrent", "main_current", "current", "loadCurrent", "load_current", "amps", "amperage"]);
   const meterHtml = voltage || current ? `
@@ -5256,11 +5257,20 @@ function renderMonitoringLivePanel(devices) {
   ` : "";
   elements.livePanel.innerHTML = `
     ${meterHtml}
-    <div class="monitoring-panel-mockup image-template ar-overlay" style="--panel-template-ratio:${escapeAttribute(template.aspectRatio)};" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
-      <img class="monitoring-panel-base-image" alt="" src="${escapeAttribute(template.backgroundImage)}">
-      <div class="monitoring-panel-image-overlays">
-        ${renderMonitoringPanelTemplateLabels(panel)}
-        ${renderMonitoringTemplateRows(template, channelByCircuit, panel)}
+    <div class="monitoring-panel-mockup generated-template" style="--monitoring-panel-rows:${escapeAttribute(rowCount)};" aria-label="${escapeAttribute(panel?.name || "Panel")} live monitor layout">
+      ${renderMonitoringPanelCabinetLabel(panel, getLocation(panel?.locationId || panel?.location_id || ""))}
+      <div class="monitoring-panel-rail-label" aria-hidden="true">
+        <span>Odd circuits</span>
+        <span>Even circuits</span>
+      </div>
+      <div class="monitoring-panel-board">
+        <div class="monitoring-breaker-column left">
+          ${renderMonitoringBreakerColumn(oddCircuits, channelByCircuit, panel, "left")}
+        </div>
+        ${renderMonitoringPanelCenter(panel, circuitCount)}
+        <div class="monitoring-breaker-column right">
+          ${renderMonitoringBreakerColumn(evenCircuits, channelByCircuit, panel, "right")}
+        </div>
       </div>
     </div>
   `;
@@ -5310,6 +5320,35 @@ function renderMonitoringPanelTemplateLabels(panel = null) {
     </div>
     <div class="monitoring-panel-center-nameplate">${escapeHtml(centerTitle)}</div>
     ${mainBreakerText ? `<div class="monitoring-panel-main-breaker-size">${escapeHtml(mainBreakerText)}</div>` : ""}
+  `;
+}
+
+function renderMonitoringPanelCenter(panel = null, circuitCount = 42) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const panelTitle = String(schedule.panelName || panel?.name || "Panel").replace(/^Electrical\s+/i, "");
+  const voltage = schedule.voltage || panel?.voltage || "Voltage not entered";
+  const mainBreaker = monitoringMainBreakerLabel(panel);
+  const mainBreakerText = mainBreaker && mainBreaker !== "Main" ? mainBreaker : "Main";
+  const fedFrom = schedule.fedFrom || schedule.fed_from || panel?.fedFrom || panel?.fed_from || "";
+  return `
+    <div class="monitoring-panel-center">
+      <span class="monitoring-fed-label">${fedFrom ? `Fed from<br>${escapeHtml(fedFrom)}` : "&nbsp;"}</span>
+      <span class="monitoring-main-disconnect-label">Main disconnect</span>
+      <span class="monitoring-main-disconnect">
+        <strong>${escapeHtml(mainBreakerText)}</strong>
+        <i aria-hidden="true"></i>
+      </span>
+      <span class="monitoring-service-label">
+        Suitable for use as service equipment
+        <small>${escapeHtml(voltage)}</small>
+        <small>${escapeHtml(`${mainBreakerText} main | ${circuitCount} circuits`)}</small>
+      </span>
+      <span class="monitoring-danger-label"><b>Danger</b><small>Arc flash and shock hazard</small></span>
+      <span class="monitoring-panel-nameplate">${escapeHtml(panelTitle)}</span>
+      <span class="monitoring-phase-card" aria-label="Phase designation">
+        <b>A</b><b>B</b><b>C</b>
+      </span>
+    </div>
   `;
 }
 
