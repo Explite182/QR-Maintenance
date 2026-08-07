@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-panel-monitor-metal";
+const SITEWORKS_APP_VERSION = "20260807-panel-image-overlays";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -121,6 +121,7 @@ let workOrderNumberFilter = "all";
 let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
 let selectedMonitoringPanelId = "";
+let selectedMonitoringBreakerCircuit = "";
 let assetQuery = "";
 let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
@@ -3551,6 +3552,7 @@ document.addEventListener("click", (event) => {
   const breakerDetail = event.target.closest("[data-monitoring-breaker-detail]");
   if (breakerDetail) {
     event.preventDefault();
+    selectedMonitoringBreakerCircuit = breakerDetail.dataset.monitoringBreakerCircuit || "";
     showMonitoringBreakerDetail(breakerDetail.dataset.monitoringBreakerDetail, breakerDetail.dataset.monitoringBreakerCircuit);
     return;
   }
@@ -4175,6 +4177,85 @@ function applyMonitoringCircuitScheduleDefaults() {
 function monitoringMainMeterValue(device = null, names = []) {
   for (const name of names) {
     const value = device?.[name] ?? device?.telemetry?.[name] ?? device?.latestTelemetry?.[name];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
+  }
+  return "";
+}
+
+const MONITORING_PANEL_TEMPLATES = {
+  "panel-c-42": {
+    id: "panel-c-42",
+    name: "Panel C 42 circuit",
+    backgroundImage: "panel-monitor-background.png",
+    circuitCount: 42,
+    aspectRatio: "3 / 2",
+    rows: {
+      left: { startY: 21.2, rowStep: 3.12 },
+      right: { startY: 21.2, rowStep: 3.12 }
+    },
+    zones: {
+      left: {
+        row: { x: 5.7, width: 31.5, height: 2.65 },
+        number: { x: 5.7, width: 2.05 },
+        amps: { x: 7.88, width: 2.9 },
+        label: { x: 11.1, width: 13.8 },
+        breaker: { x: 23.25, width: 5.6 },
+        status: { x: 28.95, width: 2.15 },
+        voltage: { x: 31.45, width: 2.55 },
+        temperature: { x: 34.15, width: 2.55 }
+      },
+      right: {
+        row: { x: 61.0, width: 31.7, height: 2.65 },
+        status: { x: 61.0, width: 2.15 },
+        breaker: { x: 63.4, width: 5.6 },
+        label: { x: 70.0, width: 17.4 },
+        number: { x: 87.9, width: 2.05 },
+        amps: { x: 90.1, width: 2.9 },
+        voltage: { x: 56.1, width: 2.55 },
+        temperature: { x: 58.8, width: 2.55 }
+      }
+    }
+  }
+};
+
+function getMonitoringPanelTemplate(panel = null) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const count = normalizePanelCircuitCount(schedule.circuitCount || 42);
+  return {
+    ...MONITORING_PANEL_TEMPLATES["panel-c-42"],
+    circuitCount: count || 42
+  };
+}
+
+function monitoringTemplateCircuitPosition(template, circuitNumber) {
+  const number = Number(circuitNumber);
+  const side = number % 2 === 0 ? "right" : "left";
+  const rowIndex = Math.floor((number - 1) / 2);
+  const sideRows = template.rows[side] || template.rows.left;
+  return {
+    side,
+    y: sideRows.startY + rowIndex * sideRows.rowStep,
+    height: template.zones[side].row.height
+  };
+}
+
+function monitoringOverlayStyle(zone = {}, y = 0, height = 2.6) {
+  const zoneHeight = zone.height || height;
+  return `left:${zone.x}%;top:${y}%;width:${zone.width}%;height:${zoneHeight}%;`;
+}
+
+function monitoringOverlayInnerStyle(rowZone = {}, zone = {}, height = 100) {
+  const rowX = Number(rowZone.x || 0);
+  const rowWidth = Math.max(1, Number(rowZone.width || 100));
+  const left = ((Number(zone.x || 0) - rowX) / rowWidth) * 100;
+  const width = (Number(zone.width || 0) / rowWidth) * 100;
+  const zoneHeight = zone.height || height;
+  return `left:${left}%;top:0%;width:${width}%;height:${zoneHeight}%;`;
+}
+
+function monitoringCircuitValue(channel = null, names = []) {
+  for (const name of names) {
+    const value = channel?.[name] ?? channel?.data?.[name] ?? channel?.telemetry?.[name] ?? channel?.latestTelemetry?.[name];
     if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
   }
   return "";
@@ -5151,7 +5232,8 @@ function renderMonitoringLivePanel(devices) {
   const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
   const circuitCount = monitoringPanelCircuitCount(panel, channels);
   const channelByCircuit = monitoringChannelByCircuitMap(channels);
-  const rowCount = Math.ceil(circuitCount / 2);
+  const template = getMonitoringPanelTemplate(panel);
+  template.circuitCount = circuitCount;
   const voltage = monitoringMainMeterValue(primaryDevice, ["mainVoltage", "main_voltage", "voltage", "lineVoltage", "line_voltage"]);
   const current = monitoringMainMeterValue(primaryDevice, ["mainCurrent", "main_current", "current", "loadCurrent", "load_current", "amps", "amperage"]);
   const meterHtml = voltage || current ? `
@@ -5160,42 +5242,14 @@ function renderMonitoringLivePanel(devices) {
       ${current ? `<span><small>Main current</small><strong>${escapeHtml(current)}</strong></span>` : ""}
     </div>
   ` : "";
-  const oddCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 1);
-  const evenCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 2);
   const panelLocation = getLocation(panel?.locationId || panel?.location_id || "");
   elements.livePanel.innerHTML = `
     ${meterHtml}
-    <div class="monitoring-panel-mockup" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
-      ${renderMonitoringPanelCabinetLabel(panel, panelLocation)}
-      <div class="monitoring-panel-rail-label"><span>Odd circuits</span><span>Even circuits</span></div>
-      <div class="monitoring-panel-board">
-        <div class="monitoring-breaker-column">
-          ${renderMonitoringBreakerColumn(oddCircuits, channelByCircuit, panel, "left")}
-        </div>
-        <div class="monitoring-panel-center" aria-hidden="true">
-          <span class="monitoring-fed-label">Fed from<br>MDP</span>
-          <span class="monitoring-main-disconnect-label">Main disconnect</span>
-          <span class="monitoring-main-disconnect">
-            <strong>${escapeHtml(monitoringMainBreakerLabel(panel))}</strong>
-            <i></i>
-          </span>
-          <span class="monitoring-service-label">
-            <b>Suitable for use as service equipment</b>
-            <small>${escapeHtml((isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel).voltage : "") || "Voltage not entered")}</small>
-            <small>Short circuit current rating: 10,000 AIC</small>
-          </span>
-          <span class="monitoring-danger-label">
-            <b>Danger</b>
-            <small>Arc flash and shock hazard</small>
-          </span>
-          <span class="monitoring-panel-nameplate">${escapeHtml((panel?.name || "Panel").replace(/^Electrical\s+/i, ""))}</span>
-          <span class="monitoring-phase-card">
-            <b>A</b><b>B</b><b>C</b>
-          </span>
-        </div>
-        <div class="monitoring-breaker-column">
-          ${renderMonitoringBreakerColumn(evenCircuits, channelByCircuit, panel, "right")}
-        </div>
+    <div class="monitoring-panel-mockup image-template" style="--panel-template-ratio:${escapeAttribute(template.aspectRatio)};" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
+      <img class="monitoring-panel-base-image" alt="" src="${escapeAttribute(template.backgroundImage)}">
+      <div class="monitoring-panel-image-overlays">
+        ${renderMonitoringPanelCabinetLabel(panel, panelLocation)}
+        ${renderMonitoringTemplateRows(template, channelByCircuit, panel)}
       </div>
     </div>
   `;
@@ -5223,6 +5277,45 @@ function monitoringMainBreakerLabel(panel = null) {
   const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
   const value = schedule.mainBreaker || schedule.main_breaker || panel?.mainBreaker || panel?.main_breaker || "";
   return value ? String(value) : "Main";
+}
+
+function renderMonitoringTemplateRows(template, channelByCircuit, panel = null) {
+  return Array.from({ length: template.circuitCount }, (_, index) => index + 1)
+    .map((circuitNumber) => renderMonitoringTemplateCircuit(template, circuitNumber, channelByCircuit.get(circuitNumber), panel))
+    .join("");
+}
+
+function renderMonitoringTemplateCircuit(template, circuitNumber, channel = null, panel = null) {
+  const position = monitoringTemplateCircuitPosition(template, circuitNumber);
+  const zones = template.zones[position.side];
+  const state = channel?.lastDerivedState || "not-monitored";
+  const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber).trim();
+  const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber);
+  const faceLabel = circuitLabel || "";
+  const tooltipLabel = [
+    `Circuit ${circuitNumber}`,
+    faceLabel || "No panel label saved",
+    breakerSize ? `Breaker ${breakerSize}` : "",
+    channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored"
+  ].filter(Boolean).join(" | ");
+  const voltage = monitoringCircuitValue(channel, ["voltage", "lineVoltage", "line_voltage"]);
+  const temperature = monitoringCircuitValue(channel, ["temperature", "temp", "temperatureF", "temperature_f"]);
+  const highTemp = Number(String(temperature).replace(/[^\d.-]/g, "")) >= 120;
+  const selectedClass = selectedMonitoringBreakerCircuit === String(circuitNumber) ? " selected" : "";
+  const tempClass = highTemp ? " high-temperature" : "";
+  const rowStyle = monitoringOverlayStyle(zones.row, position.y, position.height);
+  return `
+    <button type="button" class="monitoring-panel-overlay-row monitoring-channel-card ${monitoringStatusClass(state)} ${escapeAttribute(position.side)}${selectedClass}${tempClass}" data-monitoring-breaker-detail="${escapeAttribute(channel?.id || "")}" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}" style="${rowStyle}">
+      <span class="monitoring-overlay-number" style="${monitoringOverlayInnerStyle(zones.row, zones.number, 100)}">${escapeHtml(circuitNumber)}</span>
+      <span class="monitoring-overlay-amps" style="${monitoringOverlayInnerStyle(zones.row, zones.amps, 100)}">${breakerSize ? escapeHtml(breakerSize) : ""}</span>
+      <span class="monitoring-overlay-label" style="${monitoringOverlayInnerStyle(zones.row, zones.label, 100)}">${escapeHtml(faceLabel)}</span>
+      <span class="monitoring-overlay-breaker" style="${monitoringOverlayInnerStyle(zones.row, zones.breaker, 100)}"><i></i></span>
+      <span class="monitoring-overlay-status" aria-label="${escapeAttribute(channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored")}" style="${monitoringOverlayInnerStyle(zones.row, zones.status, 100)}"></span>
+      <span class="monitoring-overlay-voltage" style="${monitoringOverlayInnerStyle(zones.row, zones.voltage, 100)}">${voltage ? escapeHtml(voltage) : ""}</span>
+      <span class="monitoring-overlay-temperature" style="${monitoringOverlayInnerStyle(zones.row, zones.temperature, 100)}">${temperature ? escapeHtml(temperature) : ""}</span>
+      <em class="monitoring-breaker-tooltip">${escapeHtml(tooltipLabel)}</em>
+    </button>
+  `;
 }
 
 function renderMonitoringBreakerColumn(circuitNumbers = [], channelByCircuit, panel = null, side = "left") {
