@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-panel-monitor-background";
+const SITEWORKS_APP_VERSION = "20260806-panel-monitor-breaker-handles";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5050,6 +5050,7 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   const spanStyle = span > 1 ? ` style="grid-row: span ${span};"` : "";
   const multiClass = span > 1 ? " multi-pole" : "";
   const content = `
+    <i class="monitoring-breaker-handle" aria-hidden="true"><span></span></i>
     <span>Circuit ${escapeHtml(circuitNumber)}</span>
     <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
     <small class="monitoring-breaker-load-label">${escapeHtml(faceLabel)}</small>
