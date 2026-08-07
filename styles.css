@@ -9600,9 +9600,11 @@ html[data-theme="dark"] .phase-toggle-row label {
 }
 
 .monitoring-panel-mockup.image-template .monitoring-overlay-amps {
-  background: rgba(238, 235, 224, 0.94);
-  color: #11181d;
-  font-size: clamp(0.42rem, 0.58vw, 0.72rem);
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: clamp(0.32rem, 0.42vw, 0.58rem);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
 }
 
 .monitoring-panel-mockup.image-template .monitoring-overlay-label {
@@ -9760,13 +9762,13 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-pane
 }
 
 html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-label,
-html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-amps,
 html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-voltage,
 html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-temperature {
   color: #11181d;
 }
 
-html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-number {
+html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-number,
+html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-amps {
   color: #ffffff;
 }
 
@@ -9799,7 +9801,6 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
 }
 
-.monitoring-panel-mockup.image-template .monitoring-overlay-amps,
 .monitoring-panel-mockup.image-template .monitoring-overlay-voltage,
 .monitoring-panel-mockup.image-template .monitoring-overlay-temperature {
   display: none !important;
@@ -9899,4 +9900,8 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
 
 html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-number {
   color: rgba(255, 255, 255, 0.95);
+}
+
+html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-overlay-amps {
+  color: rgba(255, 255, 255, 0.92);
 }

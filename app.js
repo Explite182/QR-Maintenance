@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-panel-ar-overlays";
+const SITEWORKS_APP_VERSION = "20260807-panel-template-overlays";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4190,27 +4190,27 @@ const MONITORING_PANEL_TEMPLATES = {
     circuitCount: 42,
     aspectRatio: "3 / 2",
     rows: {
-      left: { startY: 21.2, rowStep: 3.12 },
-      right: { startY: 21.2, rowStep: 3.12 }
+      left: { startY: 21.05, rowStep: 3.12 },
+      right: { startY: 21.05, rowStep: 3.12 }
     },
     zones: {
       left: {
-        row: { x: 5.7, width: 31.5, height: 2.65 },
-        number: { x: 5.7, width: 2.05 },
-        amps: { x: 7.88, width: 2.9 },
-        label: { x: 11.1, width: 13.8 },
-        breaker: { x: 23.25, width: 5.6 },
-        status: { x: 28.95, width: 2.15 },
+        row: { x: 6.95, width: 30.35, height: 2.65 },
+        number: { x: 6.95, y: 0, width: 1.65, height: 52 },
+        amps: { x: 6.95, y: 50, width: 1.65, height: 50 },
+        label: { x: 9.15, width: 15.35 },
+        breaker: { x: 25.35, width: 10.45 },
+        status: { x: 36.15, width: 1.0 },
         voltage: { x: 31.45, width: 2.55 },
         temperature: { x: 34.15, width: 2.55 }
       },
       right: {
-        row: { x: 61.0, width: 31.7, height: 2.65 },
-        status: { x: 61.0, width: 2.15 },
-        breaker: { x: 63.4, width: 5.6 },
-        label: { x: 70.0, width: 17.4 },
-        number: { x: 87.9, width: 2.05 },
-        amps: { x: 90.1, width: 2.9 },
+        row: { x: 58.65, width: 25.65, height: 2.65 },
+        status: { x: 58.65, width: 1.0 },
+        breaker: { x: 59.6, width: 10.2 },
+        label: { x: 70.6, width: 11.65 },
+        number: { x: 82.85, y: 0, width: 1.45, height: 52 },
+        amps: { x: 82.85, y: 50, width: 1.45, height: 50 },
         voltage: { x: 56.1, width: 2.55 },
         temperature: { x: 58.8, width: 2.55 }
       }
@@ -4248,9 +4248,10 @@ function monitoringOverlayInnerStyle(rowZone = {}, zone = {}, height = 100) {
   const rowX = Number(rowZone.x || 0);
   const rowWidth = Math.max(1, Number(rowZone.width || 100));
   const left = ((Number(zone.x || 0) - rowX) / rowWidth) * 100;
+  const top = Number(zone.y || 0);
   const width = (Number(zone.width || 0) / rowWidth) * 100;
   const zoneHeight = zone.height || height;
-  return `left:${left}%;top:0%;width:${width}%;height:${zoneHeight}%;`;
+  return `left:${left}%;top:${top}%;width:${width}%;height:${zoneHeight}%;`;
 }
 
 function monitoringCircuitValue(channel = null, names = []) {
