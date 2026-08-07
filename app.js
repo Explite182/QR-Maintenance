@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-panel-template-overlays";
+const SITEWORKS_APP_VERSION = "20260807-panel-template-align";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4190,27 +4190,27 @@ const MONITORING_PANEL_TEMPLATES = {
     circuitCount: 42,
     aspectRatio: "3 / 2",
     rows: {
-      left: { startY: 21.05, rowStep: 3.12 },
-      right: { startY: 21.05, rowStep: 3.12 }
+      left: { startY: 21.1, rowStep: 3.12 },
+      right: { startY: 21.1, rowStep: 3.12 }
     },
     zones: {
       left: {
-        row: { x: 6.95, width: 30.35, height: 2.65 },
-        number: { x: 6.95, y: 0, width: 1.65, height: 52 },
-        amps: { x: 6.95, y: 50, width: 1.65, height: 50 },
-        label: { x: 9.15, width: 15.35 },
-        breaker: { x: 25.35, width: 10.45 },
-        status: { x: 36.15, width: 1.0 },
+        row: { x: 6.82, width: 30.45, height: 2.65 },
+        number: { x: 6.92, y: 5, width: 1.45, height: 90 },
+        amps: { x: 29.08, y: 6, width: 2.0, height: 34 },
+        label: { x: 9.1, width: 15.65 },
+        breaker: { x: 29.18, width: 2.25 },
+        status: { x: 36.1, width: 1.0 },
         voltage: { x: 31.45, width: 2.55 },
         temperature: { x: 34.15, width: 2.55 }
       },
       right: {
-        row: { x: 58.65, width: 25.65, height: 2.65 },
-        status: { x: 58.65, width: 1.0 },
-        breaker: { x: 59.6, width: 10.2 },
-        label: { x: 70.6, width: 11.65 },
-        number: { x: 82.85, y: 0, width: 1.45, height: 52 },
-        amps: { x: 82.85, y: 50, width: 1.45, height: 50 },
+        row: { x: 58.7, width: 25.65, height: 2.65 },
+        status: { x: 58.78, width: 1.0 },
+        breaker: { x: 62.22, width: 2.25 },
+        label: { x: 70.4, width: 11.75 },
+        number: { x: 82.85, y: 5, width: 1.42, height: 90 },
+        amps: { x: 62.32, y: 6, width: 2.0, height: 34 },
         voltage: { x: 56.1, width: 2.55 },
         temperature: { x: 58.8, width: 2.55 }
       }
@@ -5259,6 +5259,7 @@ function renderMonitoringLivePanel(devices) {
     <div class="monitoring-panel-mockup image-template ar-overlay" style="--panel-template-ratio:${escapeAttribute(template.aspectRatio)};" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
       <img class="monitoring-panel-base-image" alt="" src="${escapeAttribute(template.backgroundImage)}">
       <div class="monitoring-panel-image-overlays">
+        ${renderMonitoringPanelTemplateLabels(panel)}
         ${renderMonitoringTemplateRows(template, channelByCircuit, panel)}
       </div>
     </div>
@@ -5287,6 +5288,29 @@ function monitoringMainBreakerLabel(panel = null) {
   const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
   const value = schedule.mainBreaker || schedule.main_breaker || panel?.mainBreaker || panel?.main_breaker || "";
   return value ? String(value) : "Main";
+}
+
+function renderMonitoringPanelTemplateLabels(panel = null) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const location = getLocation(panel?.locationId || panel?.location_id || "");
+  const title = schedule.panelName || panel?.name || "Electrical panel";
+  const centerTitle = String(schedule.panelName || title).replace(/^Electrical\s+/i, "");
+  const locationName = location?.name || "";
+  const voltage = schedule.voltage || panel?.voltage || "";
+  const phase = schedule.phase || panel?.phase || "";
+  const mainBreaker = monitoringMainBreakerLabel(panel);
+  const mainBreakerText = mainBreaker && mainBreaker !== "Main" ? mainBreaker : "";
+  const circuitCount = monitoringPanelCircuitCount(panel, []);
+  return `
+    <div class="monitoring-panel-cabinet-label monitoring-panel-template-label">
+      <strong>${escapeHtml(title)}</strong>
+      ${locationName ? `<span>${escapeHtml(locationName)}</span>` : ""}
+      <small>${escapeHtml([voltage, phase].filter(Boolean).join(" | ") || "Voltage not entered")}</small>
+      <small>${escapeHtml(`${mainBreakerText || "Main"} main | ${circuitCount} circuits`)}</small>
+    </div>
+    <div class="monitoring-panel-center-nameplate">${escapeHtml(centerTitle)}</div>
+    ${mainBreakerText ? `<div class="monitoring-panel-main-breaker-size">${escapeHtml(mainBreakerText)}</div>` : ""}
+  `;
 }
 
 function renderMonitoringTemplateRows(template, channelByCircuit, panel = null) {
