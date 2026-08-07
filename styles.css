@@ -10175,3 +10175,113 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
   width: 166px;
   padding: 10px 12px;
 }
+
+@media (max-width: 1400px) {
+  .monitoring-panel-mockup.generated-template {
+    --breaker-row-height: clamp(22px, calc(690px / var(--monitoring-panel-rows, 21)), 32px);
+    --breaker-row-gap: 3px;
+    min-width: 0;
+    padding: 18px 18px 20px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-panel-board,
+  .monitoring-panel-mockup.generated-template .monitoring-panel-rail-label {
+    grid-template-columns: minmax(315px, 1fr) 168px minmax(315px, 1fr);
+    gap: 12px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-column {
+    padding-top: 96px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-column::before {
+    top: 89px;
+    width: 102px;
+    right: 40px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-column:last-child::before {
+    left: 40px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot {
+    grid-template-columns: 58px minmax(118px, 1fr) 74px;
+    gap: 4px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right {
+    grid-template-columns: 74px minmax(118px, 1fr) 58px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-number {
+    min-width: 58px;
+    grid-template-columns: 26px 28px;
+    gap: 3px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-number b,
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-number small {
+    font-size: 0.58rem;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-load-label {
+    padding-inline: 7px;
+    font-size: clamp(0.5rem, 0.6vw, 0.66rem);
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-handle {
+    width: 72px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-handle span {
+    width: 26px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-channel-card.energized .monitoring-breaker-handle span {
+    left: 41px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-channel-card.open .monitoring-breaker-handle span,
+  .monitoring-panel-mockup.generated-template .monitoring-channel-card.upstream-power-loss .monitoring-breaker-handle span,
+  .monitoring-panel-mockup.generated-template .monitoring-channel-card.not-monitored .monitoring-breaker-handle span {
+    left: 4px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.energized .monitoring-breaker-handle span {
+    left: 4px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.open .monitoring-breaker-handle span,
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.upstream-power-loss .monitoring-breaker-handle span,
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.not-monitored .monitoring-breaker-handle span {
+    left: 41px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.suspected-trip .monitoring-breaker-handle span {
+    left: 23px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-panel-center {
+    min-height: calc((var(--breaker-row-height, 32px) + var(--breaker-row-gap, 3px)) * var(--monitoring-panel-rows, 21) + 96px);
+    padding-top: 48px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-main-disconnect-label {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-main-disconnect {
+    width: 82px;
+    height: 118px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-service-label,
+  .monitoring-panel-mockup.generated-template .monitoring-panel-nameplate {
+    width: 142px;
+  }
+
+  .monitoring-panel-mockup.generated-template .monitoring-danger-label {
+    width: 136px;
+  }
+}
