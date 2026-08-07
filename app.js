@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-panel-face-main-label";
+const SITEWORKS_APP_VERSION = "20260806-panel-trip-handle-straight";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -17124,7 +17124,10 @@ function applyStructuredState(rows, updatedAt = "") {
     inventoryItems: (rows.inventoryItems || []).map(inventoryItemFromStructuredRow),
     keys: (rows.keys || []).map(keyFromStructuredRow),
     keyLogs: (rows.keyLogs || []).map(keyLogFromStructuredRow),
-    siteMaps: (rows.siteMaps || []).map(siteMapFromStructuredRow),
+    siteMaps: mergeStructuredSiteMapsWithLocal(
+      (rows.siteMaps || []).map(siteMapFromStructuredRow),
+      state.siteMaps || []
+    ),
     monitoringDevices: (rows.monitoringDevices || []).map(monitoringDeviceFromStructuredRow),
     monitoringChannels: (rows.monitoringChannels || []).map(monitoringChannelFromStructuredRow),
     monitoringEvents: (rows.monitoringEvents || []).map(monitoringEventFromStructuredRow).slice(0, 1000),
@@ -17157,6 +17160,32 @@ function mergeStructuredWorkOrdersWithLocalPublicReports(structuredWorkOrders = 
     knownRemoteReportIds.add(item.remoteReportId);
   });
   return merged;
+}
+
+function mapUpdatedTime(record = {}) {
+  const time = Date.parse(record.updatedAt || record.updated_at || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function siteMapMergeKey(map = {}) {
+  return map.id || `${map.customerId || ""}:${map.locationId || ""}`;
+}
+
+function mergeStructuredSiteMapsWithLocal(structuredSiteMaps = [], localSiteMaps = []) {
+  const merged = new Map();
+  structuredSiteMaps.forEach((map) => {
+    if (!map) return;
+    merged.set(siteMapMergeKey(map), map);
+  });
+  localSiteMaps.forEach((localMap) => {
+    if (!localMap?.customerId) return;
+    const key = siteMapMergeKey(localMap);
+    const remoteMap = merged.get(key);
+    if (!remoteMap || mapUpdatedTime(localMap) > mapUpdatedTime(remoteMap)) {
+      merged.set(key, localMap);
+    }
+  });
+  return [...merged.values()];
 }
 
 function structuredPayload(row) {
@@ -17860,19 +17889,27 @@ function buildStructuredKeyLogRow(log, cloudLocationIds = null) {
 
 function buildStructuredSiteMapRow(map, cloudLocationIds = null) {
   const locationId = map.locationId && (!cloudLocationIds || cloudLocationIds.has(map.locationId)) ? map.locationId : null;
+  const mapForCloud = {
+    ...map,
+    locationId: locationId || "",
+    levels: ensureSiteMapLevels(map, true).map((level) => normalizeSiteMapLevel(level)),
+    pins: normalizeSiteMapPins(map.pins)
+  };
+  const mainLevel = mapForCloud.levels.find((level) => level.id === "main");
+  if (mainLevel) {
+    mapForCloud.image = mainLevel.image || mapForCloud.image || null;
+    mapForCloud.pins = normalizeSiteMapPins(mainLevel.pins);
+  }
   return {
     id: map.id,
     customer_id: map.customerId || null,
     location_id: locationId,
     name: map.name || "",
-    image: map.image || null,
-    pins: Array.isArray(map.pins) ? map.pins : [],
+    image: mapForCloud.image || null,
+    pins: mapForCloud.pins,
     created_at: map.createdAt || new Date().toISOString(),
     updated_at: map.updatedAt || state.updatedAt || new Date().toISOString(),
-    data: leanCloudRecord({
-      ...map,
-      locationId: locationId || ""
-    })
+    data: leanCloudRecord(mapForCloud)
   };
 }
 

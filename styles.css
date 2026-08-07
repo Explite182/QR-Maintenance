@@ -8729,7 +8729,7 @@ html[data-theme="dark"] .sync-banner small {
     inset 0 -8px 10px rgba(0, 0, 0, 0.36),
     0 0 0 2px rgba(220, 47, 34, 0.4),
     0 0 12px rgba(220, 47, 34, 0.45);
-  transform: translateY(-3px) rotate(-11deg);
+  transform: translateY(-3px);
 }
 
 .monitoring-channel-card.monitoring-offline .monitoring-breaker-handle,
