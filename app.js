@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-panel-trip-handle-straight";
+const SITEWORKS_APP_VERSION = "20260806-site-map-pin-save-fix";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5014,10 +5014,20 @@ function renderMonitoringLivePanel(devices) {
           ${renderMonitoringBreakerColumn(oddCircuits, channelByCircuit, panel, "left")}
         </div>
         <div class="monitoring-panel-center" aria-hidden="true">
+          <span class="monitoring-fed-label">Fed from<br>MDP</span>
           <span class="monitoring-main-disconnect-label">Main disconnect</span>
           <span class="monitoring-main-disconnect">
             <strong>${escapeHtml(monitoringMainBreakerLabel(panel))}</strong>
             <i></i>
+          </span>
+          <span class="monitoring-service-label">
+            <b>Suitable for use as service equipment</b>
+            <small>${escapeHtml((isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel).voltage : "") || "Voltage not entered")}</small>
+            <small>Short circuit current rating: 10,000 AIC</small>
+          </span>
+          <span class="monitoring-danger-label">
+            <b>Danger</b>
+            <small>Arc flash and shock hazard</small>
           </span>
           <span class="monitoring-panel-nameplate">${escapeHtml((panel?.name || "Panel").replace(/^Electrical\s+/i, ""))}</span>
           <span class="monitoring-phase-card">
@@ -9280,7 +9290,7 @@ function addSiteMapPinFromEvent(event) {
     updateSiteMapStatus("That equipment is already pinned on this map.");
     return;
   }
-  activeLevel.pins.push({
+  const newPin = {
     id: crypto.randomUUID(),
     assetId,
     label,
@@ -9289,17 +9299,29 @@ function addSiteMapPinFromEvent(event) {
     x,
     y,
     createdAt: new Date().toISOString()
-  });
-  activeLevel.updatedAt = new Date().toISOString();
-  ensureSiteMapLevels(map, true);
-  map.updatedAt = new Date().toISOString();
+  };
+  const updatedAt = new Date().toISOString();
+  activeLevel.pins.push(newPin);
+  activeLevel.updatedAt = updatedAt;
+  const levels = ensureSiteMapLevels(map, true);
+  const storedLevel = levels.find((level) => level.id === activeLevel.id) || activeLevel;
+  storedLevel.pins = Array.isArray(storedLevel.pins) ? storedLevel.pins : [];
+  if (!storedLevel.pins.some((pin) => pin.id === newPin.id)) storedLevel.pins.push(newPin);
+  storedLevel.updatedAt = updatedAt;
+  if (storedLevel.id === "main") {
+    map.pins = storedLevel.pins;
+    map.image = storedLevel.image || map.image || null;
+  }
+  map.levels = levels;
+  map.updatedAt = updatedAt;
   pendingSiteMapPin = null;
   if (els.siteMapPinLabel) els.siteMapPinLabel.value = "";
   if (els.siteMapPinArea) els.siteMapPinArea.value = "";
   if (els.siteMapPinLayer) els.siteMapPinLayer.value = "";
   saveState();
+  scheduleStructuredDataSync(0);
   renderSiteMap();
-  updateSiteMapStatus("Pin added.");
+  updateSiteMapStatus(`Pin added. ${storedLevel.pins.length} pin${storedLevel.pins.length === 1 ? "" : "s"} on ${storedLevel.name || "this map"}.`);
 }
 
 function deleteSiteMapPin(pinId) {
