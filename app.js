@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-site-map-pin-save-fix";
+const SITEWORKS_APP_VERSION = "20260806-site-map-storage-safe-pin";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5095,11 +5095,21 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   const state = channel?.lastDerivedState || "not-monitored";
   const label = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
   const phaseText = channel ? `Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${monitoringChannelPhaseLabel(channel)}` : "";
-  const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber);
-  const tooltipLabel = circuitLabel || "No panel label saved";
-  const faceLabel = circuitLabel || panel?.name || "No panel label saved";
+  const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber).trim();
+  const hasCircuitLabel = Boolean(circuitLabel);
+  const tooltipLabel = circuitLabel || "No panel label or input saved";
+  const faceLabel = circuitLabel;
   const spanStyle = span > 1 ? ` style="grid-row: span ${span};"` : "";
   const multiClass = span > 1 ? " multi-pole" : "";
+  if (!channel && !hasCircuitLabel) {
+    return `
+      <button type="button" class="monitoring-breaker-slot monitoring-channel-card blank-filler ${escapeAttribute(side)}" data-monitoring-breaker-detail="" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}"${spanStyle}>
+        <span>${escapeHtml(circuitNumber)}</span>
+        <i class="monitoring-breaker-blank-fill" aria-hidden="true"></i>
+        <em class="monitoring-breaker-tooltip">${escapeHtml(tooltipLabel)}</em>
+      </button>
+    `;
+  }
   const content = `
     <i class="monitoring-breaker-handle" aria-hidden="true"><span></span></i>
     <span>${escapeHtml(circuitNumber)}</span>
@@ -9253,7 +9263,7 @@ function applySiteMapZoomAtPoint(nextZoom, viewport, clientX, clientY) {
   });
 }
 
-function addSiteMapPinFromEvent(event) {
+async function addSiteMapPinFromEvent(event) {
   if (siteMapDragSuppressClick) {
     siteMapDragSuppressClick = false;
     return;
@@ -9318,10 +9328,30 @@ function addSiteMapPinFromEvent(event) {
   if (els.siteMapPinLabel) els.siteMapPinLabel.value = "";
   if (els.siteMapPinArea) els.siteMapPinArea.value = "";
   if (els.siteMapPinLayer) els.siteMapPinLayer.value = "";
-  saveState();
+  let localSaved = true;
+  state.updatedAt = updatedAt;
+  try {
+    persistLocalStateOnly(false);
+  } catch (error) {
+    localSaved = false;
+    console.warn("Site map pin saved in memory, but local browser storage is full.", error);
+  }
+  scheduleSharedStateSave();
   scheduleStructuredDataSync(0);
+  if (!localSaved) {
+    try {
+      const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
+      await upsertStructuredRows("site_maps", [buildStructuredSiteMapRow(map, cloudLocationIds)]);
+      markSyncSuccess("save");
+    } catch (error) {
+      markSyncError(`Site map cloud save failed: ${error?.message || error}`);
+      console.warn("Site map cloud save failed after local storage was full.", error);
+    }
+  }
   renderSiteMap();
-  updateSiteMapStatus(`Pin added. ${storedLevel.pins.length} pin${storedLevel.pins.length === 1 ? "" : "s"} on ${storedLevel.name || "this map"}.`);
+  updateSiteMapStatus(localSaved
+    ? `Pin added. ${storedLevel.pins.length} pin${storedLevel.pins.length === 1 ? "" : "s"} on ${storedLevel.name || "this map"}.`
+    : `Pin added and sent to cloud. This iPad storage is full, so remove old photos/PDFs soon.`);
 }
 
 function deleteSiteMapPin(pinId) {
