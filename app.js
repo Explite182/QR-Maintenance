@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-site-map-panel-live";
+const SITEWORKS_APP_VERSION = "20260806-monitoring-channel-edit";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -149,6 +149,7 @@ let remoteReportsLoading = false;
 let lastRemoteReportsSyncAt = 0;
 let lastActivityAt = Date.now();
 let inactivityLogoutTimer = null;
+let editingMonitoringChannelId = "";
 let sharedStateReady = false;
 let sharedStateLoading = false;
 let sharedStateSaveTimer = null;
@@ -3569,6 +3570,11 @@ document.addEventListener("click", (event) => {
     loadMonitoringDeviceForm(editDevice.dataset.monitoringEditDevice);
     return;
   }
+  const editChannel = event.target.closest("[data-monitoring-edit-channel]");
+  if (editChannel) {
+    loadMonitoringChannelForm(editChannel.dataset.monitoringEditChannel);
+    return;
+  }
   const deleteDevice = event.target.closest("[data-monitoring-delete-device]");
   if (deleteDevice) {
     deleteMonitoringDevice(deleteDevice.dataset.monitoringDeleteDevice);
@@ -4080,6 +4086,14 @@ function monitoringPanelCircuitLabel(panel = null, circuitNumber = "") {
   return panelCircuitLoadText(circuit) || circuit?.description || circuit?.loadServed || "";
 }
 
+function monitoringPanelCircuitBreakerSize(panel = null, circuitNumber = "") {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
+  const circuit = circuits.find(item => String(item.number || item.cct || item.circuit || "").trim() === String(circuitNumber).trim());
+  const value = String(circuit?.breaker || circuit?.breakerSize || circuit?.amp || circuit?.amps || circuit?.amperage || "").trim();
+  return value && value !== "-" ? value : "";
+}
+
 function monitoringMainMeterValue(device = null, names = []) {
   for (const name of names) {
     const value = device?.[name] ?? device?.telemetry?.[name] ?? device?.latestTelemetry?.[name];
@@ -4374,7 +4388,13 @@ async function handleMonitoringChannelSubmit(form) {
     return;
   }
   const physicalChannels = monitoringEngine()?.parseList ? monitoringEngine().parseList(physicalChannel) : physicalChannel.split(/[\s,;/]+/).filter(Boolean);
-  const duplicate = state.monitoringChannels.find(channel => channel.deviceId === device.id && physicalChannels.includes(String(channel.physicalChannel || "")));
+  const editingChannel = editingMonitoringChannelId ? getMonitoringChannel(editingMonitoringChannelId) : null;
+  const editingGroupId = editingChannel?.breakerGroupId || editingChannel?.id || "";
+  const duplicate = state.monitoringChannels.find(channel => {
+    const channelGroupId = channel.breakerGroupId || channel.id || "";
+    if (editingGroupId && channelGroupId === editingGroupId) return false;
+    return channel.deviceId === device.id && physicalChannels.includes(String(channel.physicalChannel || ""));
+  });
   if (duplicate) {
     if (elements.channelStatus) elements.channelStatus.textContent = "One of those physical channels is already mapped on this device.";
     return;
@@ -4413,16 +4433,33 @@ async function handleMonitoringChannelSubmit(form) {
     if (elements.channelStatus) elements.channelStatus.textContent = created.message || "Channel mapping is incomplete.";
     return;
   }
+  const replacedChannels = editingGroupId
+    ? state.monitoringChannels.filter(channel => (channel.breakerGroupId || channel.id || "") === editingGroupId)
+    : [];
+  if (replacedChannels.length) {
+    state.monitoringChannels = state.monitoringChannels.filter(channel => (channel.breakerGroupId || channel.id || "") !== editingGroupId);
+  }
   state.monitoringChannels.push(...created.records);
   created.records.forEach(channel => {
-    addMonitoringEvent({ deviceId: device.id, channelId: channel.id, panelAssetId: device.panelAssetId, circuitNumber: channel.circuitNumber || circuitNumber, breakerGroupId: channel.breakerGroupId || "", type: "channel-mapped", message: `Channel ${channel.physicalChannel} mapped to circuit ${channel.circuitNumber || circuitNumber}.` });
+    addMonitoringEvent({
+      deviceId: device.id,
+      channelId: channel.id,
+      panelAssetId: device.panelAssetId,
+      circuitNumber: channel.circuitNumber || circuitNumber,
+      breakerGroupId: channel.breakerGroupId || "",
+      type: replacedChannels.length ? "channel-updated" : "channel-mapped",
+      message: `Channel ${channel.physicalChannel} mapped to circuit ${channel.circuitNumber || circuitNumber}.`
+    });
   });
-  addActivity("Monitoring channel mapped", `${device.name} channel ${physicalChannel} -> circuit ${circuitNumber}`);
+  addActivity(replacedChannels.length ? "Monitoring channel updated" : "Monitoring channel mapped", `${device.name} channel ${physicalChannel} -> circuit ${circuitNumber}`);
+  const replacedChannelIds = replacedChannels.map(channel => channel.id).filter(Boolean);
+  editingMonitoringChannelId = "";
   form.reset();
   if (elements.channelDevice) elements.channelDevice.value = device.id;
   saveState();
   let cloudSaved = false;
   try {
+    if (replacedChannelIds.length) await deleteStructuredRows("monitoring_channels", "id", replacedChannelIds);
     cloudSaved = await syncMonitoringChannelsToSupabase(created.records);
   } catch (error) {
     console.warn("Monitoring channel cloud save failed", error);
@@ -4431,8 +4468,8 @@ async function handleMonitoringChannelSubmit(form) {
   const nextElements = monitoringElements();
   if (nextElements.channelStatus) {
     nextElements.channelStatus.textContent = cloudSaved
-      ? "Channel mapped to SiteWorks."
-      : "Channel mapped locally. Cloud save will retry with the normal sync.";
+      ? (replacedChannels.length ? "Channel updated in SiteWorks." : "Channel mapped to SiteWorks.")
+      : (replacedChannels.length ? "Channel updated locally. Cloud save will retry with the normal sync." : "Channel mapped locally. Cloud save will retry with the normal sync.");
   }
   } catch (error) {
     console.error("Monitoring channel save failed", error);
@@ -4744,6 +4781,47 @@ function deleteMonitoringChannel(channelId) {
   render();
 }
 
+function loadMonitoringChannelForm(channelId) {
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.channelStatus) elements.channelStatus.textContent = "Admin access is required to edit breaker channels.";
+    return;
+  }
+  const channel = getMonitoringChannel(channelId);
+  if (!channel) return;
+  const groupId = channel.breakerGroupId || channel.id || "";
+  const groupChannels = state.monitoringChannels
+    .filter((item) => (item.breakerGroupId || item.id || "") === groupId)
+    .sort((a, b) => Number(a.poleIndex || 1) - Number(b.poleIndex || 1));
+  const members = groupChannels.length ? groupChannels : [channel];
+  const device = normalizeMonitoringDevice(getMonitoringDevice(channel.deviceId));
+  editingMonitoringChannelId = channel.id;
+  if (elements.channelDevice && device?.id) elements.channelDevice.value = device.id;
+  renderMonitoringCircuitOptions(device?.id || channel.deviceId);
+  const circuitNumber = channel.circuitNumber || members[0]?.circuitNumber || "";
+  if (elements.channelCircuit) {
+    const hasOption = [...elements.channelCircuit.options].some((option) => option.value === circuitNumber);
+    elements.channelCircuit.value = hasOption ? circuitNumber : "";
+    if (elements.channelCircuitManual && !hasOption) elements.channelCircuitManual.value = circuitNumber;
+  }
+  if (elements.channelNumber) elements.channelNumber.value = members.map((member) => member.physicalChannel).filter(Boolean).join(",");
+  const poleCount = Math.max(1, Math.min(3, Number(channel.breakerPoleCount || members.length || channel.poleCount || 1)));
+  if (elements.channelPoles) elements.channelPoles.value = String(poleCount);
+  const phases = members.map((member) => monitoringChannelPhaseLabel(member).split("/")[0]).filter(Boolean);
+  if (elements.channelPhase) elements.channelPhase.value = phases[0] || "A";
+  if (elements.channelPhase2) elements.channelPhase2.value = phases[1] || "B";
+  if (elements.channelPhase3) elements.channelPhase3.value = phases[2] || "C";
+  if (elements.channelDelay) elements.channelDelay.value = channel.alarmDelaySeconds ?? MONITORING_DEFAULT_DELAY_SECONDS;
+  if (elements.channelMode) elements.channelMode.value = channel.monitoringMode || "normal";
+  if (elements.channelCriticality) elements.channelCriticality.value = channel.criticality || "normal";
+  syncMonitoringPhaseSelectors();
+  const submitButton = elements.channelForm?.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.textContent = "Update Channel";
+  if (elements.channelStatus) elements.channelStatus.textContent = "Editing channel. Update the fields, then save.";
+  elements.channelForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function renderMonitoring() {
   if (!currentUser) return;
   ensureMonitoringCollections();
@@ -4789,6 +4867,8 @@ function renderMonitoring() {
   }
   renderMonitoringCircuitOptions(elements.channelDevice?.value || devices[0]?.id || "");
   syncMonitoringPhaseSelectors();
+  const channelSubmitButton = elements.channelForm?.querySelector('button[type="submit"]');
+  if (channelSubmitButton) channelSubmitButton.textContent = editingMonitoringChannelId ? "Update Channel" : "Map Channel";
   renderMonitoringDeviceList(devices);
   renderMonitoringChannelList(devices, elements.channelDevice?.value || devices[0]?.id || "");
   renderMonitoringDeviceDetails(devices, elements.channelDevice?.value || devices[0]?.id || "");
@@ -4896,6 +4976,7 @@ function renderMonitoringChannelList(devices, selectedDeviceId = "") {
         </div>
         <div class="monitoring-record-actions">
           <span class="monitoring-status-pill ${monitoringStatusClass(channel.lastDerivedState)}">${escapeHtml(monitoringStateLabel(channel.lastDerivedState))}</span>
+          <button type="button" data-monitoring-edit-channel="${escapeHtml(channel.id)}">Edit</button>
           <button type="button" data-monitoring-delete-channel="${escapeHtml(channel.id)}">Remove</button>
         </div>
       </div>`;
@@ -5089,6 +5170,7 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   const label = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
   const phaseText = channel ? `Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${monitoringChannelPhaseLabel(channel)}` : "";
   const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber).trim();
+  const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber);
   const hasCircuitLabel = Boolean(circuitLabel);
   const tooltipLabel = circuitLabel || "No panel label or input saved";
   const faceLabel = circuitLabel;
@@ -5105,7 +5187,10 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   }
   const content = `
     <i class="monitoring-breaker-handle" aria-hidden="true"><span></span></i>
-    <span>${escapeHtml(circuitNumber)}</span>
+    <span class="monitoring-breaker-number">
+      <b>${escapeHtml(circuitNumber)}</b>
+      ${breakerSize ? `<small>${escapeHtml(breakerSize)}</small>` : ""}
+    </span>
     <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
     <small class="monitoring-breaker-load-label">${escapeHtml(faceLabel)}</small>
     ${phaseText ? `<small class="monitoring-breaker-phase-label">${escapeHtml(phaseText)}</small>` : ""}
@@ -8766,6 +8851,12 @@ function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexB
     info.marker = routeStop ? String(routeStop) : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
     info.summary = routeStop ? `Route stop ${routeStop}` : "Not on route";
     info.className = routeStop ? " site-map-pin-route" : " site-map-pin-dimmed";
+  }
+  if (mode !== "live-status" && liveStatus.key === "danger") {
+    info.marker = "!";
+    info.summary = liveStatus.label || info.summary;
+    info.detail = liveStatus.detail || (liveStatus.channels.length ? `${liveStatus.channels.length} monitored channel${liveStatus.channels.length === 1 ? "" : "s"}` : info.detail);
+    info.className = " site-map-pin-overlay-danger site-map-pin-live-alert";
   }
   return info;
 }

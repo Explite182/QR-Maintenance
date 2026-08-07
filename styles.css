@@ -8777,7 +8777,8 @@ html[data-theme="dark"] .sync-banner small {
   display: none;
 }
 
-.monitoring-breaker-slot > span {
+.monitoring-breaker-slot > span,
+.monitoring-breaker-number {
   grid-column: 1;
   grid-row: 1;
   display: grid;
@@ -8791,7 +8792,25 @@ html[data-theme="dark"] .sync-banner small {
   font-weight: 900;
 }
 
-.monitoring-breaker-slot.right > span {
+.monitoring-breaker-number {
+  gap: 0;
+  line-height: 1;
+}
+
+.monitoring-breaker-number b {
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.monitoring-breaker-number small {
+  color: #cfd8d6;
+  font-size: 0.48rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.monitoring-breaker-slot.right > span,
+.monitoring-breaker-slot.right .monitoring-breaker-number {
   grid-column: 4;
   grid-row: 1;
 }
