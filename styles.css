@@ -3113,8 +3113,20 @@ textarea {
   background: #f59e0b;
 }
 
+.site-map-pin-overlay-ok {
+  background: #16a34a;
+}
+
 .site-map-pin-overlay-danger {
   background: #dc2626;
+}
+
+.site-map-pin-overlay-offline {
+  background: #64748b;
+}
+
+.site-map-pin-overlay-sensor {
+  background: #0891b2;
 }
 
 .site-map-pin-overlay-feed {
@@ -3137,6 +3149,20 @@ textarea {
 .site-map-pin-breaker-related {
   outline: 4px solid rgba(20, 122, 106, 0.55);
   outline-offset: 3px;
+}
+
+.site-map-pin-live-alert {
+  animation: siteMapLiveAlertPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes siteMapLiveAlertPulse {
+  0%, 100% {
+    box-shadow: 0 10px 24px rgba(220, 38, 38, 0.28);
+  }
+
+  50% {
+    box-shadow: 0 10px 30px rgba(220, 38, 38, 0.62), 0 0 0 8px rgba(220, 38, 38, 0.16);
+  }
 }
 
 .site-map-pin > span:first-child {

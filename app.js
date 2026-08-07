@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-site-map-overlays";
+const SITEWORKS_APP_VERSION = "20260806-site-map-no-duplicate-pins";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8322,12 +8322,13 @@ function siteMapPinMatchesFilters(pin = {}, asset = null) {
 
 function normalizeSiteMapOverlayMode(value = "") {
   const text = String(value || "").trim().toLowerCase();
-  return ["open-tickets", "pm-due", "electrical-issues", "breaker-feed", "pm-route"].includes(text) ? text : "normal";
+  return ["live-status", "open-tickets", "pm-due", "electrical-issues", "breaker-feed", "pm-route"].includes(text) ? text : "normal";
 }
 
 function siteMapOverlayLabel(mode = siteMapOverlayMode) {
   const labels = {
     normal: "Normal",
+    "live-status": "Live status",
     "open-tickets": "Open tickets",
     "pm-due": "PM due",
     "electrical-issues": "Electrical issues",
@@ -8405,6 +8406,66 @@ function getSiteMapBreakerText(asset = null) {
     .join(" | ");
 }
 
+function getSiteMapBreakerCircuitNumbers(asset = null) {
+  return parseMonitoringCircuitNumbers(getSiteMapBreakerText(asset));
+}
+
+function getSiteMapAssetMonitoringChannels(asset = null) {
+  if (!asset) return [];
+  const breakerCircuits = getSiteMapBreakerCircuitNumbers(asset);
+  if (!breakerCircuits.length) return [];
+  const panelText = getSiteMapBreakerText(asset).toLowerCase();
+  return (state.monitoringChannels || []).filter((channel) => {
+    const channelCircuits = parseMonitoringCircuitNumbers(channel.circuitNumber);
+    if (!channelCircuits.some((number) => breakerCircuits.includes(number))) return false;
+    const device = getMonitoringDevice(channel.deviceId);
+    const panel = getRawAsset(channel.panelAssetId || device?.panelAssetId);
+    if (!panelText || !panel) return true;
+    return panelText.includes(String(panel.name || "").toLowerCase()) || panelText.includes(String(getAssetEquipmentId(panel) || "").toLowerCase());
+  });
+}
+
+function getSiteMapAssetSensorValue(asset = null, keys = []) {
+  if (!asset) return "";
+  const sources = [asset, asset.details, asset.customFields, asset.environment, asset.sensors, asset.telemetry, asset.data].filter(Boolean);
+  for (const source of sources) {
+    for (const key of keys) {
+      const value = source?.[key];
+      if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+    }
+  }
+  return "";
+}
+
+function getSiteMapAssetEnvironmentalReadings(asset = null) {
+  const temperature = getSiteMapAssetSensorValue(asset, ["temperature", "temp", "ambientTemp", "ambientTemperature", "temperatureF", "temperatureC"]);
+  const humidity = getSiteMapAssetSensorValue(asset, ["humidity", "relativeHumidity", "rh"]);
+  const co2 = getSiteMapAssetSensorValue(asset, ["co2", "co2ppm", "co2Ppm", "carbonDioxide"]);
+  return [
+    temperature !== "" ? `Temp ${temperature}` : "",
+    humidity !== "" ? `Humidity ${humidity}` : "",
+    co2 !== "" ? `CO2 ${co2}` : ""
+  ].filter(Boolean);
+}
+
+function getSiteMapAssetLiveStatus(asset = null) {
+  const channels = getSiteMapAssetMonitoringChannels(asset);
+  const readings = getSiteMapAssetEnvironmentalReadings(asset);
+  if (!asset) return { key: "unknown", label: "Equipment missing", detail: "", readings, channels };
+  if (!channels.length) {
+    const directStatus = getSiteMapAssetSensorValue(asset, ["liveStatus", "runtimeStatus", "operatingStatus", "faultStatus", "status"]);
+    const label = directStatus ? String(directStatus) : readings.length ? "Sensor readings" : "No live data";
+    return { key: directStatus ? "warn" : readings.length ? "sensor" : "unknown", label, detail: readings.join(" | "), readings, channels };
+  }
+  const states = channels.map((channel) => channel.lastDerivedState || "open");
+  if (states.includes("monitoring-offline")) return { key: "offline", label: "Monitoring offline", detail: readings.join(" | "), readings, channels };
+  if (states.includes("suspected-trip")) return { key: "danger", label: "Suspected trip", detail: readings.join(" | "), readings, channels };
+  if (states.includes("upstream-power-loss")) return { key: "danger", label: "Upstream phase loss", detail: readings.join(" | "), readings, channels };
+  if (states.includes("open")) return { key: "warn", label: "Open", detail: readings.join(" | "), readings, channels };
+  if (states.includes("energized")) return { key: "ok", label: "Energized", detail: readings.join(" | "), readings, channels };
+  return { key: "sensor", label: monitoringStateLabel(states[0] || "open"), detail: readings.join(" | "), readings, channels };
+}
+
 function getSiteMapRoutePins(pins = []) {
   const candidates = pins.filter((pin) => {
     const asset = getRawAsset(pin.assetId);
@@ -8446,6 +8507,7 @@ function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexB
   const due = asset ? getDueInfo(asset) : null;
   const routeStop = routeIndexByPinKey.get(siteMapPinKey(pin, index));
   const breakerText = getSiteMapBreakerText(asset);
+  const liveStatus = getSiteMapAssetLiveStatus(asset);
   const selectedBreakerText = getSiteMapBreakerText(getRawAsset(selectedSiteMapOverlayAssetId));
   const info = {
     className: "",
@@ -8453,7 +8515,20 @@ function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexB
     summary: "",
     detail: ""
   };
-  if (mode === "open-tickets") {
+  if (mode === "live-status") {
+    info.marker = liveStatus.key === "ok" ? "✓" : liveStatus.key === "danger" ? "!" : liveStatus.key === "offline" ? "O" : liveStatus.key === "sensor" ? "S" : String(index + 1);
+    info.summary = liveStatus.label;
+    info.detail = liveStatus.detail || (liveStatus.channels.length ? `${liveStatus.channels.length} monitored channel${liveStatus.channels.length === 1 ? "" : "s"}` : "");
+    info.className = liveStatus.key === "ok"
+      ? " site-map-pin-overlay-ok"
+      : liveStatus.key === "danger"
+        ? " site-map-pin-overlay-danger site-map-pin-live-alert"
+        : liveStatus.key === "offline"
+          ? " site-map-pin-overlay-offline"
+          : liveStatus.key === "sensor"
+            ? " site-map-pin-overlay-sensor"
+            : " site-map-pin-dimmed";
+  } else if (mode === "open-tickets") {
     info.marker = openTickets.length ? String(openTickets.length) : String(index + 1);
     info.summary = openTickets.length ? `${openTickets.length} open ticket${openTickets.length === 1 ? "" : "s"}` : "No open tickets";
     info.className = openTickets.length > 1 ? " site-map-pin-overlay-danger" : openTickets.length ? " site-map-pin-overlay-warn" : " site-map-pin-dimmed";
@@ -8489,6 +8564,7 @@ function renderSiteMapOverlaySummary(visiblePins = [], routePins = []) {
   const mode = normalizeSiteMapOverlayMode(siteMapOverlayMode);
   if (mode === "normal") return "";
   const summary = {
+    "live-status": `${visiblePins.filter((pin) => getSiteMapAssetLiveStatus(getRawAsset(pin.assetId)).key !== "unknown").length} pins have live or sensor data.`,
     "open-tickets": `${visiblePins.reduce((sum, pin) => sum + getSiteMapAssetOpenTickets(getRawAsset(pin.assetId)).length, 0)} open ticket markers in this view.`,
     "pm-due": `${visiblePins.filter((pin) => isSiteMapPmDue(getRawAsset(pin.assetId))).length} PM stops due soon or overdue.`,
     "electrical-issues": `${visiblePins.filter((pin) => isSiteMapElectricalIssue(getRawAsset(pin.assetId), pin)).length} electrical-related markers.`,
@@ -8511,7 +8587,7 @@ function renderSiteMapFilters(pins = []) {
     siteMapAreaFilter = "all";
   }
   siteMapOverlayMode = normalizeSiteMapOverlayMode(siteMapOverlayMode);
-  const overlays = ["normal", "open-tickets", "pm-due", "electrical-issues", "breaker-feed", "pm-route"];
+  const overlays = ["normal", "live-status", "open-tickets", "pm-due", "electrical-issues", "breaker-feed", "pm-route"];
   const overlayButtons = overlays.map((mode) => `
     <button type="button" class="site-map-filter-chip site-map-overlay-chip${siteMapOverlayMode === mode ? " is-active" : ""}" data-site-map-overlay="${escapeAttribute(mode)}">${escapeHtml(siteMapOverlayLabel(mode))}</button>
   `).join("");
@@ -8565,6 +8641,8 @@ function renderSiteMap() {
   const map = getCurrentSiteMap(false);
   const assets = hasLocation ? filteredAssets() : [];
   const pins = Array.isArray(map?.pins) ? map.pins : [];
+  const pinnedAssetIds = new Set(pins.map((pin) => pin.assetId).filter(Boolean));
+  const availablePinAssets = assets.filter((asset) => !pinnedAssetIds.has(asset.id));
   updateSiteMapViewportMemory();
   const visiblePins = pins.filter((pin) => siteMapPinMatchesFilters(pin, getRawAsset(pin.assetId)));
   const routePins = siteMapOverlayMode === "pm-route" ? getSiteMapRoutePins(visiblePins) : [];
@@ -8574,13 +8652,13 @@ function renderSiteMap() {
   if (els.siteMapPinLabel) els.siteMapPinLabel.disabled = !hasLocation;
   if (els.siteMapPinArea) els.siteMapPinArea.disabled = !hasLocation;
   if (els.siteMapPinLayer) els.siteMapPinLayer.disabled = !hasLocation;
-  if (els.siteMapAddPinBtn) els.siteMapAddPinBtn.disabled = !hasLocation;
+  if (els.siteMapAddPinBtn) els.siteMapAddPinBtn.disabled = !hasLocation || !availablePinAssets.length;
   if (els.siteMapClearBtn) els.siteMapClearBtn.disabled = !hasLocation;
   if (els.siteMapPinAsset) {
-    els.siteMapPinAsset.disabled = !hasLocation;
-    els.siteMapPinAsset.innerHTML = assets.length
-      ? assets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name || asset.equipmentId || "Equipment")} - ${escapeHtml(getLocation(asset.locationId)?.name || "No location")}</option>`).join("")
-      : `<option value="">${hasLocation ? "No equipment in this location" : "Choose a location first"}</option>`;
+    els.siteMapPinAsset.disabled = !hasLocation || !availablePinAssets.length;
+    els.siteMapPinAsset.innerHTML = availablePinAssets.length
+      ? availablePinAssets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name || asset.equipmentId || "Equipment")} - ${escapeHtml(getLocation(asset.locationId)?.name || "No location")}</option>`).join("")
+      : `<option value="">${hasLocation ? assets.length ? "All equipment is already pinned" : "No equipment in this location" : "Choose a location first"}</option>`;
   }
   const imageUrl = mediaSource(map?.image);
   const zoomLabel = `${Math.round(siteMapZoom * 100)}%`;
@@ -8672,6 +8750,7 @@ function renderSiteMapPinTooltip(pin, index, asset, title, overlayInfo = null) {
   const typeLabel = asset.type || asset.category || asset.template || "Equipment";
   const area = getSiteMapPinArea(pin);
   const layer = siteMapLayerLabel(getSiteMapPinLayer(pin, asset));
+  const liveStatus = getSiteMapAssetLiveStatus(asset);
   return `
     <span class="site-map-pin-tooltip" role="tooltip">
       <strong>${escapeHtml(title || asset.name || `Pin ${index + 1}`)}</strong>
@@ -8679,6 +8758,7 @@ function renderSiteMapPinTooltip(pin, index, asset, title, overlayInfo = null) {
       <small>${escapeHtml(layer)}${area ? ` | ${escapeHtml(area)}` : ""}</small>
       <small>${escapeHtml(locationName)}</small>
       <small>${escapeHtml(due.label)}${openCount ? ` | ${openCount} open ticket${openCount === 1 ? "" : "s"}` : ""}</small>
+      ${liveStatus.key !== "unknown" ? `<small>Live: ${escapeHtml(liveStatus.label)}${liveStatus.detail ? ` | ${escapeHtml(liveStatus.detail)}` : ""}</small>` : ""}
       ${overlayInfo?.summary ? `<small>${escapeHtml(siteMapOverlayLabel())}: ${escapeHtml(overlayInfo.summary)}</small>` : ""}
       ${overlayInfo?.detail ? `<small>${escapeHtml(overlayInfo.detail)}</small>` : ""}
     </span>
@@ -8726,6 +8806,12 @@ function startSiteMapPinPlacement() {
   const map = getCurrentSiteMap(false);
   if (!mediaSource(map?.image)) {
     updateSiteMapStatus("Upload a map image first.");
+    return;
+  }
+  const selectedAssetId = els.siteMapPinAsset?.value || "";
+  if (selectedAssetId && Array.isArray(map?.pins) && map.pins.some((pin) => pin.assetId === selectedAssetId)) {
+    updateSiteMapStatus("That equipment is already pinned on this map.");
+    renderSiteMap();
     return;
   }
   if (!els.siteMapPinAsset?.value && !els.siteMapPinLabel?.value.trim()) {
@@ -8928,6 +9014,12 @@ function addSiteMapPinFromEvent(event) {
   const area = els.siteMapPinArea?.value.trim() || "";
   const layer = normalizeSiteMapLayer(els.siteMapPinLayer?.value || "") || inferSiteMapLayer(getRawAsset(assetId));
   map.pins = Array.isArray(map.pins) ? map.pins : [];
+  if (assetId && map.pins.some((pin) => pin.assetId === assetId)) {
+    pendingSiteMapPin = false;
+    renderSiteMap();
+    updateSiteMapStatus("That equipment is already pinned on this map.");
+    return;
+  }
   map.pins.push({
     id: crypto.randomUUID(),
     assetId,
