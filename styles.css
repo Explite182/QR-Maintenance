@@ -8541,20 +8541,54 @@ html[data-theme="dark"] .sync-banner small {
   position: relative;
   overflow: auto;
   display: grid;
-  gap: 8px;
-  width: min(100%, 1180px);
-  max-width: 1180px;
+  gap: 10px;
+  width: min(100%, 1460px);
+  max-width: 1460px;
   margin: 0 auto;
-  padding: 18px;
-  border: 2px solid #4d5659;
+  padding: 22px 26px 24px;
+  border: 3px solid #41494b;
   border-radius: 6px;
   background:
+    radial-gradient(circle at 18px 18px, #1d2223 0 4px, transparent 5px),
+    radial-gradient(circle at calc(100% - 18px) 18px, #1d2223 0 4px, transparent 5px),
+    radial-gradient(circle at 18px calc(100% - 18px), #1d2223 0 4px, transparent 5px),
+    radial-gradient(circle at calc(100% - 18px) calc(100% - 18px), #1d2223 0 4px, transparent 5px),
     linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.08)),
     linear-gradient(90deg, #7d817c 0 34%, #8a8d87 34% 66%, #737874 66% 100%);
   box-shadow:
-    inset 0 0 0 7px rgba(31, 34, 35, 0.22),
+    inset 0 0 0 8px rgba(31, 34, 35, 0.24),
     inset 0 0 42px rgba(0, 0, 0, 0.18),
     0 14px 34px rgba(15, 23, 42, 0.18);
+}
+
+.monitoring-panel-cabinet-label {
+  position: absolute;
+  z-index: 2;
+  top: 48px;
+  left: 34px;
+  display: grid;
+  width: 220px;
+  gap: 3px;
+  padding: 11px 13px;
+  border: 1px solid #4a4d4a;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #d5d2ca, #bcb9b0);
+  color: #0d1214;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+  text-transform: uppercase;
+}
+
+.monitoring-panel-cabinet-label strong {
+  font-size: 1rem;
+  line-height: 1.05;
+}
+
+.monitoring-panel-cabinet-label span,
+.monitoring-panel-cabinet-label small {
+  color: #101517;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.15;
 }
 
 .monitoring-panel-rail-label,
@@ -8562,12 +8596,13 @@ html[data-theme="dark"] .sync-banner small {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 190px minmax(260px, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(430px, 1fr) 230px minmax(430px, 1fr);
+  gap: 28px;
   align-items: stretch;
 }
 
 .monitoring-panel-rail-label {
+  margin-top: 4px;
   color: #182126;
   font-size: 0.78rem;
   font-weight: 900;
@@ -8581,17 +8616,18 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-breaker-column {
   display: grid;
-  grid-auto-rows: 34px;
-  gap: 4px;
+  grid-auto-rows: 38px;
+  gap: 5px;
   align-content: start;
+  padding-top: 116px;
 }
 
 .monitoring-breaker-slot {
   position: relative;
   display: grid;
-  min-height: 34px;
-  grid-template-columns: 28px minmax(0, 1fr) 72px 46px;
-  gap: 6px;
+  min-height: 38px;
+  grid-template-columns: 30px minmax(170px, 1fr) 88px 42px;
+  gap: 8px;
   align-items: center;
   padding: 2px 4px;
   border-radius: 2px;
@@ -8606,7 +8642,7 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-breaker-slot.right {
-  grid-template-columns: 46px 72px minmax(0, 1fr) 28px;
+  grid-template-columns: 42px 88px minmax(170px, 1fr) 30px;
   padding: 2px 4px;
   text-align: right;
 }
@@ -8617,8 +8653,8 @@ html[data-theme="dark"] .sync-banner small {
   left: auto;
   grid-column: 3;
   display: block;
-  width: 72px;
-  height: 28px;
+  width: 88px;
+  height: 30px;
   border: 1px solid #0b1115;
   border-radius: 3px;
   background:
@@ -8660,8 +8696,8 @@ html[data-theme="dark"] .sync-banner small {
 .monitoring-breaker-handle span {
   position: absolute;
   top: 4px;
-  width: 28px;
-  height: 18px;
+  width: 34px;
+  height: 20px;
   border: 1px solid #050708;
   border-radius: 3px;
   background:
@@ -8674,7 +8710,7 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-channel-card.energized .monitoring-breaker-handle span {
-  left: 37px;
+  left: 48px;
   background: linear-gradient(180deg, #4f5b60, #182126);
 }
 
@@ -8686,9 +8722,14 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-channel-card.suspected-trip .monitoring-breaker-handle span {
-  left: 21px;
-  background: linear-gradient(180deg, #6b2a24, #2a1110);
-  transform: rotate(-3deg);
+  left: 25px;
+  background: linear-gradient(180deg, #b4392d, #3d1512);
+  box-shadow:
+    inset 0 8px 8px rgba(255, 255, 255, 0.1),
+    inset 0 -8px 10px rgba(0, 0, 0, 0.36),
+    0 0 0 2px rgba(220, 47, 34, 0.4),
+    0 0 12px rgba(220, 47, 34, 0.45);
+  transform: translateY(-3px) rotate(-11deg);
 }
 
 .monitoring-channel-card.monitoring-offline .monitoring-breaker-handle,
@@ -8719,12 +8760,12 @@ html[data-theme="dark"] .sync-banner small {
 .monitoring-breaker-load-label {
   grid-column: 2;
   grid-row: 1;
-  min-height: 28px;
-  padding: 6px 8px;
+  min-height: 30px;
+  padding: 7px 10px;
   border: 1px solid #c7c7c2;
   background: linear-gradient(180deg, #ffffff, #e9e6df);
   color: #11181d;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 900;
   line-height: 1.05;
   text-transform: uppercase;
@@ -8738,13 +8779,13 @@ html[data-theme="dark"] .sync-banner small {
   grid-column: 1;
   grid-row: 1;
   display: grid;
-  min-width: 24px;
-  min-height: 26px;
+  min-width: 28px;
+  min-height: 30px;
   place-items: center;
   border: 1px solid #303333;
   background: #111517;
   color: #ffffff;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   font-weight: 900;
 }
 
@@ -8801,17 +8842,18 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-panel-center {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   align-content: start;
   justify-items: center;
-  padding: 8px 10px;
+  min-height: 780px;
+  padding: 24px 12px 12px;
   border-left: 2px solid rgba(32, 37, 38, 0.35);
   border-right: 2px solid rgba(32, 37, 38, 0.35);
 }
 
 .monitoring-main-disconnect-label {
   display: block;
-  padding: 7px 12px;
+  padding: 10px 16px;
   border: 1px solid #173b57;
   border-radius: 3px;
   background: #0c4f83;
@@ -8824,8 +8866,8 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-main-disconnect {
   display: grid;
-  width: 88px;
-  height: 130px;
+  width: 104px;
+  height: 150px;
   justify-items: center;
   padding: 10px 8px;
   border: 4px solid #2b3030;
@@ -8842,8 +8884,8 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-main-disconnect i {
   display: block;
-  width: 42px;
-  height: 68px;
+  width: 50px;
+  height: 78px;
   border-radius: 5px;
   background: linear-gradient(180deg, #343a3d, #111517);
   box-shadow: inset 0 12px 12px rgba(255, 255, 255, 0.08), inset 0 -12px 14px rgba(0, 0, 0, 0.4);
@@ -8851,13 +8893,13 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-panel-nameplate {
   display: block;
-  width: 150px;
-  padding: 9px 10px;
+  width: 172px;
+  padding: 11px 12px;
   border: 2px solid #4d5555;
   border-radius: 3px;
   background: #111517;
   color: #f5f5ef;
-  font-size: 1.08rem;
+  font-size: 1.24rem;
   font-weight: 900;
   line-height: 1.1;
   text-align: center;
@@ -9125,7 +9167,7 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-panel-mockup .monitoring-channel-card {
   gap: 6px;
-  min-height: 34px;
+  min-height: 38px;
   padding: 2px 4px;
   border: 1px solid rgba(24, 30, 32, 0.36);
   border-radius: 2px;
@@ -9156,7 +9198,7 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-panel-mockup .monitoring-channel-card span {
   color: #ffffff;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
 }
 
 .monitoring-panel-mockup .monitoring-channel-card strong {
@@ -9166,7 +9208,7 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-panel-mockup .monitoring-channel-card small {
   color: #11181d;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
 }
 
 .phase-toggle-row {

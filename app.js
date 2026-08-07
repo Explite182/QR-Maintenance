@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260806-site-map-pin-placement-fix";
+const SITEWORKS_APP_VERSION = "20260806-panel-face-main-label";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5007,6 +5007,7 @@ function renderMonitoringLivePanel(devices) {
     </div>
     ${meterHtml}
     <div class="monitoring-panel-mockup" aria-label="${escapeAttribute(panel?.name || "Breaker panel")} breaker layout">
+      ${renderMonitoringPanelCabinetLabel(panel, panelLocation)}
       <div class="monitoring-panel-rail-label"><span>Odd circuits</span><span>Even circuits</span></div>
       <div class="monitoring-panel-board">
         <div class="monitoring-breaker-column">
@@ -5031,8 +5032,26 @@ function renderMonitoringLivePanel(devices) {
   `;
 }
 
+function renderMonitoringPanelCabinetLabel(panel = null, location = null) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const title = schedule.panelName || panel?.name || "Electrical panel";
+  const locationName = location?.name || "";
+  const voltage = schedule.voltage || panel?.voltage || "";
+  const phase = schedule.phase || panel?.phase || "";
+  const mainBreaker = monitoringMainBreakerLabel(panel);
+  const circuitCount = monitoringPanelCircuitCount(panel, []);
+  return `
+    <div class="monitoring-panel-cabinet-label">
+      <strong>${escapeHtml(title)}</strong>
+      ${locationName ? `<span>${escapeHtml(locationName)}</span>` : ""}
+      <small>${escapeHtml([voltage, phase].filter(Boolean).join(" | ") || "Voltage not entered")}</small>
+      <small>${escapeHtml(`${mainBreaker} main | ${circuitCount} circuits`)}</small>
+    </div>
+  `;
+}
+
 function monitoringMainBreakerLabel(panel = null) {
-  const schedule = panel?.panelSchedule || panel?.panel_schedule || {};
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
   const value = schedule.mainBreaker || schedule.main_breaker || panel?.mainBreaker || panel?.main_breaker || "";
   return value ? String(value) : "Main";
 }
@@ -5073,7 +5092,7 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   const multiClass = span > 1 ? " multi-pole" : "";
   const content = `
     <i class="monitoring-breaker-handle" aria-hidden="true"><span></span></i>
-    <span>Circuit ${escapeHtml(circuitNumber)}</span>
+    <span>${escapeHtml(circuitNumber)}</span>
     <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
     <small class="monitoring-breaker-load-label">${escapeHtml(faceLabel)}</small>
     ${phaseText ? `<small class="monitoring-breaker-phase-label">${escapeHtml(phaseText)}</small>` : ""}
