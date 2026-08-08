@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-panel-group-labels";
+const SITEWORKS_APP_VERSION = "20260807-three-pole-visual";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5506,6 +5506,7 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
     </span>
     <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
     <small class="monitoring-breaker-load-label">${escapeHtml(faceLabel)}</small>
+    ${span > 1 ? `<small class="monitoring-breaker-pole-label">${escapeHtml(span === 2 ? "2 pole" : "3 pole")}</small>` : ""}
     ${phaseText ? `<small class="monitoring-breaker-phase-label">${escapeHtml(phaseText)}</small>` : ""}
     <em class="monitoring-breaker-tooltip">${escapeHtml(tooltipLabel)}</em>
   `;

@@ -8684,10 +8684,53 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-breaker-slot.multi-pole {
+  height: auto;
+  align-items: stretch;
   border-width: 2px;
   box-shadow:
     inset 0 0 0 1px rgba(20, 163, 92, 0.28),
     0 0 0 1px rgba(255, 255, 255, 0.36);
+}
+
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.multi-pole {
+  height: auto;
+  min-height: 100%;
+}
+
+.monitoring-breaker-slot.multi-pole .monitoring-breaker-number,
+.monitoring-breaker-slot.multi-pole .monitoring-breaker-load-label,
+.monitoring-breaker-slot.multi-pole .monitoring-breaker-handle {
+  height: 100%;
+}
+
+.monitoring-breaker-slot.multi-pole .monitoring-breaker-load-label {
+  align-items: start;
+  padding-top: 8px;
+}
+
+.monitoring-breaker-slot.multi-pole .monitoring-breaker-handle span {
+  top: 8px;
+}
+
+.monitoring-breaker-pole-label {
+  position: absolute;
+  left: 91px;
+  bottom: 8px;
+  z-index: 3;
+  padding: 2px 6px;
+  border: 1px solid rgba(23, 31, 34, 0.35);
+  border-radius: 2px;
+  background: rgba(245, 243, 236, 0.88);
+  color: #172126;
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.monitoring-breaker-slot.right .monitoring-breaker-pole-label {
+  right: 91px;
+  left: auto;
 }
 
 .monitoring-breaker-slot.right {
