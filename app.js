@@ -124,6 +124,10 @@ function ensureSiteMapLevels(map = null, create = false) {
   return map.levels || [];
 }
 
+function monitoringEngine() {
+  return window.SiteWorksMonitoringEngine || null;
+}
+
 function normalizeMonitoringSourcePhases(phases = {}) {
   if (window.SiteWorksMonitoringEngine?.normalizeSourcePhases) {
     return window.SiteWorksMonitoringEngine.normalizeSourcePhases(phases);
