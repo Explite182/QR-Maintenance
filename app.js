@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-panel-schedule-groups";
+const SITEWORKS_APP_VERSION = "20260807-null-safe-panel-load";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -12845,7 +12845,8 @@ function normalizePanelCircuitCount(value) {
 }
 
 function panelCircuitLoadText(circuit = {}) {
-  return mergePanelCircuitLoad(circuit.load, circuit.notes);
+  const safeCircuit = circuit || {};
+  return mergePanelCircuitLoad(safeCircuit.load, safeCircuit.notes);
 }
 
 function mergePanelCircuitLoad(load, notes) {
