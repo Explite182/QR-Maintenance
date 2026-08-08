@@ -139,6 +139,32 @@ function normalizeMonitoringSourcePhases(phases = {}) {
   return result;
 }
 
+function normalizeMonitoringPhase(value = "") {
+  const phase = String(value || "").trim().toUpperCase();
+  return MONITORING_SOURCE_PHASES.includes(phase) ? phase : "";
+}
+
+function getMonitoringChannelPhaseList(channel = {}) {
+  if (monitoringEngine()?.getChannelPhaseList) return monitoringEngine().getChannelPhaseList(channel);
+  const phases = Array.isArray(channel.sourcePhases)
+    ? channel.sourcePhases.map(normalizeMonitoringPhase).filter(Boolean)
+    : String(channel.sourcePhases || "")
+      .split(/[\s,/-]+/)
+      .map(normalizeMonitoringPhase)
+      .filter(Boolean);
+  const fallback = normalizeMonitoringPhase(channel.sourcePhase) || "A";
+  const count = Math.max(1, Math.min(3, Number(channel.poleCount || phases.length || 1)));
+  return (phases.length ? phases : [fallback]).slice(0, count);
+}
+
+function parseMonitoringCircuitNumbers(value = "") {
+  if (monitoringEngine()?.parseCircuitNumbers) return monitoringEngine().parseCircuitNumbers(value);
+  return String(value || "")
+    .split(/[\s,;/]+/)
+    .map((item) => Number(String(item).replace(/\D/g, "")))
+    .filter((number) => Number.isInteger(number) && number > 0);
+}
+
 function makeId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
