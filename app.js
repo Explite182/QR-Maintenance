@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-null-safe-panel-load";
+const SITEWORKS_APP_VERSION = "20260807-panel-group-labels";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4129,7 +4129,8 @@ function monitoringPanelCircuitBreakerSize(panel = null, circuitNumber = "") {
   const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
   const circuit = findPanelScheduleCircuit(circuits, circuitNumber);
   const value = String(circuit?.breaker || circuit?.breakerSize || circuit?.amp || circuit?.amps || circuit?.amperage || "").trim();
-  return value && value !== "-" ? value : "";
+  if (!value || value === "-") return "";
+  return /^\d+(?:\.\d+)?$/.test(value) ? `${value}A` : value;
 }
 
 function monitoringPanelCircuitRecord(panel = null, circuitNumber = "") {
@@ -5477,8 +5478,14 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   const phaseText = channel ? `Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${monitoringChannelPhaseLabel(channel)}` : "";
   const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber).trim();
   const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber);
+  const groupNumbers = monitoringPanelCircuitGroupNumbers(panel, circuitNumber, side);
+  const circuitText = groupNumbers.length > 1 ? groupNumbers.join(",") : String(circuitNumber);
   const hasCircuitLabel = Boolean(circuitLabel);
-  const tooltipLabel = circuitLabel || "No panel label or input saved";
+  const tooltipLabel = [
+    `Circuit ${circuitText}`,
+    circuitLabel || "No panel label or input saved",
+    breakerSize ? `Breaker ${breakerSize}` : ""
+  ].filter(Boolean).join(" | ");
   const faceLabel = circuitLabel;
   const spanStyle = span > 1 ? ` style="grid-row: span ${span};"` : "";
   const multiClass = span > 1 ? " multi-pole" : "";
