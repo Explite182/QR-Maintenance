@@ -124,6 +124,17 @@ function ensureSiteMapLevels(map = null, create = false) {
   return map.levels || [];
 }
 
+function normalizeMonitoringSourcePhases(phases = {}) {
+  if (window.SiteWorksMonitoringEngine?.normalizeSourcePhases) {
+    return window.SiteWorksMonitoringEngine.normalizeSourcePhases(phases);
+  }
+  const result = {};
+  MONITORING_SOURCE_PHASES.forEach((phase) => {
+    result[phase] = phases?.[phase] !== false;
+  });
+  return result;
+}
+
 function makeId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
