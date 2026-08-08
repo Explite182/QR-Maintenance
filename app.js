@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260807-three-pole-visual";
+const SITEWORKS_APP_VERSION = "20260807-multipole-number-stack";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5480,6 +5480,7 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber);
   const groupNumbers = monitoringPanelCircuitGroupNumbers(panel, circuitNumber, side);
   const circuitText = groupNumbers.length > 1 ? groupNumbers.join(",") : String(circuitNumber);
+  const displayNumbers = groupNumbers.length > 1 ? groupNumbers : [circuitNumber];
   const hasCircuitLabel = Boolean(circuitLabel);
   const tooltipLabel = [
     `Circuit ${circuitText}`,
@@ -5501,8 +5502,10 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   const content = `
     <i class="monitoring-breaker-handle" aria-hidden="true"><span></span></i>
     <span class="monitoring-breaker-number">
-      <b>${escapeHtml(circuitNumber)}</b>
-      ${breakerSize ? `<small>${escapeHtml(breakerSize)}</small>` : ""}
+      ${displayNumbers.map((number) => `
+        <b>${escapeHtml(number)}</b>
+        ${breakerSize ? `<small>${escapeHtml(breakerSize)}</small>` : "<small></small>"}
+      `).join("")}
     </span>
     <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
     <small class="monitoring-breaker-load-label">${escapeHtml(faceLabel)}</small>
@@ -5512,7 +5515,7 @@ function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null
   `;
   if (!channel) {
     return `
-      <button type="button" class="monitoring-breaker-slot monitoring-channel-card not-monitored ${escapeAttribute(side)}" data-monitoring-breaker-detail="" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}"${spanStyle}>
+      <button type="button" class="monitoring-breaker-slot monitoring-channel-card not-monitored ${escapeAttribute(side)}${multiClass}" data-monitoring-breaker-detail="" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}"${spanStyle}>
         ${content}
       </button>
     `;

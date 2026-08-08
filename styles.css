@@ -8703,6 +8703,16 @@ html[data-theme="dark"] .sync-banner small {
   height: 100%;
 }
 
+.monitoring-breaker-slot.multi-pole .monitoring-breaker-number {
+  grid-auto-rows: 1fr;
+  align-content: stretch;
+}
+
+.monitoring-breaker-slot.multi-pole .monitoring-breaker-number b,
+.monitoring-breaker-slot.multi-pole .monitoring-breaker-number small {
+  min-height: 0;
+}
+
 .monitoring-breaker-slot.multi-pole .monitoring-breaker-load-label {
   align-items: start;
   padding-top: 8px;
