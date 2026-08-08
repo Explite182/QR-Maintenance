@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260808-panel-monitor-module";
+const SITEWORKS_APP_VERSION = "20260808-startup-guard";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -1280,14 +1280,30 @@ els.mobileInventoryMenu?.addEventListener("click", (event) => {
   openMobileInventoryTab(button.dataset.mobileInventoryTarget);
 });
 
-els.siteMapImageInput?.addEventListener("change", handleSiteMapImageChange);
-els.siteMapAddPinBtn?.addEventListener("click", startSiteMapPinPlacement);
-els.siteMapClearBtn?.addEventListener("click", clearCurrentSiteMap);
-els.siteMapCanvas?.addEventListener("click", addSiteMapPinFromEvent);
-els.siteMapCanvas?.addEventListener("pointerdown", startSiteMapDrag);
-els.siteMapCanvas?.addEventListener("pointermove", moveSiteMapDrag);
-els.siteMapCanvas?.addEventListener("pointerup", endSiteMapDrag);
-els.siteMapCanvas?.addEventListener("pointercancel", endSiteMapDrag);
+els.siteMapImageInput?.addEventListener("change", (event) => {
+  if (typeof handleSiteMapImageChange === "function") handleSiteMapImageChange(event);
+});
+els.siteMapAddPinBtn?.addEventListener("click", (event) => {
+  if (typeof startSiteMapPinPlacement === "function") startSiteMapPinPlacement(event);
+});
+els.siteMapClearBtn?.addEventListener("click", (event) => {
+  if (typeof clearCurrentSiteMap === "function") clearCurrentSiteMap(event);
+});
+els.siteMapCanvas?.addEventListener("click", (event) => {
+  if (typeof addSiteMapPinFromEvent === "function") addSiteMapPinFromEvent(event);
+});
+els.siteMapCanvas?.addEventListener("pointerdown", (event) => {
+  if (typeof startSiteMapDrag === "function") startSiteMapDrag(event);
+});
+els.siteMapCanvas?.addEventListener("pointermove", (event) => {
+  if (typeof moveSiteMapDrag === "function") moveSiteMapDrag(event);
+});
+els.siteMapCanvas?.addEventListener("pointerup", (event) => {
+  if (typeof endSiteMapDrag === "function") endSiteMapDrag(event);
+});
+els.siteMapCanvas?.addEventListener("pointercancel", (event) => {
+  if (typeof endSiteMapDrag === "function") endSiteMapDrag(event);
+});
 
 els.mobileCreateBtn?.addEventListener("click", (event) => {
   event.stopPropagation();
