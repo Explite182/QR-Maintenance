@@ -46,6 +46,84 @@ const CLOUD_REFRESH_INTERVAL_MS = 45 * 1000;
 const PUBLIC_REPORT_SYNC_MIN_AGE_MS = 10 * 1000;
 const REALTIME_REFRESH_DEBOUNCE_MS = 900;
 
+function normalizeSiteMapLevelId(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "main";
+  return text
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 42) || "main";
+}
+
+function normalizeSiteMapLayer(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text || text === "auto" || text === "all") return "";
+  if (["life", "life safety", "life_safety", "fire", "fire safety"].includes(text)) return "life-safety";
+  if (["fitness equipment", "equipment", "gym"].includes(text)) return "fitness";
+  if (["future tenant", "tenant", "construction", "future construction"].includes(text)) return "construction";
+  if (["electrical", "hvac", "plumbing", "fitness"].includes(text)) return text;
+  return "";
+}
+
+function getSiteMapPinArea(pin = {}) {
+  return String(pin.area || pin.zone || pin.locationArea || "").trim();
+}
+
+function normalizeSiteMapPins(pins = []) {
+  return Array.isArray(pins)
+    ? pins.map((pin) => ({
+      ...pin,
+      id: pin.id || makeId(),
+      assetId: pin.assetId || "",
+      label: pin.label || "",
+      area: getSiteMapPinArea(pin),
+      layer: normalizeSiteMapLayer(pin.layer || pin.system || pin.category),
+      x: clampPercent(pin.x),
+      y: clampPercent(pin.y),
+      createdAt: pin.createdAt || new Date().toISOString()
+    })).filter((pin) => pin.assetId || pin.label)
+    : [];
+}
+
+function normalizeSiteMapLevel(level = {}, fallback = {}) {
+  const id = normalizeSiteMapLevelId(level.id || fallback.id || level.name || fallback.name);
+  return {
+    id,
+    name: String(level.name || fallback.name || "Map area").trim(),
+    type: String(level.type || fallback.type || id || "area").trim(),
+    image: level.image || null,
+    pins: normalizeSiteMapPins(level.pins),
+    createdAt: level.createdAt || new Date().toISOString(),
+    updatedAt: level.updatedAt || level.createdAt || new Date().toISOString()
+  };
+}
+
+function ensureSiteMapLevels(map = null, create = false) {
+  if (!map) return [];
+  const existing = Array.isArray(map.levels) ? map.levels : Array.isArray(map.areas) ? map.areas : [];
+  if (!existing.length && create) {
+    map.levels = SITE_MAP_DEFAULT_LEVELS.map((level) => normalizeSiteMapLevel({
+      ...level,
+      image: level.id === "main" ? map.image || null : null,
+      pins: level.id === "main" ? map.pins || [] : []
+    }, level));
+  } else if (existing.length) {
+    map.levels = existing.map((level) => normalizeSiteMapLevel(level));
+  }
+  if (create) {
+    const levelIds = new Set((map.levels || []).map((level) => level.id));
+    SITE_MAP_DEFAULT_LEVELS.forEach((level) => {
+      if (!levelIds.has(level.id)) map.levels.push(normalizeSiteMapLevel(level, level));
+    });
+  }
+  const main = (map.levels || []).find((level) => level.id === "main");
+  if (main) {
+    map.image = main.image || null;
+    map.pins = main.pins || [];
+  }
+  return map.levels || [];
+}
+
 function makeId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
