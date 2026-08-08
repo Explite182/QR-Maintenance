@@ -165,6 +165,80 @@ function parseMonitoringCircuitNumbers(value = "") {
     .filter((number) => Number.isInteger(number) && number > 0);
 }
 
+function ensureMonitoringCollections() {
+  state.monitoringDevices = Array.isArray(state.monitoringDevices) ? state.monitoringDevices : [];
+  state.monitoringChannels = Array.isArray(state.monitoringChannels) ? state.monitoringChannels : [];
+  state.monitoringEvents = Array.isArray(state.monitoringEvents) ? state.monitoringEvents : [];
+  state.monitoringAlerts = Array.isArray(state.monitoringAlerts) ? state.monitoringAlerts : [];
+}
+
+function monitoringChannelsForDevice(deviceId) {
+  ensureMonitoringCollections();
+  const needle = String(deviceId || "");
+  return state.monitoringChannels.filter((channel) => String(channel.deviceId || channel.device_id || "") === needle);
+}
+
+function addMonitoringEvent(event) {
+  ensureMonitoringCollections();
+  state.monitoringEvents.unshift({
+    id: event.id || makeId(),
+    deviceId: event.deviceId || "",
+    channelId: event.channelId || "",
+    panelAssetId: event.panelAssetId || "",
+    circuitNumber: event.circuitNumber || "",
+    breakerGroupId: event.breakerGroupId || event.breaker_group_id || "",
+    type: event.type || "event",
+    state: event.state || "",
+    message: event.message || "",
+    data: event.data || {},
+    createdAt: event.createdAt || new Date().toISOString()
+  });
+  state.monitoringEvents = state.monitoringEvents.slice(0, 1000);
+}
+
+function runMonitoringOfflineCheck(shouldSave = true) {
+  if (!state?.monitoringDevices) return;
+  ensureMonitoringCollections();
+  if (monitoringEngine()?.runOfflineCheck) {
+    const result = monitoringEngine().runOfflineCheck(state, { makeId, now: new Date().toISOString() });
+    if (result.changed && shouldSave) {
+      saveStateQuietly();
+      render();
+    }
+    return;
+  }
+  let changed = false;
+  const now = Date.now();
+  state.monitoringDevices.forEach((device) => {
+    if (!device.lastSeenAt) return;
+    const heartbeatMs = Number(device.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS) * 1000;
+    if (device.onlineStatus !== "offline" && now - new Date(device.lastSeenAt).getTime() > heartbeatMs + 60000) {
+      device.onlineStatus = "offline";
+      device.updatedAt = new Date().toISOString();
+      monitoringChannelsForDevice(device.id).forEach((channel) => {
+        channel.lastDerivedState = "monitoring-offline";
+        channel.updatedAt = device.updatedAt;
+      });
+      addMonitoringEvent({
+        deviceId: device.id,
+        panelAssetId: device.panelAssetId,
+        type: "device-offline",
+        state: "monitoring-offline",
+        message: `${device.name} is offline.`
+      });
+      changed = true;
+    }
+  });
+  if (changed && shouldSave) {
+    saveStateQuietly();
+    render();
+  }
+}
+
+window.syncMonitoringStatusFromApi = window.syncMonitoringStatusFromApi || async function syncMonitoringStatusFromApiFallback() {
+  return;
+};
+
 function makeId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
