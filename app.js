@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-cabinet-14";
+const SITEWORKS_APP_VERSION = "20260809-key-cabinet-16";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9740,8 +9740,8 @@ function isKeyMissingOrUnverified(key) {
 }
 
 function isKeyRecentlyReturned(key) {
-  const date = getKeyReturnDateNeedingVerification(key);
-  return Number.isFinite(date?.getTime()) && Date.now() - date.getTime() < KEY_VERIFICATION_DUE_MS;
+  const date = getValidDate(getKeyReturnDateNeedingVerification(key));
+  return Boolean(date) && Date.now() - date.getTime() < KEY_VERIFICATION_DUE_MS;
 }
 
 function getLatestKeyReturnLog(key) {
@@ -9760,13 +9760,13 @@ function getKeyReturnDateNeedingVerification(key) {
 }
 
 function isKeyVerificationOverdue(key) {
-  const date = getKeyReturnDateNeedingVerification(key);
-  return Number.isFinite(date?.getTime()) && Date.now() - date.getTime() >= KEY_VERIFICATION_DUE_MS;
+  const date = getValidDate(getKeyReturnDateNeedingVerification(key));
+  return Boolean(date) && Date.now() - date.getTime() >= KEY_VERIFICATION_DUE_MS;
 }
 
 function getKeyVerificationOverdueLabel(key) {
-  const date = getKeyReturnDateNeedingVerification(key);
-  if (!Number.isFinite(date?.getTime())) return "";
+  const date = getValidDate(getKeyReturnDateNeedingVerification(key));
+  if (!date) return "";
   const diffMs = Date.now() - date.getTime();
   if (diffMs < KEY_VERIFICATION_DUE_MS) {
     const hoursLeft = Math.max(1, Math.ceil((KEY_VERIFICATION_DUE_MS - diffMs) / 3600000));
@@ -9802,6 +9802,12 @@ function getKeyCabinetLastVerifiedDate(key) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getValidDate(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
 function formatKeyCabinetRelativeDate(date) {

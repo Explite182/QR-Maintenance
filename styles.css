@@ -6190,13 +6190,13 @@ button.asset-detail-card {
 .key-cabinet-slots {
   display: grid;
   grid-template-columns: repeat(6, minmax(92px, 1fr));
-  gap: 22px 14px;
+  gap: 28px 14px;
   align-content: start;
 }
 
 .key-cabinet-slot {
   position: relative;
-  min-height: 150px;
+  min-height: 176px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -6213,7 +6213,7 @@ button.asset-detail-card {
 .key-cabinet-label {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
-  min-height: 44px;
+  min-height: 42px;
   border: 1px solid rgba(255,255,255,.18);
   background:
     linear-gradient(90deg, rgba(255,255,255,.08), transparent 22%, rgba(0,0,0,.18)),
@@ -6236,18 +6236,19 @@ button.asset-detail-card {
   display: grid;
   place-items: center;
   min-width: 0;
-  padding: 4px 7px;
+  padding: 4px 9px;
   color: #e8e4da;
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 900;
-  line-height: 1.08;
+  line-height: 1.12;
   text-transform: uppercase;
+  text-wrap: balance;
 }
 
 .key-cabinet-hook {
   position: absolute;
   left: 50%;
-  top: 46px;
+  top: 54px;
   width: 7px;
   height: 36px;
   transform: translateX(-50%);
@@ -6272,7 +6273,7 @@ button.asset-detail-card {
 .key-cabinet-keyring {
   position: absolute;
   left: 50%;
-  top: 70px;
+  top: 82px;
   width: 64px;
   height: 62px;
   transform: translateX(-50%);
@@ -6334,7 +6335,7 @@ button.asset-detail-card {
 .key-cabinet-status {
   position: absolute;
   left: 50%;
-  bottom: 22px;
+  bottom: 28px;
   transform: translateX(-50%);
   padding: 3px 8px;
   border-radius: 99px;
@@ -6348,7 +6349,7 @@ button.asset-detail-card {
 .key-cabinet-slot small {
   position: absolute;
   left: 50%;
-  bottom: -1px;
+  bottom: 2px;
   max-width: 100%;
   transform: translateX(-50%);
   color: rgba(255,255,255,.75);
@@ -6426,7 +6427,7 @@ button.asset-detail-card {
   content: "!";
   position: absolute;
   right: 4px;
-  top: 48px;
+  top: 58px;
   display: grid;
   place-items: center;
   width: 22px;
@@ -10908,7 +10909,7 @@ html[data-theme="dark"] .key-cabinet-frame {
   }
 
   .key-cabinet-slot {
-    min-height: 128px;
+    min-height: 156px;
   }
 
   .key-cabinet-side {
@@ -10932,6 +10933,15 @@ html[data-theme="dark"] .key-cabinet-frame {
 
   .key-cabinet-slots {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .key-cabinet-label {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+
+  .key-cabinet-label span {
+    font-size: 9px;
+    padding-inline: 5px;
   }
 
   .key-cabinet-side {
