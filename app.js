@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260808-startup-guard";
+const SITEWORKS_APP_VERSION = "20260808-login-sync-guard";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -2702,7 +2702,7 @@ els.assetForm.addEventListener("submit", async (event) => {
   selectedLocationId = defaultLocationSelection();
   try {
     saveState();
-    scheduleStructuredDataSync(0);
+    if (typeof scheduleStructuredDataSync === "function") scheduleStructuredDataSync(0);
   } catch (error) {
     state.assets = state.assets.filter((item) => item.id !== asset.id);
     state.activityLog = state.activityLog.filter((entry) =>
@@ -14543,8 +14543,17 @@ function applyForcedLogoutFromUrl() {
 
 async function bootstrapCloudData() {
   await loadSupabaseProfiles({ renderAfter: false });
-  const loadedStructuredData = await loadStructuredDataFromSupabase({ forceReload: true });
-  if (!loadedStructuredData && canUseSharedStateFallback()) await loadSharedStateFromSupabase();
+  const loadedStructuredData = typeof loadStructuredDataFromSupabase === "function"
+    ? await loadStructuredDataFromSupabase({ forceReload: true })
+    : false;
+  if (
+    !loadedStructuredData &&
+    typeof canUseSharedStateFallback === "function" &&
+    canUseSharedStateFallback() &&
+    typeof loadSharedStateFromSupabase === "function"
+  ) {
+    await loadSharedStateFromSupabase();
+  }
   await syncPublicReportsFromSupabase(true);
   if (!focusScannedAssetContext()) {
     restoreScannedAssetSelection();
@@ -14558,8 +14567,17 @@ async function refreshCloudDataFromSupabase() {
     setSyncBanner("loading", "Checking cloud", "", 1200);
   }
   await loadSupabaseProfiles({ renderAfter: false });
-  const loadedStructuredData = await loadStructuredDataFromSupabase({ forceReload: true });
-  if (!loadedStructuredData && canUseSharedStateFallback()) await loadSharedStateFromSupabase();
+  const loadedStructuredData = typeof loadStructuredDataFromSupabase === "function"
+    ? await loadStructuredDataFromSupabase({ forceReload: true })
+    : false;
+  if (
+    !loadedStructuredData &&
+    typeof canUseSharedStateFallback === "function" &&
+    canUseSharedStateFallback() &&
+    typeof loadSharedStateFromSupabase === "function"
+  ) {
+    await loadSharedStateFromSupabase();
+  }
   await syncPublicReportsFromSupabase(true);
   restoreScannedAssetSelection();
   render();
@@ -15149,8 +15167,8 @@ function guessNetworkQrUrl() {
 function saveState() {
   state.updatedAt = new Date().toISOString();
   persistLocalStateOnly();
-  scheduleSharedStateSave();
-  scheduleStructuredDataSync();
+  if (typeof scheduleSharedStateSave === "function") scheduleSharedStateSave();
+  if (typeof scheduleStructuredDataSync === "function") scheduleStructuredDataSync();
 }
 
 function saveStateQuietly() {
@@ -15160,8 +15178,8 @@ function saveStateQuietly() {
   } catch (error) {
     console.warn("Local state save skipped because browser storage is full.", error);
   }
-  scheduleSharedStateSave();
-  scheduleStructuredDataSync();
+  if (typeof scheduleSharedStateSave === "function") scheduleSharedStateSave();
+  if (typeof scheduleStructuredDataSync === "function") scheduleStructuredDataSync();
 }
 
 function persistLocalStateOnly(showStorageWarning = true) {
@@ -15686,8 +15704,8 @@ async function publishRestoredDataToCloud() {
   if (!hasSharedMaintenanceData(state) || isPublicReportUrl()) return;
   sharedStateReady = true;
   sharedStateLoading = false;
-  await saveSharedStateToSupabase();
-  await syncStructuredDataToSupabase();
+  if (typeof saveSharedStateToSupabase === "function") await saveSharedStateToSupabase();
+  if (typeof syncStructuredDataToSupabase === "function") await syncStructuredDataToSupabase();
 }
 
 function seedTemplates() {
