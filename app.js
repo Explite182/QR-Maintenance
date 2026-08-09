@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-cabinet-4";
+const SITEWORKS_APP_VERSION = "20260809-key-cabinet-7";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6940,11 +6940,16 @@ document.addEventListener("click", async (event) => {
     event.stopPropagation();
     focusedKeyId = cabinetSlot.dataset.keyCabinetSlot || "";
     renderKeys();
-    window.setTimeout(() => {
-      [...(els.keyList?.querySelectorAll("[data-key-summary]") || [])]
-        .find((summary) => summary.dataset.keySummary === focusedKeyId)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 50);
+    document.querySelector(".key-cabinet-drawer")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+
+  const keyDrawerClose = event.target.closest("[data-key-drawer-close]");
+  if (keyDrawerClose) {
+    event.preventDefault();
+    event.stopPropagation();
+    focusedKeyId = "";
+    renderKeys();
     return;
   }
 
@@ -9530,6 +9535,7 @@ function renderKeys() {
 function renderKeyCabinet(keys = []) {
   const visibleSlots = Math.max(24, Math.min(48, Math.ceil(keys.length / 6) * 6 || 24));
   const slots = Array.from({ length: visibleSlots }, (_, index) => renderKeyCabinetSlot(keys[index], index));
+  const focusedKey = focusedKeyId ? keys.find((key) => key.id === focusedKeyId) : null;
   const availableCount = keys.filter((key) => !isKeyCheckedOut(key) && !isKeyOverdue(key)).length;
   const checkedOutCount = keys.filter((key) => isKeyCheckedOut(key)).length;
   const overdueCount = keys.filter((key) => isKeyOverdue(key)).length;
@@ -9562,6 +9568,7 @@ function renderKeyCabinet(keys = []) {
             </div>
           </aside>
         </div>
+        ${renderKeyCabinetDrawer(focusedKey)}
       </div>
     </section>
   `;
@@ -9574,17 +9581,23 @@ function renderKeyCabinetSlot(key, index) {
   const locationRecord = key ? getLocation(key.locationId) : null;
   const checkedOut = key ? isKeyCheckedOut(key) : false;
   const overdue = key ? isKeyOverdue(key) : false;
-  const status = !key ? "empty" : overdue ? "overdue" : checkedOut ? "out" : "available";
-  const statusText = !key ? "Empty" : overdue ? "Overdue" : checkedOut ? "Checked out" : "Available";
+  const status = getKeyCabinetStatus(key, checkedOut, overdue);
+  const statusText = siteKeyCabinetStatusLabel(status);
   const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key?.storageLocation || "Cabinet";
+  const slotContext = key ? locationRecord?.name || customer?.name || "Unassigned" : getKeyCabinetSlotContext();
+  const lastVerified = key ? getKeyCabinetLastVerifiedLabel(key) : "";
+  const lastUser = key ? getKeyCabinetLastUserLabel(key, checkedOut) : "";
   const cabinetNote = checkedOut
     ? `With ${holder}`
-    : locationRecord?.name || customer?.name || "Unassigned";
-  const title = key
-    ? `${label} | ${statusText} | ${holder}`
-    : `Slot ${slotNumber} | Empty`;
+    : lastUser ? `Last: ${lastUser}` : slotContext;
+  const detailLine = lastVerified || (!key ? "No history yet" : slotContext);
+  const titleParts = key
+    ? [`Slot ${slotNumber} - ${label}`, `Status: ${statusText}`, checkedOut ? `With: ${holder}` : lastUser ? `Last user: ${lastUser}` : "", lastVerified, slotContext]
+    : [`Slot ${slotNumber} - ${slotContext}`, "Status: Available", "Last verified: No history yet", "Last user: No history yet"];
+  const title = titleParts.filter(Boolean).join(" | ");
+  const selectedClass = key?.id && key.id === focusedKeyId ? " key-cabinet-slot-selected" : "";
   return `
-    <button type="button" class="key-cabinet-slot key-cabinet-slot-${status}" ${key ? `data-key-cabinet-slot="${escapeAttribute(key.id)}"` : "disabled"} title="${escapeAttribute(title)}">
+    <button type="button" class="key-cabinet-slot key-cabinet-slot-${status}${selectedClass}" ${key ? `data-key-cabinet-slot="${escapeAttribute(key.id)}"` : "disabled"} title="${escapeAttribute(title)}">
       <span class="key-cabinet-label">
         <b>${escapeHtml(slotNumber)}</b>
         <span>${escapeHtml(label)}</span>
@@ -9592,9 +9605,133 @@ function renderKeyCabinetSlot(key, index) {
       <span class="key-cabinet-hook" aria-hidden="true"></span>
       ${key && !checkedOut ? `<span class="key-cabinet-keyring" aria-hidden="true"><i></i><i></i><i></i></span>` : ""}
       <span class="key-cabinet-status">${escapeHtml(statusText)}</span>
-      ${key ? `<small>${escapeHtml(cabinetNote)}</small>` : ""}
+      <small>
+        <span>${escapeHtml(cabinetNote)}</span>
+        <span>${escapeHtml(detailLine)}</span>
+      </small>
     </button>
   `;
+}
+
+function renderKeyCabinetDrawer(key) {
+  if (!key) {
+    return `
+      <div class="key-cabinet-drawer key-cabinet-drawer-empty">
+        <div>
+          <strong>Key Details</strong>
+          <p>Tap a key slot to see checkout, return, NFC, QR, and notes here.</p>
+        </div>
+      </div>
+    `;
+  }
+  const customer = getCustomer(key.customerId);
+  const locationRecord = getLocation(key.locationId);
+  const checkedOut = isKeyCheckedOut(key);
+  const overdue = isKeyOverdue(key);
+  const status = getKeyCabinetStatus(key, checkedOut, overdue);
+  const statusText = siteKeyCabinetStatusLabel(status);
+  const latestCheckout = getLatestKeyLogForAction(key, "Check-Out");
+  const latestReturn = getLatestKeyLogForAction(key, "Check-In");
+  const latestVerified = getLatestKeyLogForAction(key, "NFC Verify") || getLatestKeyLogForAction(key, "Verify");
+  const tagUids = getAllKeyTagUids(key);
+  const keyUrl = getKeyUrl(key);
+  const locationLabel = [customer?.name, locationRecord?.name].filter(Boolean).join(" | ") || "Unassigned";
+  const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key.storageLocation || "Cabinet";
+  const lastVerification = key.nfcVerifiedAt
+    ? formatDateTime(new Date(key.nfcVerifiedAt))
+    : latestVerified ? formatDateTime(new Date(latestVerified.timestamp || latestVerified.createdAt || new Date())) : "Not verified";
+  return `
+    <div class="key-cabinet-drawer key-cabinet-drawer-${status}">
+      <div class="key-cabinet-drawer-header">
+        <div>
+          <span>Key Details</span>
+          <strong>${escapeHtml(key.keyName || key.name || "Key")}</strong>
+          <small>${escapeHtml(locationLabel)}</small>
+        </div>
+        <button type="button" class="secondary mini" data-key-drawer-close>Close</button>
+      </div>
+      <div class="key-cabinet-detail-grid">
+        <span>Status</span><strong>${escapeHtml(statusText)}${checkedOut ? ` to ${escapeHtml(holder)}` : ""}</strong>
+        <span>NFC tag ID</span><strong>${escapeHtml(tagUids.length ? tagUids.join(", ") : "Not assigned")}</strong>
+        <span>QR link</span><strong><a href="${escapeAttribute(keyUrl)}" target="_blank" rel="noopener">Open key link</a></strong>
+        <span>Last check-out</span><strong>${escapeHtml(latestCheckout ? `${formatDateTime(new Date(latestCheckout.timestamp || latestCheckout.createdAt || new Date()))} | ${latestCheckout.userName || key.currentHolderName || "SiteWorks"}` : "No checkout yet")}</strong>
+        <span>Last return</span><strong>${escapeHtml(latestReturn ? `${formatDateTime(new Date(latestReturn.timestamp || latestReturn.createdAt || new Date()))} | ${latestReturn.userName || "SiteWorks"}` : "No return yet")}</strong>
+        <span>Last verification</span><strong>${escapeHtml(lastVerification)}</strong>
+        <span>Notes</span><strong>${escapeHtml(key.notes || "No notes")}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function getLatestKeyLogForAction(key, action) {
+  const keyId = key?.id || "";
+  if (!keyId) return null;
+  const target = String(action || "").toLowerCase();
+  return (state.keyLogs || [])
+    .filter((log) => log.keyId === keyId && String(log.action || "").toLowerCase().includes(target))
+    .sort((a, b) => String(b.timestamp || b.createdAt || "").localeCompare(String(a.timestamp || a.createdAt || "")))[0] || null;
+}
+
+function getKeyCabinetStatus(key, checkedOut = false, overdue = false) {
+  if (!key) return "available";
+  if (overdue) return "overdue";
+  if (checkedOut) return "out";
+  if (isKeyRecentlyReturned(key)) return "returned";
+  if (isKeyMissingOrUnverified(key)) return "unverified";
+  return "available";
+}
+
+function siteKeyCabinetStatusLabel(status) {
+  if (status === "overdue") return "Overdue";
+  if (status === "out") return "Checked out";
+  if (status === "returned") return "Needs verify";
+  if (status === "unverified") return "Unverified";
+  return "Available";
+}
+
+function isKeyMissingOrUnverified(key) {
+  const text = String(key?.currentStatus || key?.current_status || key?.nfcStatus || key?.nfc_status || "").toLowerCase();
+  if (text.includes("missing") || text.includes("lost") || text.includes("unverified")) return true;
+  return Boolean(key) && !getKeyCabinetLastVerifiedLabel(key);
+}
+
+function isKeyRecentlyReturned(key) {
+  const latestCheckIn = (state.keyLogs || [])
+    .filter((log) => log.keyId === key?.id && log.action === "Check-In" && String(log.notes || "").toLowerCase().includes("checked in from"))
+    .sort((a, b) => String(b.timestamp || b.createdAt || "").localeCompare(String(a.timestamp || a.createdAt || "")))[0];
+  if (!latestCheckIn) return false;
+  const date = new Date(latestCheckIn.timestamp || latestCheckIn.createdAt || "");
+  return Number.isFinite(date.getTime()) && Date.now() - date.getTime() < 48 * 60 * 60 * 1000;
+}
+
+function getKeyCabinetSlotContext() {
+  const locationRecord = selectedLocationId && selectedLocationId !== ALL_LOCATIONS ? getLocation(selectedLocationId) : null;
+  const customer = selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS ? getCustomer(selectedCustomerId) : null;
+  return locationRecord?.name || customer?.name || "Unassigned slot";
+}
+
+function getKeyCabinetLastUserLabel(key, checkedOut = false) {
+  if (!key) return "";
+  if (checkedOut) return key.currentHolderName || "Unknown holder";
+  return key.lastUserName || key.lastHolderName || key.currentHolderName || key.checkedOutByName || key.checkedOutBy || "";
+}
+
+function getKeyCabinetLastVerifiedLabel(key) {
+  if (!key) return "";
+  const value = key.lastVerifiedAt || key.verifiedAt || key.nfcLastVerifiedAt || key.nfcVerifiedAt || "";
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `Verified ${formatKeyCabinetRelativeDate(date)}`;
+}
+
+function formatKeyCabinetRelativeDate(date) {
+  const diffMs = Date.now() - date.getTime();
+  const absDays = Math.floor(Math.abs(diffMs) / 86400000);
+  if (absDays < 1) return "today";
+  if (absDays === 1) return "1 day ago";
+  if (absDays < 30) return `${absDays} days ago`;
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
 }
 
 function renderKeyLocationOptions() {

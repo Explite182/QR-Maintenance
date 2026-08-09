@@ -6186,7 +6186,7 @@ button.asset-detail-card {
 
 .key-cabinet-slot {
   position: relative;
-  min-height: 142px;
+  min-height: 150px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -6197,7 +6197,7 @@ button.asset-detail-card {
 
 .key-cabinet-slot:disabled {
   cursor: default;
-  opacity: .7;
+  opacity: .82;
 }
 
 .key-cabinet-label {
@@ -6324,7 +6324,7 @@ button.asset-detail-card {
 .key-cabinet-status {
   position: absolute;
   left: 50%;
-  bottom: 14px;
+  bottom: 22px;
   transform: translateX(-50%);
   padding: 3px 8px;
   border-radius: 99px;
@@ -6338,15 +6338,27 @@ button.asset-detail-card {
 .key-cabinet-slot small {
   position: absolute;
   left: 50%;
-  bottom: -3px;
+  bottom: 0;
   max-width: 100%;
   transform: translateX(-50%);
   color: rgba(255,255,255,.75);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
+  line-height: 1.12;
+  white-space: normal;
+  overflow: hidden;
+}
+
+.key-cabinet-slot small span {
+  display: block;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.key-cabinet-slot-available .key-cabinet-label {
+  outline: 2px solid rgba(21, 168, 94, .54);
 }
 
 .key-cabinet-slot-available .key-cabinet-status {
@@ -6354,12 +6366,11 @@ button.asset-detail-card {
   color: #056b39;
 }
 
-.key-cabinet-slot-out .key-cabinet-label,
-.key-cabinet-slot-overdue .key-cabinet-label {
-  outline: 2px solid rgba(230, 63, 52, .72);
+.key-cabinet-slot-out .key-cabinet-label {
+  outline: 2px solid rgba(232, 178, 51, .72);
   background:
     linear-gradient(90deg, rgba(255,255,255,.08), transparent 22%, rgba(0,0,0,.18)),
-    linear-gradient(#165f52, #064f43);
+    linear-gradient(#5f4f16, #4e3a06);
 }
 
 .key-cabinet-slot-out .key-cabinet-status {
@@ -6367,8 +6378,16 @@ button.asset-detail-card {
   color: #7a4c00;
 }
 
+.key-cabinet-slot-overdue .key-cabinet-label {
+  outline: 2px solid rgba(230, 63, 52, .8);
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.08), transparent 22%, rgba(0,0,0,.18)),
+    linear-gradient(#6b1d19, #4f100d);
+}
+
 .key-cabinet-slot-out small,
-.key-cabinet-slot-overdue small {
+.key-cabinet-slot-overdue small,
+.key-cabinet-slot-returned small {
   color: #fff7dc;
   text-shadow: 0 1px 2px rgba(0,0,0,.45);
 }
@@ -6392,6 +6411,38 @@ button.asset-detail-card {
   color: #fff;
   font-weight: 900;
   box-shadow: 0 0 0 5px rgba(217,50,40,.18);
+}
+
+.key-cabinet-slot-unverified .key-cabinet-label {
+  outline: 2px solid rgba(172,184,184,.58);
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.08), transparent 22%, rgba(0,0,0,.18)),
+    linear-gradient(#3b403e, #181c1b);
+}
+
+.key-cabinet-slot-unverified .key-cabinet-status {
+  background: #e5e9e8;
+  color: #455150;
+}
+
+.key-cabinet-slot-returned .key-cabinet-label {
+  outline: 2px solid rgba(59, 130, 246, .72);
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.08), transparent 22%, rgba(0,0,0,.18)),
+    linear-gradient(#17446d, #0a2e50);
+}
+
+.key-cabinet-slot-returned .key-cabinet-status {
+  background: #dcecff;
+  color: #15529b;
+}
+
+.key-cabinet-slot-selected {
+  filter: drop-shadow(0 0 12px rgba(27, 163, 139, .68));
+}
+
+.key-cabinet-slot-selected .key-cabinet-label {
+  outline: 3px solid rgba(27, 163, 139, .86);
 }
 
 .key-cabinet-side {
@@ -6431,6 +6482,102 @@ button.asset-detail-card {
 
 .key-cabinet-counts b {
   font-size: 18px;
+}
+
+.key-cabinet-drawer {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 7px;
+  background:
+    repeating-linear-gradient(0deg, rgba(0,0,0,.035) 0 1px, transparent 1px 24px),
+    linear-gradient(#d8d3c8, #aaa69d);
+  color: #141817;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.42), 0 4px 12px rgba(0,0,0,.24);
+}
+
+.key-cabinet-drawer-empty {
+  color: #303936;
+}
+
+.key-cabinet-drawer-empty p {
+  margin: 4px 0 0;
+  font-weight: 750;
+}
+
+.key-cabinet-drawer-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.key-cabinet-drawer-header span,
+.key-cabinet-drawer-header small {
+  display: block;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.key-cabinet-drawer-header span {
+  color: #006d5b;
+  font-size: 12px;
+}
+
+.key-cabinet-drawer-header strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 20px;
+}
+
+.key-cabinet-drawer-header small {
+  margin-top: 3px;
+  color: #52605f;
+}
+
+.key-cabinet-detail-grid {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 8px 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0,0,0,.18);
+}
+
+.key-cabinet-detail-grid span {
+  color: #4c5654;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.key-cabinet-detail-grid strong {
+  min-width: 0;
+  color: #111514;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.key-cabinet-detail-grid a {
+  color: #006d5b;
+  text-decoration: underline;
+}
+
+.key-cabinet-drawer-out {
+  border-left: 5px solid #e8b233;
+}
+
+.key-cabinet-drawer-overdue {
+  border-left: 5px solid #d93228;
+}
+
+.key-cabinet-drawer-returned {
+  border-left: 5px solid #3b82f6;
+}
+
+.key-cabinet-drawer-unverified {
+  border-left: 5px solid #8a9695;
 }
 
 .ticket-filter-bar {
@@ -10743,5 +10890,17 @@ html[data-theme="dark"] .key-cabinet-frame {
 
   .key-cabinet-side {
     grid-template-columns: 1fr;
+  }
+
+  .key-cabinet-drawer-header {
+    flex-direction: column;
+  }
+
+  .key-cabinet-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .key-cabinet-detail-grid span {
+    margin-top: 8px;
   }
 }
