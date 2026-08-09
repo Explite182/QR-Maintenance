@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
   <link rel="stylesheet" href="/styles.css?v=20260809-keybox-extract-20">
-  <link rel="stylesheet" href="/keybox.css?v=20260809-key-wizard-nfc-23">
+  <link rel="stylesheet" href="/keybox.css?v=20260809-key-wizard-write-24">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
 <body>
@@ -1410,6 +1410,10 @@
                     <strong>Review and save</strong>
                     <span id="keyWizardReview">Enter key details, then save.</span>
                   </div>
+                  <label class="check-row">
+                    <input id="keyWriteAfterSave" type="checkbox" checked>
+                    Write this key URL to the NFC tag after saving
+                  </label>
                   <button type="submit" class="primary">Add Key</button>
                 </section>
                 <div class="key-wizard-actions">
@@ -1835,7 +1839,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/app.js?v=20260809-key-wizard-nfc-23"></script>
+  <script src="/app.js?v=20260809-key-wizard-write-24"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

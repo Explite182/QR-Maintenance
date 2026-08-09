@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-wizard-nfc-23";
+const SITEWORKS_APP_VERSION = "20260809-key-wizard-write-24";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5401,6 +5401,7 @@ const els = {
   keyStatus: document.getElementById("keyStatus"),
   keySetupWizard: document.getElementById("keySetupWizard"),
   keyWizardReview: document.getElementById("keyWizardReview"),
+  keyWriteAfterSave: document.getElementById("keyWriteAfterSave"),
   keyCount: document.getElementById("keyCount"),
   keyList: document.getElementById("keyList"),
   serviceRequestCreateDrawer: document.getElementById("serviceRequestCreateDrawer"),
@@ -7697,6 +7698,7 @@ els.keyForm?.addEventListener("submit", async (event) => {
     alert("Managers can only add keys for their assigned customer.");
     return;
   }
+  const shouldWriteNfcTag = Boolean(els.keyWriteAfterSave?.checked && !els.keyWriteAfterSave?.disabled);
   const now = new Date().toISOString();
   const key = {
     id: crypto.randomUUID(),
@@ -7721,12 +7723,22 @@ els.keyForm?.addEventListener("submit", async (event) => {
   addActivity("Key added", key.keyName);
   saveState();
   await syncSingleKeyToSupabase(key);
+  if (shouldWriteNfcTag) {
+    if (els.keyStatus) {
+      els.keyStatus.textContent = "Key saved. Writing NFC tag...";
+      els.keyStatus.className = "inline-status";
+    }
+    await writeKeyNfcTag(key);
+  }
   els.keyForm.reset();
   keyWizardStep = 0;
   renderKeySetupWizard();
   if (els.keyStatus) {
-    els.keyStatus.textContent = `Added ${key.keyName}.`;
-    els.keyStatus.className = "inline-status is-ok";
+    const nfcWriteFailed = shouldWriteNfcTag && String(key.nfcMessage || "").toLowerCase().includes("failed");
+    els.keyStatus.textContent = shouldWriteNfcTag
+      ? `Added ${key.keyName}. NFC write ${nfcWriteFailed ? "needs attention" : "complete"}.`
+      : `Added ${key.keyName}.`;
+    els.keyStatus.className = nfcWriteFailed ? "inline-status is-error" : "inline-status is-ok";
   }
   closeTopActionDrawers();
   showCreationConfirmation(`Key created: ${key.keyName}`);
@@ -7802,6 +7814,11 @@ function renderKeySetupWizard() {
   }
   if (els.keyWizardReview) {
     els.keyWizardReview.textContent = buildKeyWizardReviewText();
+  }
+  if (els.keyWriteAfterSave) {
+    const canWriteFromThisDevice = canUseLocalNfcBridge();
+    els.keyWriteAfterSave.disabled = !canWriteFromThisDevice;
+    els.keyWriteAfterSave.closest("label")?.classList.toggle("is-disabled", !canWriteFromThisDevice);
   }
 }
 

@@ -1,4 +1,4 @@
-/* SiteWorks Keybox styles version: 20260809-key-wizard-nfc-23 */
+/* SiteWorks Keybox styles version: 20260809-key-wizard-write-24 */
 
 .key-cabinet {
   margin-bottom: 14px;
@@ -712,6 +712,10 @@
   color: #5d6e6b;
   font-size: 12px;
   font-weight: 800;
+}
+
+.key-wizard-panel .check-row.is-disabled {
+  opacity: .58;
 }
 
 
