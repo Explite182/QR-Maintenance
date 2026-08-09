@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-keybox-events-21";
+const SITEWORKS_APP_VERSION = "20260809-key-wizard-22";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4950,6 +4950,7 @@ let focusedCompletedRecordId = "";
 let focusedInventoryItemId = getInventoryItemIdFromUrl() || "";
 let focusedKeyId = getKeyIdFromUrl() || "";
 let keyCabinetPage = 0;
+let keyWizardStep = 0;
 let serviceRequestDrawerTab = "notes";
 let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
@@ -5398,6 +5399,8 @@ const els = {
   keyStorageLocation: document.getElementById("keyStorageLocation"),
   keyNotes: document.getElementById("keyNotes"),
   keyStatus: document.getElementById("keyStatus"),
+  keySetupWizard: document.getElementById("keySetupWizard"),
+  keyWizardReview: document.getElementById("keyWizardReview"),
   keyCount: document.getElementById("keyCount"),
   keyList: document.getElementById("keyList"),
   serviceRequestCreateDrawer: document.getElementById("serviceRequestCreateDrawer"),
@@ -6858,7 +6861,8 @@ document.addEventListener("click", (event) => {
   setInventoryTab("keys");
   openPanel("inventoryPanel");
   openTopActionDrawer(els.keyCreateDrawer);
-  window.setTimeout(() => els.keyName?.focus(), 120);
+  startKeySetupWizard(openKeyButton.dataset.keySlotNumber || "");
+  window.setTimeout(() => getKeyWizardFocusTarget()?.focus(), 120);
 });
 
 document.addEventListener("click", (event) => {
@@ -7212,6 +7216,7 @@ els.newKeyBtn?.addEventListener("click", () => {
   setInventoryTab("keys");
   openPanel("inventoryPanel");
   openTopActionDrawer(els.keyCreateDrawer);
+  startKeySetupWizard();
 });
 
 els.prevAssetPageBtn.addEventListener("click", () => {
@@ -7717,6 +7722,8 @@ els.keyForm?.addEventListener("submit", async (event) => {
   saveState();
   await syncSingleKeyToSupabase(key);
   els.keyForm.reset();
+  keyWizardStep = 0;
+  renderKeySetupWizard();
   if (els.keyStatus) {
     els.keyStatus.textContent = `Added ${key.keyName}.`;
     els.keyStatus.className = "inline-status is-ok";
@@ -7725,6 +7732,105 @@ els.keyForm?.addEventListener("submit", async (event) => {
   showCreationConfirmation(`Key created: ${key.keyName}`);
   render();
 });
+
+els.keySetupWizard?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-key-wizard-target]");
+  if (!button) return;
+  event.preventDefault();
+  setKeyWizardStep(Number(button.dataset.keyWizardTarget || 0));
+});
+
+els.keyForm?.addEventListener("click", (event) => {
+  const nextButton = event.target.closest("[data-key-wizard-next]");
+  if (nextButton) {
+    event.preventDefault();
+    if (!validateKeyWizardStep(keyWizardStep)) return;
+    setKeyWizardStep(keyWizardStep + 1);
+    return;
+  }
+  const prevButton = event.target.closest("[data-key-wizard-prev]");
+  if (prevButton) {
+    event.preventDefault();
+    setKeyWizardStep(keyWizardStep - 1);
+  }
+});
+
+els.keyForm?.addEventListener("input", () => {
+  renderKeySetupWizard();
+});
+
+function startKeySetupWizard(slotNumber = "") {
+  keyWizardStep = 0;
+  if (slotNumber && els.keyNumber && !els.keyNumber.value.trim()) {
+    els.keyNumber.value = slotNumber;
+  }
+  if (els.keyStatus) {
+    els.keyStatus.textContent = "";
+    els.keyStatus.className = "inline-status";
+  }
+  renderKeySetupWizard();
+}
+
+function setKeyWizardStep(step) {
+  keyWizardStep = Math.min(Math.max(Number.isInteger(step) ? step : 0, 0), 4);
+  renderKeySetupWizard();
+  window.setTimeout(() => getKeyWizardFocusTarget()?.focus(), 30);
+}
+
+function renderKeySetupWizard() {
+  els.keySetupWizard?.querySelectorAll("[data-key-wizard-target]").forEach((button) => {
+    const step = Number(button.dataset.keyWizardTarget || 0);
+    button.classList.toggle("is-active", step === keyWizardStep);
+    button.classList.toggle("is-complete", step < keyWizardStep);
+  });
+  els.keyForm?.querySelectorAll("[data-key-wizard-panel]").forEach((panel) => {
+    panel.classList.toggle("is-active", Number(panel.dataset.keyWizardPanel || 0) === keyWizardStep);
+  });
+  const prevButton = els.keyForm?.querySelector("[data-key-wizard-prev]");
+  const nextButton = els.keyForm?.querySelector("[data-key-wizard-next]");
+  if (prevButton) prevButton.disabled = keyWizardStep <= 0;
+  if (nextButton) {
+    nextButton.classList.toggle("hidden", keyWizardStep >= 4);
+    nextButton.textContent = keyWizardStep === 3 ? "Review" : "Next";
+  }
+  if (els.keyWizardReview) {
+    els.keyWizardReview.textContent = buildKeyWizardReviewText();
+  }
+}
+
+function validateKeyWizardStep(step) {
+  if (step === 1 && !els.keyName?.value.trim()) {
+    if (els.keyStatus) {
+      els.keyStatus.textContent = "Enter a key name before continuing.";
+      els.keyStatus.className = "inline-status is-error";
+    }
+    els.keyName?.focus();
+    return false;
+  }
+  if (els.keyStatus) {
+    els.keyStatus.textContent = "";
+    els.keyStatus.className = "inline-status";
+  }
+  return true;
+}
+
+function getKeyWizardFocusTarget() {
+  if (keyWizardStep === 0) return els.keyTagUid;
+  if (keyWizardStep === 1) return els.keyName;
+  if (keyWizardStep === 2) return els.keyLocation || els.keyCustomer;
+  if (keyWizardStep === 3) return els.keyNotes;
+  return els.keyForm?.querySelector("button[type='submit']");
+}
+
+function buildKeyWizardReviewText() {
+  const parts = [
+    els.keyTagUid?.value.trim() ? `NFC ${els.keyTagUid.value.trim()}` : "No NFC tag yet",
+    els.keyName?.value.trim() || "Unnamed key",
+    els.keyLocation?.selectedOptions?.[0]?.textContent || "All locations",
+    els.keyNotes?.value.trim() ? "Notes added" : "No notes"
+  ];
+  return parts.join(" | ");
+}
 
 els.pmCalendarRange?.addEventListener("change", () => {
   pmCalendarRange = els.pmCalendarRange.value || "month";
@@ -9510,6 +9616,7 @@ function renderKeys() {
     els.keyCustomer.disabled = currentRole !== "Admin" || !canManageKeys();
   }
   renderKeyLocationOptions();
+  renderKeySetupWizard();
   if (els.keyCreateDrawer) {
     els.keyCreateDrawer.classList.toggle("hidden", !canManageKeys());
     if (!canManageKeys()) els.keyCreateDrawer.open = false;
@@ -12796,6 +12903,7 @@ function runMobileCreateAction(action) {
     openPanel("inventoryPanel");
     setMobileTabState("inventoryPanel");
     openMobileCreateDrawer(els.keyCreateDrawer);
+    startKeySetupWizard();
   }
 }
 

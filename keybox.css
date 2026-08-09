@@ -1,4 +1,4 @@
-/* SiteWorks Keybox styles version: 20260809-keybox-extract-20 */
+/* SiteWorks Keybox styles version: 20260809-key-wizard-22 */
 
 .key-cabinet {
   margin-bottom: 14px;
@@ -642,6 +642,72 @@
 
 .key-cabinet-drawer-unverified {
   border-left: 5px solid #8a9695;
+}
+
+.key-setup-wizard {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 12px 12px 0;
+}
+
+.key-setup-wizard button {
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid #cdd9d6;
+  border-radius: 6px;
+  background: #f4f8f7;
+  color: #50625f;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.key-setup-wizard button.is-active {
+  border-color: #0c7a68;
+  background: #0c7a68;
+  color: #fff;
+}
+
+.key-setup-wizard button.is-complete {
+  border-color: #9fcfc5;
+  background: #e8f6f2;
+  color: #0a6255;
+}
+
+.key-wizard-panel {
+  display: none;
+}
+
+.key-wizard-panel.is-active {
+  display: grid;
+  gap: 12px;
+}
+
+.key-wizard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.key-wizard-review {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #d5dfdc;
+  border-radius: 6px;
+  background: #f7faf9;
+}
+
+.key-wizard-review strong {
+  color: #14201f;
+}
+
+.key-wizard-review span {
+  color: #5d6e6b;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 

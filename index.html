@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
   <link rel="stylesheet" href="/styles.css?v=20260809-keybox-extract-20">
-  <link rel="stylesheet" href="/keybox.css?v=20260809-keybox-extract-20">
-  <script src="/keybox.js?v=20260809-keybox-events-21"></script>
+  <link rel="stylesheet" href="/keybox.css?v=20260809-key-wizard-22">
+  <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
 <body>
   <section id="publicKeyScreen" class="report-screen hidden">
@@ -1352,46 +1352,69 @@
             </div>
             <details id="keyCreateDrawer" class="service-request-create-drawer work-create-drawer">
               <summary>Add Key</summary>
+              <div id="keySetupWizard" class="key-setup-wizard" aria-label="Key setup wizard">
+                <button type="button" class="is-active" data-key-wizard-target="0">1 Scan NFC</button>
+                <button type="button" data-key-wizard-target="1">2 Key Name</button>
+                <button type="button" data-key-wizard-target="2">3 Location</button>
+                <button type="button" data-key-wizard-target="3">4 Notes</button>
+                <button type="button" data-key-wizard-target="4">5 Save</button>
+              </div>
               <form id="keyForm" class="stack compact-form">
-                <div class="form-grid">
-                  <label>
-                    Customer
-                    <select id="keyCustomer"></select>
-                  </label>
-                  <label>
-                    Location
-                    <select id="keyLocation"></select>
-                  </label>
-                </div>
-                <div class="form-grid">
-                  <label>
-                    Key name
-                    <input id="keyName" required placeholder="Electrical room key">
-                  </label>
-                  <label>
-                    Key number
-                    <input id="keyNumber" placeholder="K-101">
-                  </label>
-                </div>
-                <div class="form-grid">
+                <section class="key-wizard-panel is-active" data-key-wizard-panel="0">
                   <label>
                     NFC tag UID
                     <input id="keyTagUid" placeholder="Scan or type tag UID">
                   </label>
                   <label>
+                    Extra NFC tag UIDs
+                    <textarea id="keyAdditionalTagUids" rows="2" placeholder="Optional box/home tags, one UID per line"></textarea>
+                  </label>
+                </section>
+                <section class="key-wizard-panel" data-key-wizard-panel="1">
+                  <div class="form-grid">
+                    <label>
+                      Key name
+                      <input id="keyName" required placeholder="Electrical room key">
+                    </label>
+                    <label>
+                      Key number
+                      <input id="keyNumber" placeholder="K-101">
+                    </label>
+                  </div>
+                </section>
+                <section class="key-wizard-panel" data-key-wizard-panel="2">
+                  <div class="form-grid">
+                    <label>
+                      Customer
+                      <select id="keyCustomer"></select>
+                    </label>
+                    <label>
+                      Location
+                      <select id="keyLocation"></select>
+                    </label>
+                  </div>
+                  <label>
                     Storage location
                     <input id="keyStorageLocation" placeholder="Lock box, office, cabinet">
                   </label>
+                </section>
+                <section class="key-wizard-panel" data-key-wizard-panel="3">
+                  <label>
+                    Notes
+                    <textarea id="keyNotes" rows="3" placeholder="Access notes, lock info, or return instructions"></textarea>
+                  </label>
+                </section>
+                <section class="key-wizard-panel" data-key-wizard-panel="4">
+                  <div class="key-wizard-review">
+                    <strong>Review and save</strong>
+                    <span id="keyWizardReview">Enter key details, then save.</span>
+                  </div>
+                  <button type="submit" class="primary">Add Key</button>
+                </section>
+                <div class="key-wizard-actions">
+                  <button type="button" class="secondary mini" data-key-wizard-prev>Back</button>
+                  <button type="button" class="secondary mini" data-key-wizard-next>Next</button>
                 </div>
-                <label>
-                  Extra NFC tag UIDs
-                  <textarea id="keyAdditionalTagUids" rows="2" placeholder="Optional box/home tags, one UID per line"></textarea>
-                </label>
-                <label>
-                  Notes
-                  <textarea id="keyNotes" rows="3" placeholder="Access notes, lock info, or return instructions"></textarea>
-                </label>
-                <button type="submit" class="primary">Add Key</button>
                 <p id="keyStatus" class="inline-status"></p>
               </form>
             </details>
@@ -1811,7 +1834,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/app.js?v=20260809-keybox-events-21"></script>
+  <script src="/app.js?v=20260809-key-wizard-22"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

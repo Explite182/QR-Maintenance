@@ -1,4 +1,4 @@
-/* SiteWorks Keybox module version: 20260809-keybox-events-21 */
+/* SiteWorks Keybox module version: 20260809-key-wizard-22 */
 (function initSiteWorksKeybox(window) {
   "use strict";
 
@@ -113,7 +113,7 @@
     const title = titleParts.filter(Boolean).join(" | ");
     const selectedClass = key?.id && key.id === env.focusedKeyId ? " key-cabinet-slot-selected" : "";
     return `
-      <button type="button" class="key-cabinet-slot key-cabinet-slot-${status}${selectedClass}" ${key ? `data-key-cabinet-slot="${env.escapeAttribute(key.id)}"` : env.canManageKeys() ? "data-open-key-form" : "disabled"} title="${env.escapeAttribute(title)}">
+      <button type="button" class="key-cabinet-slot key-cabinet-slot-${status}${selectedClass}" ${key ? `data-key-cabinet-slot="${env.escapeAttribute(key.id)}"` : env.canManageKeys() ? `data-open-key-form data-key-slot-number="${env.escapeAttribute(slotNumber)}"` : "disabled"} title="${env.escapeAttribute(title)}">
         <span class="key-cabinet-label">
           <b>${env.escapeHtml(slotNumber)}</b>
           <span>${env.escapeHtml(label)}</span>
