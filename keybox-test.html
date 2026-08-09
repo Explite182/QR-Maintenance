@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SiteWorks Keybox Test</title>
+  <link rel="stylesheet" href="keybox.css?v=20260809-keybox-js-20">
+  <style>
+    :root {
+      --ink: #14201f;
+      --muted: #60706d;
+      --line: #d4dfdc;
+      --paper: #f4f7f6;
+      --panel: #ffffff;
+      --ok: #087a4f;
+      --bad: #b42318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    main {
+      display: grid;
+      gap: 16px;
+      width: min(1180px, calc(100% - 28px));
+      margin: 20px auto;
+    }
+
+    h1,
+    p {
+      margin: 0;
+    }
+
+    .test-header,
+    .test-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 16px 42px rgba(15, 35, 32, .12);
+    }
+
+    .test-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px;
+    }
+
+    .test-header h1 {
+      font-size: 20px;
+    }
+
+    .test-header p {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .test-panel {
+      padding: 14px;
+    }
+
+    .test-results {
+      display: grid;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .test-results li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-weight: 800;
+    }
+
+    .test-results .pass {
+      color: var(--ok);
+      background: #effaf4;
+    }
+
+    .test-results .fail {
+      color: var(--bad);
+      background: #fff1ef;
+    }
+
+    .test-stage {
+      display: grid;
+      gap: 18px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="test-header">
+      <div>
+        <h1>SiteWorks Keybox Test</h1>
+        <p>Standalone smoke test for cabinet geometry and basic render states.</p>
+      </div>
+      <strong id="summary">Running...</strong>
+    </section>
+
+    <section class="test-panel">
+      <ul id="results" class="test-results"></ul>
+    </section>
+
+    <section id="stage" class="test-stage"></section>
+  </main>
+
+  <script src="keybox.js?v=20260809-keybox-js-20"></script>
+  <script>
+    (() => {
+      const stage = document.getElementById("stage");
+      const results = document.getElementById("results");
+      const summary = document.getElementById("summary");
+      let keyboxPage = 0;
+
+      const customers = [{ id: "customer-1", name: "Club 16" }];
+      const locations = [{ id: "location-1", customerId: "customer-1", name: "Coquitlam" }];
+      const now = new Date();
+      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+
+      const keys = Array.from({ length: 25 }, (_, index) => ({
+        id: `key-${index + 1}`,
+        customerId: "customer-1",
+        locationId: "location-1",
+        keyName: index === 0 ? "Coquitlam Keys" : `Test Key ${index + 1}`,
+        keyNumber: String(index + 1),
+        currentStatus: index === 1 ? "Checked Out" : "Available",
+        currentHolderName: index === 1 ? "Alex Tech" : "",
+        storageLocation: "Cabinet",
+        dueBackAt: index === 1 ? new Date(now.getTime() - 60 * 60 * 1000).toISOString() : "",
+        nfcVerifiedAt: index === 0 ? now.toISOString() : ""
+      }));
+
+      const keyLogs = [
+        {
+          id: "log-returned",
+          keyId: "key-3",
+          userName: "Morgan Tech",
+          action: "Check-In",
+          timestamp: twoHoursAgo,
+          notes: "Returned for verification."
+        }
+      ];
+
+      const env = {
+        ALL_CUSTOMERS: "all",
+        ALL_LOCATIONS: "all",
+        keyLogs,
+        focusedKeyId: "key-3",
+        selectedCustomerId: "customer-1",
+        selectedLocationId: "location-1",
+        getPage: () => keyboxPage,
+        setPage: (page) => { keyboxPage = page; },
+        getCustomer: (id) => customers.find((customer) => customer.id === id) || null,
+        getLocation: (id) => locations.find((location) => location.id === id) || null,
+        getAllKeyTagUids: (key) => key.uniqueTagId ? [key.uniqueTagId] : [],
+        getKeyUrl: (key) => `#key/${key.id}`,
+        isKeyCheckedOut: (key) => key.currentStatus === "Checked Out",
+        isKeyOverdue: (key) => key.currentStatus === "Checked Out" && new Date(key.dueBackAt).getTime() < Date.now(),
+        canManageKeys: () => true,
+        canManageKeyCustomer: () => true,
+        escapeHtml,
+        escapeAttribute: escapeHtml,
+        formatDateTime: (date) => date.toLocaleString()
+      };
+
+      function renderScenario(label, scenarioKeys, scenarioEnv = env) {
+        const wrapper = document.createElement("section");
+        wrapper.className = "test-panel";
+        wrapper.innerHTML = `<h2>${escapeHtml(label)}</h2>${window.SiteWorksKeybox.renderKeyCabinet(scenarioKeys, scenarioEnv)}`;
+        stage.appendChild(wrapper);
+        return wrapper;
+      }
+
+      function check(label, passed) {
+        const item = document.createElement("li");
+        item.className = passed ? "pass" : "fail";
+        item.innerHTML = `<span>${escapeHtml(label)}</span><strong>${passed ? "PASS" : "FAIL"}</strong>`;
+        results.appendChild(item);
+        return passed;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      keyboxPage = 0;
+      const overflowCabinet = renderScenario("Overflow cabinet: 25 keys", keys);
+      keyboxPage = 0;
+      const partialCabinet = renderScenario("Partial cabinet: empty slots", keys.slice(0, 4), { ...env, focusedKeyId: "", keyLogs: [] });
+
+      const checks = [
+        check("Keybox module loaded", Boolean(window.SiteWorksKeybox?.renderKeyCabinet)),
+        check("24 slots render on a cabinet page", overflowCabinet.querySelectorAll(".key-cabinet-slot").length === 24),
+        check("25 keys creates Cabinet 2 tab", overflowCabinet.textContent.includes("Cabinet 2")),
+        check("Empty slots show + Add Key", partialCabinet.textContent.includes("+ Add Key")),
+        check("Status legend appears", overflowCabinet.querySelector(".key-status-legend") !== null),
+        check("Returned key shows Needs verify", overflowCabinet.querySelector(".key-cabinet-slot-returned") !== null),
+        check("Label plate, hook, key order exists", Boolean(overflowCabinet.querySelector(".key-cabinet-slot .key-cabinet-label + .key-cabinet-hook + .key-cabinet-keyring")))
+      ];
+
+      const passed = checks.filter(Boolean).length;
+      summary.textContent = `${passed}/${checks.length} passing`;
+      summary.style.color = passed === checks.length ? "var(--ok)" : "var(--bad)";
+    })();
+  </script>
+</body>
+</html>
