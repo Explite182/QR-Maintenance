@@ -14,7 +14,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260808-login-sync-guard";
+const SITEWORKS_APP_VERSION = "20260808-render-guard";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -3350,7 +3350,7 @@ document.addEventListener("click", (event) => {
     } else if (siteMapFilterButton.dataset.siteMapFilter === "area") {
       siteMapAreaFilter = siteMapFilterButton.dataset.siteMapValue || "all";
     }
-    renderSiteMap();
+    renderSiteMapIfReady();
     return;
   }
 
@@ -3360,7 +3360,7 @@ document.addEventListener("click", (event) => {
     updateSiteMapViewportMemory();
     siteMapOverlayMode = normalizeSiteMapOverlayMode(siteMapOverlayButton.dataset.siteMapOverlay);
     if (siteMapOverlayMode !== "breaker-feed") selectedSiteMapOverlayAssetId = "";
-    renderSiteMap();
+    renderSiteMapIfReady();
     return;
   }
 
@@ -3372,7 +3372,7 @@ document.addEventListener("click", (event) => {
     pendingSiteMapPin = null;
     siteMapZoom = 1;
     siteMapViewportMemory = { left: 0, top: 0 };
-    renderSiteMap();
+    renderSiteMapIfReady();
     return;
   }
 
@@ -3395,7 +3395,7 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     updateSiteMapViewportMemory();
     siteMapCleanView = !siteMapCleanView;
-    renderSiteMap();
+    renderSiteMapIfReady();
     return;
   }
 
@@ -3824,7 +3824,7 @@ document.addEventListener("change", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
   if (target.id === "monitoringChannelDevice" || target.id === "monitoringSimulatorDevice") {
-    renderMonitoring();
+    renderMonitoringIfReady();
   }
   if (target.id === "monitoringChannelCircuit" || target.id === "monitoringChannelCircuitManual") {
     applyMonitoringCircuitScheduleDefaults();
@@ -3834,12 +3834,20 @@ document.addEventListener("change", (event) => {
   }
   if (target.id === "monitoringPanelSelect") {
     selectedMonitoringPanelId = target.value || "";
-    renderMonitoring();
+    renderMonitoringIfReady();
   }
 });
 
 // Panel Monitor functions now live in /js/panel-monitor.js.
 // Keep this boundary so future panel monitor work stays out of the main app file.
+
+function renderSiteMapIfReady() {
+  if (typeof renderSiteMap === "function") renderSiteMap();
+}
+
+function renderMonitoringIfReady() {
+  if (typeof renderMonitoring === "function") renderMonitoring();
+}
 
 function render() {
   renderAuth();
@@ -3869,8 +3877,8 @@ function render() {
   renderLocationOptions();
   renderAssetLocationOptions();
   renderDashboard();
-  renderSiteMap();
-  renderMonitoring();
+  renderSiteMapIfReady();
+  renderMonitoringIfReady();
   renderPmCalendar();
   renderBackupStatus();
   renderSyncHealth();
