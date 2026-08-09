@@ -9651,7 +9651,7 @@ function renderKeyCabinetSlot(key, index) {
   const lastUserLine = key ? `Last user: ${lastUser || "No history yet"}` : "Last user: No history yet";
   const verifiedLine = verificationDue || lastVerified || "Last verified: No history yet";
   const titleParts = key
-    ? [`Slot ${slotNumber} - ${label}`, `Status: ${statusText}`, checkedOut ? `With: ${holder}` : lastUserLine, verificationDue, lastVerified, slotContext]
+    ? [`Slot ${slotNumber} - ${label}`, `Status: ${statusText}`, checkedOut ? `With: ${holder}` : lastUser ? `Last user: ${lastUser}` : "", verificationDue || lastVerified]
     : [`Slot ${slotNumber} - Add Key`, "Empty key slot"];
   const title = titleParts.filter(Boolean).join(" | ");
   const selectedClass = key?.id && key.id === focusedKeyId ? " key-cabinet-slot-selected" : "";
@@ -9738,6 +9738,14 @@ function getLatestKeyLogForAction(key, action) {
     .sort((a, b) => String(b.timestamp || b.createdAt || "").localeCompare(String(a.timestamp || a.createdAt || "")))[0] || null;
 }
 
+function getLatestKeyLog(key) {
+  const keyId = key?.id || "";
+  if (!keyId) return null;
+  return (state.keyLogs || [])
+    .filter((log) => log.keyId === keyId)
+    .sort((a, b) => String(b.timestamp || b.createdAt || "").localeCompare(String(a.timestamp || a.createdAt || "")))[0] || null;
+}
+
 const KEY_VERIFICATION_DUE_MS = 24 * 60 * 60 * 1000;
 
 function getKeyCabinetStatus(key, checkedOut = false, overdue = false) {
@@ -9813,7 +9821,8 @@ function getKeyCabinetSlotContext() {
 function getKeyCabinetLastUserLabel(key, checkedOut = false) {
   if (!key) return "";
   if (checkedOut) return key.currentHolderName || "Unknown holder";
-  return key.lastUserName || key.lastHolderName || key.currentHolderName || key.checkedOutByName || key.checkedOutBy || "";
+  const latestLog = getLatestKeyLog(key);
+  return latestLog?.userName || key.lastUserName || key.lastHolderName || key.currentHolderName || key.checkedOutByName || key.checkedOutBy || "";
 }
 
 function getKeyCabinetLastVerifiedLabel(key) {
