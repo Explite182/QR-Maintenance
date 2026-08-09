@@ -9609,6 +9609,13 @@ function renderKeyCabinet(keys = []) {
               <span><b>${overdueCount}</b> overdue</span>
               ${verifyOverdueCount ? `<span><b>${verifyOverdueCount}</b> need verify</span>` : ""}
               ${pageCount > 1 ? `<span><b>${keyCabinetPage + 1}</b> of ${pageCount} cabinets</span>` : ""}
+              <div class="key-status-legend" aria-label="Key status legend">
+                <span><i class="status-dot available"></i>Available: in cabinet and current</span>
+                <span><i class="status-dot out"></i>Checked out: assigned to a user</span>
+                <span><i class="status-dot overdue"></i>Overdue: not returned on time</span>
+                <span><i class="status-dot verify"></i>Needs verify: returned, confirm location</span>
+                <span><i class="status-dot unverified"></i>Unverified: no confirmed tag/location</span>
+              </div>
             </div>
           </aside>
         </div>
