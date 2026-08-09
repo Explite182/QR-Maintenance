@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-cabinet-2";
+const SITEWORKS_APP_VERSION = "20260809-key-cabinet-4";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9577,6 +9577,9 @@ function renderKeyCabinetSlot(key, index) {
   const status = !key ? "empty" : overdue ? "overdue" : checkedOut ? "out" : "available";
   const statusText = !key ? "Empty" : overdue ? "Overdue" : checkedOut ? "Checked out" : "Available";
   const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key?.storageLocation || "Cabinet";
+  const cabinetNote = checkedOut
+    ? `With ${holder}`
+    : locationRecord?.name || customer?.name || "Unassigned";
   const title = key
     ? `${label} | ${statusText} | ${holder}`
     : `Slot ${slotNumber} | Empty`;
@@ -9589,7 +9592,7 @@ function renderKeyCabinetSlot(key, index) {
       <span class="key-cabinet-hook" aria-hidden="true"></span>
       ${key && !checkedOut ? `<span class="key-cabinet-keyring" aria-hidden="true"><i></i><i></i><i></i></span>` : ""}
       <span class="key-cabinet-status">${escapeHtml(statusText)}</span>
-      ${key ? `<small>${escapeHtml(locationRecord?.name || customer?.name || "Unassigned")}</small>` : ""}
+      ${key ? `<small>${escapeHtml(cabinetNote)}</small>` : ""}
     </button>
   `;
 }

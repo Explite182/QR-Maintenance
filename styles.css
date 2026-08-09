@@ -6084,19 +6084,56 @@ button.asset-detail-card {
 
 .key-cabinet-frame {
   position: relative;
-  padding: 24px;
-  border: 3px solid #202727;
-  border-radius: 8px;
+  padding: 30px 34px 28px 34px;
+  border: 5px solid #202524;
+  border-radius: 10px;
   background:
-    linear-gradient(135deg, rgba(255,255,255,.14), rgba(0,0,0,.16)),
-    repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 1px, rgba(0,0,0,.035) 1px 3px),
-    #3a3d39;
-  box-shadow: inset 0 0 0 8px rgba(0, 0, 0, .24), 0 18px 35px rgba(15, 28, 32, .16);
+    radial-gradient(circle at 18% 12%, rgba(255,255,255,.13), transparent 18%),
+    radial-gradient(circle at 82% 18%, rgba(255,255,255,.08), transparent 18%),
+    linear-gradient(135deg, rgba(255,255,255,.12), rgba(0,0,0,.18)),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.025) 0 1px, rgba(0,0,0,.025) 1px 4px),
+    #383c38;
+  box-shadow:
+    inset 0 0 0 9px rgba(0, 0, 0, .28),
+    inset 0 18px 28px rgba(255,255,255,.05),
+    inset 0 -18px 28px rgba(0,0,0,.22),
+    0 18px 35px rgba(15, 28, 32, .18);
+}
+
+.key-cabinet-frame::before,
+.key-cabinet-frame::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.key-cabinet-frame::before {
+  left: 18px;
+  top: 84px;
+  width: 9px;
+  height: calc(100% - 168px);
+  border-radius: 99px;
+  background:
+    linear-gradient(#151817, #4a4d48 18%, #151817 19%, #151817 47%, #4a4d48 48%, #151817 49%, #151817 78%, #4a4d48 79%, #151817);
+  box-shadow: inset 1px 0 1px rgba(255,255,255,.18), 2px 0 4px rgba(0,0,0,.36);
+}
+
+.key-cabinet-frame::after {
+  right: 24px;
+  top: 47%;
+  width: 38px;
+  height: 38px;
+  border: 4px solid #b9b5a9;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 45% 48%, #111 0 3px, transparent 4px),
+    linear-gradient(135deg, #f5f1e5, #77766f 62%, #242625);
+  box-shadow: inset 0 1px 2px rgba(255,255,255,.5), 0 5px 10px rgba(0,0,0,.32);
 }
 
 .key-cabinet-title {
-  width: min(280px, 82%);
-  margin: 0 auto 16px;
+  width: min(300px, 82%);
+  margin: -6px auto 18px;
   padding: 8px 14px;
   border: 1px solid rgba(255,255,255,.22);
   border-radius: 6px;
@@ -6127,25 +6164,29 @@ button.asset-detail-card {
 .key-cabinet-board {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 210px;
-  gap: 18px;
-  padding: 18px;
-  border-radius: 6px;
+  gap: 20px;
+  padding: 34px 20px 24px 20px;
+  border: 1px solid rgba(0,0,0,.44);
+  border-radius: 7px;
   background:
-    linear-gradient(90deg, rgba(0,0,0,.28), transparent 4%, transparent 96%, rgba(0,0,0,.24)),
-    linear-gradient(#7a7c73, #62645e);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.1), inset 0 0 22px rgba(0,0,0,.28);
+    linear-gradient(90deg, rgba(0,0,0,.46), transparent 3%, transparent 91%, rgba(0,0,0,.3)),
+    radial-gradient(circle at 40% 15%, rgba(255,255,255,.16), transparent 26%),
+    linear-gradient(#75776d, #5d6059);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.1),
+    inset 0 0 32px rgba(0,0,0,.34);
 }
 
 .key-cabinet-slots {
   display: grid;
   grid-template-columns: repeat(6, minmax(92px, 1fr));
-  gap: 18px 12px;
+  gap: 22px 14px;
   align-content: start;
 }
 
 .key-cabinet-slot {
   position: relative;
-  min-height: 136px;
+  min-height: 142px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -6156,16 +6197,21 @@ button.asset-detail-card {
 
 .key-cabinet-slot:disabled {
   cursor: default;
-  opacity: .55;
+  opacity: .7;
 }
 
 .key-cabinet-label {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  min-height: 42px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  min-height: 44px;
   border: 1px solid rgba(255,255,255,.18);
-  background: linear-gradient(#151917, #050606);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 2px 5px rgba(0,0,0,.25);
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.08), transparent 22%, rgba(0,0,0,.18)),
+    linear-gradient(#171b18, #050606);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.16),
+    inset 0 -1px 0 rgba(0,0,0,.72),
+    0 3px 6px rgba(0,0,0,.28);
 }
 
 .key-cabinet-label b {
@@ -6182,7 +6228,7 @@ button.asset-detail-card {
   min-width: 0;
   padding: 4px 7px;
   color: #e8e4da;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
   line-height: 1.08;
   text-transform: uppercase;
@@ -6191,32 +6237,45 @@ button.asset-detail-card {
 .key-cabinet-hook {
   position: absolute;
   left: 50%;
-  top: 45px;
-  width: 8px;
-  height: 30px;
+  top: 46px;
+  width: 7px;
+  height: 36px;
   transform: translateX(-50%);
   border-radius: 99px;
-  background: linear-gradient(90deg, #8c8b82, #ece8dc 45%, #6c6c65);
-  box-shadow: 0 2px 3px rgba(0,0,0,.35);
+  background: linear-gradient(90deg, #69695f, #f2edde 45%, #68675f);
+  box-shadow: 0 3px 5px rgba(0,0,0,.45);
+}
+
+.key-cabinet-hook::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 18px;
+  height: 12px;
+  transform: translateX(-50%);
+  border-right: 4px solid #b9b5a8;
+  border-bottom: 4px solid #b9b5a8;
+  border-radius: 0 0 12px 0;
 }
 
 .key-cabinet-keyring {
   position: absolute;
   left: 50%;
-  top: 66px;
-  width: 58px;
-  height: 58px;
+  top: 70px;
+  width: 64px;
+  height: 62px;
   transform: translateX(-50%);
 }
 
 .key-cabinet-keyring::before {
   content: "";
   position: absolute;
-  left: 18px;
+  left: 20px;
   top: 0;
   width: 24px;
   height: 24px;
-  border: 4px solid #c7c2b0;
+  border: 4px solid #c9c4b6;
   border-radius: 50%;
   box-shadow: inset 0 1px 2px rgba(0,0,0,.35);
 }
@@ -6225,11 +6284,11 @@ button.asset-detail-card {
   position: absolute;
   top: 22px;
   width: 10px;
-  height: 38px;
+  height: 40px;
   border-radius: 8px 8px 2px 2px;
   background: linear-gradient(90deg, #9c792d, #d2b35b 45%, #7c5e24);
   transform-origin: top center;
-  box-shadow: 0 3px 6px rgba(0,0,0,.36);
+  box-shadow: 0 5px 8px rgba(0,0,0,.42);
 }
 
 .key-cabinet-keyring i::after {
@@ -6254,9 +6313,9 @@ button.asset-detail-card {
 }
 
 .key-cabinet-keyring i:nth-child(3) {
-  left: 33px;
-  width: 22px;
-  height: 34px;
+  left: 36px;
+  width: 24px;
+  height: 36px;
   border-radius: 7px;
   background: linear-gradient(135deg, #202321, #050606);
   transform: rotate(-18deg);
@@ -6265,7 +6324,7 @@ button.asset-detail-card {
 .key-cabinet-status {
   position: absolute;
   left: 50%;
-  bottom: 0;
+  bottom: 14px;
   transform: translateX(-50%);
   padding: 3px 8px;
   border-radius: 99px;
@@ -6279,7 +6338,7 @@ button.asset-detail-card {
 .key-cabinet-slot small {
   position: absolute;
   left: 50%;
-  bottom: -18px;
+  bottom: -3px;
   max-width: 100%;
   transform: translateX(-50%);
   color: rgba(255,255,255,.75);
@@ -6297,12 +6356,21 @@ button.asset-detail-card {
 
 .key-cabinet-slot-out .key-cabinet-label,
 .key-cabinet-slot-overdue .key-cabinet-label {
-  outline: 2px solid rgba(230, 63, 52, .76);
+  outline: 2px solid rgba(230, 63, 52, .72);
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.08), transparent 22%, rgba(0,0,0,.18)),
+    linear-gradient(#165f52, #064f43);
 }
 
 .key-cabinet-slot-out .key-cabinet-status {
   background: #fff1c6;
   color: #7a4c00;
+}
+
+.key-cabinet-slot-out small,
+.key-cabinet-slot-overdue small {
+  color: #fff7dc;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
 }
 
 .key-cabinet-slot-overdue .key-cabinet-status {
@@ -6338,7 +6406,9 @@ button.asset-detail-card {
   padding: 14px;
   border: 1px solid rgba(255,255,255,.2);
   border-radius: 6px;
-  background: linear-gradient(#d6d2c8, #aaa69d);
+  background:
+    repeating-linear-gradient(0deg, rgba(0,0,0,.045) 0 1px, transparent 1px 25px),
+    linear-gradient(#d7d2c8, #aaa69d);
   color: #161b1b;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 2px 8px rgba(0,0,0,.25);
 }
