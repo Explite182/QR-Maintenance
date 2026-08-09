@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-cabinet-10";
+const SITEWORKS_APP_VERSION = "20260809-key-cabinet-12";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -7041,6 +7041,17 @@ document.addEventListener("click", async (event) => {
     const key = getKeyRecord(verifyKeyButton.dataset.verifyKeyNfc);
     if (!key || !canManageKeyCustomer(key.customerId)) return;
     await verifyKeyNfcTag(key);
+    return;
+  }
+
+  const manualVerifyKeyButton = event.target.closest("[data-verify-key-manual]");
+  if (manualVerifyKeyButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageKeys()) return;
+    const key = getKeyRecord(manualVerifyKeyButton.dataset.verifyKeyManual);
+    if (!key || !canManageKeyCustomer(key.customerId)) return;
+    await verifyKeyManually(key);
     return;
   }
 
@@ -9669,7 +9680,7 @@ function renderKeyCabinetDrawer(key) {
           <small>${escapeHtml(locationLabel)}</small>
         </div>
         <div class="key-cabinet-drawer-actions">
-          <button type="button" class="secondary mini" data-verify-key-nfc="${escapeAttribute(key.id)}" ${canVerify ? "" : "disabled"}>Verify Key</button>
+          <button type="button" class="secondary mini" data-verify-key-manual="${escapeAttribute(key.id)}" ${canVerify ? "" : "disabled"}>Verify Key</button>
           <button type="button" class="secondary mini" data-key-drawer-close>Close</button>
         </div>
       </div>
@@ -9725,6 +9736,8 @@ function isKeyRecentlyReturned(key) {
     .sort((a, b) => String(b.timestamp || b.createdAt || "").localeCompare(String(a.timestamp || a.createdAt || "")))[0];
   if (!latestCheckIn) return false;
   const date = new Date(latestCheckIn.timestamp || latestCheckIn.createdAt || "");
+  const verifiedDate = getKeyCabinetLastVerifiedDate(key);
+  if (verifiedDate && Number.isFinite(date.getTime()) && verifiedDate.getTime() >= date.getTime()) return false;
   return Number.isFinite(date.getTime()) && Date.now() - date.getTime() < 48 * 60 * 60 * 1000;
 }
 
@@ -9741,12 +9754,17 @@ function getKeyCabinetLastUserLabel(key, checkedOut = false) {
 }
 
 function getKeyCabinetLastVerifiedLabel(key) {
-  if (!key) return "";
-  const value = key.lastVerifiedAt || key.verifiedAt || key.nfcLastVerifiedAt || key.nfcVerifiedAt || "";
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+  const date = getKeyCabinetLastVerifiedDate(key);
+  if (!date) return "";
   return `Verified ${formatKeyCabinetRelativeDate(date)}`;
+}
+
+function getKeyCabinetLastVerifiedDate(key) {
+  if (!key) return null;
+  const value = key.lastVerifiedAt || key.verifiedAt || key.nfcLastVerifiedAt || key.nfcVerifiedAt || "";
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function formatKeyCabinetRelativeDate(date) {
@@ -14287,6 +14305,23 @@ async function verifyKeyNfcTag(key) {
     setKeyNfcMessage(key, `NFC verify failed: ${error.message || "Bridge unavailable."}`);
     render();
   }
+}
+
+async function verifyKeyManually(key) {
+  if (!key || !canManageKeys() || !canManageKeyCustomer(key.customerId)) return;
+  const verifiedAt = new Date().toISOString();
+  const verifiedBy = currentUser?.name || currentUser?.username || "SiteWorks";
+  key.nfcStatus = "verified";
+  key.nfcVerifiedAt = verifiedAt;
+  key.lastVerifiedAt = verifiedAt;
+  key.verifiedAt = verifiedAt;
+  key.nfcMessage = `Manually verified by ${verifiedBy}.`;
+  key.updatedAt = verifiedAt;
+  addKeyLog(key, "Verify", `Manually verified by ${verifiedBy}.`);
+  addActivity("Key verified", `${key.keyName || key.name || "Key"} | ${verifiedBy}`);
+  saveState();
+  await syncSingleKeyToSupabase(key);
+  render();
 }
 
 async function callNfcBridge(path, payload) {
