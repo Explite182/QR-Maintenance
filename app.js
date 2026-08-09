@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-keybox-js-20";
+const SITEWORKS_APP_VERSION = "20260809-keybox-events-21";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6935,37 +6935,7 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
-  const cabinetPageButton = event.target.closest("[data-key-cabinet-page]");
-  if (cabinetPageButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    const page = Number(cabinetPageButton.dataset.keyCabinetPage);
-    keyCabinetPage = Number.isInteger(page) && page >= 0 ? page : 0;
-    focusedKeyId = "";
-    renderKeys();
-    return;
-  }
-
-  const cabinetSlot = event.target.closest("[data-key-cabinet-slot]");
-  if (cabinetSlot) {
-    event.preventDefault();
-    event.stopPropagation();
-    const slotKeyId = cabinetSlot.dataset.keyCabinetSlot || "";
-    const shouldOpenDrawer = focusedKeyId !== slotKeyId;
-    focusedKeyId = shouldOpenDrawer ? slotKeyId : "";
-    renderKeys();
-    if (shouldOpenDrawer) document.querySelector(".key-cabinet-drawer")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    return;
-  }
-
-  const keyDrawerClose = event.target.closest("[data-key-drawer-close]");
-  if (keyDrawerClose) {
-    event.preventDefault();
-    event.stopPropagation();
-    focusedKeyId = "";
-    renderKeys();
-    return;
-  }
+  if (window.SiteWorksKeybox?.handleClick(event, getKeyboxContext())) return;
 
   const actionButton = event.target.closest("[data-key-action]");
   if (actionButton) {
@@ -9572,6 +9542,9 @@ function getKeyboxContext() {
     selectedLocationId: state.selectedLocationId || selectedLocationId,
     getPage: () => keyCabinetPage,
     setPage: (page) => { keyCabinetPage = page; },
+    setFocusedKeyId: (keyId) => { focusedKeyId = keyId; },
+    renderKeys,
+    scrollDrawerIntoView: () => document.querySelector(".key-cabinet-drawer")?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
     getCustomer,
     getLocation,
     getAllKeyTagUids,

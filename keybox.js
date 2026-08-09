@@ -1,4 +1,4 @@
-/* SiteWorks Keybox module version: 20260809-keybox-js-20 */
+/* SiteWorks Keybox module version: 20260809-keybox-events-21 */
 (function initSiteWorksKeybox(window) {
   "use strict";
 
@@ -304,10 +304,47 @@
     return date.toLocaleDateString();
   }
 
+  function handleClick(event, env = {}) {
+    const cabinetPageButton = event.target.closest("[data-key-cabinet-page]");
+    if (cabinetPageButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const page = Number(cabinetPageButton.dataset.keyCabinetPage);
+      env.setPage?.(Number.isInteger(page) && page >= 0 ? page : 0);
+      env.setFocusedKeyId?.("");
+      env.renderKeys?.();
+      return true;
+    }
+
+    const cabinetSlot = event.target.closest("[data-key-cabinet-slot]");
+    if (cabinetSlot) {
+      event.preventDefault();
+      event.stopPropagation();
+      const slotKeyId = cabinetSlot.dataset.keyCabinetSlot || "";
+      const shouldOpenDrawer = env.focusedKeyId !== slotKeyId;
+      env.setFocusedKeyId?.(shouldOpenDrawer ? slotKeyId : "");
+      env.renderKeys?.();
+      if (shouldOpenDrawer) env.scrollDrawerIntoView?.();
+      return true;
+    }
+
+    const keyDrawerClose = event.target.closest("[data-key-drawer-close]");
+    if (keyDrawerClose) {
+      event.preventDefault();
+      event.stopPropagation();
+      env.setFocusedKeyId?.("");
+      env.renderKeys?.();
+      return true;
+    }
+
+    return false;
+  }
+
   window.SiteWorksKeybox = {
     renderKeyCabinet,
     renderKeyCabinetSlot,
     renderKeyCabinetDrawer,
+    handleClick,
     getKeyCabinetStatus,
     siteKeyCabinetStatusLabel,
     isKeyVerificationOverdue,
