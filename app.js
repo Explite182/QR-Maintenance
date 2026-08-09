@@ -9660,11 +9660,10 @@ function renderKeyCabinetSlot(key, index) {
       <span class="key-cabinet-label">
         <b>${escapeHtml(slotNumber)}</b>
         <span>${escapeHtml(label)}</span>
+        <i class="key-cabinet-status" aria-label="${escapeAttribute(statusText)}" title="${escapeAttribute(statusText)}"></i>
       </span>
       <span class="key-cabinet-hook" aria-hidden="true"></span>
-      <span class="key-cabinet-context">${escapeHtml(cabinetNote)}</span>
       ${key && !checkedOut ? `<span class="key-cabinet-keyring" aria-hidden="true"><i></i><i></i><i></i></span>` : ""}
-      <span class="key-cabinet-status">${escapeHtml(statusText)}</span>
       <small>
         <span>${escapeHtml(lastUserLine)}</span>
         <span>${escapeHtml(verifiedLine)}</span>
