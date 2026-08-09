@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-cabinet-18";
+const SITEWORKS_APP_VERSION = "20260809-key-audit-19";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6981,7 +6981,7 @@ document.addEventListener("click", async (event) => {
       key.currentHolderId = currentUser?.id || "";
       key.currentHolderName = currentUser?.name || currentUser?.username || "SiteWorks user";
       key.dueBackAt = buildKeyDueBackAt(key, checkedOutAt);
-      addKeyLog(key, "Check-Out", `Checked out to ${key.currentHolderName}. Due back ${formatKeyDueBack(key)}.`);
+      addKeyLog(key, "Check-Out", `Checked out to ${key.currentHolderName}. Due back ${formatKeyDueBack(key)}.`, await getKeyAuditSnapshot());
       addActivity("Key checked out", key.keyName || key.name);
     } else if (action === "checkin") {
       const priorHolder = key.currentHolderName || "holder";
@@ -6989,7 +6989,7 @@ document.addEventListener("click", async (event) => {
       key.currentHolderId = "";
       key.currentHolderName = "";
       key.dueBackAt = "";
-      addKeyLog(key, "Check-In", `Checked in from ${priorHolder}.`);
+      addKeyLog(key, "Check-In", `Checked in from ${priorHolder}.`, await getKeyAuditSnapshot());
       addActivity("Key checked in", key.keyName || key.name);
     }
     key.updatedAt = new Date().toISOString();
@@ -10017,6 +10017,7 @@ function renderKeyLogList(key) {
           <strong>${escapeHtml(log.action || "Key activity")}</strong>
           <small>${escapeHtml(formatDateTime(new Date(log.timestamp || log.createdAt || new Date())))} | ${escapeHtml(log.userName || "SiteWorks")}</small>
           ${log.dueBackAt || log.due_back_at ? `<small>Due back ${escapeHtml(formatDateTime(new Date(log.dueBackAt || log.due_back_at)))}</small>` : ""}
+          ${renderKeyAuditTrail(log.audit)}
           ${log.notes ? `<p>${escapeHtml(log.notes)}</p>` : ""}
         </article>
       `).join("")}
@@ -10024,7 +10025,20 @@ function renderKeyLogList(key) {
   `;
 }
 
-function addKeyLog(key, action, notes = "") {
+function renderKeyAuditTrail(audit = null) {
+  if (!audit) return "";
+  const items = [
+    audit.browser ? `Browser: ${audit.browser}` : "",
+    audit.os ? `OS: ${audit.os}` : "",
+    audit.deviceType ? `Device: ${audit.deviceType}` : "",
+    audit.ipAddress ? `IP: ${audit.ipAddress}` : "",
+    audit.approximateLocation ? `Location: ${audit.approximateLocation}` : ""
+  ].filter(Boolean);
+  if (!items.length) return "";
+  return `<small>${escapeHtml(items.join(" | "))}</small>`;
+}
+
+function addKeyLog(key, action, notes = "", audit = null) {
   state.keyLogs = [
     {
       id: crypto.randomUUID(),
@@ -10035,11 +10049,99 @@ function addKeyLog(key, action, notes = "") {
       userName: currentUser?.name || currentUser?.username || "SiteWorks",
       action,
       notes,
+      audit,
       dueBackAt: getKeyDueBackAt(key) || "",
       timestamp: new Date().toISOString()
     },
     ...(state.keyLogs || [])
   ].slice(0, MAX_ACTIVITY_LOG_ENTRIES);
+}
+
+async function getKeyAuditSnapshot() {
+  const localAudit = getLocalKeyAuditSnapshot();
+  const ipAudit = await getIpAuditSnapshot();
+  return {
+    ...localAudit,
+    ...ipAudit,
+    capturedAt: new Date().toISOString()
+  };
+}
+
+function getLocalKeyAuditSnapshot() {
+  const userAgent = navigator.userAgent || "";
+  return {
+    browser: detectAuditBrowser(userAgent),
+    os: detectAuditOs(userAgent),
+    deviceType: detectAuditDeviceType(userAgent),
+    userAgent
+  };
+}
+
+function normalizeKeyAuditSnapshot(audit = null) {
+  if (!audit || typeof audit !== "object") return null;
+  const cleanAudit = {
+    browser: String(audit.browser || "").trim(),
+    os: String(audit.os || "").trim(),
+    deviceType: String(audit.deviceType || audit.device || "").trim(),
+    ipAddress: String(audit.ipAddress || audit.ip || "").trim(),
+    approximateLocation: String(audit.approximateLocation || audit.location || "").trim(),
+    capturedAt: String(audit.capturedAt || "").trim()
+  };
+  return Object.values(cleanAudit).some(Boolean) ? cleanAudit : null;
+}
+
+async function getIpAuditSnapshot() {
+  if (!window.fetch) return {};
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 1800);
+  try {
+    const response = await fetch("https://ipapi.co/json/", {
+      cache: "no-store",
+      signal: controller.signal
+    });
+    if (!response.ok) return {};
+    const data = await response.json();
+    const locationLabel = [data.city, data.region, data.country_name].filter(Boolean).join(", ");
+    return {
+      ipAddress: data.ip || "",
+      approximateLocation: locationLabel
+    };
+  } catch {
+    return {};
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function detectAuditBrowser(userAgent = "") {
+  if (/Edg\//.test(userAgent)) return "Edge";
+  if (/CriOS|Chrome\//.test(userAgent) && !/Edg\//.test(userAgent)) return "Chrome";
+  if (/FxiOS|Firefox\//.test(userAgent)) return "Firefox";
+  if (/Safari\//.test(userAgent) && !/Chrome|CriOS|Android/.test(userAgent)) return "Safari";
+  return "Unknown browser";
+}
+
+function detectAuditOs(userAgent = "") {
+  if (/iPhone|iPad|iPod/.test(userAgent)) return "iOS";
+  if (/Android/.test(userAgent)) return "Android";
+  if (/Windows NT/.test(userAgent)) return "Windows";
+  if (/Mac OS X|Macintosh/.test(userAgent)) return "macOS";
+  if (/Linux/.test(userAgent)) return "Linux";
+  return "Unknown OS";
+}
+
+function detectAuditDeviceType(userAgent = "") {
+  const platformData = navigator.userAgentData;
+  const platform = platformData?.platform || "";
+  if (/iPhone/.test(userAgent)) return "iPhone";
+  if (/iPad/.test(userAgent)) return "iPad";
+  if (/Android/.test(userAgent)) {
+    const model = userAgent.match(/Android [^;]+;\s*([^;)]+)/)?.[1];
+    return model ? model.replace(/\s+Build\/.*$/, "").trim() : "Android device";
+  }
+  if (/Windows NT/.test(userAgent)) return "Windows PC";
+  if (/Macintosh|Mac OS X/.test(userAgent)) return "Mac";
+  return platform || "Unknown device";
 }
 
 function getKeyRecord(id) {
@@ -20008,6 +20110,7 @@ function normalizeState(input) {
     userName: log.userName || "",
     action: log.action === "Check-Out" ? "Check-Out" : "Check-In",
     notes: log.notes || "",
+    audit: normalizeKeyAuditSnapshot(log.audit),
     dueBackAt: log.dueBackAt || log.due_back_at || "",
     timestamp: log.timestamp || log.createdAt || new Date().toISOString()
   })).filter((log) => log.keyId);
