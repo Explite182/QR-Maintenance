@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-cabinet-7";
+const SITEWORKS_APP_VERSION = "20260809-key-cabinet-10";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6938,9 +6938,11 @@ document.addEventListener("click", async (event) => {
   if (cabinetSlot) {
     event.preventDefault();
     event.stopPropagation();
-    focusedKeyId = cabinetSlot.dataset.keyCabinetSlot || "";
+    const slotKeyId = cabinetSlot.dataset.keyCabinetSlot || "";
+    const shouldOpenDrawer = focusedKeyId !== slotKeyId;
+    focusedKeyId = shouldOpenDrawer ? slotKeyId : "";
     renderKeys();
-    document.querySelector(".key-cabinet-drawer")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (shouldOpenDrawer) document.querySelector(".key-cabinet-drawer")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     return;
   }
 
@@ -9536,6 +9538,7 @@ function renderKeyCabinet(keys = []) {
   const visibleSlots = Math.max(24, Math.min(48, Math.ceil(keys.length / 6) * 6 || 24));
   const slots = Array.from({ length: visibleSlots }, (_, index) => renderKeyCabinetSlot(keys[index], index));
   const focusedKey = focusedKeyId ? keys.find((key) => key.id === focusedKeyId) : null;
+  const cabinetScopeLabel = getKeyCabinetScopeLabel(keys);
   const availableCount = keys.filter((key) => !isKeyCheckedOut(key) && !isKeyOverdue(key)).length;
   const checkedOutCount = keys.filter((key) => isKeyCheckedOut(key)).length;
   const overdueCount = keys.filter((key) => isKeyOverdue(key)).length;
@@ -9546,6 +9549,7 @@ function renderKeyCabinet(keys = []) {
         <div class="key-cabinet-title">
           <strong>SITEWORKS</strong>
           <span>Key Control Center</span>
+          <small class="key-cabinet-location-plate">${escapeHtml(cabinetScopeLabel)}</small>
         </div>
         <div class="key-cabinet-board">
           <div class="key-cabinet-slots">
@@ -9572,6 +9576,21 @@ function renderKeyCabinet(keys = []) {
       </div>
     </section>
   `;
+}
+
+function getKeyCabinetScopeLabel(keys = []) {
+  const selectedCustomer = state.selectedCustomerId && state.selectedCustomerId !== ALL_CUSTOMERS
+    ? getCustomer(state.selectedCustomerId)
+    : null;
+  const selectedLocation = state.selectedLocationId && state.selectedLocationId !== ALL_LOCATIONS
+    ? getLocation(state.selectedLocationId)
+    : null;
+  if (selectedCustomer && selectedLocation) return `${selectedCustomer.name} | ${selectedLocation.name}`;
+  if (selectedCustomer && state.selectedLocationId === ALL_LOCATIONS) return `${selectedCustomer.name} | All locations`;
+  const firstKey = keys.find(Boolean);
+  const keyCustomer = firstKey ? getCustomer(firstKey.customerId) : null;
+  const keyLocation = firstKey ? getLocation(firstKey.locationId) : null;
+  return [keyCustomer?.name, keyLocation?.name].filter(Boolean).join(" | ") || "All key locations";
 }
 
 function renderKeyCabinetSlot(key, index) {
@@ -9637,6 +9656,7 @@ function renderKeyCabinetDrawer(key) {
   const keyUrl = getKeyUrl(key);
   const locationLabel = [customer?.name, locationRecord?.name].filter(Boolean).join(" | ") || "Unassigned";
   const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key.storageLocation || "Cabinet";
+  const canVerify = canManageKeys() && canManageKeyCustomer(key.customerId);
   const lastVerification = key.nfcVerifiedAt
     ? formatDateTime(new Date(key.nfcVerifiedAt))
     : latestVerified ? formatDateTime(new Date(latestVerified.timestamp || latestVerified.createdAt || new Date())) : "Not verified";
@@ -9648,7 +9668,10 @@ function renderKeyCabinetDrawer(key) {
           <strong>${escapeHtml(key.keyName || key.name || "Key")}</strong>
           <small>${escapeHtml(locationLabel)}</small>
         </div>
-        <button type="button" class="secondary mini" data-key-drawer-close>Close</button>
+        <div class="key-cabinet-drawer-actions">
+          <button type="button" class="secondary mini" data-verify-key-nfc="${escapeAttribute(key.id)}" ${canVerify ? "" : "disabled"}>Verify Key</button>
+          <button type="button" class="secondary mini" data-key-drawer-close>Close</button>
+        </div>
       </div>
       <div class="key-cabinet-detail-grid">
         <span>Status</span><strong>${escapeHtml(statusText)}${checkedOut ? ` to ${escapeHtml(holder)}` : ""}</strong>
@@ -9659,6 +9682,7 @@ function renderKeyCabinetDrawer(key) {
         <span>Last verification</span><strong>${escapeHtml(lastVerification)}</strong>
         <span>Notes</span><strong>${escapeHtml(key.notes || "No notes")}</strong>
       </div>
+      ${key.nfcMessage ? `<p class="key-cabinet-drawer-message">${escapeHtml(key.nfcMessage)}</p>` : ""}
     </div>
   `;
 }

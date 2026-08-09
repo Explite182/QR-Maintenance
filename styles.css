@@ -6132,7 +6132,7 @@ button.asset-detail-card {
 }
 
 .key-cabinet-title {
-  width: min(300px, 82%);
+  width: min(360px, 86%);
   margin: -6px auto 18px;
   padding: 8px 14px;
   border: 1px solid rgba(255,255,255,.22);
@@ -6159,6 +6159,16 @@ button.asset-detail-card {
   margin-top: 4px;
   font-size: 14px;
   font-weight: 800;
+}
+
+.key-cabinet-location-plate {
+  display: block;
+  margin-top: 5px;
+  color: #d8e6e1;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.15;
+  letter-spacing: .04em;
 }
 
 .key-cabinet-board {
@@ -6514,6 +6524,13 @@ button.asset-detail-card {
   gap: 12px;
 }
 
+.key-cabinet-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .key-cabinet-drawer-header span,
 .key-cabinet-drawer-header small {
   display: block;
@@ -6562,6 +6579,16 @@ button.asset-detail-card {
 .key-cabinet-detail-grid a {
   color: #006d5b;
   text-decoration: underline;
+}
+
+.key-cabinet-drawer-message {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 109, 91, .22);
+  border-radius: 7px;
+  background: rgba(255,255,255,.42);
+  color: #24302e;
+  font-weight: 850;
 }
 
 .key-cabinet-drawer-out {
@@ -10894,6 +10921,15 @@ html[data-theme="dark"] .key-cabinet-frame {
 
   .key-cabinet-drawer-header {
     flex-direction: column;
+  }
+
+  .key-cabinet-drawer-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .key-cabinet-drawer-actions .mini {
+    flex: 1;
   }
 
   .key-cabinet-detail-grid {
