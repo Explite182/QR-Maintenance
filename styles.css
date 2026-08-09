@@ -1,4 +1,4 @@
-/* SiteWorks styles version: 20260803-key-scan-auto-exit */
+/* SiteWorks styles version: 20260809-key-cabinet-18 */
 
 :root {
   --ink: #172126;
@@ -6171,6 +6171,34 @@ button.asset-detail-card {
   letter-spacing: .04em;
 }
 
+.key-cabinet-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: -4px 0 14px;
+}
+
+.key-cabinet-tabs button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255,255,255,.24);
+  border-radius: 6px;
+  background: linear-gradient(#252b28, #101312);
+  color: #e8e4da;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 2px 6px rgba(0,0,0,.25);
+}
+
+.key-cabinet-tabs button.is-active {
+  border-color: rgba(40, 188, 154, .74);
+  background: linear-gradient(#0d5e52, #083f38);
+  color: #f5fffb;
+}
+
 .key-cabinet-board {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 210px;
@@ -6196,7 +6224,7 @@ button.asset-detail-card {
 
 .key-cabinet-slot {
   position: relative;
-  min-height: 176px;
+  min-height: 192px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -6211,9 +6239,11 @@ button.asset-detail-card {
 }
 
 .key-cabinet-label {
+  position: relative;
+  z-index: 2;
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
-  min-height: 42px;
+  min-height: 46px;
   border: 1px solid rgba(255,255,255,.18);
   background:
     linear-gradient(90deg, rgba(255,255,255,.08), transparent 22%, rgba(0,0,0,.18)),
@@ -6236,7 +6266,7 @@ button.asset-detail-card {
   display: grid;
   place-items: center;
   min-width: 0;
-  padding: 4px 9px;
+  padding: 5px 9px;
   color: #e8e4da;
   font-size: 10.5px;
   font-weight: 900;
@@ -6248,7 +6278,7 @@ button.asset-detail-card {
 .key-cabinet-hook {
   position: absolute;
   left: 50%;
-  top: 54px;
+  top: 66px;
   width: 7px;
   height: 36px;
   transform: translateX(-50%);
@@ -6273,7 +6303,7 @@ button.asset-detail-card {
 .key-cabinet-keyring {
   position: absolute;
   left: 50%;
-  top: 82px;
+  top: 94px;
   width: 64px;
   height: 62px;
   transform: translateX(-50%);
@@ -6335,7 +6365,7 @@ button.asset-detail-card {
 .key-cabinet-status {
   position: absolute;
   left: 50%;
-  bottom: 28px;
+  bottom: 30px;
   transform: translateX(-50%);
   padding: 3px 8px;
   border-radius: 99px;
@@ -6349,7 +6379,7 @@ button.asset-detail-card {
 .key-cabinet-slot small {
   position: absolute;
   left: 50%;
-  bottom: 2px;
+  bottom: 4px;
   max-width: 100%;
   transform: translateX(-50%);
   color: rgba(255,255,255,.75);
@@ -6375,6 +6405,31 @@ button.asset-detail-card {
 .key-cabinet-slot-available .key-cabinet-status {
   background: #d9f8e6;
   color: #056b39;
+}
+
+.key-cabinet-slot-empty {
+  cursor: pointer;
+}
+
+.key-cabinet-slot-empty .key-cabinet-label {
+  border-style: dashed;
+  outline: 2px dashed rgba(255,255,255,.38);
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.06), transparent 22%, rgba(0,0,0,.12)),
+    linear-gradient(#2f3734, #171c1b);
+}
+
+.key-cabinet-slot-empty .key-cabinet-hook {
+  opacity: .42;
+}
+
+.key-cabinet-slot-empty .key-cabinet-status {
+  background: #f3f7f4;
+  color: #16604d;
+}
+
+.key-cabinet-slot-empty small {
+  color: rgba(255,255,255,.66);
 }
 
 .key-cabinet-slot-out .key-cabinet-label {
@@ -6427,7 +6482,7 @@ button.asset-detail-card {
   content: "!";
   position: absolute;
   right: 4px;
-  top: 58px;
+  top: 70px;
   display: grid;
   place-items: center;
   width: 22px;
@@ -10909,7 +10964,7 @@ html[data-theme="dark"] .key-cabinet-frame {
   }
 
   .key-cabinet-slot {
-    min-height: 156px;
+    min-height: 172px;
   }
 
   .key-cabinet-side {

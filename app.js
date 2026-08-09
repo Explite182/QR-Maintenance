@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-cabinet-16";
+const SITEWORKS_APP_VERSION = "20260809-key-cabinet-18";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4949,6 +4949,7 @@ let focusedServiceRequestId = "";
 let focusedCompletedRecordId = "";
 let focusedInventoryItemId = getInventoryItemIdFromUrl() || "";
 let focusedKeyId = getKeyIdFromUrl() || "";
+let keyCabinetPage = 0;
 let serviceRequestDrawerTab = "notes";
 let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
@@ -6934,6 +6935,17 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const cabinetPageButton = event.target.closest("[data-key-cabinet-page]");
+  if (cabinetPageButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const page = Number(cabinetPageButton.dataset.keyCabinetPage);
+    keyCabinetPage = Number.isInteger(page) && page >= 0 ? page : 0;
+    focusedKeyId = "";
+    renderKeys();
+    return;
+  }
+
   const cabinetSlot = event.target.closest("[data-key-cabinet-slot]");
   if (cabinetSlot) {
     event.preventDefault();
@@ -9546,15 +9558,29 @@ function renderKeys() {
 }
 
 function renderKeyCabinet(keys = []) {
-  const visibleSlots = Math.max(24, Math.min(48, Math.ceil(keys.length / 6) * 6 || 24));
-  const slots = Array.from({ length: visibleSlots }, (_, index) => renderKeyCabinetSlot(keys[index], index));
-  const focusedKey = focusedKeyId ? keys.find((key) => key.id === focusedKeyId) : null;
+  const pageSize = 24;
+  const pageCount = Math.max(1, Math.ceil(keys.length / pageSize));
+  const focusedKeyIndex = focusedKeyId ? keys.findIndex((key) => key.id === focusedKeyId) : -1;
+  if (focusedKeyIndex >= 0) keyCabinetPage = Math.floor(focusedKeyIndex / pageSize);
+  keyCabinetPage = Math.min(Math.max(keyCabinetPage, 0), pageCount - 1);
+  const pageStart = keyCabinetPage * pageSize;
+  const pageKeys = keys.slice(pageStart, pageStart + pageSize);
+  const slots = Array.from({ length: pageSize }, (_, index) => renderKeyCabinetSlot(pageKeys[index], pageStart + index));
+  const focusedKey = focusedKeyIndex >= pageStart && focusedKeyIndex < pageStart + pageSize ? keys[focusedKeyIndex] : null;
   const cabinetScopeLabel = getKeyCabinetScopeLabel(keys);
   const availableCount = keys.filter((key) => getKeyCabinetStatus(key, isKeyCheckedOut(key), isKeyOverdue(key)) === "available").length;
   const checkedOutCount = keys.filter((key) => isKeyCheckedOut(key)).length;
   const overdueCount = keys.filter((key) => isKeyOverdue(key)).length;
   const verifyOverdueCount = keys.filter((key) => isKeyVerificationOverdue(key)).length;
-  const overflowCount = Math.max(0, keys.length - visibleSlots);
+  const cabinetTabs = pageCount > 1
+    ? `<div class="key-cabinet-tabs" role="tablist" aria-label="Key cabinet pages">
+        ${Array.from({ length: pageCount }, (_, page) => `
+          <button type="button" class="${page === keyCabinetPage ? "is-active" : ""}" data-key-cabinet-page="${page}" role="tab" aria-selected="${page === keyCabinetPage ? "true" : "false"}">
+            Cabinet ${page + 1}
+          </button>
+        `).join("")}
+      </div>`
+    : "";
   return `
     <section class="key-cabinet" aria-label="Key control center">
       <div class="key-cabinet-frame">
@@ -9563,6 +9589,7 @@ function renderKeyCabinet(keys = []) {
           <span>Key Control Center</span>
           <small class="key-cabinet-location-plate">${escapeHtml(cabinetScopeLabel)}</small>
         </div>
+        ${cabinetTabs}
         <div class="key-cabinet-board">
           <div class="key-cabinet-slots">
             ${slots.join("")}
@@ -9581,7 +9608,7 @@ function renderKeyCabinet(keys = []) {
               <span><b>${checkedOutCount}</b> checked out</span>
               <span><b>${overdueCount}</b> overdue</span>
               ${verifyOverdueCount ? `<span><b>${verifyOverdueCount}</b> need verify</span>` : ""}
-              ${overflowCount ? `<span><b>${overflowCount}</b> more in list</span>` : ""}
+              ${pageCount > 1 ? `<span><b>${keyCabinetPage + 1}</b> of ${pageCount} cabinets</span>` : ""}
             </div>
           </aside>
         </div>
@@ -9608,15 +9635,15 @@ function getKeyCabinetScopeLabel(keys = []) {
 
 function renderKeyCabinetSlot(key, index) {
   const slotNumber = key?.keyNumber || String(index + 1);
-  const label = key ? key.keyName || key.name || "Key" : "Spare";
+  const label = key ? key.keyName || key.name || "Key" : "+ Add Key";
   const customer = key ? getCustomer(key.customerId) : null;
   const locationRecord = key ? getLocation(key.locationId) : null;
   const checkedOut = key ? isKeyCheckedOut(key) : false;
   const overdue = key ? isKeyOverdue(key) : false;
-  const status = getKeyCabinetStatus(key, checkedOut, overdue);
-  const statusText = siteKeyCabinetStatusLabel(status);
+  const status = key ? getKeyCabinetStatus(key, checkedOut, overdue) : "empty";
+  const statusText = key ? siteKeyCabinetStatusLabel(status) : "Add Key";
   const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key?.storageLocation || "Cabinet";
-  const slotContext = key ? locationRecord?.name || customer?.name || "Unassigned" : getKeyCabinetSlotContext();
+  const slotContext = key ? locationRecord?.name || customer?.name || "Unassigned" : "Empty slot";
   const lastVerified = key ? getKeyCabinetLastVerifiedLabel(key) : "";
   const verificationDue = key ? getKeyVerificationOverdueLabel(key) : "";
   const lastUser = key ? getKeyCabinetLastUserLabel(key, checkedOut) : "";
@@ -9625,11 +9652,11 @@ function renderKeyCabinetSlot(key, index) {
   const verifiedLine = verificationDue || lastVerified || "Last verified: No history yet";
   const titleParts = key
     ? [`Slot ${slotNumber} - ${label}`, `Status: ${statusText}`, checkedOut ? `With: ${holder}` : lastUserLine, verificationDue, lastVerified, slotContext]
-    : [`Slot ${slotNumber} - ${slotContext}`, "Status: Available", "Last verified: No history yet", "Last user: No history yet"];
+    : [`Slot ${slotNumber} - Add Key`, "Empty key slot"];
   const title = titleParts.filter(Boolean).join(" | ");
   const selectedClass = key?.id && key.id === focusedKeyId ? " key-cabinet-slot-selected" : "";
   return `
-    <button type="button" class="key-cabinet-slot key-cabinet-slot-${status}${selectedClass}" ${key ? `data-key-cabinet-slot="${escapeAttribute(key.id)}"` : "disabled"} title="${escapeAttribute(title)}">
+    <button type="button" class="key-cabinet-slot key-cabinet-slot-${status}${selectedClass}" ${key ? `data-key-cabinet-slot="${escapeAttribute(key.id)}"` : canManageKeys() ? "data-open-key-form" : "disabled"} title="${escapeAttribute(title)}">
       <span class="key-cabinet-label">
         <b>${escapeHtml(slotNumber)}</b>
         <span>${escapeHtml(label)}</span>
