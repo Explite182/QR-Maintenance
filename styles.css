@@ -6281,7 +6281,7 @@ button.asset-detail-card {
 .key-cabinet-hook {
   position: absolute;
   left: 50%;
-  top: 62px;
+  top: 60px;
   width: 7px;
   height: 36px;
   transform: translateX(-50%);
@@ -6306,7 +6306,7 @@ button.asset-detail-card {
 .key-cabinet-keyring {
   position: absolute;
   left: 50%;
-  top: 90px;
+  top: 86px;
   width: 64px;
   height: 62px;
   transform: translateX(-50%);
@@ -6366,21 +6366,7 @@ button.asset-detail-card {
 }
 
 .key-cabinet-context {
-  position: absolute;
-  left: 50%;
-  top: 53px;
-  z-index: 2;
-  max-width: calc(100% - 18px);
-  transform: translateX(-50%);
-  color: rgba(255,255,255,.86);
-  font-size: 9px;
-  font-weight: 900;
-  line-height: 1.1;
-  text-transform: uppercase;
-  text-shadow: 0 1px 2px rgba(0,0,0,.72);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none;
 }
 
 .key-cabinet-status {
