@@ -1,4 +1,4645 @@
-﻿const STORAGE_KEY = "qr-pm-prototype-v3";
+/* SiteWorks bundled feature modules - start */
+
+// SiteWorks structured cloud sync module.
+// Loaded before app.js as a classic script so existing app state, permissions, and helpers stay shared.
+// Keep Supabase structured row loading, merging, saving, and delete helpers here.
+
+async function loadStructuredDataFromSupabase(options = {}) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED) return false;
+  if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  structuredDataLoading = true;
+  try {
+    const forceReload = Boolean(options.forceReload);
+    const remoteStructuredState = forceReload
+      ? { hasRows: true, updatedAt: "" }
+      : await peekStructuredCloudState();
+    if (!forceReload) {
+      const localHasCriticalStructuredRows =
+        (state.siteMaps || []).length ||
+        (state.monitoringDevices || []).length ||
+        (state.monitoringChannels || []).length;
+      if (remoteStructuredState.hasRows && localHasCriticalStructuredRows && hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(remoteStructuredState.updatedAt)) {
+        structuredDataLoading = false;
+        structuredDataReady = true;
+        scheduleStructuredDataSync(0);
+        markSyncSuccess("load");
+        return true;
+      }
+    }
+    const [
+      customerRows,
+      locationRows,
+      templateRows,
+      assetRows,
+      workOrderRows,
+      serviceRequestRows,
+      historyRows,
+      preferredContractorRows,
+      inventoryItemRows,
+      keyRows,
+      keyLogRows,
+      siteMapRows,
+      monitoringDeviceRows,
+      monitoringChannelRows,
+      monitoringEventRows,
+      monitoringAlertRows
+    ] = await Promise.all([
+      fetchStructuredRows("customers", "updated_at.asc"),
+      fetchStructuredRows("locations", "updated_at.asc"),
+      fetchStructuredRows("pm_templates", "updated_at.asc"),
+      fetchStructuredRows("assets", "updated_at.asc"),
+      fetchStructuredRows("work_orders", "updated_at.asc"),
+      fetchStructuredRows("service_requests", "updated_at.asc"),
+      fetchStructuredRows("pm_history", "completed_at.asc"),
+      fetchOptionalStructuredRows("preferred_contractors", "updated_at.asc"),
+      fetchOptionalStructuredRows("inventory_items", "updated_at.asc"),
+      fetchOptionalStructuredRows("keys", "updated_at.asc"),
+      fetchOptionalStructuredRows("key_logs", "timestamp.asc"),
+      fetchOptionalStructuredRows("site_maps", "updated_at.asc"),
+      fetchOptionalStructuredRows("monitoring_devices", "updated_at.asc"),
+      fetchOptionalStructuredRows("monitoring_channels", "updated_at.asc"),
+      fetchOptionalStructuredRows("monitoring_events", "created_at.desc"),
+      fetchOptionalStructuredRows("monitoring_alerts", "updated_at.desc")
+    ]);
+    structuredDataLoading = false;
+    structuredDataReady = true;
+    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length || inventoryItemRows.length || keyRows.length || keyLogRows.length || siteMapRows.length || monitoringDeviceRows.length || monitoringChannelRows.length || monitoringEventRows.length || monitoringAlertRows.length;
+    if (!hasRows) {
+      if (hasSharedMaintenanceData(state)) scheduleStructuredDataSync(0);
+      return false;
+    }
+    const structuredRows = {
+      customers: customerRows,
+      locations: locationRows,
+      templates: templateRows,
+      assets: assetRows,
+      workOrders: workOrderRows,
+      serviceRequests: serviceRequestRows,
+      history: historyRows,
+      preferredContractors: preferredContractorRows,
+      inventoryItems: inventoryItemRows,
+      keys: keyRows,
+      keyLogs: keyLogRows,
+      siteMaps: siteMapRows,
+      monitoringDevices: monitoringDeviceRows,
+      monitoringChannels: monitoringChannelRows,
+      monitoringEvents: monitoringEventRows,
+      monitoringAlerts: monitoringAlertRows
+    };
+    if (structuredRowsMissingAssets(structuredRows)) {
+      markSyncError("Structured cloud load returned related records but no equipment. Keeping/restoring the last known equipment list.");
+      const restoredSharedState = canUseSharedStateFallback()
+        ? await loadSharedStateFromSupabase(true)
+        : false;
+      if (!restoredSharedState && state.assets?.length) scheduleStructuredDataSync(0);
+      return Boolean(restoredSharedState || state.assets?.length);
+    }
+    const structuredUpdatedAt = newestStructuredUpdatedAt(structuredRows);
+    if (!forceReload && hasSharedMaintenanceData(state) && !isRemoteSharedStateNewer(structuredUpdatedAt)) {
+      scheduleStructuredDataSync(0);
+      markSyncSuccess("load");
+      return true;
+    }
+    applyStructuredState(structuredRows, structuredUpdatedAt);
+    markSyncSuccess("load");
+    return true;
+  } catch (error) {
+    structuredDataLoading = false;
+    structuredDataReady = true;
+    markSyncError(error?.message || "Structured cloud load failed.");
+    console.warn("Structured Supabase load skipped.", error);
+    return false;
+  }
+}
+
+function structuredRowsMissingAssets(rows = {}) {
+  if (rows.assets?.length) return false;
+  if (state.assets?.length) return true;
+  return Boolean(
+    rows.workOrders?.some((row) => row.asset_id || row.assetId) ||
+    rows.serviceRequests?.some((row) => row.asset_id || row.assetId) ||
+    rows.history?.some((row) => row.asset_id || row.assetId)
+  );
+}
+
+async function fetchStructuredRows(table, order = "updated_at.asc") {
+  try {
+    return await siteworksApi.loadRows(table, order);
+  } catch (error) {
+    const message = `Structured cloud load failed for ${table}: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn(`Structured Supabase load skipped for ${table}.`, error);
+    throw new Error(message);
+  }
+}
+
+async function fetchOptionalStructuredRows(table, order = "updated_at.asc") {
+  try {
+    return await siteworksApi.loadRows(table, order);
+  } catch (error) {
+    console.warn(`Optional Supabase table ${table} is not available yet.`, error);
+    return [];
+  }
+}
+
+async function peekStructuredCloudState() {
+  const tables = [
+    { table: "customers", timestamp: "updated_at" },
+    { table: "locations", timestamp: "updated_at" },
+    { table: "pm_templates", timestamp: "updated_at" },
+    { table: "assets", timestamp: "updated_at" },
+    { table: "work_orders", timestamp: "updated_at" },
+    { table: "service_requests", timestamp: "updated_at" },
+    { table: "pm_history", timestamp: "completed_at" },
+    { table: "preferred_contractors", timestamp: "updated_at", optional: true },
+    { table: "inventory_items", timestamp: "updated_at", optional: true },
+    { table: "keys", timestamp: "updated_at", optional: true },
+    { table: "key_logs", timestamp: "timestamp", optional: true },
+    { table: "site_maps", timestamp: "updated_at", optional: true },
+    { table: "monitoring_devices", timestamp: "updated_at", optional: true },
+    { table: "monitoring_channels", timestamp: "updated_at", optional: true },
+    { table: "monitoring_events", timestamp: "created_at", optional: true },
+    { table: "monitoring_alerts", timestamp: "updated_at", optional: true }
+  ];
+  const rows = await Promise.all(tables.map(({ table, timestamp, optional }) =>
+    optional ? fetchOptionalStructuredTimestampRows(table, timestamp) : fetchStructuredTimestampRows(table, timestamp)
+  ));
+  const flatRows = rows.flat();
+  return {
+    hasRows: flatRows.length > 0,
+    updatedAt: newestTimestampFromRows(flatRows)
+  };
+}
+
+async function fetchStructuredTimestampRows(table, timestampColumn) {
+  try {
+    return await siteworksApi.peekRows(table, timestampColumn);
+  } catch (error) {
+    const message = `Structured cloud change check failed for ${table}: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn(`Structured Supabase change check skipped for ${table}.`, error);
+    throw new Error(message);
+  }
+}
+
+async function fetchOptionalStructuredTimestampRows(table, timestampColumn) {
+  try {
+    return await siteworksApi.peekRows(table, timestampColumn);
+  } catch (error) {
+    console.warn(`Optional Supabase table ${table} is not available yet.`, error);
+    return [];
+  }
+}
+
+function applyStructuredState(rows, updatedAt = "") {
+  const previousCustomerId = selectedCustomerId;
+  const previousLocationId = selectedLocationId;
+  const localUsers = state.users || [];
+  const localAccessRequests = state.accessRequests || [];
+  const localCurrentUserId = state.currentUserId || "";
+  const localWorkOrders = state.workOrders || [];
+  const nextAssets = rows.assets.map(assetFromStructuredRow);
+  const mergedAssetResult = mergeStructuredAssetsWithLocal(nextAssets, state.assets || []);
+  const mergedAssets = mergedAssetResult.assets;
+  const historyByAsset = groupStructuredHistoryByAsset(rows.history);
+  mergedAssets.forEach((asset) => {
+    if (!Array.isArray(asset.history) || !asset.history.length) {
+      asset.history = historyByAsset.get(asset.id) || [];
+    }
+  });
+  applyingSharedState = true;
+  state = normalizeState({
+    ...state,
+    customers: rows.customers.map(customerFromStructuredRow),
+    locations: rows.locations.map(locationFromStructuredRow),
+    templates: rows.templates.map(templateFromStructuredRow),
+    assets: mergedAssets,
+    workOrders: mergeStructuredWorkOrdersWithLocalPublicReports(
+      rows.workOrders.map(workOrderFromStructuredRow),
+      localWorkOrders
+    ),
+    serviceRequests: rows.serviceRequests.map(serviceRequestFromStructuredRow),
+    preferredContractors: rows.preferredContractors.map(preferredContractorFromStructuredRow),
+    inventoryItems: (rows.inventoryItems || []).map(inventoryItemFromStructuredRow),
+    keys: (rows.keys || []).map(keyFromStructuredRow),
+    keyLogs: (rows.keyLogs || []).map(keyLogFromStructuredRow),
+    siteMaps: mergeStructuredSiteMapsWithLocal(
+      (rows.siteMaps || []).map(siteMapFromStructuredRow),
+      state.siteMaps || []
+    ),
+    monitoringDevices: (rows.monitoringDevices || []).map(monitoringDeviceFromStructuredRow),
+    monitoringChannels: (rows.monitoringChannels || []).map(monitoringChannelFromStructuredRow),
+    monitoringEvents: (rows.monitoringEvents || []).map(monitoringEventFromStructuredRow).slice(0, 1000),
+    monitoringAlerts: (rows.monitoringAlerts || []).map(monitoringAlertFromStructuredRow),
+    users: localUsers,
+    accessRequests: localAccessRequests,
+    currentUserId: localCurrentUserId,
+    sharedDataUpdatedAt: updatedAt || newestStructuredUpdatedAt(rows)
+  });
+  currentUser = findStateUserForCurrentSession() || currentUser;
+  currentRole = currentUser?.role || "Customer";
+  restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId);
+  selectedId = getAssetIdFromUrl() || selectedId;
+  persistLocalStateOnly(false);
+  applyingSharedState = false;
+  if (mergedAssetResult.keptLocalChanges) {
+    scheduleStructuredDataSync(0);
+  }
+  render();
+  window.setTimeout(syncLoginQrReportPrompt, 0);
+}
+
+function mergeStructuredWorkOrdersWithLocalPublicReports(structuredWorkOrders = [], localWorkOrders = []) {
+  const merged = structuredWorkOrders.slice();
+  const knownIds = new Set(merged.map((item) => item.id).filter(Boolean));
+  const knownRemoteReportIds = new Set(merged.map((item) => item.remoteReportId).filter(Boolean));
+  localWorkOrders.forEach((item) => {
+    if (!isCustomerReportedIssue(item) || !item.remoteReportId) return;
+    if (state.dismissedPublicReportIds.includes(item.remoteReportId)) return;
+    if (knownIds.has(item.id) || knownRemoteReportIds.has(item.remoteReportId)) return;
+    merged.unshift(item);
+    knownIds.add(item.id);
+    knownRemoteReportIds.add(item.remoteReportId);
+  });
+  return merged;
+}
+
+function mapUpdatedTime(record = {}) {
+  const time = Date.parse(record.updatedAt || record.updated_at || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function siteMapMergeKey(map = {}) {
+  return map.id || `${map.customerId || ""}:${map.locationId || ""}`;
+}
+
+function mergeStructuredSiteMapsWithLocal(structuredSiteMaps = [], localSiteMaps = []) {
+  const merged = new Map();
+  structuredSiteMaps.forEach((map) => {
+    if (!map) return;
+    merged.set(siteMapMergeKey(map), map);
+  });
+  localSiteMaps.forEach((localMap) => {
+    if (!localMap?.customerId) return;
+    const key = siteMapMergeKey(localMap);
+    const remoteMap = merged.get(key);
+    if (!remoteMap || mapUpdatedTime(localMap) > mapUpdatedTime(remoteMap)) {
+      merged.set(key, localMap);
+    }
+  });
+  return [...merged.values()];
+}
+
+function mergeStructuredAssetsWithLocal(structuredAssets = [], localAssets = []) {
+  const merged = new Map();
+  let keptLocalChanges = false;
+  structuredAssets.forEach((asset) => {
+    if (!asset?.id) return;
+    merged.set(asset.id, asset);
+  });
+  localAssets.forEach((localAsset) => {
+    if (!localAsset?.id) return;
+    const remoteAsset = merged.get(localAsset.id);
+    if (!remoteAsset) return;
+    if (mapUpdatedTime(localAsset) > mapUpdatedTime(remoteAsset)) {
+      merged.set(localAsset.id, localAsset);
+      keptLocalChanges = true;
+    }
+  });
+  return {
+    assets: [...merged.values()],
+    keptLocalChanges
+  };
+}
+
+function structuredPayload(row) {
+  return row?.data && typeof row.data === "object" ? row.data : {};
+}
+
+function nfcTagFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return normalizeAssetNfcTag(payload.nfcTag || {
+    uid: row.nfc_uid || payload.nfcUid || payload.nfc_uid || "",
+    url: row.nfc_url || payload.nfcUrl || payload.nfc_url || "",
+    status: row.nfc_status || payload.nfcStatus || payload.nfc_status || "",
+    lastWrittenAt: row.nfc_written_at || payload.nfcWrittenAt || payload.nfc_written_at || "",
+    lastVerifiedAt: row.nfc_verified_at || payload.nfcVerifiedAt || payload.nfc_verified_at || "",
+    message: payload.nfcMessage || payload.nfc_message || ""
+  });
+}
+
+function withFileScope(file, scope = {}) {
+  if (!file || typeof file !== "object") return file;
+  return {
+    ...file,
+    customerId: file.customerId || file.customer_id || scope.customerId || scope.customer_id || "",
+    locationId: file.locationId || file.location_id || scope.locationId || scope.location_id || ""
+  };
+}
+
+function withRecordMediaScope(record, scope = {}) {
+  if (!record || typeof record !== "object") return record;
+  const next = { ...record };
+  if (next.photo) next.photo = withFileScope(next.photo, scope);
+  if (next.manualFile) next.manualFile = withFileScope(next.manualFile, scope);
+  if (Array.isArray(next.photos)) next.photos = next.photos.map((photo) => withFileScope(photo, scope));
+  if (Array.isArray(next.history)) {
+    next.history = next.history.map((item) => ({
+      ...item,
+      photo: withFileScope(item.photo, scope)
+    }));
+  }
+  return next;
+}
+
+function customerFromStructuredRow(row) {
+  return {
+    id: row.id,
+    name: row.name || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function locationFromStructuredRow(row) {
+  return {
+    id: row.id,
+    customerId: row.customer_id || "",
+    name: row.name || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function templateFromStructuredRow(row) {
+  return {
+    id: row.id,
+    customerId: row.customer_id || "",
+    name: row.name || "",
+    items: Array.isArray(row.items) ? row.items : [],
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function assetFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  const asset = {
+    id: row.id,
+    customerId: row.customer_id || "",
+    locationId: row.location_id || "",
+    templateId: row.template_id || "",
+    name: row.name || "",
+    frequencyDays: Number(row.frequency_days || 30),
+    nextPmDate: row.next_pm_date || "",
+    manufacturer: row.manufacturer || "",
+    model: row.model || "",
+    serial: row.serial || "",
+    installDate: row.install_date || "",
+    type: row.type || "",
+    criticality: row.criticality || "",
+    documentUrl: row.document_url || "",
+    vendor: row.vendor || "",
+    vendorContact: row.vendor_contact || "",
+    warrantyDate: row.warranty_date || "",
+    parts: row.parts || "",
+    notes: row.notes || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...payload,
+    nfcTag: nfcTagFromStructuredRow(row)
+  };
+  return withRecordMediaScope(asset, asset);
+}
+
+function workOrderFromStructuredRow(row) {
+  const workOrder = {
+    id: row.id,
+    issueNumber: row.issue_number || row.ticket_number || null,
+    assetId: row.asset_id || "",
+    customerId: row.customer_id || "",
+    locationId: row.location_id || "",
+    title: row.title || "",
+    priority: row.priority || "Medium",
+    status: row.status || "Open",
+    source: row.source || "",
+    areaName: row.area_name || "",
+    assignedUserId: row.assigned_user_id || "",
+    assignedUserName: row.assigned_user_name || "",
+    notes: row.notes || "",
+    dueAt: row.due_at || "",
+    resolvedAt: row.resolved_at || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+  return withRecordMediaScope(workOrder, workOrder);
+}
+
+function serviceRequestFromStructuredRow(row) {
+  const request = {
+    id: row.id,
+    serviceRequestNumber: row.service_request_number || null,
+    assetId: row.asset_id || "",
+    customerId: row.customer_id || "",
+    locationId: row.location_id || "",
+    title: row.title || "",
+    priority: row.priority || "Medium",
+    status: row.status || "New",
+    requestedBy: row.requested_by || "",
+    preferredDate: row.preferred_date || "",
+    assignedUserId: row.assigned_user_id || "",
+    assignedUserName: row.assigned_user_name || "",
+    convertedWorkOrderId: row.converted_work_order_id || "",
+    notes: row.notes || "",
+    photo: row.photo_data_url ? { name: row.photo_name || "Service request photo", url: row.photo_data_url } : null,
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+  return withRecordMediaScope(request, request);
+}
+
+function preferredContractorFromStructuredRow(row) {
+  return {
+    id: row.id,
+    customerId: row.customer_id || "",
+    name: row.name || "",
+    email: row.email || "",
+    trade: row.trade || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function inventoryItemFromStructuredRow(row) {
+  return {
+    id: row.id,
+    customerId: row.customer_id || "",
+    category: row.category || "Parts",
+    name: row.name || "",
+    quantity: Number(row.quantity_on_hand || 0),
+    minStock: Number(row.min_stock || 0),
+    bin: row.bin || "",
+    supplier: row.supplier || "",
+    nfcTag: row.nfc_tag || "",
+    notes: row.notes || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    ...structuredPayload(row)
+  };
+}
+
+function keyFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  const uniqueTagId = row.unique_tag_id || payload.uniqueTagId || payload.unique_tag_id || "";
+  return {
+    ...payload,
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    uniqueTagId,
+    additionalTagUids: normalizeKeyExtraTagUids(payload.additionalTagUids || payload.additional_tag_uids || payload.extraTagUids || []).filter((uid) => uid !== normalizeNfcUid(uniqueTagId)),
+    keyName: row.key_name || payload.keyName || payload.name || "",
+    keyNumber: row.key_number || payload.keyNumber || "",
+    storageLocation: row.storage_location || payload.storageLocation || "",
+    currentStatus: row.current_status || payload.currentStatus || "Available",
+    currentHolderId: row.current_holder_id || payload.currentHolderId || "",
+    currentHolderName: row.current_holder_name || payload.currentHolderName || "",
+    defaultCheckoutHours: normalizeKeyCheckoutHours(row.default_checkout_hours ?? payload.defaultCheckoutHours ?? payload.default_checkout_hours),
+    dueBackAt: row.due_back_at || payload.dueBackAt || payload.due_back_at || "",
+    notes: row.notes || payload.notes || "",
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || ""
+  };
+}
+
+function keyLogFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    id: row.id,
+    keyId: row.key_id || payload.keyId || "",
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    userId: row.user_id || payload.userId || "",
+    userName: row.user_name || payload.userName || "",
+    action: row.action || payload.action || "Check-In",
+    notes: row.notes || payload.notes || "",
+    timestamp: row.timestamp || payload.timestamp || payload.createdAt || "",
+    ...payload,
+    dueBackAt: row.due_back_at || payload.dueBackAt || payload.due_back_at || ""
+  };
+}
+
+function siteMapFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    ...payload,
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    name: row.name || payload.name || "",
+    image: row.image || payload.image || null,
+    pins: Array.isArray(row.pins) ? row.pins : Array.isArray(payload.pins) ? payload.pins : [],
+    levels: Array.isArray(payload.levels) ? payload.levels : Array.isArray(payload.areas) ? payload.areas : [],
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || ""
+  };
+}
+
+function monitoringDeviceFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    ...payload,
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    panelAssetId: row.panel_asset_id || payload.panelAssetId || "",
+    deviceUid: row.device_uid || payload.deviceUid || "",
+    apiKeyHash: "",
+    apiKeyLast4: row.api_key_last4 || payload.apiKeyLast4 || "",
+    name: row.name || payload.name || "Panel monitor",
+    model: row.model || payload.model || "",
+    firmwareVersion: row.firmware_version || payload.firmwareVersion || "",
+    onlineStatus: row.online_status || payload.onlineStatus || "offline",
+    healthStatus: row.health_status || payload.healthStatus || "",
+    sourcePhases: normalizeMonitoringSourcePhases(row.source_phases || payload.sourcePhases),
+    sourcePhaseChannels: monitoringEngine()?.normalizeSourcePhaseChannels
+      ? monitoringEngine().normalizeSourcePhaseChannels(payload.sourcePhaseChannels || payload.source_phase_channels)
+      : (payload.sourcePhaseChannels || payload.source_phase_channels || { A: "", B: "", C: "" }),
+    heartbeatSeconds: Math.max(30, Number(row.heartbeat_seconds || payload.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS)),
+    maintenanceMode: Boolean(row.maintenance_mode ?? payload.maintenanceMode),
+    rawPayloads: row.data?.last_payload
+      ? [{ receivedAt: row.last_seen_at || row.updated_at || new Date().toISOString(), payload: row.data.last_payload }]
+      : Array.isArray(payload.rawPayloads) ? payload.rawPayloads.slice(0, 20) : [],
+    recentErrors: Array.isArray(payload.recentErrors) ? payload.recentErrors.slice(0, 20) : [],
+    lastSeenAt: row.last_seen_at || payload.lastSeenAt || "",
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || ""
+  };
+}
+
+function monitoringChannelFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  const poleCount = Math.max(1, Math.min(3, Number(row.pole_count || payload.poleCount || 1)));
+  const sourcePhases = getMonitoringChannelPhaseList({
+    ...payload,
+    sourcePhase: row.source_phase || payload.sourcePhase || "A",
+    poleCount
+  });
+  return {
+    ...payload,
+    id: row.id || payload.id,
+    deviceId: row.device_id || payload.deviceId || "",
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    panelAssetId: row.panel_asset_id || payload.panelAssetId || "",
+    breakerGroupId: payload.breakerGroupId || payload.breaker_group_id || "",
+    breakerPoleCount: Math.max(1, Math.min(3, Number(payload.breakerPoleCount || payload.breaker_pole_count || poleCount))),
+    poleIndex: Math.max(1, Math.min(3, Number(payload.poleIndex || payload.pole_index || 1))),
+    circuitNumber: String(row.circuit_number || payload.circuitNumber || "").trim(),
+    physicalChannel: String(row.physical_channel || payload.physicalChannel || "").trim(),
+    sourcePhase: sourcePhases[0] || row.source_phase || "A",
+    sourcePhases,
+    poleCount,
+    monitoringMode: row.monitoring_mode || payload.monitoringMode || "normal",
+    criticality: row.criticality || payload.criticality || "normal",
+    alarmDelaySeconds: Math.max(0, Number(row.alarm_delay_seconds || payload.alarmDelaySeconds || MONITORING_DEFAULT_DELAY_SECONDS)),
+    lastRawState: row.last_raw_state ?? payload.lastRawState ?? null,
+    lastDerivedState: row.last_derived_state || payload.lastDerivedState || "open",
+    firstAbsentAt: row.first_absent_at || payload.firstAbsentAt || "",
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || ""
+  };
+}
+
+function monitoringEventFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    deviceId: row.device_id || payload.deviceId || "",
+    channelId: row.channel_id || payload.channelId || "",
+    panelAssetId: row.panel_asset_id || payload.panelAssetId || "",
+    circuitNumber: row.circuit_number || payload.circuitNumber || "",
+    type: row.event_type || payload.type || "device-status",
+    state: row.new_state || payload.state || "",
+    previousState: row.previous_state || payload.previousState || "",
+    message: payload.message || (row.circuit_number ? `Circuit ${row.circuit_number} is ${monitoringStateLabel(row.new_state)}.` : "Panel monitor reported status."),
+    data: row.payload || payload.data || {},
+    createdAt: row.created_at || payload.createdAt || ""
+  };
+}
+
+function monitoringAlertFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return {
+    ...payload,
+    id: row.id || payload.id,
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    deviceId: row.device_id || payload.deviceId || "",
+    channelId: row.channel_id || payload.channelId || "",
+    panelAssetId: row.panel_asset_id || payload.panelAssetId || "",
+    circuitNumber: row.circuit_number || payload.circuitNumber || "",
+    type: row.alert_type || payload.type || "suspected-trip",
+    severity: row.severity || payload.severity || "medium",
+    status: row.status || payload.status || "open",
+    title: payload.title || "Panel monitor alert",
+    message: payload.message || "",
+    acknowledgedAt: row.acknowledged_at || payload.acknowledgedAt || "",
+    resolvedAt: row.resolved_at || payload.resolvedAt || "",
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || ""
+  };
+}
+
+function groupStructuredHistoryByAsset(historyRows = []) {
+  const grouped = new Map();
+  historyRows.forEach((row) => {
+    const history = {
+      id: row.id,
+      pmNumber: row.pm_number || null,
+      technician: row.technician || "",
+      result: row.result || "",
+      reading: row.reading || "",
+      notes: row.notes || "",
+      completedChecks: Array.isArray(row.completed_checks) ? row.completed_checks : [],
+      completedAt: row.completed_at || "",
+      ...structuredPayload(row)
+    };
+    if (history.photo) history.photo = withFileScope(history.photo, { assetId: row.asset_id });
+    const list = grouped.get(row.asset_id) || [];
+    list.push(history);
+    grouped.set(row.asset_id, list);
+  });
+  return grouped;
+}
+
+function newestStructuredUpdatedAt(rows) {
+  return newestTimestampFromRows([
+    ...rows.customers,
+    ...rows.locations,
+    ...rows.templates,
+    ...rows.assets,
+    ...rows.workOrders,
+    ...rows.serviceRequests,
+    ...rows.history,
+    ...(rows.preferredContractors || []),
+    ...(rows.inventoryItems || []),
+    ...(rows.keys || []),
+    ...(rows.keyLogs || []),
+    ...(rows.siteMaps || [])
+  ]);
+}
+
+function newestTimestampFromRows(rows = []) {
+  return rows.map((row) => row.updated_at || row.completed_at || row.timestamp || row.created_at || "")
+    .filter(Boolean)
+    .sort()
+    .at(-1) || new Date().toISOString();
+}
+
+async function loadSharedStateFromSupabase(forceApplyAssets = false) {
+  if (!canUseSharedStateFallback() || sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  sharedStateLoading = true;
+  const localHadSharedData = hasSharedMaintenanceData(state);
+
+  try {
+    const response = await siteworksApi.loadSharedState(SHARED_APP_STATE_ID);
+    sharedStateLoading = false;
+    sharedStateReady = true;
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      markSyncError(`Shared cloud load failed: ${errorText}`);
+      console.warn("Supabase shared data sync skipped.", errorText);
+      return;
+    }
+
+    const rows = await response.json();
+    const remoteRecord = rows?.[0];
+    if (!remoteRecord?.data) {
+      if (localHadSharedData) scheduleSharedStateSave(0);
+      return false;
+    }
+
+    if (forceApplyAssets && Array.isArray(remoteRecord.data.assets) && remoteRecord.data.assets.length) {
+      applySharedState(remoteRecord.data, remoteRecord.updated_at);
+      markSyncSuccess("load");
+      window.setTimeout(() => scheduleStructuredDataSync(0), 0);
+      return true;
+    }
+
+    if (!localHadSharedData || isRemoteSharedStateNewer(remoteRecord.updated_at)) {
+      applySharedState(remoteRecord.data, remoteRecord.updated_at);
+      markSyncSuccess("load");
+      return true;
+    }
+    markSyncSuccess("load");
+    return false;
+  } catch (error) {
+    sharedStateLoading = false;
+    sharedStateReady = true;
+    markSyncError(error?.message || "Shared cloud load failed.");
+    console.warn("Supabase shared data sync skipped.", error);
+    return false;
+  }
+}
+
+function applySharedState(sharedData, updatedAt = "") {
+  const previousCustomerId = selectedCustomerId;
+  const previousLocationId = selectedLocationId;
+  const localUsers = state.users || [];
+  const localAccessRequests = state.accessRequests || [];
+  const localCurrentUserId = state.currentUserId || "";
+  const nextUsers = Array.isArray(sharedData.users)
+    ? mergeSharedUsers(sharedData.users, localUsers, localCurrentUserId)
+    : localUsers;
+  const nextAccessRequests = Array.isArray(sharedData.accessRequests)
+    ? sharedData.accessRequests
+    : localAccessRequests;
+  applyingSharedState = true;
+  state = normalizeState({
+    ...state,
+    ...sharedData,
+    users: nextUsers,
+    accessRequests: nextAccessRequests,
+    currentUserId: localCurrentUserId,
+    sharedDataUpdatedAt: updatedAt || sharedData.sharedDataUpdatedAt || ""
+  });
+  currentUser = findStateUserForCurrentSession() || currentUser;
+  currentRole = currentUser?.role || "Customer";
+  restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId);
+  selectedId = getAssetIdFromUrl() || null;
+  persistLocalStateOnly();
+  applyingSharedState = false;
+  render();
+  if (!Array.isArray(sharedData.users) && nextUsers.some((user) => user.username !== "scan-customer")) {
+    window.setTimeout(() => scheduleSharedStateSave(0), 0);
+  }
+  window.setTimeout(syncLoginQrReportPrompt, 0);
+}
+
+function canUseSharedStateFallback() {
+  return currentRole === "Admin";
+}
+
+function mergeSharedUsers(sharedUsers = [], localUsers = [], localCurrentUserId = "") {
+  const merged = [];
+  const seen = new Set();
+  const addUser = (user) => {
+    if (!user?.id && !user?.username) return;
+    const cleanUser = sanitizeSharedUser(user);
+    const key = cleanUser.id || cleanUser.username.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(cleanUser);
+  };
+  sharedUsers.forEach(addUser);
+  const savedSession = getSavedAuthSession();
+  const sessionEmail = savedSession?.user?.email?.toLowerCase() || "";
+  const currentLocalUser = localUsers.find((user) =>
+    user.id === localCurrentUserId ||
+    user.id === savedSession?.user?.id ||
+    (sessionEmail && user.username?.toLowerCase() === sessionEmail) ||
+    user.id === currentUser?.id ||
+    user.username?.toLowerCase() === currentUser?.username?.toLowerCase()
+  );
+  if (currentLocalUser && !merged.some((user) => user.id === currentLocalUser.id)) {
+    addUser(currentLocalUser);
+  }
+  return merged;
+}
+
+function sanitizeSharedUser(user) {
+  const { session, ...rest } = user || {};
+  return {
+    ...rest,
+    username: String(rest.username || "").trim().toLowerCase(),
+    name: rest.name || rest.username || "",
+    role: rest.role || "Customer",
+    customerId: rest.customerId || "",
+    locationId: rest.locationId || "",
+    password: rest.password || "",
+    localOnly: Boolean(rest.localOnly)
+  };
+}
+
+function isRemoteSharedStateNewer(remoteUpdatedAt = "") {
+  const remoteTime = Date.parse(remoteUpdatedAt || "");
+  const localTime = Date.parse(state.sharedDataUpdatedAt || "");
+  return Number.isFinite(remoteTime) && (!Number.isFinite(localTime) || remoteTime > localTime);
+}
+
+function scheduleSharedStateSave(delay = 1200) {
+  return;
+  if (!sharedStateReady || applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state) || !hasAuthenticatedCloudSession()) return;
+  window.clearTimeout(sharedStateSaveTimer);
+  sharedStateSaveTimer = window.setTimeout(saveSharedStateToSupabase, delay);
+}
+
+async function saveSharedStateToSupabase() {
+  return;
+  if (!sharedStateReady || applyingSharedState || !hasSharedMaintenanceData(state) || !hasAuthenticatedCloudSession()) return;
+  const uploadedAt = new Date().toISOString();
+  const payload = {
+    id: SHARED_APP_STATE_ID,
+    data: buildSharedStatePayload(uploadedAt),
+    updated_at: uploadedAt
+  };
+
+  try {
+    const response = await siteworksApi.saveSharedState(payload);
+    if (!response.ok) {
+      const errorText = await response.text();
+      markSyncError(`Shared cloud save failed: ${errorText}`);
+      console.warn("Supabase shared data save skipped.", errorText);
+      return;
+    }
+    state.sharedDataUpdatedAt = uploadedAt;
+    persistLocalStateOnly();
+    markSyncSuccess("save");
+  } catch (error) {
+    markSyncError(error?.message || "Shared cloud save failed.");
+    console.warn("Supabase shared data save skipped.", error);
+  }
+}
+
+function hasAuthenticatedCloudSession() {
+  const session = getSavedAuthSession();
+  if (!session?.access_token || !session?.user?.id) return false;
+  if (session.expires_at && Number(session.expires_at) <= Math.floor(Date.now() / 1000) + 60) return false;
+  if (session.expires_in && session.created_at && Number(session.created_at) + Number(session.expires_in) <= Math.floor(Date.now() / 1000) + 60) return false;
+  return true;
+}
+
+function buildSharedStatePayload(uploadedAt) {
+  return {
+    customers: state.customers || [],
+    locations: state.locations || [],
+    templates: state.templates || [],
+    assets: state.assets || [],
+    workOrders: state.workOrders || [],
+    serviceRequests: state.serviceRequests || [],
+    preferredContractors: state.preferredContractors || [],
+    inventoryItems: state.inventoryItems || [],
+    keys: state.keys || [],
+    keyLogs: state.keyLogs || [],
+    siteMaps: state.siteMaps || [],
+    users: (state.users || []).map(sanitizeSharedUser),
+    accessRequests: state.accessRequests || [],
+    activityLog: state.activityLog || [],
+    dismissedPublicReportIds: state.dismissedPublicReportIds || [],
+    backupLocation: state.backupLocation || defaultBackupLocation(),
+    qrBaseUrl: getQrBaseUrl(),
+    sharedDataUpdatedAt: uploadedAt
+  };
+}
+
+function hasSharedMaintenanceData(candidate) {
+  return Boolean(
+    candidate?.customers?.length ||
+    candidate?.locations?.length ||
+    candidate?.assets?.length ||
+    candidate?.workOrders?.length ||
+    candidate?.serviceRequests?.length ||
+    candidate?.preferredContractors?.length ||
+    candidate?.inventoryItems?.length ||
+    candidate?.keys?.length ||
+    candidate?.keyLogs?.length ||
+    candidate?.siteMaps?.length ||
+    candidate?.users?.some((user) => user.username !== "scan-customer") ||
+    candidate?.accessRequests?.length
+  );
+}
+
+function scheduleStructuredDataSync(delay = 2000) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED) return;
+  if (applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
+  window.clearTimeout(structuredSyncTimer);
+  structuredSyncTimer = window.setTimeout(syncStructuredDataToSupabase, delay);
+}
+
+function leanCloudData(value) {
+  if (Array.isArray(value)) return value.map(leanCloudData);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !["dataUrl", "photoDataUrl"].includes(key))
+    .map(([key, item]) => [key, leanCloudData(item)]));
+}
+
+function leanCloudMedia(file) {
+  if (!file || typeof file !== "object") return null;
+  const clean = leanCloudData(file);
+  return clean.url || clean.name ? clean : null;
+}
+
+function leanCloudRecord(record) {
+  const clean = leanCloudData(record);
+  if (clean.photo) clean.photo = leanCloudMedia(clean.photo);
+  if (clean.manualFile) clean.manualFile = leanCloudMedia(clean.manualFile);
+  if (Array.isArray(clean.photos)) clean.photos = clean.photos.map(leanCloudMedia).filter(Boolean);
+  if (Array.isArray(clean.history)) {
+    clean.history = clean.history.map((item) => ({
+      ...item,
+      photo: leanCloudMedia(item.photo)
+    }));
+  }
+  return clean;
+}
+
+function buildStructuredKeyRow(key, cloudLocationIds = null) {
+  const locationId = key.locationId && (!cloudLocationIds || cloudLocationIds.has(key.locationId)) ? key.locationId : null;
+  const additionalTagUids = getKeyAdditionalTagUids(key);
+  const defaultCheckoutHours = normalizeKeyCheckoutHours(key.defaultCheckoutHours ?? key.default_checkout_hours);
+  const dueBackAt = getKeyDueBackAt(key) || null;
+  return {
+    id: key.id,
+    customer_id: key.customerId || null,
+    location_id: locationId,
+    unique_tag_id: normalizeNfcUid(key.uniqueTagId || "") || key.uniqueTagId || "",
+    key_name: key.keyName || key.name || "",
+    key_number: key.keyNumber || "",
+    storage_location: key.storageLocation || "",
+    current_status: KEY_STATUS_OPTIONS.includes(key.currentStatus) ? key.currentStatus : "Available",
+    current_holder_id: isUuid(key.currentHolderId) ? key.currentHolderId : null,
+    current_holder_name: key.currentHolderName || "",
+    default_checkout_hours: defaultCheckoutHours,
+    due_back_at: dueBackAt,
+    notes: key.notes || "",
+    created_at: key.createdAt || new Date().toISOString(),
+    updated_at: key.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({
+      ...key,
+      additionalTagUids,
+      additional_tag_uids: additionalTagUids,
+      defaultCheckoutHours,
+      default_checkout_hours: defaultCheckoutHours,
+      dueBackAt: dueBackAt || "",
+      due_back_at: dueBackAt || "",
+      locationId: locationId || ""
+    })
+  };
+}
+
+function buildStructuredKeyLogRow(log, cloudLocationIds = null) {
+  const locationId = log.locationId && (!cloudLocationIds || cloudLocationIds.has(log.locationId)) ? log.locationId : null;
+  const dueBackAt = log.dueBackAt || log.due_back_at || null;
+  return {
+    id: log.id,
+    key_id: log.keyId,
+    customer_id: log.customerId || null,
+    location_id: locationId,
+    user_id: isUuid(log.userId) ? log.userId : null,
+    user_name: log.userName || "",
+    action: log.action === "Check-Out" ? "Check-Out" : "Check-In",
+    notes: log.notes || "",
+    due_back_at: dueBackAt,
+    timestamp: log.timestamp || log.createdAt || new Date().toISOString(),
+    data: leanCloudRecord({
+      ...log,
+      dueBackAt: dueBackAt || "",
+      due_back_at: dueBackAt || "",
+      locationId: locationId || ""
+    })
+  };
+}
+
+function buildStructuredSiteMapRow(map, cloudLocationIds = null) {
+  const locationId = map.locationId && (!cloudLocationIds || cloudLocationIds.has(map.locationId)) ? map.locationId : null;
+  const mapForCloud = {
+    ...map,
+    locationId: locationId || "",
+    levels: ensureSiteMapLevels(map, true).map((level) => normalizeSiteMapLevel(level)),
+    pins: normalizeSiteMapPins(map.pins)
+  };
+  const mainLevel = mapForCloud.levels.find((level) => level.id === "main");
+  if (mainLevel) {
+    mapForCloud.image = mainLevel.image || mapForCloud.image || null;
+    mapForCloud.pins = normalizeSiteMapPins(mainLevel.pins);
+  }
+  return {
+    id: map.id,
+    customer_id: map.customerId || null,
+    location_id: locationId,
+    name: map.name || "",
+    image: mapForCloud.image || null,
+    pins: mapForCloud.pins,
+    created_at: map.createdAt || new Date().toISOString(),
+    updated_at: map.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord(mapForCloud)
+  };
+}
+
+function buildMonitoringDeviceRow(device, cloudLocationIds = null) {
+  const locationId = device.locationId && (!cloudLocationIds || cloudLocationIds.has(device.locationId)) ? device.locationId : null;
+  return {
+    id: device.id,
+    customer_id: device.customerId || null,
+    location_id: locationId,
+    panel_asset_id: device.panelAssetId,
+    device_uid: device.deviceUid || "",
+    api_key_last4: device.apiKeyLast4 || null,
+    name: device.name || "Panel monitor",
+    model: device.model || "",
+    firmware_version: device.firmwareVersion || "",
+    online_status: device.onlineStatus || "offline",
+    health_status: device.healthStatus || "",
+    source_phases: normalizeMonitoringSourcePhases(device.sourcePhases),
+    heartbeat_seconds: Math.max(30, Number(device.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS)),
+    maintenance_mode: Boolean(device.maintenanceMode),
+    last_seen_at: device.lastSeenAt || null,
+    created_at: device.createdAt || new Date().toISOString(),
+    updated_at: device.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({
+      ...device,
+      apiKeyHash: "",
+      locationId: locationId || "",
+      rawPayloads: Array.isArray(device.rawPayloads) ? device.rawPayloads.slice(0, 20) : [],
+      recentErrors: Array.isArray(device.recentErrors) ? device.recentErrors.slice(0, 20) : []
+    })
+  };
+}
+
+function buildMonitoringChannelRow(channel, cloudLocationIds = null) {
+  const device = getMonitoringDevice(channel.deviceId);
+  const locationId = (channel.locationId || device?.locationId || "") && (!cloudLocationIds || cloudLocationIds.has(channel.locationId || device?.locationId)) ? (channel.locationId || device?.locationId) : null;
+  const sourcePhases = getMonitoringChannelPhaseList(channel);
+  return {
+    id: channel.id,
+    device_id: channel.deviceId,
+    customer_id: channel.customerId || device?.customerId || null,
+    location_id: locationId,
+    panel_asset_id: channel.panelAssetId || device?.panelAssetId || null,
+    circuit_number: String(channel.circuitNumber || ""),
+    physical_channel: String(channel.physicalChannel || ""),
+    source_phase: sourcePhases[0] || channel.sourcePhase || "A",
+    pole_count: Math.max(1, Math.min(3, Number(channel.poleCount || 1))),
+    monitoring_mode: channel.monitoringMode || "normal",
+    criticality: channel.criticality || "normal",
+    alarm_delay_seconds: Math.max(0, Number(channel.alarmDelaySeconds || MONITORING_DEFAULT_DELAY_SECONDS)),
+    last_raw_state: channel.lastRawState ?? null,
+    last_derived_state: channel.lastDerivedState || "open",
+    first_absent_at: channel.firstAbsentAt || null,
+    created_at: channel.createdAt || new Date().toISOString(),
+    updated_at: channel.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({
+      ...channel,
+      customerId: channel.customerId || device?.customerId || "",
+      locationId: locationId || "",
+      panelAssetId: channel.panelAssetId || device?.panelAssetId || "",
+      sourcePhases
+    })
+  };
+}
+
+function buildMonitoringEventRow(event, cloudLocationIds = null) {
+  const device = getMonitoringDevice(event.deviceId);
+  const locationId = (event.locationId || device?.locationId || "") && (!cloudLocationIds || cloudLocationIds.has(event.locationId || device?.locationId)) ? (event.locationId || device?.locationId) : null;
+  return {
+    id: event.id,
+    customer_id: event.customerId || device?.customerId || null,
+    location_id: locationId,
+    device_id: isUuid(event.deviceId) ? event.deviceId : null,
+    channel_id: isUuid(event.channelId) ? event.channelId : null,
+    panel_asset_id: event.panelAssetId || device?.panelAssetId || null,
+    circuit_number: event.circuitNumber || null,
+    event_type: event.type || "device-status",
+    previous_state: event.previousState || null,
+    new_state: event.state || null,
+    payload: leanCloudRecord({ ...event, locationId: locationId || "" }),
+    created_at: event.createdAt || new Date().toISOString()
+  };
+}
+
+function buildMonitoringAlertRow(alert, cloudLocationIds = null) {
+  const device = getMonitoringDevice(alert.deviceId);
+  const locationId = (alert.locationId || device?.locationId || "") && (!cloudLocationIds || cloudLocationIds.has(alert.locationId || device?.locationId)) ? (alert.locationId || device?.locationId) : null;
+  return {
+    id: alert.id,
+    customer_id: alert.customerId || device?.customerId || null,
+    location_id: locationId,
+    device_id: isUuid(alert.deviceId) ? alert.deviceId : null,
+    channel_id: isUuid(alert.channelId) ? alert.channelId : null,
+    panel_asset_id: alert.panelAssetId || device?.panelAssetId || null,
+    circuit_number: alert.circuitNumber || null,
+    alert_type: alert.type || "suspected-trip",
+    severity: alert.severity || "medium",
+    status: alert.status === "resolved" ? "resolved" : alert.status === "acknowledged" ? "acknowledged" : "open",
+    acknowledged_at: alert.acknowledgedAt || null,
+    resolved_at: alert.resolvedAt || null,
+    created_at: alert.createdAt || new Date().toISOString(),
+    updated_at: alert.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({ ...alert, locationId: locationId || "" })
+  };
+}
+
+async function setMonitoringDeviceKeyInSupabase(deviceId, apiKey) {
+  if (!deviceId || !apiKey || !hasAuthenticatedCloudSession()) return false;
+  const response = await cloudApi.rest("rpc/siteworks_monitoring_set_device_api_key", {
+    method: "POST",
+    body: JSON.stringify({
+      p_device_id: deviceId,
+      p_api_key: apiKey
+    })
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return true;
+}
+
+async function setMonitoringDeviceKeyInSupabaseByUid(deviceUid, apiKey) {
+  if (!deviceUid || !apiKey || !hasAuthenticatedCloudSession()) return false;
+  const response = await cloudApi.rest("rpc/siteworks_monitoring_set_device_api_key_by_uid", {
+    method: "POST",
+    body: JSON.stringify({
+      p_device_uid: deviceUid,
+      p_api_key: apiKey
+    })
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return true;
+}
+
+async function syncMonitoringDeviceToSupabase(device, apiKey = "") {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !device?.id || !SUPABASE_URL || !SUPABASE_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
+  const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
+  await upsertStructuredRows("monitoring_devices", [buildMonitoringDeviceRow(device, cloudLocationIds)]);
+  if (apiKey) {
+    try {
+      await setMonitoringDeviceKeyInSupabaseByUid(device.deviceUid, apiKey);
+    } catch (error) {
+      console.warn("Monitoring key by UID failed; trying device id.", error);
+      await setMonitoringDeviceKeyInSupabase(device.id, apiKey);
+    }
+  }
+  return true;
+}
+
+async function syncMonitoringChannelsToSupabase(channels = []) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !channels.length || !SUPABASE_URL || !SUPABASE_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
+  const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
+  await upsertStructuredRows("monitoring_channels", channels.map((channel) => buildMonitoringChannelRow(channel, cloudLocationIds)));
+  return true;
+}
+
+async function syncSingleKeyToSupabase(key) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !key?.id || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+  const customerId = activeCloudCustomerId();
+  if (customerId && key.customerId !== customerId) return;
+  const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
+  if (key.customerId && !knownCustomerIds.has(key.customerId)) {
+    setKeyNfcMessage(key, "Key cloud save skipped because the assigned customer is missing locally.");
+    markSyncError("Key cloud save skipped because the assigned customer is missing locally.");
+    return;
+  }
+  const cloudLocationIds = new Set((state.locations || [])
+    .filter((locationRecord) => !key.customerId || locationRecord.customerId === key.customerId)
+    .map((locationRecord) => locationRecord.id)
+    .filter(Boolean));
+  try {
+    await upsertStructuredRows("keys", [buildStructuredKeyRow(key, cloudLocationIds)]);
+    const logs = (state.keyLogs || []).filter((log) => log.keyId === key.id);
+    if (logs.length) {
+      await upsertStructuredRows("key_logs", logs.map((log) => buildStructuredKeyLogRow(log, cloudLocationIds)));
+    }
+    markSyncSuccess("save");
+  } catch (error) {
+    const message = `Key cloud save failed: ${error?.message || error}`;
+    setKeyNfcMessage(key, message);
+    markSyncError(message);
+    console.warn("Key cloud save failed.", error);
+  }
+}
+
+async function syncStructuredDataToSupabase() {
+  if (!STRUCTURED_DATA_SYNC_ENABLED) return;
+  if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
+  structuredSyncActive = true;
+  setSyncBanner("saving", "Saving to cloud", "", 0);
+  try {
+    const syncCustomers = (state.customers || []).filter((customer) => {
+      const customerId = activeCloudCustomerId();
+      return !customerId || customer.id === customerId;
+    });
+    const syncLocations = (state.locations || []).filter(canSyncCustomerOwnedRecord);
+    const syncTemplates = (state.templates || []).filter(canSyncTemplateRecord);
+    const syncAssets = (state.assets || []).filter(canSyncCustomerOwnedRecord);
+    const syncWorkOrders = (state.workOrders || []).filter(canSyncCustomerOwnedRecord);
+    const syncServiceRequests = (state.serviceRequests || []).filter(canSyncCustomerOwnedRecord);
+    const syncPreferredContractors = (state.preferredContractors || []).filter(canSyncCustomerOwnedRecord);
+    const syncInventoryItems = (state.inventoryItems || []).filter(canSyncCustomerOwnedRecord);
+    const syncKeys = (state.keys || []).filter(canSyncCustomerOwnedRecord);
+    const syncKeyLogs = (state.keyLogs || []).filter(canSyncCustomerOwnedRecord);
+    const syncSiteMaps = (state.siteMaps || []).filter(canSyncCustomerOwnedRecord);
+    const syncMonitoringDevices = (state.monitoringDevices || []).filter(canSyncCustomerOwnedRecord);
+    const syncMonitoringDeviceIds = new Set(syncMonitoringDevices.map((device) => device.id).filter(Boolean));
+    const syncMonitoringChannels = (state.monitoringChannels || []).filter((channel) => syncMonitoringDeviceIds.has(channel.deviceId));
+    const syncMonitoringEvents = (state.monitoringEvents || []).filter((event) => !event.deviceId || syncMonitoringDeviceIds.has(event.deviceId)).slice(0, 250);
+    const syncMonitoringAlerts = (state.monitoringAlerts || []).filter((alert) => !alert.deviceId || syncMonitoringDeviceIds.has(alert.deviceId));
+
+    await upsertStructuredRows("customers", syncCustomers.map((customer) => ({
+      id: customer.id,
+      name: customer.name || "",
+      created_at: customer.createdAt || new Date().toISOString(),
+      updated_at: customer.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: customer
+    })));
+
+    await upsertStructuredRows("locations", syncLocations.map((locationRecord) => ({
+      id: locationRecord.id,
+      customer_id: locationRecord.customerId,
+      name: locationRecord.name || "",
+      created_at: locationRecord.createdAt || new Date().toISOString(),
+      updated_at: locationRecord.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: locationRecord
+    })));
+
+    await upsertStructuredRows("pm_templates", syncTemplates.map((template) => ({
+      id: template.id,
+      name: template.name || "",
+      customer_id: template.customerId || null,
+      items: template.items || [],
+      created_at: template.createdAt || new Date().toISOString(),
+      updated_at: template.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: template
+    })));
+
+    await upsertStructuredRows("assets", syncAssets.map((asset) => {
+      const nfcTag = normalizeAssetNfcTag(asset.nfcTag);
+      return {
+        id: asset.id,
+        customer_id: asset.customerId,
+        location_id: asset.locationId,
+        template_id: asset.templateId || null,
+        name: asset.name || "",
+        frequency_days: Number(asset.frequencyDays || 30),
+        next_pm_date: asset.nextPmDate || null,
+        manufacturer: asset.manufacturer || "",
+        model: asset.model || "",
+        serial: asset.serial || "",
+        install_date: asset.installDate || null,
+        type: asset.type || "",
+        criticality: asset.criticality || "",
+        document_url: asset.documentUrl || "",
+        vendor: asset.vendor || "",
+        vendor_contact: asset.vendorContact || "",
+        warranty_date: asset.warrantyDate || null,
+        parts: asset.parts || "",
+        notes: asset.notes || "",
+        nfc_uid: nfcTag.uid || null,
+        nfc_url: nfcTag.url || null,
+        nfc_written_at: nfcTag.lastWrittenAt || null,
+        nfc_status: nfcTag.status || null,
+        created_at: asset.createdAt || new Date().toISOString(),
+        updated_at: asset.updatedAt || state.updatedAt || new Date().toISOString(),
+        data: leanCloudRecord(asset)
+      };
+    }));
+
+    const cloudCustomerIds = new Set(syncCustomers.map((customer) => customer.id).filter(Boolean));
+    const cloudLocationIds = new Set(syncLocations.map((locationRecord) => locationRecord.id).filter(Boolean));
+    const cloudAssetIds = new Set(syncAssets.map((asset) => asset.id).filter(Boolean));
+    const cloudReadyWorkOrders = syncWorkOrders.filter((item) =>
+      (!item.customerId || cloudCustomerIds.has(item.customerId)) &&
+      (!item.assetId || cloudAssetIds.has(item.assetId))
+    );
+    const skippedWorkOrders = syncWorkOrders.length - cloudReadyWorkOrders.length;
+    if (skippedWorkOrders > 0) {
+      console.warn(`Skipped ${skippedWorkOrders} ticket sync row(s) because their linked customer or equipment is missing locally.`);
+    }
+
+    await upsertStructuredRows("work_orders", cloudReadyWorkOrders.map((item) => {
+      const row = {
+        id: item.id,
+        issue_number: item.issueNumber || null,
+        asset_id: item.assetId || null,
+        customer_id: item.customerId || null,
+        location_id: item.locationId && cloudLocationIds.has(item.locationId) ? item.locationId : null,
+        title: item.title || "",
+        priority: item.priority || "Medium",
+        status: item.status || "Open",
+        source: item.source || "",
+        area_name: item.areaName || "",
+        assigned_user_id: item.assignedUserId || "",
+        assigned_user_name: item.assignedUserName || "",
+        notes: item.notes || "",
+        due_at: item.dueAt || null,
+        resolved_at: item.resolvedAt || null,
+        created_at: item.createdAt || new Date().toISOString(),
+        updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+        data: leanCloudRecord(item)
+      };
+      if (item.locationId && !row.location_id) {
+        row.data = {
+          ...row.data,
+          missingLocationId: item.locationId
+        };
+      }
+      return row;
+    }));
+
+    const cloudReadyServiceRequests = syncServiceRequests.filter((item) =>
+      (!item.customerId || cloudCustomerIds.has(item.customerId)) &&
+      (!item.assetId || cloudAssetIds.has(item.assetId))
+    );
+    const skippedServiceRequests = syncServiceRequests.length - cloudReadyServiceRequests.length;
+    if (skippedServiceRequests > 0) {
+      console.warn(`Skipped ${skippedServiceRequests} service request sync row(s) because their linked customer or equipment is missing locally.`);
+    }
+
+    await upsertStructuredRows("service_requests", cloudReadyServiceRequests.map((item) => ({
+      id: item.id,
+      service_request_number: item.serviceRequestNumber || null,
+      asset_id: item.assetId || null,
+      customer_id: item.customerId || null,
+      location_id: item.locationId && cloudLocationIds.has(item.locationId) ? item.locationId : null,
+      title: item.title || "",
+      priority: item.priority || "Medium",
+      status: item.status || "New",
+      requested_by: item.requestedBy || "",
+      preferred_date: item.preferredDate || null,
+      assigned_user_id: item.assignedUserId || "",
+      assigned_user_name: item.assignedUserName || "",
+      converted_work_order_id: item.convertedWorkOrderId || null,
+      notes: item.notes || "",
+      photo_data_url: cloudMediaSource(item.photo),
+      photo_name: item.photo?.name || "",
+      created_at: item.createdAt || new Date().toISOString(),
+      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: leanCloudRecord(item)
+    })));
+
+    const cloudReadyPreferredContractors = syncPreferredContractors.filter((contractor) =>
+      !contractor.customerId || cloudCustomerIds.has(contractor.customerId)
+    );
+    const skippedPreferredContractors = syncPreferredContractors.length - cloudReadyPreferredContractors.length;
+    if (skippedPreferredContractors > 0) {
+      console.warn(`Skipped ${skippedPreferredContractors} preferred contact sync row(s) because their linked customer is missing locally.`);
+    }
+
+    await upsertStructuredRows("preferred_contractors", cloudReadyPreferredContractors.map((contractor) => ({
+      id: contractor.id,
+      customer_id: contractor.customerId || null,
+      name: contractor.name || "",
+      email: contractor.email || "",
+      trade: contractor.trade || "",
+      created_at: contractor.createdAt || new Date().toISOString(),
+      updated_at: contractor.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: leanCloudRecord(contractor)
+    })));
+
+    const cloudReadyInventoryItems = syncInventoryItems.filter((item) =>
+      !item.customerId || cloudCustomerIds.has(item.customerId)
+    );
+    const skippedInventoryItems = syncInventoryItems.length - cloudReadyInventoryItems.length;
+    if (skippedInventoryItems > 0) {
+      console.warn(`Skipped ${skippedInventoryItems} inventory sync row(s) because their linked customer is missing locally.`);
+    }
+
+    await upsertStructuredRows("inventory_items", cloudReadyInventoryItems.map((item) => ({
+      id: item.id,
+      customer_id: item.customerId || null,
+      category: item.category || "Parts",
+      name: item.name || "",
+      quantity_on_hand: Number(item.quantity || 0),
+      min_stock: Number(item.minStock || 0),
+      bin: item.bin || "",
+      supplier: item.supplier || "",
+      nfc_tag: item.nfcTag || "",
+      notes: item.notes || "",
+      created_at: item.createdAt || new Date().toISOString(),
+      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+      data: leanCloudRecord(item)
+    })));
+
+    const cloudReadyKeys = syncKeys.filter((key) =>
+      !key.customerId || cloudCustomerIds.has(key.customerId)
+    );
+    const skippedKeys = syncKeys.length - cloudReadyKeys.length;
+    if (skippedKeys > 0) {
+      console.warn(`Skipped ${skippedKeys} key sync row(s) because their linked customer is missing locally.`);
+    }
+
+    await upsertStructuredRows("keys", cloudReadyKeys.map((key) => buildStructuredKeyRow(key, cloudLocationIds)));
+
+    const cloudKeyIds = new Set(cloudReadyKeys.map((key) => key.id).filter(Boolean));
+    const cloudReadyKeyLogs = syncKeyLogs.filter((log) => log.keyId && cloudKeyIds.has(log.keyId));
+    const skippedKeyLogs = syncKeyLogs.length - cloudReadyKeyLogs.length;
+    if (skippedKeyLogs > 0) {
+      console.warn(`Skipped ${skippedKeyLogs} key log sync row(s) because their linked key is missing locally.`);
+    }
+
+    await upsertStructuredRows("key_logs", cloudReadyKeyLogs.map((log) => buildStructuredKeyLogRow(log, cloudLocationIds)));
+
+    const cloudReadySiteMaps = syncSiteMaps.filter((map) =>
+      (!map.customerId || cloudCustomerIds.has(map.customerId)) &&
+      map.locationId &&
+      cloudLocationIds.has(map.locationId)
+    );
+    const skippedSiteMaps = syncSiteMaps.length - cloudReadySiteMaps.length;
+    if (skippedSiteMaps > 0) {
+      console.warn(`Skipped ${skippedSiteMaps} site map sync row(s) because their linked customer or location is missing locally.`);
+    }
+
+    await upsertStructuredRows("site_maps", cloudReadySiteMaps.map((map) => buildStructuredSiteMapRow(map, cloudLocationIds)));
+
+    const cloudReadyMonitoringDevices = syncMonitoringDevices.filter((device) =>
+      device.customerId &&
+      cloudCustomerIds.has(device.customerId) &&
+      device.panelAssetId &&
+      cloudAssetIds.has(device.panelAssetId) &&
+      (!device.locationId || cloudLocationIds.has(device.locationId))
+    );
+    const cloudMonitoringDeviceIds = new Set(cloudReadyMonitoringDevices.map((device) => device.id).filter(Boolean));
+    const cloudReadyMonitoringChannels = syncMonitoringChannels.filter((channel) =>
+      cloudMonitoringDeviceIds.has(channel.deviceId) &&
+      (channel.panelAssetId || getMonitoringDevice(channel.deviceId)?.panelAssetId)
+    );
+    await upsertStructuredRows("monitoring_devices", cloudReadyMonitoringDevices.map((device) => buildMonitoringDeviceRow(device, cloudLocationIds)));
+    await upsertStructuredRows("monitoring_channels", cloudReadyMonitoringChannels.map((channel) => buildMonitoringChannelRow(channel, cloudLocationIds)));
+    await upsertStructuredRows("monitoring_events", syncMonitoringEvents.filter((event) => event.id).map((event) => buildMonitoringEventRow(event, cloudLocationIds)));
+    await upsertStructuredRows("monitoring_alerts", syncMonitoringAlerts.filter((alert) => alert.id).map((alert) => buildMonitoringAlertRow(alert, cloudLocationIds)));
+
+    const historyRows = syncAssets.filter(canSyncHistoryRecord).flatMap((asset) => (asset.history || []).map((item) => ({
+      id: item.id,
+      pm_number: item.pmNumber || null,
+      asset_id: asset.id,
+      technician: item.technician || "",
+      result: item.result || "",
+      reading: item.reading || "",
+      notes: item.notes || "",
+      completed_checks: item.completedChecks || [],
+      completed_at: item.completedAt || new Date().toISOString(),
+      data: leanCloudRecord(item)
+    })));
+    await upsertStructuredRows("pm_history", historyRows);
+    state.sharedDataUpdatedAt = state.updatedAt || new Date().toISOString();
+    persistLocalStateOnly(false);
+    markSyncSuccess("save");
+  } catch (error) {
+    markSyncError(error?.message || "Structured cloud save failed.");
+    console.warn("Structured Supabase sync skipped.", error);
+  } finally {
+    structuredSyncActive = false;
+  }
+}
+
+async function upsertStructuredRows(table, rows) {
+  if (!rows.length) return;
+  try {
+    await siteworksApi.saveRows(table, rows);
+  } catch (error) {
+    if (table === "pm_templates" && isMissingColumnError(error, "customer_id")) {
+      await siteworksApi.saveRows(table, rows.map((row) => {
+        const fallbackRow = { ...row };
+        delete fallbackRow.customer_id;
+        return fallbackRow;
+      }));
+      markSyncError("Maintenance templates saved without customer-specific scope. Run the Phase 1 Supabase SQL to enable customer-specific templates.");
+      return;
+    }
+    if (table === "assets" && hasMissingAssetNfcColumnError(error)) {
+      await siteworksApi.saveRows(table, rows.map(stripAssetNfcColumns));
+      markSyncError("NFC tag details saved inside equipment data. Run the NFC Supabase SQL to enable short NFC lookup columns.");
+      return;
+    }
+    if (["keys", "key_logs", "site_maps"].includes(table) && isMissingStructuredTableError(error)) {
+      markSyncError(table === "site_maps"
+        ? "Site maps are local only until supabase-site-maps.sql is run in Supabase."
+        : "Key custody is local only until supabase-key-custody.sql is run in Supabase.");
+      return;
+    }
+    if (table === "locations" && isRowLevelSecurityError(error)) {
+      const message = "Location cloud save is blocked. Run supabase-locations-rls-fix.sql in Supabase.";
+      markSyncError(message);
+      console.warn("Location cloud save skipped because Supabase denied location table writes.", error);
+      throw new Error(message);
+    }
+    if (table === "customers" && isRowLevelSecurityError(error)) {
+      console.warn("Customer cloud save skipped because Supabase denied customer table writes.", error);
+      return;
+    }
+    const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn(`Structured Supabase sync skipped for ${table}.`, error);
+    throw new Error(message);
+  }
+}
+
+function isRowLevelSecurityError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+  return code === "42501" || message.includes("row-level security") || message.includes("violates row-level security policy");
+}
+
+function isMissingColumnError(error, columnName) {
+  const message = String(error?.message || error || "");
+  return message.includes("PGRST204") && message.includes(columnName);
+}
+
+function hasMissingAssetNfcColumnError(error) {
+  return ["nfc_uid", "nfc_url", "nfc_written_at", "nfc_status"].some((column) =>
+    isMissingColumnError(error, column)
+  );
+}
+
+function isMissingStructuredTableError(error) {
+  const message = String(error?.message || error || "");
+  return message.includes("PGRST205") ||
+    message.includes("Could not find the table") ||
+    message.includes("does not exist");
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
+function stripAssetNfcColumns(row) {
+  const fallbackRow = { ...row };
+  delete fallbackRow.nfc_uid;
+  delete fallbackRow.nfc_url;
+  delete fallbackRow.nfc_written_at;
+  delete fallbackRow.nfc_status;
+  return fallbackRow;
+}
+
+async function deleteStructuredRows(table, column, values) {
+  try {
+    setSyncBanner("saving", "Deleting from cloud", table.replaceAll("_", " "), 0);
+    await siteworksApi.deleteRows(table, column, values);
+    markSyncSuccess("save");
+    return true;
+  } catch (error) {
+    const message = `Cloud delete failed for ${table}: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn(`Structured Supabase delete skipped for ${table}.`, error);
+    return false;
+  }
+}
+
+async function finishCloudDelete(label, deleteResultPromise) {
+  const result = await deleteResultPromise;
+  const results = Array.isArray(result) ? result : [result];
+  const failed = results.some((item) => item === false);
+  if (failed) {
+    alert(`${label} was removed on this device, but Supabase did not accept the cloud delete. It may come back on refresh until the delete policy is fixed.`);
+    return false;
+  }
+  await syncStructuredDataToSupabase();
+  return true;
+}
+
+
+// SiteWorks Site Map feature module.
+// Loaded before app.js as a classic script so existing app state/render helpers stay shared.
+// Keep map levels, pins, layers, overlays, zoom, pan, and mobile touch behavior here.
+
+function currentSiteMapScope() {
+  const customerId = selectedCustomerId && selectedCustomerId !== "all"
+    ? selectedCustomerId
+    : visibleCustomers()[0]?.id || state.customers[0]?.id || "";
+  const locationId = selectedLocationId && selectedLocationId !== "all" ? selectedLocationId : "";
+  return { customerId, locationId };
+}
+
+function isSiteMapLocationSelected() {
+  return Boolean(selectedLocationId && selectedLocationId !== "all");
+}
+
+function siteMapScopeLabel(map = null) {
+  const scope = map || currentSiteMapScope();
+  const customer = getCustomer(scope.customerId)?.name || "Current customer";
+  const location = scope.locationId ? getLocation(scope.locationId)?.name || "Selected location" : "Choose a location";
+  return `${customer} | ${location}`;
+}
+
+function normalizeSiteMapLevelId(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "main";
+  return text
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 42) || "main";
+}
+
+function normalizeSiteMapPins(pins = []) {
+  return Array.isArray(pins)
+    ? pins.map((pin) => ({
+      ...pin,
+      id: pin.id || crypto.randomUUID(),
+      assetId: pin.assetId || "",
+      label: pin.label || "",
+      area: getSiteMapPinArea(pin),
+      layer: normalizeSiteMapLayer(pin.layer || pin.system || pin.category),
+      x: clampPercent(pin.x),
+      y: clampPercent(pin.y),
+      createdAt: pin.createdAt || new Date().toISOString()
+    })).filter((pin) => pin.assetId || pin.label)
+    : [];
+}
+
+function normalizeSiteMapLevel(level = {}, fallback = {}) {
+  const id = normalizeSiteMapLevelId(level.id || fallback.id || level.name || fallback.name);
+  return {
+    id,
+    name: String(level.name || fallback.name || "Map area").trim(),
+    type: String(level.type || fallback.type || id || "area").trim(),
+    image: level.image || null,
+    pins: normalizeSiteMapPins(level.pins),
+    createdAt: level.createdAt || new Date().toISOString(),
+    updatedAt: level.updatedAt || level.createdAt || new Date().toISOString()
+  };
+}
+
+function ensureSiteMapLevels(map = null, create = false) {
+  if (!map) return [];
+  const existing = Array.isArray(map.levels) ? map.levels : Array.isArray(map.areas) ? map.areas : [];
+  if (!existing.length && create) {
+    map.levels = SITE_MAP_DEFAULT_LEVELS.map((level) => normalizeSiteMapLevel({
+      ...level,
+      image: level.id === "main" ? map.image || null : null,
+      pins: level.id === "main" ? map.pins || [] : []
+    }, level));
+  } else if (existing.length) {
+    map.levels = existing.map((level) => normalizeSiteMapLevel(level));
+  }
+  if (create) {
+    const levelIds = new Set((map.levels || []).map((level) => level.id));
+    SITE_MAP_DEFAULT_LEVELS.forEach((level) => {
+      if (!levelIds.has(level.id)) map.levels.push(normalizeSiteMapLevel(level, level));
+    });
+  }
+  const main = (map.levels || []).find((level) => level.id === "main");
+  if (main) {
+    map.image = main.image || null;
+    map.pins = main.pins || [];
+  }
+  return map.levels || [];
+}
+
+function getActiveSiteMapLevel(map = null, create = false) {
+  const levels = ensureSiteMapLevels(map, create);
+  if (!levels.length) return null;
+  if (!levels.some((level) => level.id === siteMapLevelId)) siteMapLevelId = "main";
+  return levels.find((level) => level.id === siteMapLevelId) || levels[0] || null;
+}
+
+function getAllSiteMapPins(map = null) {
+  const levels = ensureSiteMapLevels(map, false);
+  return levels.length ? levels.flatMap((level) => level.pins || []) : Array.isArray(map?.pins) ? map.pins : [];
+}
+
+function renderSiteMapLevelTabs(map = null) {
+  const levels = ensureSiteMapLevels(map, true);
+  if (!levels.length) return "";
+  return `
+    ${levels.map((level) => {
+      const pinCount = Array.isArray(level.pins) ? level.pins.length : 0;
+      const hasImage = Boolean(mediaSource(level.image));
+      return `
+        <button type="button" class="site-map-level-tab${level.id === siteMapLevelId ? " is-active" : ""}" data-site-map-level="${escapeAttribute(level.id)}">
+          <span>${escapeHtml(level.name)}</span>
+          <small>${hasImage ? "Map" : "No map"}${pinCount ? ` | ${pinCount}` : ""}</small>
+        </button>
+      `;
+    }).join("")}
+    <button type="button" class="site-map-level-tab site-map-level-add" data-site-map-level-add>+ Area</button>
+  `;
+}
+
+function normalizeSiteMapLayer(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text || text === "auto" || text === "all") return "";
+  if (["life", "life safety", "life_safety", "fire", "fire safety"].includes(text)) return "life-safety";
+  if (["fitness equipment", "equipment", "gym"].includes(text)) return "fitness";
+  if (["future tenant", "tenant", "construction", "future construction"].includes(text)) return "construction";
+  if (["electrical", "hvac", "plumbing", "fitness"].includes(text)) return text;
+  return "";
+}
+
+function siteMapLayerLabel(layer = "") {
+  const labels = {
+    electrical: "Electrical",
+    hvac: "HVAC",
+    "life-safety": "Life safety",
+    plumbing: "Plumbing",
+    fitness: "Fitness equipment",
+    construction: "Future tenant / construction"
+  };
+  return labels[normalizeSiteMapLayer(layer)] || "General";
+}
+
+function siteMapLayerMarker(layer = "") {
+  const markers = {
+    electrical: "E",
+    hvac: "H",
+    "life-safety": "LS",
+    plumbing: "P",
+    fitness: "F",
+    construction: "C"
+  };
+  return markers[normalizeSiteMapLayer(layer)] || "G";
+}
+
+function inferSiteMapLayer(asset = null) {
+  const text = [asset?.type, asset?.category, asset?.template, asset?.name, asset?.equipmentId]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/\b(panel|breaker|electrical|meter|transformer|switchgear|lighting)\b/.test(text)) return "electrical";
+  if (/\b(hvac|rtu|ahu|fan|furnace|boiler|chiller|heat pump|condenser)\b/.test(text)) return "hvac";
+  if (/\b(fire|alarm|sprinkler|exit|emergency|life safety|extinguisher)\b/.test(text)) return "life-safety";
+  if (/\b(plumb|pump|water|drain|toilet|sink|valve|backflow)\b/.test(text)) return "plumbing";
+  if (/\b(treadmill|elliptical|bike|rower|strength|fitness|cardio|gym)\b/.test(text)) return "fitness";
+  return "";
+}
+
+function getSiteMapPinArea(pin = {}) {
+  return String(pin.area || pin.zone || pin.locationArea || "").trim();
+}
+
+function getSiteMapPinLayer(pin = {}, asset = null) {
+  return normalizeSiteMapLayer(pin.layer || pin.system || pin.category) || inferSiteMapLayer(asset);
+}
+
+function siteMapPinMatchesFilters(pin = {}, asset = null) {
+  const layer = getSiteMapPinLayer(pin, asset) || "";
+  const area = getSiteMapPinArea(pin).toLowerCase();
+  const layerMatches = siteMapLayerFilter === "all" || layer === siteMapLayerFilter;
+  const areaMatches = siteMapAreaFilter === "all" || area === siteMapAreaFilter;
+  return layerMatches && areaMatches;
+}
+
+function normalizeSiteMapOverlayMode(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  return ["live-status", "open-tickets", "pm-due", "electrical-issues", "breaker-feed", "pm-route"].includes(text) ? text : "normal";
+}
+
+function siteMapOverlayLabel(mode = siteMapOverlayMode) {
+  const labels = {
+    normal: "Normal",
+    "live-status": "Live status",
+    "open-tickets": "Open tickets",
+    "pm-due": "PM due",
+    "electrical-issues": "Electrical issues",
+    "breaker-feed": "Breaker feed",
+    "pm-route": "PM route"
+  };
+  return labels[normalizeSiteMapOverlayMode(mode)] || labels.normal;
+}
+
+function siteMapPinKey(pin = {}, index = 0) {
+  return pin.id || pin.assetId || `pin-${index}`;
+}
+
+function getSiteMapAssetOpenTickets(asset = null) {
+  return asset?.id ? openWorkOrdersForAsset(asset.id) : [];
+}
+
+function isSiteMapPmDue(asset = null) {
+  if (!asset) return false;
+  const due = getDueInfo(asset);
+  return Number(due.daysUntil) <= 7;
+}
+
+function isSiteMapElectricalIssue(asset = null, pin = {}) {
+  const layer = getSiteMapPinLayer(pin, asset);
+  const tickets = getSiteMapAssetOpenTickets(asset);
+  const text = [
+    layer,
+    asset?.name,
+    asset?.type,
+    asset?.category,
+    asset?.template,
+    asset?.equipmentId,
+    ...tickets.flatMap((ticket) => [ticket.title, ticket.summary, ticket.description, ticket.issue, ticket.priority, ticket.category, ticket.source])
+  ].filter(Boolean).join(" ").toLowerCase();
+  return /\b(electrical|breaker|panel|power|voltage|phase|outlet|lighting|trip|tripped|meter|transformer)\b/.test(text);
+}
+
+function getSiteMapBreakerText(asset = null) {
+  if (!asset) return "";
+  const directValues = [
+    asset.breaker,
+    asset.breakerNumber,
+    asset.breakerCircuit,
+    asset.circuit,
+    asset.circuitNumber,
+    asset.panelCircuit,
+    asset.electricalPanel,
+    asset.electricalPanelName,
+    asset.panel,
+    asset.panelName,
+    asset.powerSource,
+    asset.servedBy
+  ];
+  const nestedSources = [asset.details, asset.customFields, asset.electrical, asset.power].filter(Boolean);
+  nestedSources.forEach((source) => {
+    directValues.push(
+      source.breaker,
+      source.breakerNumber,
+      source.breakerCircuit,
+      source.circuit,
+      source.circuitNumber,
+      source.panelCircuit,
+      source.electricalPanel,
+      source.electricalPanelName,
+      source.panel,
+      source.panelName,
+      source.powerSource,
+      source.servedBy
+    );
+  });
+  return directValues
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function getSiteMapBreakerCircuitNumbers(asset = null) {
+  return parseMonitoringCircuitNumbers(getSiteMapBreakerText(asset));
+}
+
+function getSiteMapAssetMonitoringChannels(asset = null) {
+  if (!asset) return [];
+  const assetId = String(asset.id || "");
+  if (assetId && isElectricalPanelAsset(asset)) {
+    const panelDeviceIds = new Set(
+      (state.monitoringDevices || [])
+        .map(normalizeMonitoringDevice)
+        .filter((device) => String(device?.panelAssetId || "") === assetId)
+        .map((device) => String(device.id || device.deviceUid || ""))
+        .filter(Boolean)
+    );
+    const panelChannels = (state.monitoringChannels || []).filter((channel) => {
+      const channelPanelId = String(channel.panelAssetId || channel.panel_asset_id || "");
+      const channelDeviceId = String(channel.deviceId || channel.device_id || "");
+      return channelPanelId === assetId || panelDeviceIds.has(channelDeviceId);
+    });
+    if (panelChannels.length) return panelChannels;
+  }
+  const breakerCircuits = getSiteMapBreakerCircuitNumbers(asset);
+  if (!breakerCircuits.length) return [];
+  const panelText = getSiteMapBreakerText(asset).toLowerCase();
+  return (state.monitoringChannels || []).filter((channel) => {
+    const channelCircuits = parseMonitoringCircuitNumbers(channel.circuitNumber);
+    if (!channelCircuits.some((number) => breakerCircuits.includes(number))) return false;
+    const device = getMonitoringDevice(channel.deviceId);
+    const panel = getRawAsset(channel.panelAssetId || device?.panelAssetId);
+    if (!panelText || !panel) return true;
+    return panelText.includes(String(panel.name || "").toLowerCase()) || panelText.includes(String(getAssetEquipmentId(panel) || "").toLowerCase());
+  });
+}
+
+function getSiteMapAssetSensorValue(asset = null, keys = []) {
+  if (!asset) return "";
+  const sources = [asset, asset.details, asset.customFields, asset.environment, asset.sensors, asset.telemetry, asset.data].filter(Boolean);
+  for (const source of sources) {
+    for (const key of keys) {
+      const value = source?.[key];
+      if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+    }
+  }
+  return "";
+}
+
+function getSiteMapAssetEnvironmentalReadings(asset = null) {
+  const temperature = getSiteMapAssetSensorValue(asset, ["temperature", "temp", "ambientTemp", "ambientTemperature", "temperatureF", "temperatureC"]);
+  const humidity = getSiteMapAssetSensorValue(asset, ["humidity", "relativeHumidity", "rh"]);
+  const co2 = getSiteMapAssetSensorValue(asset, ["co2", "co2ppm", "co2Ppm", "carbonDioxide"]);
+  return [
+    temperature !== "" ? `Temp ${temperature}` : "",
+    humidity !== "" ? `Humidity ${humidity}` : "",
+    co2 !== "" ? `CO2 ${co2}` : ""
+  ].filter(Boolean);
+}
+
+function getSiteMapAssetLiveStatus(asset = null) {
+  const channels = getSiteMapAssetMonitoringChannels(asset);
+  const readings = getSiteMapAssetEnvironmentalReadings(asset);
+  if (!asset) return { key: "unknown", label: "Equipment missing", detail: "", readings, channels };
+  if (!channels.length) {
+    const directStatus = getSiteMapAssetSensorValue(asset, ["liveStatus", "runtimeStatus", "operatingStatus", "faultStatus", "status"]);
+    const label = directStatus ? String(directStatus) : readings.length ? "Sensor readings" : "No live data";
+    return { key: directStatus ? "warn" : readings.length ? "sensor" : "unknown", label, detail: readings.join(" | "), readings, channels };
+  }
+  const states = channels.map((channel) => channel.lastDerivedState || "open");
+  if (states.includes("monitoring-offline")) return { key: "offline", label: "Monitoring offline", detail: readings.join(" | "), readings, channels };
+  if (states.includes("suspected-trip")) return { key: "danger", label: "Suspected trip", detail: readings.join(" | "), readings, channels };
+  if (states.includes("upstream-power-loss")) return { key: "danger", label: "Upstream phase loss", detail: readings.join(" | "), readings, channels };
+  if (states.includes("open")) return { key: "warn", label: "Open", detail: readings.join(" | "), readings, channels };
+  if (states.includes("energized")) return { key: "ok", label: "Energized", detail: readings.join(" | "), readings, channels };
+  return { key: "sensor", label: monitoringStateLabel(states[0] || "open"), detail: readings.join(" | "), readings, channels };
+}
+
+function getSiteMapRoutePins(pins = []) {
+  const candidates = pins.filter((pin) => {
+    const asset = getRawAsset(pin.assetId);
+    return asset && isSiteMapPmDue(asset);
+  });
+  const routePins = candidates.length ? candidates : pins.filter((pin) => getRawAsset(pin.assetId));
+  const remaining = [...routePins].sort((a, b) => (Number(a.y) + Number(a.x)) - (Number(b.y) + Number(b.x)));
+  const ordered = [];
+  let current = remaining.shift();
+  while (current) {
+    ordered.push(current);
+    let nextIndex = -1;
+    let bestDistance = Infinity;
+    remaining.forEach((pin, index) => {
+      const distance = Math.hypot(Number(pin.x) - Number(current.x), Number(pin.y) - Number(current.y));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        nextIndex = index;
+      }
+    });
+    current = nextIndex >= 0 ? remaining.splice(nextIndex, 1)[0] : null;
+  }
+  return ordered;
+}
+
+function renderSiteMapRouteOverlay(routePins = []) {
+  if (siteMapOverlayMode !== "pm-route" || routePins.length < 2) return "";
+  const points = routePins.map((pin) => `${clampPercent(pin.x)},${clampPercent(pin.y)}`).join(" ");
+  return `
+    <svg class="site-map-route-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="${escapeAttribute(points)}"></polyline>
+    </svg>
+  `;
+}
+
+function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexByPinKey = new Map()) {
+  const mode = normalizeSiteMapOverlayMode(siteMapOverlayMode);
+  const openTickets = getSiteMapAssetOpenTickets(asset);
+  const due = asset ? getDueInfo(asset) : null;
+  const routeStop = routeIndexByPinKey.get(siteMapPinKey(pin, index));
+  const breakerText = getSiteMapBreakerText(asset);
+  const liveStatus = getSiteMapAssetLiveStatus(asset);
+  const selectedBreakerText = getSiteMapBreakerText(getRawAsset(selectedSiteMapOverlayAssetId));
+  const info = {
+    className: "",
+    marker: siteMapLayerMarker(getSiteMapPinLayer(pin, asset)),
+    summary: "",
+    detail: ""
+  };
+  if (mode === "live-status") {
+    info.marker = liveStatus.key === "ok" ? "âœ“" : liveStatus.key === "danger" ? "!" : liveStatus.key === "offline" ? "O" : liveStatus.key === "sensor" ? "S" : String(index + 1);
+    info.marker = liveStatus.key === "ok" ? "OK" : liveStatus.key === "danger" ? "!" : liveStatus.key === "offline" ? "O" : liveStatus.key === "sensor" ? "S" : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
+    info.summary = liveStatus.label;
+    info.detail = liveStatus.detail || (liveStatus.channels.length ? `${liveStatus.channels.length} monitored channel${liveStatus.channels.length === 1 ? "" : "s"}` : "");
+    info.className = liveStatus.key === "ok"
+      ? " site-map-pin-overlay-ok"
+      : liveStatus.key === "danger"
+        ? " site-map-pin-overlay-danger site-map-pin-live-alert"
+        : liveStatus.key === "offline"
+          ? " site-map-pin-overlay-offline"
+          : liveStatus.key === "sensor"
+            ? " site-map-pin-overlay-sensor"
+            : " site-map-pin-dimmed";
+  } else if (mode === "open-tickets") {
+    info.marker = openTickets.length ? String(openTickets.length) : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
+    info.summary = openTickets.length ? `${openTickets.length} open ticket${openTickets.length === 1 ? "" : "s"}` : "No open tickets";
+    info.className = openTickets.length > 1 ? " site-map-pin-overlay-danger" : openTickets.length ? " site-map-pin-overlay-warn" : " site-map-pin-dimmed";
+  } else if (mode === "pm-due") {
+    const dueSoon = due && Number(due.daysUntil) <= 7;
+    info.marker = due && Number(due.daysUntil) <= 0 ? "!" : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
+    info.summary = due?.label || "No PM status";
+    info.className = dueSoon ? (Number(due.daysUntil) <= 0 ? " site-map-pin-overlay-danger" : " site-map-pin-overlay-warn") : " site-map-pin-dimmed";
+  } else if (mode === "electrical-issues") {
+    const electrical = isSiteMapElectricalIssue(asset, pin);
+    info.marker = electrical && openTickets.length ? String(openTickets.length) : "E";
+    info.summary = electrical ? (openTickets.length ? "Electrical ticket or issue" : "Electrical area") : "No electrical issue";
+    info.className = electrical ? (openTickets.length ? " site-map-pin-overlay-danger" : " site-map-pin-overlay-warn") : " site-map-pin-dimmed";
+  } else if (mode === "breaker-feed") {
+    const isSelected = selectedSiteMapOverlayAssetId && asset?.id === selectedSiteMapOverlayAssetId;
+    const isRelated = selectedBreakerText && breakerText && breakerText === selectedBreakerText && !isSelected;
+    info.marker = "B";
+    info.summary = breakerText || "No breaker feed saved";
+    info.detail = selectedBreakerText ? `Selected feed: ${selectedBreakerText}` : "Tap equipment to focus its breaker feed.";
+    info.className = breakerText ? " site-map-pin-overlay-feed" : " site-map-pin-dimmed";
+    if (isSelected) info.className += " site-map-pin-breaker-selected";
+    if (isRelated) info.className += " site-map-pin-breaker-related";
+    if (selectedBreakerText && !isSelected && !isRelated) info.className += " site-map-pin-dimmed";
+  } else if (mode === "pm-route") {
+    info.marker = routeStop ? String(routeStop) : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
+    info.summary = routeStop ? `Route stop ${routeStop}` : "Not on route";
+    info.className = routeStop ? " site-map-pin-route" : " site-map-pin-dimmed";
+  }
+  if (mode !== "live-status" && liveStatus.key === "danger") {
+    info.marker = "!";
+    info.summary = liveStatus.label || info.summary;
+    info.detail = liveStatus.detail || (liveStatus.channels.length ? `${liveStatus.channels.length} monitored channel${liveStatus.channels.length === 1 ? "" : "s"}` : info.detail);
+    info.className = " site-map-pin-overlay-danger site-map-pin-live-alert";
+  }
+  return info;
+}
+
+function renderSiteMapOverlaySummary(visiblePins = [], routePins = []) {
+  const mode = normalizeSiteMapOverlayMode(siteMapOverlayMode);
+  if (mode === "normal") return "";
+  const summary = {
+    "live-status": `${visiblePins.filter((pin) => getSiteMapAssetLiveStatus(getRawAsset(pin.assetId)).key !== "unknown").length} pins have live or sensor data.`,
+    "open-tickets": `${visiblePins.reduce((sum, pin) => sum + getSiteMapAssetOpenTickets(getRawAsset(pin.assetId)).length, 0)} open ticket markers in this view.`,
+    "pm-due": `${visiblePins.filter((pin) => isSiteMapPmDue(getRawAsset(pin.assetId))).length} PM stops due soon or overdue.`,
+    "electrical-issues": `${visiblePins.filter((pin) => isSiteMapElectricalIssue(getRawAsset(pin.assetId), pin)).length} electrical-related markers.`,
+    "breaker-feed": selectedSiteMapOverlayAssetId ? "Tap another pin to compare breaker feed information." : "Tap a pin to focus its breaker feed information.",
+    "pm-route": `${routePins.length} stop${routePins.length === 1 ? "" : "s"} in the current route.`
+  }[mode];
+  return `<p class="site-map-overlay-summary"><strong>${escapeHtml(siteMapOverlayLabel(mode))}:</strong> ${escapeHtml(summary || "")}</p>`;
+}
+
+function renderSiteMapLegend(pins = []) {
+  const layers = ["electrical", "hvac", "life-safety", "plumbing", "fitness", "construction", ""];
+  const usedLayers = new Set(pins.map((pin) => getSiteMapPinLayer(pin, getRawAsset(pin.assetId)) || ""));
+  const layerItems = layers
+    .filter((layer) => layer || usedLayers.has(layer))
+    .map((layer) => {
+      const markerClass = layer ? ` site-map-legend-${layer}` : " site-map-legend-general";
+      return `
+        <span class="site-map-legend-item">
+          <span class="site-map-legend-marker${markerClass}">${escapeHtml(siteMapLayerMarker(layer))}</span>
+          <span>${escapeHtml(siteMapLayerLabel(layer))}</span>
+        </span>
+      `;
+    }).join("");
+  return `
+    <div class="site-map-legend" aria-label="Site map legend">
+      <strong>Legend</strong>
+      <div class="site-map-legend-grid">${layerItems}</div>
+      <div class="site-map-legend-grid site-map-legend-statuses">
+        <span class="site-map-legend-item"><span class="site-map-legend-marker site-map-legend-ok">OK</span><span>Live / energized</span></span>
+        <span class="site-map-legend-item"><span class="site-map-legend-marker site-map-legend-warn">!</span><span>Due, open, or warning</span></span>
+        <span class="site-map-legend-item"><span class="site-map-legend-marker site-map-legend-danger">!</span><span>Fault or trip</span></span>
+      </div>
+    </div>
+  `;
+}
+
+function updateSiteMapViewportMemory() {
+  const viewport = els.siteMapCanvas?.querySelector("[data-site-map-viewport]");
+  if (!viewport) return;
+  siteMapViewportMemory = { left: viewport.scrollLeft, top: viewport.scrollTop };
+}
+
+function addSiteMapLevel() {
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before adding a map area.");
+    return;
+  }
+  const map = getCurrentSiteMap(true);
+  if (!map) return;
+  const name = prompt("Name this map area", "Mezzanine")?.trim();
+  if (!name) return;
+  const levels = ensureSiteMapLevels(map, true);
+  let id = normalizeSiteMapLevelId(name);
+  let suffix = 2;
+  while (levels.some((level) => level.id === id)) {
+    id = `${normalizeSiteMapLevelId(name)}-${suffix}`;
+    suffix += 1;
+  }
+  const level = normalizeSiteMapLevel({ id, name, type: "area", image: null, pins: [] });
+  levels.push(level);
+  map.updatedAt = new Date().toISOString();
+  siteMapLevelId = level.id;
+  siteMapZoom = 1;
+  siteMapViewportMemory = { left: 0, top: 0 };
+  saveState();
+  renderSiteMap();
+  updateSiteMapStatus(`${level.name} added. Upload a map file for this area when ready.`);
+}
+
+function renderSiteMapFilters(pins = []) {
+  const areas = [...new Set(pins.map(getSiteMapPinArea).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  if (siteMapAreaFilter !== "all" && !areas.some((area) => area.toLowerCase() === siteMapAreaFilter)) {
+    siteMapAreaFilter = "all";
+  }
+  siteMapOverlayMode = normalizeSiteMapOverlayMode(siteMapOverlayMode);
+  const overlays = ["normal", "live-status", "open-tickets", "pm-due", "electrical-issues", "breaker-feed", "pm-route"];
+  const overlayButtons = overlays.map((mode) => `
+    <button type="button" class="site-map-filter-chip site-map-overlay-chip${siteMapOverlayMode === mode ? " is-active" : ""}" data-site-map-overlay="${escapeAttribute(mode)}">${escapeHtml(siteMapOverlayLabel(mode))}</button>
+  `).join("");
+  const layers = ["electrical", "hvac", "life-safety", "plumbing", "fitness", "construction"];
+  const layerButtons = [
+    `<button type="button" class="site-map-filter-chip${siteMapLayerFilter === "all" ? " is-active" : ""}" data-site-map-filter="layer" data-site-map-value="all">All layers</button>`,
+    ...layers.map((layer) => `
+      <button type="button" class="site-map-filter-chip site-map-filter-${escapeAttribute(layer)}${siteMapLayerFilter === layer ? " is-active" : ""}" data-site-map-filter="layer" data-site-map-value="${escapeAttribute(layer)}">${escapeHtml(siteMapLayerLabel(layer))}</button>
+    `)
+  ].join("");
+  const areaButtons = [
+    `<button type="button" class="site-map-filter-chip${siteMapAreaFilter === "all" ? " is-active" : ""}" data-site-map-filter="area" data-site-map-value="all">All zones</button>`,
+    ...areas.map((area) => {
+      const value = area.toLowerCase();
+      return `<button type="button" class="site-map-filter-chip${siteMapAreaFilter === value ? " is-active" : ""}" data-site-map-filter="area" data-site-map-value="${escapeAttribute(value)}">${escapeHtml(area)}</button>`;
+    })
+  ].join("");
+  return `
+    <div class="site-map-filters" aria-label="Site map filters">
+      <div class="site-map-filter-group site-map-overlay-group">${overlayButtons}</div>
+      <div class="site-map-filter-group">${layerButtons}</div>
+      <div class="site-map-filter-group">${areaButtons}</div>
+    </div>
+  `;
+}
+
+function getCurrentSiteMap(create = false) {
+  const { customerId, locationId } = currentSiteMapScope();
+  if (!customerId || !locationId) return null;
+  state.siteMaps = Array.isArray(state.siteMaps) ? state.siteMaps : [];
+  let map = state.siteMaps.find((item) => item.customerId === customerId && (item.locationId || "") === locationId);
+  if (!map && create) {
+    map = {
+      id: crypto.randomUUID(),
+      customerId,
+      locationId,
+      name: siteMapScopeLabel({ customerId, locationId }),
+      image: null,
+      pins: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    state.siteMaps.push(map);
+  }
+  return map || null;
+}
+
+function renderSiteMap() {
+  if (!els.siteMapPanel) return;
+  const hasLocation = isSiteMapLocationSelected();
+  const map = hasLocation ? getCurrentSiteMap(true) : getCurrentSiteMap(false);
+  const levels = map ? ensureSiteMapLevels(map, true) : [];
+  const activeLevel = getActiveSiteMapLevel(map, true);
+  const assets = hasLocation ? filteredAssets() : [];
+  const pins = Array.isArray(activeLevel?.pins) ? activeLevel.pins : [];
+  const allPins = getAllSiteMapPins(map);
+  const pinnedAssetIds = new Set(allPins.map((pin) => pin.assetId).filter(Boolean));
+  const availablePinAssets = assets.filter((asset) => !pinnedAssetIds.has(asset.id));
+  updateSiteMapViewportMemory();
+  const visiblePins = pins.filter((pin) => siteMapPinMatchesFilters(pin, getRawAsset(pin.assetId)));
+  const routePins = siteMapOverlayMode === "pm-route" ? getSiteMapRoutePins(visiblePins) : [];
+  const routeIndexByPinKey = new Map(routePins.map((pin, index) => [siteMapPinKey(pin, index), index + 1]));
+  if (els.siteMapPinCount) els.siteMapPinCount.textContent = visiblePins.length === pins.length ? pins.length : `${visiblePins.length}/${pins.length}`;
+  if (els.siteMapImageInput) els.siteMapImageInput.disabled = !hasLocation;
+  if (els.siteMapPinLabel) els.siteMapPinLabel.disabled = !hasLocation;
+  if (els.siteMapPinArea) els.siteMapPinArea.disabled = !hasLocation;
+  if (els.siteMapPinLayer) els.siteMapPinLayer.disabled = !hasLocation;
+  if (els.siteMapAddPinBtn) els.siteMapAddPinBtn.disabled = !hasLocation;
+  if (els.siteMapClearBtn) els.siteMapClearBtn.disabled = !hasLocation;
+  if (els.siteMapPinAsset) {
+    els.siteMapPinAsset.disabled = !hasLocation || !availablePinAssets.length;
+    els.siteMapPinAsset.innerHTML = availablePinAssets.length
+      ? availablePinAssets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name || asset.equipmentId || "Equipment")} - ${escapeHtml(getLocation(asset.locationId)?.name || "No location")}</option>`).join("")
+      : `<option value="">${hasLocation ? assets.length ? "All equipment is already pinned" : "No equipment in this location" : "Choose a location first"}</option>`;
+  }
+  if (els.siteMapLevelTabs) {
+    els.siteMapLevelTabs.innerHTML = hasLocation && map ? renderSiteMapLevelTabs(map) : "";
+  }
+  const imageUrl = mediaSource(activeLevel?.image);
+  const zoomLabel = `${Math.round(siteMapZoom * 100)}%`;
+  if (els.siteMapCanvas) {
+    els.siteMapCanvas.classList.toggle("has-map", Boolean(imageUrl));
+    els.siteMapCanvas.classList.toggle("is-placing-pin", Boolean(pendingSiteMapPin));
+    els.siteMapCanvas.classList.toggle("is-clean-map", Boolean(siteMapCleanView));
+    els.siteMapCanvas.innerHTML = !hasLocation
+      ? `<div class="site-map-empty">Choose a location to view or create its site map.</div>`
+      : imageUrl
+      ? `
+        <div class="site-map-controls" aria-label="Site map zoom controls">
+          <button type="button" class="secondary mini" data-site-map-zoom="out">-</button>
+          <span data-site-map-zoom-label>${escapeHtml(zoomLabel)}</span>
+          <button type="button" class="secondary mini" data-site-map-zoom="in">+</button>
+          <button type="button" class="secondary mini" data-site-map-zoom="reset">Reset</button>
+          <button type="button" class="secondary mini site-map-clean-toggle${siteMapCleanView ? " is-active" : ""}" data-site-map-clean>${siteMapCleanView ? "Full plan" : "Clean plan"}</button>
+        </div>
+        <div class="site-map-viewport" data-site-map-viewport>
+          <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%;">
+            <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(activeLevel?.name || map?.name || "Site map")}">
+            ${renderSiteMapRouteOverlay(routePins)}
+            ${visiblePins.map((pin, index) => {
+              const asset = getRawAsset(pin.assetId);
+              const title = pin.label || asset?.name || `Pin ${index + 1}`;
+              const overlayInfo = getSiteMapPinOverlayInfo(pin, index, asset, routeIndexByPinKey);
+              const tooltip = renderSiteMapPinTooltip(pin, index, asset, title, overlayInfo);
+              const layer = getSiteMapPinLayer(pin, asset);
+              const layerClass = layer ? ` site-map-pin-${layer}` : "";
+              return `
+                <button type="button" class="site-map-pin${layerClass}${overlayInfo.className}" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" aria-label="${escapeAttribute(title)}">
+                  <span>${escapeHtml(overlayInfo.marker)}</span>
+                  ${tooltip}
+                </button>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      `
+      : `<div class="site-map-empty">Upload a site or floor plan image for ${escapeHtml(activeLevel?.name || "this map area")}.</div>`;
+    if (imageUrl) {
+      const restoredViewport = els.siteMapCanvas.querySelector("[data-site-map-viewport]");
+      if (restoredViewport) {
+        const restoreScroll = () => {
+          restoredViewport.scrollLeft = siteMapViewportMemory.left;
+          restoredViewport.scrollTop = siteMapViewportMemory.top;
+        };
+        restoreScroll();
+        requestAnimationFrame(restoreScroll);
+      }
+    }
+  }
+  if (els.siteMapPinList) {
+    els.siteMapPinList.innerHTML = !hasLocation
+      ? `<p class="metric-dropdown-empty">Site maps are saved per location. Select a location above to continue.</p>`
+      : pins.length
+      ? `${renderSiteMapFilters(pins)}${renderSiteMapLegend(pins)}${renderSiteMapOverlaySummary(visiblePins, routePins)}${visiblePins.length ? visiblePins.map((pin, index) => {
+        const asset = getRawAsset(pin.assetId);
+        const locationName = asset ? getLocation(asset.locationId)?.name || "No location" : "Equipment missing";
+        const area = getSiteMapPinArea(pin);
+        const layer = siteMapLayerLabel(getSiteMapPinLayer(pin, asset));
+        const overlayInfo = getSiteMapPinOverlayInfo(pin, index, asset, routeIndexByPinKey);
+        return `
+          <article class="site-map-pin-row">
+            <button type="button" class="site-map-pin-open" data-open-site-map-pin="${escapeAttribute(pin.assetId)}">
+              <strong>${escapeHtml(overlayInfo.marker)}. ${escapeHtml(pin.label || asset?.name || "Equipment pin")}</strong>
+              <span>${escapeHtml(locationName)}${asset?.equipmentId ? ` | ${escapeHtml(asset.equipmentId)}` : ""}</span>
+              <span>${escapeHtml(layer)}${area ? ` | ${escapeHtml(area)}` : ""}</span>
+              ${overlayInfo.summary ? `<span>${escapeHtml(overlayInfo.summary)}</span>` : ""}
+            </button>
+            <button type="button" class="secondary mini" data-delete-site-map-pin="${escapeAttribute(pin.id)}">Remove</button>
+          </article>
+        `;
+      }).join("") : `<p class="metric-dropdown-empty">No pins match these filters.</p>`}`
+      : `<p class="metric-dropdown-empty">No equipment pins on this map yet.</p>`;
+  }
+}
+
+function renderSiteMapPinTooltip(pin, index, asset, title, overlayInfo = null) {
+  if (!asset) {
+    return `
+      <span class="site-map-pin-tooltip" role="tooltip">
+        <strong>${escapeHtml(title || `Pin ${index + 1}`)}</strong>
+        <small>Equipment missing</small>
+      </span>
+    `;
+  }
+  const due = getDueInfo(asset);
+  const openCount = openWorkOrdersForAsset(asset.id).length;
+  const locationName = getLocation(asset.locationId)?.name || "No location";
+  const equipmentId = getAssetEquipmentId(asset);
+  const typeLabel = asset.type || asset.category || asset.template || "Equipment";
+  const area = getSiteMapPinArea(pin);
+  const layer = siteMapLayerLabel(getSiteMapPinLayer(pin, asset));
+  const liveStatus = getSiteMapAssetLiveStatus(asset);
+  return `
+    <span class="site-map-pin-tooltip" role="tooltip">
+      <strong>${escapeHtml(title || asset.name || `Pin ${index + 1}`)}</strong>
+      <small>${escapeHtml(equipmentId)}${typeLabel ? ` | ${escapeHtml(typeLabel)}` : ""}</small>
+      <small>${escapeHtml(layer)}${area ? ` | ${escapeHtml(area)}` : ""}</small>
+      <small>${escapeHtml(locationName)}</small>
+      <small>${escapeHtml(due.label)}${openCount ? ` | ${openCount} open ticket${openCount === 1 ? "" : "s"}` : ""}</small>
+      ${liveStatus.key !== "unknown" ? `<small>Live: ${escapeHtml(liveStatus.label)}${liveStatus.detail ? ` | ${escapeHtml(liveStatus.detail)}` : ""}</small>` : ""}
+      ${overlayInfo?.summary ? `<small>${escapeHtml(siteMapOverlayLabel())}: ${escapeHtml(overlayInfo.summary)}</small>` : ""}
+      ${overlayInfo?.detail ? `<small>${escapeHtml(overlayInfo.detail)}</small>` : ""}
+    </span>
+  `;
+}
+
+async function handleSiteMapImageChange() {
+  const file = els.siteMapImageInput?.files?.[0];
+  if (!file) return;
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before adding a site map.");
+    if (els.siteMapImageInput) els.siteMapImageInput.value = "";
+    return;
+  }
+  const map = getCurrentSiteMap(true);
+  if (!map) {
+    updateSiteMapStatus("Choose a location before adding a site map.");
+    return;
+  }
+  const activeLevel = getActiveSiteMapLevel(map, true);
+  if (!activeLevel) return;
+  try {
+    updateSiteMapStatus(isPdfFile(file) ? "Converting PDF page 1 into a site map..." : "Preparing site map image...");
+    const image = await readSiteMapFile(file);
+    activeLevel.image = image;
+    activeLevel.updatedAt = new Date().toISOString();
+    ensureSiteMapLevels(map, true);
+    map.name = siteMapScopeLabel(map);
+    map.updatedAt = new Date().toISOString();
+    pendingSiteMapPin = null;
+    saveState();
+    renderSiteMap();
+    updateSiteMapStatus(siteMapImageIsCloudReady(image)
+      ? `${isPdfFile(file) ? "PDF map" : "Map image"} saved to cloud. It should show on iPad after refresh. Choose equipment, then Add Pin.`
+      : `${isPdfFile(file) ? "PDF map" : "Map image"} saved only on this device because cloud storage did not accept the upload. It will not show on iPad until storage upload works.`);
+  } catch (error) {
+    console.warn("Site map file could not be loaded.", error);
+    updateSiteMapStatus(error?.message || "Map file could not be loaded.");
+  } finally {
+    if (els.siteMapImageInput) els.siteMapImageInput.value = "";
+  }
+}
+
+function startSiteMapPinPlacement() {
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before adding pins.");
+    return;
+  }
+  const map = getCurrentSiteMap(false);
+  const activeLevel = getActiveSiteMapLevel(map, true);
+  if (!mediaSource(activeLevel?.image)) {
+    updateSiteMapStatus("Upload a map image for this area first.");
+    return;
+  }
+  const selectedAssetId = els.siteMapPinAsset?.value || "";
+  if (selectedAssetId && getAllSiteMapPins(map).some((pin) => pin.assetId === selectedAssetId)) {
+    updateSiteMapStatus("That equipment is already pinned on this map.");
+    renderSiteMap();
+    return;
+  }
+  const label = els.siteMapPinLabel?.value.trim() || "";
+  if (!selectedAssetId && !label) {
+    updateSiteMapStatus("Choose equipment or enter a label before placing a pin.");
+    return;
+  }
+  const asset = getRawAsset(selectedAssetId);
+  pendingSiteMapPin = {
+    assetId: selectedAssetId,
+    label,
+    area: els.siteMapPinArea?.value.trim() || "",
+    layer: normalizeSiteMapLayer(els.siteMapPinLayer?.value || "") || inferSiteMapLayer(asset)
+  };
+  renderSiteMap();
+  updateSiteMapStatus(`Tap the map where ${asset?.name || label || "this pin"} belongs.`);
+}
+
+function startSiteMapDrag(event) {
+  if (pendingSiteMapPin) return;
+  if (event.button !== undefined && event.button !== 0) return;
+  const isTouch = event.pointerType === "touch";
+  if (event.target.closest(".site-map-controls, input, select, textarea, label")) return;
+  if (!isTouch && event.target.closest(".site-map-pin, button")) return;
+  if (isTouch && event.target.closest("button:not(.site-map-pin)")) return;
+  const viewport = event.target.closest("[data-site-map-viewport]");
+  if (!viewport) return;
+  if (isTouch) {
+    siteMapTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    viewport.setPointerCapture?.(event.pointerId);
+    if (siteMapTouchPointers.size >= 2) {
+      beginSiteMapPinch(viewport);
+      siteMapDragState = null;
+      viewport.classList.add("is-dragging");
+      event.preventDefault();
+      return;
+    }
+  }
+  const canScroll = viewport.scrollWidth > viewport.clientWidth || viewport.scrollHeight > viewport.clientHeight;
+  if (!canScroll) return;
+  siteMapDragState = {
+    pointerId: event.pointerId,
+    viewport,
+    startX: event.clientX,
+    startY: event.clientY,
+    scrollLeft: viewport.scrollLeft,
+    scrollTop: viewport.scrollTop,
+    moved: false
+  };
+  viewport.classList.add("is-dragging");
+  viewport.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+}
+
+function moveSiteMapDrag(event) {
+  if (event.pointerType === "touch" && siteMapTouchPointers.has(event.pointerId)) {
+    siteMapTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (siteMapPinchState && siteMapTouchPointers.size >= 2) {
+      moveSiteMapPinch();
+      siteMapDragSuppressClick = true;
+      event.preventDefault();
+      return;
+    }
+  }
+  if (!siteMapDragState || siteMapDragState.pointerId !== event.pointerId) return;
+  const dx = event.clientX - siteMapDragState.startX;
+  const dy = event.clientY - siteMapDragState.startY;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+    siteMapDragState.moved = true;
+    siteMapDragSuppressClick = true;
+  }
+  siteMapDragState.viewport.scrollLeft = siteMapDragState.scrollLeft - dx;
+  siteMapDragState.viewport.scrollTop = siteMapDragState.scrollTop - dy;
+  event.preventDefault();
+}
+
+function endSiteMapDrag(event) {
+  if (event.pointerType === "touch") {
+    const hadTouchPointer = siteMapTouchPointers.delete(event.pointerId);
+    if (siteMapPinchState && siteMapTouchPointers.size < 2) {
+      const viewport = siteMapPinchState.viewport;
+    siteMapPinchState = null;
+      siteMapDragSuppressClick = true;
+      viewport?.classList.remove("is-dragging");
+      window.setTimeout(() => {
+        siteMapDragSuppressClick = false;
+      }, 80);
+    }
+    if (hadTouchPointer) {
+      event.target?.releasePointerCapture?.(event.pointerId);
+    }
+  }
+  if (!siteMapDragState || siteMapDragState.pointerId !== event.pointerId) return;
+  const viewport = siteMapDragState.viewport;
+  const moved = siteMapDragState.moved;
+  viewport.classList.remove("is-dragging");
+  viewport.releasePointerCapture?.(event.pointerId);
+  siteMapDragState = null;
+  if (moved) {
+    window.setTimeout(() => {
+      siteMapDragSuppressClick = false;
+    }, 0);
+  }
+}
+
+function siteMapTouchPair() {
+  const points = [...siteMapTouchPointers.values()];
+  if (points.length < 2) return null;
+  return [points[0], points[1]];
+}
+
+function siteMapTouchDistance(pair) {
+  const [first, second] = pair;
+  return Math.hypot(second.x - first.x, second.y - first.y);
+}
+
+function siteMapTouchCenter(pair) {
+  const [first, second] = pair;
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2
+  };
+}
+
+function beginSiteMapPinch(viewport) {
+  const pair = siteMapTouchPair();
+  if (!pair) return;
+  const distance = siteMapTouchDistance(pair);
+  if (distance <= 0) return;
+  siteMapPinchState = {
+    viewport,
+    startDistance: distance,
+    startZoom: siteMapZoom
+  };
+}
+
+function moveSiteMapPinch() {
+  const pair = siteMapTouchPair();
+  if (!pair || !siteMapPinchState) return;
+  const distance = siteMapTouchDistance(pair);
+  if (distance <= 0 || siteMapPinchState.startDistance <= 0) return;
+  const center = siteMapTouchCenter(pair);
+  const nextZoom = Math.max(0.75, Math.min(5, Math.round(siteMapPinchState.startZoom * (distance / siteMapPinchState.startDistance) * 100) / 100));
+  applySiteMapZoomAtPoint(nextZoom, siteMapPinchState.viewport, center.x, center.y);
+}
+
+function applySiteMapZoomAtPoint(nextZoom, viewport, clientX, clientY) {
+  const stage = viewport?.querySelector("[data-site-map-stage]");
+  if (!viewport || !stage || !Number.isFinite(nextZoom)) return;
+  const currentRect = stage.getBoundingClientRect();
+  if (!currentRect.width || !currentRect.height) return;
+  const viewportRect = viewport.getBoundingClientRect();
+  const currentStageLeft = currentRect.left - viewportRect.left + viewport.scrollLeft;
+  const currentStageTop = currentRect.top - viewportRect.top + viewport.scrollTop;
+  const contentX = viewport.scrollLeft + (clientX - viewportRect.left);
+  const contentY = viewport.scrollTop + (clientY - viewportRect.top);
+  const ratioX = Math.max(0, Math.min(1, (contentX - currentStageLeft) / currentRect.width));
+  const ratioY = Math.max(0, Math.min(1, (contentY - currentStageTop) / currentRect.height));
+  const fingerX = clientX - viewportRect.left;
+  const fingerY = clientY - viewportRect.top;
+  const beforeScrollWidth = viewport.scrollWidth;
+  const beforeScrollHeight = viewport.scrollHeight;
+  siteMapZoom = nextZoom;
+  stage.style.width = `${Math.round(siteMapZoom * 100)}%`;
+  const label = els.siteMapCanvas?.querySelector("[data-site-map-zoom-label]");
+  if (label) label.textContent = `${Math.round(siteMapZoom * 100)}%`;
+  requestAnimationFrame(() => {
+    const nextRect = stage.getBoundingClientRect();
+    const nextStageLeft = nextRect.left - viewportRect.left + viewport.scrollLeft;
+    const nextStageTop = nextRect.top - viewportRect.top + viewport.scrollTop;
+    let nextLeft = nextStageLeft + nextRect.width * ratioX - fingerX;
+    let nextTop = nextStageTop + nextRect.height * ratioY - fingerY;
+    if (viewport.scrollWidth === beforeScrollWidth && viewport.scrollHeight === beforeScrollHeight) {
+      nextLeft = viewport.scrollLeft;
+      nextTop = viewport.scrollTop;
+    }
+    viewport.scrollLeft = Math.max(0, nextLeft);
+    viewport.scrollTop = Math.max(0, nextTop);
+    updateSiteMapViewportMemory();
+  });
+}
+
+async function addSiteMapPinFromEvent(event) {
+  if (siteMapDragSuppressClick) {
+    siteMapDragSuppressClick = false;
+    return;
+  }
+  if (event.target.closest(".site-map-controls")) return;
+  if (event.target.closest("[data-open-site-map-pin]")) return;
+  if (!pendingSiteMapPin) return;
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before adding pins.");
+    return;
+  }
+  const map = getCurrentSiteMap(true);
+  if (!map) return;
+  const activeLevel = getActiveSiteMapLevel(map, true);
+  if (!activeLevel) return;
+  const stage = event.target.closest("[data-site-map-stage]") || els.siteMapCanvas.querySelector("[data-site-map-stage]");
+  if (!stage) {
+    updateSiteMapStatus("Upload a map image first.");
+    pendingSiteMapPin = null;
+    return;
+  }
+  const rect = stage.getBoundingClientRect();
+  const x = clampPercent(((event.clientX - rect.left) / rect.width) * 100);
+  const y = clampPercent(((event.clientY - rect.top) / rect.height) * 100);
+  const pendingPin = pendingSiteMapPin && typeof pendingSiteMapPin === "object" ? pendingSiteMapPin : {};
+  const assetId = pendingPin.assetId || els.siteMapPinAsset?.value || "";
+  const label = pendingPin.label || els.siteMapPinLabel?.value.trim() || "";
+  const area = pendingPin.area || els.siteMapPinArea?.value.trim() || "";
+  const layer = normalizeSiteMapLayer(pendingPin.layer || els.siteMapPinLayer?.value || "") || inferSiteMapLayer(getRawAsset(assetId));
+  activeLevel.pins = Array.isArray(activeLevel.pins) ? activeLevel.pins : [];
+  if (assetId && getAllSiteMapPins(map).some((pin) => pin.assetId === assetId)) {
+    pendingSiteMapPin = null;
+    renderSiteMap();
+    updateSiteMapStatus("That equipment is already pinned on this map.");
+    return;
+  }
+  const newPin = {
+    id: crypto.randomUUID(),
+    assetId,
+    label,
+    area,
+    layer,
+    x,
+    y,
+    createdAt: new Date().toISOString()
+  };
+  const updatedAt = new Date().toISOString();
+  activeLevel.pins.push(newPin);
+  activeLevel.updatedAt = updatedAt;
+  const levels = ensureSiteMapLevels(map, true);
+  const storedLevel = levels.find((level) => level.id === activeLevel.id) || activeLevel;
+  storedLevel.pins = Array.isArray(storedLevel.pins) ? storedLevel.pins : [];
+  if (!storedLevel.pins.some((pin) => pin.id === newPin.id)) storedLevel.pins.push(newPin);
+  storedLevel.updatedAt = updatedAt;
+  if (storedLevel.id === "main") {
+    map.pins = storedLevel.pins;
+    map.image = storedLevel.image || map.image || null;
+  }
+  map.levels = levels;
+  map.updatedAt = updatedAt;
+  pendingSiteMapPin = null;
+  if (els.siteMapPinLabel) els.siteMapPinLabel.value = "";
+  if (els.siteMapPinArea) els.siteMapPinArea.value = "";
+  if (els.siteMapPinLayer) els.siteMapPinLayer.value = "";
+  let localSaved = true;
+  state.updatedAt = updatedAt;
+  try {
+    persistLocalStateOnly(false);
+  } catch (error) {
+    localSaved = false;
+    console.warn("Site map pin saved in memory, but local browser storage is full.", error);
+  }
+  scheduleSharedStateSave();
+  scheduleStructuredDataSync(0);
+  if (!localSaved) {
+    try {
+      const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
+      await upsertStructuredRows("site_maps", [buildStructuredSiteMapRow(map, cloudLocationIds)]);
+      markSyncSuccess("save");
+    } catch (error) {
+      markSyncError(`Site map cloud save failed: ${error?.message || error}`);
+      console.warn("Site map cloud save failed after local storage was full.", error);
+    }
+  }
+  renderSiteMap();
+  updateSiteMapStatus(localSaved
+    ? `Pin added. ${storedLevel.pins.length} pin${storedLevel.pins.length === 1 ? "" : "s"} on ${storedLevel.name || "this map"}.`
+    : `Pin added and sent to cloud. This iPad storage is full, so remove old photos/PDFs soon.`);
+}
+
+function deleteSiteMapPin(pinId) {
+  const map = getCurrentSiteMap(false);
+  const activeLevel = getActiveSiteMapLevel(map, false);
+  if (!map || !activeLevel || !Array.isArray(activeLevel.pins)) return;
+  activeLevel.pins = activeLevel.pins.filter((pin) => pin.id !== pinId);
+  activeLevel.updatedAt = new Date().toISOString();
+  ensureSiteMapLevels(map, true);
+  map.updatedAt = new Date().toISOString();
+  saveState();
+  renderSiteMap();
+  updateSiteMapStatus("Pin removed.");
+}
+
+function changeSiteMapZoom(action = "") {
+  const viewport = els.siteMapCanvas?.querySelector("[data-site-map-viewport]");
+  updateSiteMapViewportMemory();
+  if (action === "reset") {
+    siteMapZoom = 1;
+  } else if (action === "in") {
+    siteMapZoom = Math.min(5, Math.round((siteMapZoom + 0.25) * 100) / 100);
+  } else if (action === "out") {
+    siteMapZoom = Math.max(0.75, Math.round((siteMapZoom - 0.25) * 100) / 100);
+  }
+  if (viewport && action !== "reset") {
+    const rect = viewport.getBoundingClientRect();
+    applySiteMapZoomAtPoint(siteMapZoom, viewport, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  } else {
+    renderSiteMap();
+  }
+}
+
+function clearCurrentSiteMap() {
+  if (!isSiteMapLocationSelected()) {
+    updateSiteMapStatus("Choose a location before clearing a map.");
+    return;
+  }
+  const map = getCurrentSiteMap(false);
+  const activeLevel = getActiveSiteMapLevel(map, false);
+  if (!activeLevel?.image && !activeLevel?.pins?.length) {
+    updateSiteMapStatus("No map to clear for this area.");
+    return;
+  }
+  if (!confirm(`Clear ${activeLevel.name || "this map area"} image and pins?`)) return;
+  activeLevel.image = null;
+  activeLevel.pins = [];
+  activeLevel.updatedAt = new Date().toISOString();
+  ensureSiteMapLevels(map, true);
+  map.updatedAt = new Date().toISOString();
+  pendingSiteMapPin = null;
+  saveState();
+  renderSiteMap();
+  updateSiteMapStatus("Map cleared.");
+}
+
+function openSiteMapAsset(assetId) {
+  const asset = getAsset(assetId);
+  if (!asset) {
+    updateSiteMapStatus("That equipment is not available in your current view.");
+    return;
+  }
+  selectedId = asset.id;
+  render();
+  updateSiteMapStatus(`${asset.name || "Equipment"} opened. Close the equipment panel to return to the map.`);
+}
+
+function updateSiteMapStatus(message = "") {
+  if (els.siteMapStatus) els.siteMapStatus.textContent = message;
+}
+
+
+// SiteWorks Panel Monitor feature module.
+// Loaded before app.js as a classic script so existing app state/render helpers stay shared.
+// Keep panel monitor rendering, device setup, channel mapping, and live breaker state here.
+
+function monitoringElements() {
+  return {
+    setupDrawer: document.querySelector(".monitoring-setup-drawer"),
+    deviceForm: document.getElementById("monitoringDeviceForm"),
+    deviceId: document.getElementById("monitoringDeviceId"),
+    devicePanel: document.getElementById("monitoringDevicePanel"),
+    deviceUid: document.getElementById("monitoringDeviceUid"),
+    deviceApiKey: document.getElementById("monitoringDeviceApiKey"),
+    sourcePhaseAChannel: document.getElementById("monitoringSourcePhaseAChannel"),
+    sourcePhaseBChannel: document.getElementById("monitoringSourcePhaseBChannel"),
+    sourcePhaseCChannel: document.getElementById("monitoringSourcePhaseCChannel"),
+    rotateKeyBtn: document.getElementById("monitoringRotateKeyBtn"),
+    repairKeyBtn: document.getElementById("monitoringRepairKeyBtn"),
+    generatedApiKey: document.getElementById("monitoringGeneratedApiKey"),
+    deviceName: document.getElementById("monitoringDeviceName"),
+    deviceModel: document.getElementById("monitoringDeviceModel"),
+    deviceFirmware: document.getElementById("monitoringDeviceFirmware"),
+    deviceHeartbeat: document.getElementById("monitoringDeviceHeartbeat"),
+    deviceMaintenance: document.getElementById("monitoringDeviceMaintenance"),
+    deviceStatus: document.getElementById("monitoringDeviceStatus"),
+    deviceList: document.getElementById("monitoringDeviceList"),
+    deviceDetails: document.getElementById("monitoringDeviceDetails"),
+    channelForm: document.getElementById("monitoringChannelForm"),
+    channelDevice: document.getElementById("monitoringChannelDevice"),
+    channelCircuit: document.getElementById("monitoringChannelCircuit"),
+    channelCircuitManualWrap: document.getElementById("monitoringChannelCircuitManualWrap"),
+    channelCircuitManual: document.getElementById("monitoringChannelCircuitManual"),
+    channelNumber: document.getElementById("monitoringChannelNumber"),
+    channelPhase: document.getElementById("monitoringChannelPhase"),
+    channelPhase2Wrap: document.getElementById("monitoringChannelPhase2Wrap"),
+    channelPhase2: document.getElementById("monitoringChannelPhase2"),
+    channelPhase3Wrap: document.getElementById("monitoringChannelPhase3Wrap"),
+    channelPhase3: document.getElementById("monitoringChannelPhase3"),
+    channelPoles: document.getElementById("monitoringChannelPoles"),
+    channelDelay: document.getElementById("monitoringChannelDelay"),
+    channelMode: document.getElementById("monitoringChannelMode"),
+    channelCriticality: document.getElementById("monitoringChannelCriticality"),
+    channelStatus: document.getElementById("monitoringChannelStatus"),
+    channelList: document.getElementById("monitoringChannelList"),
+    simulatorForm: document.getElementById("monitoringSimulatorForm"),
+    simulatorDevice: document.getElementById("monitoringSimulatorDevice"),
+    simulatorStatus: document.getElementById("monitoringSimulatorStatus"),
+    simulatorHistory: document.getElementById("monitoringSimulatorHistory"),
+    panelSelect: document.getElementById("monitoringPanelSelect"),
+    livePanel: document.getElementById("monitoringLivePanel"),
+    breakerDetail: document.getElementById("monitoringBreakerDetail"),
+    alertList: document.getElementById("monitoringAlertList"),
+    eventList: document.getElementById("monitoringEventList")
+  };
+}
+
+function ensureMonitoringCollections() {
+  state.monitoringDevices = Array.isArray(state.monitoringDevices) ? state.monitoringDevices : [];
+  state.monitoringChannels = Array.isArray(state.monitoringChannels) ? state.monitoringChannels : [];
+  state.monitoringEvents = Array.isArray(state.monitoringEvents) ? state.monitoringEvents : [];
+  state.monitoringAlerts = Array.isArray(state.monitoringAlerts) ? state.monitoringAlerts : [];
+}
+
+function allElectricalPanelAssetsForMonitoring() {
+  return (state.assets || [])
+    .filter(asset => canSeeAsset(asset) && isElectricalPanelAsset(asset) && monitoringRecordMatchesCurrentView(asset))
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+function getMonitoringDevice(deviceId) {
+  ensureMonitoringCollections();
+  const needle = String(deviceId || "");
+  if (!needle) return null;
+  return state.monitoringDevices.find(device => {
+    const normalized = normalizeMonitoringDevice(device);
+    return normalized?.id === needle || normalized?.deviceUid === needle;
+  }) || null;
+}
+
+function normalizeMonitoringDevice(device) {
+  if (!device) return null;
+  const deviceUid = String(device.deviceUid || device.device_uid || device.uid || "").trim();
+  const id = String(device.id || device.deviceId || device.device_id || device.monitoringDeviceId || device.monitoring_device_id || deviceUid || "").trim();
+  const panelAssetId = String(device.panelAssetId || device.panel_asset_id || device.panelId || device.panel_id || device.assetId || device.asset_id || "").trim();
+  const panel = panelAssetId ? getAsset(panelAssetId) : null;
+  const panelCustomerId = panel?.customerId || panel?.customer_id || "";
+  const panelLocationId = panel?.locationId || panel?.location_id || "";
+  return {
+    ...device,
+    id,
+    panelAssetId,
+    customerId: device.customerId || device.customer_id || panelCustomerId,
+    locationId: device.locationId || device.location_id || panelLocationId,
+    deviceUid: deviceUid || id || "",
+    name: device.name || device.deviceName || device.device_name || "",
+    model: device.model || "",
+    firmwareVersion: device.firmwareVersion || device.firmware_version || "",
+    heartbeatSeconds: Math.max(30, Number(device.heartbeatSeconds || device.heartbeat_seconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS)),
+    maintenanceMode: Boolean(device.maintenanceMode ?? device.maintenance_mode),
+    onlineStatus: device.onlineStatus || device.online_status || "offline",
+    lastSeenAt: device.lastSeenAt || device.last_seen_at || "",
+    apiKeyLast4: device.apiKeyLast4 || device.api_key_last4 || "",
+    sourcePhases: normalizeMonitoringSourcePhases(device.sourcePhases || device.source_phases),
+    sourcePhaseChannels: monitoringEngine()?.normalizeSourcePhaseChannels
+      ? monitoringEngine().normalizeSourcePhaseChannels(device.sourcePhaseChannels || device.source_phase_channels)
+      : (device.sourcePhaseChannels || device.source_phase_channels || { A: "", B: "", C: "" }),
+    rawPayloads: Array.isArray(device.rawPayloads) ? device.rawPayloads : [],
+    recentErrors: Array.isArray(device.recentErrors) ? device.recentErrors : []
+  };
+}
+
+function monitoringRecordMatchesCurrentView(record, fallback = null) {
+  if (!record) return false;
+  const customerId = String(record.customerId || record.customer_id || fallback?.customerId || fallback?.customer_id || "");
+  const locationId = String(record.locationId || record.location_id || fallback?.locationId || fallback?.location_id || "");
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS) return false;
+  if (!customerId || customerId !== String(selectedCustomerId)) return false;
+  if (selectedLocationId !== ALL_LOCATIONS && locationId && locationId !== String(selectedLocationId)) return false;
+  return true;
+}
+
+function getMonitoringChannel(channelId) {
+  ensureMonitoringCollections();
+  return state.monitoringChannels.find(channel => channel.id === channelId);
+}
+
+function visibleMonitoringDevices() {
+  ensureMonitoringCollections();
+  const visiblePanelIds = new Set(allElectricalPanelAssetsForMonitoring().map(panel => String(panel.id || "")));
+  return state.monitoringDevices
+    .map(normalizeMonitoringDevice)
+    .filter(device => {
+      if (!device?.id) return false;
+      const panel = device?.panelAssetId ? getAsset(device.panelAssetId) : null;
+      if (panel) {
+        const panelId = String(panel.id || "");
+        return canSeeAsset(panel) && visiblePanelIds.has(panelId) && monitoringRecordMatchesCurrentView(panel, device);
+      }
+      if (!monitoringRecordMatchesCurrentView(device)) return false;
+      return !device.customerId || canSeeCustomer(device.customerId);
+    });
+}
+
+function monitoringChannelsForDevice(deviceId) {
+  ensureMonitoringCollections();
+  const needle = String(deviceId || "");
+  return state.monitoringChannels.filter(channel => {
+    const normalizedDeviceId = String(channel.deviceId || channel.device_id || "");
+    if (normalizedDeviceId === needle) return true;
+    const device = getMonitoringDevice(normalizedDeviceId);
+    return Boolean(device && (String(device.id || "") === needle || String(device.deviceUid || "") === needle));
+  });
+}
+
+function normalizeApiMonitoringChannelName(value = "") {
+  const text = String(value || "").trim().toUpperCase();
+  if (!text) return "";
+  return text.startsWith("DI") ? text.slice(2) : text;
+}
+
+function monitoringApiStatusToDevice(row) {
+  return {
+    id: row.id,
+    customerId: row.customerId || row.customer_id || "",
+    locationId: row.locationId || row.location_id || "",
+    panelAssetId: row.panelAssetId || row.panel_asset_id || "",
+    deviceUid: row.deviceUid || row.device_uid || "",
+    name: row.name || "Panel monitor",
+    model: row.model || "",
+    firmwareVersion: row.firmwareVersion || row.firmware_version || "",
+    heartbeatSeconds: row.heartbeatSeconds || row.heartbeat_seconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS,
+    maintenanceMode: Boolean(row.maintenanceMode ?? row.maintenance_mode),
+    onlineStatus: row.onlineStatus || row.online_status || "unknown",
+    healthStatus: row.healthStatus || row.health_status || "",
+    lastSeenAt: row.lastSeenAt || row.last_seen_at || "",
+    updatedAt: row.updatedAt || row.updated_at || "",
+    sourcePhases: normalizeMonitoringSourcePhases(row.sourcePhases || row.source_phases),
+    sourcePhaseChannels: row.sourcePhaseChannels || row.source_phase_channels || { A: "", B: "", C: "" },
+    rawPayloads: row.data?.last_payload ? [{ receivedAt: row.lastSeenAt || row.updatedAt || new Date().toISOString(), payload: row.data.last_payload }] : []
+  };
+}
+
+function monitoringApiStatusToChannel(row, deviceId) {
+  return {
+    id: row.id,
+    deviceId,
+    panelAssetId: row.panelAssetId || row.panel_asset_id || "",
+    circuitNumber: String(row.circuitNumber || row.circuit_number || ""),
+    physicalChannel: normalizeApiMonitoringChannelName(row.physicalChannel || row.physical_channel || ""),
+    sourcePhase: row.sourcePhase || row.source_phase || "A",
+    sourcePhases: [row.sourcePhase || row.source_phase || "A"],
+    poleCount: row.poleCount || row.pole_count || 1,
+    alarmDelaySeconds: row.alarmDelaySeconds || row.alarm_delay_seconds || MONITORING_DEFAULT_DELAY_SECONDS,
+    monitoringMode: row.monitoringMode || row.monitoring_mode || "normal",
+    criticality: row.criticality || "normal",
+    lastRawState: row.lastRawState ?? row.last_raw_state ?? null,
+    lastDerivedState: row.lastDerivedState || row.last_derived_state || "open",
+    firstAbsentAt: row.firstAbsentAt || row.first_absent_at || "",
+    updatedAt: row.updatedAt || row.updated_at || "",
+    data: row.data || {}
+  };
+}
+
+function monitoringApiStatusToEvent(row, deviceIdByApiId) {
+  const eventType = row.eventType || row.event_type || "device-status";
+  const circuitNumber = row.circuitNumber || row.circuit_number || "";
+  const newState = row.newState || row.new_state || "";
+  return {
+    id: row.id,
+    deviceId: deviceIdByApiId.get(String(row.deviceId || row.device_id || "")) || row.deviceId || row.device_id || "",
+    channelId: row.channelId || row.channel_id || "",
+    circuitNumber,
+    type: eventType,
+    state: newState,
+    message: eventType === "channel-state" && circuitNumber
+      ? `Circuit ${circuitNumber} is ${monitoringStateLabel(newState)}.`
+      : "Panel monitor reported status.",
+    data: row.payload || {},
+    createdAt: row.createdAt || row.created_at || new Date().toISOString()
+  };
+}
+
+async function syncMonitoringStatusFromApi() {
+  if (document.hidden || !currentUser) return;
+  if (!MONITORING_LIVE_STATUS_API) {
+    await syncMonitoringStatusFromSupabase();
+    return;
+  }
+  ensureMonitoringCollections();
+  try {
+    const response = await fetch(MONITORING_LIVE_STATUS_API, { cache: "no-store" });
+    if (!response.ok) return;
+    const body = await response.json();
+    if (!Array.isArray(body.devices) || !Array.isArray(body.channels)) return;
+
+    const deviceIdByApiId = new Map();
+    let changed = false;
+
+    body.devices.forEach((row) => {
+      const incoming = monitoringApiStatusToDevice(row);
+      if (!incoming.deviceUid) return;
+      const existing = state.monitoringDevices.find((device) => {
+        const normalized = normalizeMonitoringDevice(device);
+        return normalized?.deviceUid === incoming.deviceUid || String(normalized?.id || "") === String(incoming.id);
+      });
+      const localId = existing?.id || incoming.id || makeId();
+      deviceIdByApiId.set(String(incoming.id || ""), localId);
+      const next = { ...(existing || {}), ...incoming, id: localId };
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        state.monitoringDevices.push(next);
+      }
+      changed = true;
+    });
+
+    body.channels.forEach((row) => {
+      const apiDeviceId = String(row.deviceId || row.device_id || "");
+      const localDeviceId = deviceIdByApiId.get(apiDeviceId) || apiDeviceId;
+      const incoming = monitoringApiStatusToChannel(row, localDeviceId);
+      if (!incoming.deviceId || !incoming.physicalChannel) return;
+      const existing = state.monitoringChannels.find((channel) => {
+        return String(channel.id || "") === String(incoming.id)
+          || (
+            String(channel.deviceId || channel.device_id || "") === String(incoming.deviceId)
+            && normalizeApiMonitoringChannelName(channel.physicalChannel || channel.physical_channel || "") === incoming.physicalChannel
+          )
+          || (
+            String(channel.panelAssetId || channel.panel_asset_id || "") === String(incoming.panelAssetId)
+            && String(channel.circuitNumber || channel.circuit_number || "") === String(incoming.circuitNumber)
+          );
+      });
+      const next = { ...(existing || {}), ...incoming };
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        state.monitoringChannels.push(next);
+      }
+      changed = true;
+    });
+
+    if (Array.isArray(body.events)) {
+      const existingEventIds = new Set(state.monitoringEvents.map((event) => String(event.id || "")));
+      body.events.slice(0, 20).reverse().forEach((row) => {
+        if (!row.id || existingEventIds.has(String(row.id))) return;
+        state.monitoringEvents.unshift(monitoringApiStatusToEvent(row, deviceIdByApiId));
+        changed = true;
+      });
+      state.monitoringEvents = state.monitoringEvents.slice(0, 1000);
+    }
+
+    if (changed) renderMonitoring();
+  } catch (error) {
+    console.warn("Monitoring live status sync failed", error);
+  }
+}
+
+async function syncMonitoringStatusFromSupabase() {
+  ensureMonitoringCollections();
+  try {
+    const [
+      deviceRows,
+      channelRows,
+      eventRows,
+      alertRows
+    ] = await Promise.all([
+      fetchOptionalStructuredRows("monitoring_devices", "updated_at.desc"),
+      fetchOptionalStructuredRows("monitoring_channels", "updated_at.desc"),
+      fetchOptionalStructuredRows("monitoring_events", "created_at.desc"),
+      fetchOptionalStructuredRows("monitoring_alerts", "updated_at.desc")
+    ]);
+    let changed = false;
+    const deviceIdByCloudId = new Map();
+
+    deviceRows.forEach((row) => {
+      const incoming = monitoringDeviceFromStructuredRow(row);
+      if (!incoming.deviceUid) return;
+      const existing = state.monitoringDevices.find((device) => {
+        const normalized = normalizeMonitoringDevice(device);
+        return normalized?.deviceUid === incoming.deviceUid || String(normalized?.id || "") === String(incoming.id);
+      });
+      const localId = existing?.id || incoming.id || makeId();
+      deviceIdByCloudId.set(String(incoming.id || ""), localId);
+      const next = { ...(existing || {}), ...incoming, id: localId };
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        state.monitoringDevices.push(next);
+      }
+      changed = true;
+    });
+
+    channelRows.forEach((row) => {
+      const incoming = monitoringChannelFromStructuredRow(row);
+      const localDeviceId = deviceIdByCloudId.get(String(incoming.deviceId || "")) || incoming.deviceId;
+      incoming.deviceId = localDeviceId;
+      if (!incoming.deviceId || !incoming.physicalChannel) return;
+      const existing = state.monitoringChannels.find((channel) => {
+        return String(channel.id || "") === String(incoming.id)
+          || (
+            String(channel.deviceId || channel.device_id || "") === String(incoming.deviceId)
+            && normalizeApiMonitoringChannelName(channel.physicalChannel || channel.physical_channel || "") === normalizeApiMonitoringChannelName(incoming.physicalChannel)
+          );
+      });
+      const next = { ...(existing || {}), ...incoming };
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        state.monitoringChannels.push(next);
+      }
+      changed = true;
+    });
+
+    const existingEventIds = new Set(state.monitoringEvents.map((event) => String(event.id || "")));
+    eventRows.slice(0, 50).reverse().forEach((row) => {
+      if (!row.id || existingEventIds.has(String(row.id))) return;
+      const event = monitoringEventFromStructuredRow(row);
+      event.deviceId = deviceIdByCloudId.get(String(event.deviceId || "")) || event.deviceId;
+      state.monitoringEvents.unshift(event);
+      changed = true;
+    });
+    state.monitoringEvents = state.monitoringEvents.slice(0, 1000);
+
+    const alertIds = new Set();
+    alertRows.forEach((row) => {
+      const incoming = monitoringAlertFromStructuredRow(row);
+      incoming.deviceId = deviceIdByCloudId.get(String(incoming.deviceId || "")) || incoming.deviceId;
+      if (!incoming.id) return;
+      alertIds.add(String(incoming.id));
+      const existing = state.monitoringAlerts.find((alert) => String(alert.id || "") === String(incoming.id));
+      if (existing) {
+        Object.assign(existing, { ...existing, ...incoming });
+      } else {
+        state.monitoringAlerts.push(incoming);
+      }
+      changed = true;
+    });
+
+    if (changed) {
+      persistLocalStateOnly(false);
+      renderMonitoring();
+    }
+  } catch (error) {
+    console.warn("Monitoring Supabase status sync failed", error);
+  }
+}
+
+function monitoringEngine() {
+  return window.SiteWorksMonitoringEngine || null;
+}
+
+function normalizeMonitoringSourcePhases(phases = {}) {
+  if (monitoringEngine()?.normalizeSourcePhases) return monitoringEngine().normalizeSourcePhases(phases);
+  const result = {};
+  MONITORING_SOURCE_PHASES.forEach(phase => {
+    result[phase] = phases[phase] !== false;
+  });
+  return result;
+}
+
+function normalizeMonitoringPhase(value = "") {
+  const phase = String(value || "").trim().toUpperCase();
+  return MONITORING_SOURCE_PHASES.includes(phase) ? phase : "";
+}
+
+function getMonitoringChannelSourcePhases(elements, poleCount = 1) {
+  const selected = [
+    normalizeMonitoringPhase(elements.channelPhase?.value || "A"),
+    normalizeMonitoringPhase(elements.channelPhase2?.value || "B"),
+    normalizeMonitoringPhase(elements.channelPhase3?.value || "C")
+  ].filter(Boolean);
+  return selected.slice(0, Math.max(1, Math.min(3, Number(poleCount) || 1)));
+}
+
+function getMonitoringChannelPhaseList(channel = {}) {
+  if (monitoringEngine()?.getChannelPhaseList) return monitoringEngine().getChannelPhaseList(channel);
+  const phases = Array.isArray(channel.sourcePhases)
+    ? channel.sourcePhases.map(normalizeMonitoringPhase).filter(Boolean)
+    : String(channel.sourcePhases || "")
+      .split(/[\s,/-]+/)
+      .map(normalizeMonitoringPhase)
+      .filter(Boolean);
+  const fallback = normalizeMonitoringPhase(channel.sourcePhase) || "A";
+  const count = Math.max(1, Math.min(3, Number(channel.poleCount || phases.length || 1)));
+  return (phases.length ? phases : [fallback]).slice(0, count);
+}
+
+function monitoringChannelPhaseLabel(channel = {}) {
+  return getMonitoringChannelPhaseList(channel).join("/") || "A";
+}
+
+function parseMonitoringCircuitNumbers(value = "") {
+  if (monitoringEngine()?.parseCircuitNumbers) return monitoringEngine().parseCircuitNumbers(value);
+  return String(value || "")
+    .split(/[\s,;/]+/)
+    .map(item => Number(String(item).replace(/\D/g, "")))
+    .filter(number => Number.isInteger(number) && number > 0);
+}
+
+function findPanelScheduleCircuit(circuits = [], circuitNumber = "") {
+  const target = Number(String(circuitNumber || "").replace(/\D/g, ""));
+  const targetText = String(circuitNumber || "").trim();
+  return circuits.find((item) => {
+    const rawNumber = String(item?.number || item?.cct || item?.circuit || "").trim();
+    if (target && parseMonitoringCircuitNumbers(rawNumber).includes(target)) return true;
+    return rawNumber === targetText;
+  }) || null;
+}
+
+function buildPanelCircuitMap(circuits = []) {
+  const byNumber = new Map();
+  circuits.forEach((circuit) => {
+    const rawNumber = String(circuit?.number || circuit?.cct || circuit?.circuit || "").trim();
+    const numbers = parseMonitoringCircuitNumbers(rawNumber);
+    if (!numbers.length && rawNumber) {
+      byNumber.set(rawNumber, circuit);
+      return;
+    }
+    numbers.forEach((number) => {
+      const key = String(number);
+      if (!byNumber.has(key)) {
+        byNumber.set(key, {
+          ...circuit,
+          number: key,
+          groupedNumber: rawNumber
+        });
+      }
+    });
+  });
+  return byNumber;
+}
+
+function monitoringPanelCircuitCount(panel = null, channels = []) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const scheduledCount = Number(schedule.circuitCount || 0);
+  const maxMapped = channels.reduce((max, channel) => {
+    const circuitMax = parseMonitoringCircuitNumbers(channel.circuitNumber).reduce((innerMax, number) => Math.max(innerMax, number), 0);
+    return Math.max(max, circuitMax);
+  }, 0);
+  const count = Math.max(scheduledCount || 0, maxMapped || 0, 42);
+  return count % 2 === 0 ? count : count + 1;
+}
+
+function monitoringChannelByCircuitMap(channels = []) {
+  const map = new Map();
+  channels.forEach(channel => {
+    parseMonitoringCircuitNumbers(channel.circuitNumber).forEach(number => {
+      if (!map.has(number)) map.set(number, channel);
+    });
+  });
+  return map;
+}
+
+function monitoringPanelCircuitLabel(panel = null, circuitNumber = "") {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
+  const circuit = findPanelScheduleCircuit(circuits, circuitNumber);
+  return panelCircuitLoadText(circuit) || circuit?.description || circuit?.loadServed || "";
+}
+
+function monitoringPanelCircuitBreakerSize(panel = null, circuitNumber = "") {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
+  const circuit = findPanelScheduleCircuit(circuits, circuitNumber);
+  const value = String(circuit?.breaker || circuit?.breakerSize || circuit?.amp || circuit?.amps || circuit?.amperage || "").trim();
+  if (!value || value === "-") return "";
+  return /^\d+(?:\.\d+)?$/.test(value) ? `${value}A` : value;
+}
+
+function monitoringPanelCircuitRecord(panel = null, circuitNumber = "") {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
+  const target = Number(String(circuitNumber || "").replace(/\D/g, ""));
+  return circuits.find((item) => {
+    const numbers = parseMonitoringCircuitNumbers(item.number || item.cct || item.circuit || "");
+    return numbers.includes(target);
+  }) || null;
+}
+
+function monitoringPanelCircuitGroupNumbers(panel = null, circuitNumber = "", side = "left") {
+  const circuit = monitoringPanelCircuitRecord(panel, circuitNumber);
+  const wantOdd = side === "left";
+  return parseMonitoringCircuitNumbers(circuit?.number || circuit?.cct || circuit?.circuit || circuitNumber)
+    .filter((number) => wantOdd ? number % 2 === 1 : number % 2 === 0)
+    .sort((a, b) => a - b);
+}
+
+function monitoringPanelCircuitGroupSpan(panel = null, circuitNumber = "", side = "left") {
+  const groupNumbers = monitoringPanelCircuitGroupNumbers(panel, circuitNumber, side);
+  if (groupNumbers.length < 2) return 1;
+  return Math.max(1, Math.floor((groupNumbers.at(-1) - groupNumbers[0]) / 2) + 1);
+}
+
+function isFirstMonitoringPanelGroupCircuit(panel = null, circuitNumber = "", side = "left") {
+  const target = Number(String(circuitNumber || "").replace(/\D/g, ""));
+  const groupNumbers = monitoringPanelCircuitGroupNumbers(panel, circuitNumber, side);
+  return groupNumbers.length < 2 || groupNumbers[0] === target;
+}
+
+function inferMonitoringPoleCountFromSchedule(panel = null, circuitNumber = "") {
+  const circuit = monitoringPanelCircuitRecord(panel, circuitNumber);
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
+  const numbers = parseMonitoringCircuitNumbers(circuit?.number || circuit?.cct || circuit?.circuit || circuitNumber);
+  const explicitCount = Math.max(...numbers.map(() => 1), numbers.length || 1);
+  const text = [
+    circuit?.poles,
+    circuit?.poleCount,
+    circuit?.breaker,
+    circuit?.breakerSize,
+    circuit?.amp,
+    circuit?.amps,
+    circuit?.amperage,
+    panelCircuitLoadText(circuit)
+  ].filter(Boolean).join(" ").toLowerCase();
+  const poleMatch = text.match(/\b([123])\s*(?:p|pole|poles)\b/);
+  if (poleMatch) return Math.max(1, Math.min(3, Number(poleMatch[1])));
+  if (explicitCount > 1) return Math.max(1, Math.min(3, explicitCount));
+
+  const baseNumber = Number(String(circuitNumber || "").replace(/\D/g, ""));
+  if (!baseNumber || !circuit) return 1;
+  const baseBreaker = String(circuit.breaker || circuit.breakerSize || circuit.amp || circuit.amps || circuit.amperage || "").trim().toLowerCase();
+  const baseLabel = String(panelCircuitLoadText(circuit) || circuit.description || circuit.loadServed || "").trim().toLowerCase();
+  if (!baseBreaker || !baseLabel || baseBreaker === "-" || baseLabel.includes("spare")) return 1;
+
+  let count = 1;
+  for (let offset = 2; offset <= 4; offset += 2) {
+    const next = circuits.find((item) => {
+      const itemNumbers = parseMonitoringCircuitNumbers(item.number || item.cct || item.circuit || "");
+      return itemNumbers.includes(baseNumber + offset);
+    });
+    const nextBreaker = String(next?.breaker || next?.breakerSize || next?.amp || next?.amps || next?.amperage || "").trim().toLowerCase();
+    const nextLabel = String(panelCircuitLoadText(next) || next?.description || next?.loadServed || "").trim().toLowerCase();
+    if (nextBreaker === baseBreaker && nextLabel === baseLabel) count += 1;
+    else break;
+  }
+  return Math.max(1, Math.min(3, count));
+}
+
+function expandMonitoringPhysicalChannels(value = "", poleCount = 1) {
+  const channels = monitoringEngine()?.parseList ? monitoringEngine().parseList(value) : String(value || "").split(/[\s,;/]+/).filter(Boolean);
+  const count = Math.max(1, Math.min(3, Number(poleCount) || 1));
+  if (channels.length === 1 && count > 1 && /^\d+$/.test(channels[0])) {
+    const start = Number(channels[0]);
+    return Array.from({ length: count }, (_, index) => String(start + index));
+  }
+  return channels;
+}
+
+function applyMonitoringCircuitScheduleDefaults() {
+  const elements = monitoringElements();
+  const device = normalizeMonitoringDevice(getMonitoringDevice(elements.channelDevice?.value));
+  const panel = device ? getAsset(device.panelAssetId) : null;
+  const circuitNumber = String(elements.channelCircuit?.value || elements.channelCircuitManual?.value || "").trim();
+  if (!panel || !circuitNumber) return;
+  const poleCount = inferMonitoringPoleCountFromSchedule(panel, circuitNumber);
+  if (elements.channelPoles) elements.channelPoles.value = String(poleCount);
+  if (elements.channelNumber) {
+    const expandedChannels = expandMonitoringPhysicalChannels(elements.channelNumber.value, poleCount);
+    if (expandedChannels.length > 1) elements.channelNumber.value = expandedChannels.join(",");
+  }
+  syncMonitoringPhaseSelectors();
+}
+
+function monitoringMainMeterValue(device = null, names = []) {
+  for (const name of names) {
+    const value = device?.[name] ?? device?.telemetry?.[name] ?? device?.latestTelemetry?.[name];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
+  }
+  return "";
+}
+
+const MONITORING_PANEL_TEMPLATES = {
+  "panel-c-42": {
+    id: "panel-c-42",
+    name: "Panel C 42 circuit",
+    backgroundImage: "panel-monitor-background.png",
+    circuitCount: 42,
+    aspectRatio: "3 / 2",
+    rows: {
+      left: { startY: 21.32, rowStep: 3.12 },
+      right: { startY: 21.32, rowStep: 3.12 }
+    },
+    zones: {
+      left: {
+        row: { x: 6.82, width: 30.45, height: 2.78 },
+        number: { x: 6.92, y: 5, width: 1.45, height: 90 },
+        amps: { x: 28.72, y: 0, width: 2.0, height: 28 },
+        label: { x: 9.1, width: 15.65 },
+        breaker: { x: 29.18, width: 2.25 },
+        status: { x: 36.1, width: 1.0 },
+        voltage: { x: 31.45, width: 2.55 },
+        temperature: { x: 34.15, width: 2.55 }
+      },
+      right: {
+        row: { x: 58.7, width: 25.65, height: 2.78 },
+        status: { x: 58.78, width: 1.0 },
+        breaker: { x: 62.22, width: 2.25 },
+        label: { x: 70.4, width: 11.75 },
+        number: { x: 82.85, y: 5, width: 1.42, height: 90 },
+        amps: { x: 62.02, y: 0, width: 2.0, height: 28 },
+        voltage: { x: 56.1, width: 2.55 },
+        temperature: { x: 58.8, width: 2.55 }
+      }
+    }
+  }
+};
+
+function getMonitoringPanelTemplate(panel = null) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const count = normalizePanelCircuitCount(schedule.circuitCount || 42);
+  return {
+    ...MONITORING_PANEL_TEMPLATES["panel-c-42"],
+    circuitCount: count || 42
+  };
+}
+
+function monitoringTemplateCircuitPosition(template, circuitNumber) {
+  const number = Number(circuitNumber);
+  const side = number % 2 === 0 ? "right" : "left";
+  const rowIndex = Math.floor((number - 1) / 2);
+  const sideRows = template.rows[side] || template.rows.left;
+  return {
+    side,
+    y: sideRows.startY + rowIndex * sideRows.rowStep,
+    height: template.zones[side].row.height
+  };
+}
+
+function monitoringOverlayStyle(zone = {}, y = 0, height = 2.6) {
+  const zoneHeight = zone.height || height;
+  return `left:${zone.x}%;top:${y}%;width:${zone.width}%;height:${zoneHeight}%;`;
+}
+
+function monitoringOverlayInnerStyle(rowZone = {}, zone = {}, height = 100) {
+  const rowX = Number(rowZone.x || 0);
+  const rowWidth = Math.max(1, Number(rowZone.width || 100));
+  const left = ((Number(zone.x || 0) - rowX) / rowWidth) * 100;
+  const top = Number(zone.y || 0);
+  const width = (Number(zone.width || 0) / rowWidth) * 100;
+  const zoneHeight = zone.height || height;
+  return `left:${left}%;top:${top}%;width:${width}%;height:${zoneHeight}%;`;
+}
+
+function monitoringCircuitValue(channel = null, names = []) {
+  for (const name of names) {
+    const value = channel?.[name] ?? channel?.data?.[name] ?? channel?.telemetry?.[name] ?? channel?.latestTelemetry?.[name];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
+  }
+  return "";
+}
+
+function showMonitoringBreakerDetail(channelId = "", circuitNumber = "") {
+  const elements = monitoringElements();
+  if (!elements.breakerDetail) return;
+  const channel = getMonitoringChannel(channelId);
+  const panel = getAsset(channel?.panelAssetId || selectedMonitoringPanelId);
+  const device = channel ? getMonitoringDevice(channel.deviceId) : null;
+  const circuit = circuitNumber || channel?.circuitNumber || "";
+  const label = monitoringPanelCircuitLabel(panel, circuitNumber) || "No panel label saved";
+  const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber) || "Not entered";
+  const voltage = monitoringCircuitValue(channel, ["voltage", "lineVoltage", "line_voltage"]) || "Not reported";
+  const current = monitoringCircuitValue(channel, ["current", "amps", "amperage", "loadCurrent", "load_current"]) || "Not reported";
+  const temperature = monitoringCircuitValue(channel, ["temperature", "temp", "temperatureF", "temperature_f"]) || "Not reported";
+  const power = monitoringCircuitValue(channel, ["kw", "kW", "power", "powerKw", "power_kw"]) || "Not reported";
+  const status = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
+  elements.breakerDetail.classList.remove("hidden");
+  elements.breakerDetail.innerHTML = `
+    <div>
+      <span>Circuit ${escapeHtml(circuit)}</span>
+      <strong>${escapeHtml(status)}</strong>
+      <small>${escapeHtml(label)}</small>
+    </div>
+    <dl>
+      <div><dt>Panel</dt><dd>${escapeHtml(panel?.name || "Panel")}</dd></div>
+      <div><dt>Breaker size</dt><dd>${escapeHtml(breakerSize)}</dd></div>
+      <div><dt>Phase</dt><dd>${escapeHtml(channel ? monitoringChannelPhaseLabel(channel) : "Not mapped")}</dd></div>
+      <div><dt>Physical channel</dt><dd>${escapeHtml(channel?.physicalChannel || "Not mapped")}</dd></div>
+      <div><dt>Voltage</dt><dd>${escapeHtml(voltage)}</dd></div>
+      <div><dt>Current</dt><dd>${escapeHtml(current)}</dd></div>
+      <div><dt>Power</dt><dd>${escapeHtml(power)}</dd></div>
+      <div><dt>Temperature</dt><dd>${escapeHtml(temperature)}</dd></div>
+      <div><dt>Device</dt><dd>${escapeHtml(device?.name || "No monitor")}</dd></div>
+      <div><dt>Last update</dt><dd>${escapeHtml(channel?.updatedAt ? formatDateTime(channel.updatedAt) : "Not monitored")}</dd></div>
+    </dl>
+  `;
+}
+
+function syncMonitoringPhaseSelectors() {
+  const elements = monitoringElements();
+  const poleCount = Math.max(1, Number(elements.channelPoles?.value || 1));
+  elements.channelPhase2Wrap?.classList.toggle("hidden", poleCount < 2);
+  elements.channelPhase3Wrap?.classList.toggle("hidden", poleCount < 3);
+  if (elements.channelPhase2) elements.channelPhase2.disabled = poleCount < 2;
+  if (elements.channelPhase3) elements.channelPhase3.disabled = poleCount < 3;
+}
+
+function monitoringStateLabel(stateValue) {
+  const labels = {
+    energized: "Energized",
+    open: "Open",
+    "suspected-trip": "Suspected trip",
+    "upstream-power-loss": "Upstream phase loss",
+    "monitoring-offline": "Monitoring offline",
+    "maintenance-mode": "Maintenance mode",
+    disabled: "Disabled"
+  };
+  return labels[stateValue] || "Unknown";
+}
+
+function monitoringStatusClass(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+async function hashMonitoringApiKey(apiKey) {
+  const value = String(apiKey || "").trim();
+  if (!value) return "";
+  if (!window.crypto?.subtle) throw new Error("Secure browser crypto is required before saving an API key.");
+  const data = new TextEncoder().encode(value);
+  const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function generateMonitoringApiKey() {
+  const bytes = new Uint8Array(24);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    bytes.forEach((_, index) => { bytes[index] = Math.floor(Math.random() * 256); });
+  }
+  return `swm_${Array.from(bytes).map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+async function rotateMonitoringDeviceKey() {
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.generatedApiKey) elements.generatedApiKey.textContent = "Admin access is required to rotate monitoring keys.";
+    return;
+  }
+  const deviceId = String(elements.deviceId?.value || elements.channelDevice?.value || "");
+  const device = getMonitoringDevice(deviceId);
+  if (!device) {
+    if (elements.generatedApiKey) elements.generatedApiKey.textContent = "Choose or edit a saved device first.";
+    return;
+  }
+  const newKey = generateMonitoringApiKey();
+  device.apiKeyHash = await hashMonitoringApiKey(newKey);
+  device.apiKeyLast4 = newKey.slice(-4);
+  device.updatedAt = new Date().toISOString();
+  addMonitoringEvent({ deviceId: device.id, panelAssetId: device.panelAssetId, type: "api-key-rotated", message: `${device.name} API key was rotated.` });
+  saveState();
+  try {
+    await syncMonitoringDeviceToSupabase(device, newKey);
+  } catch (error) {
+    console.warn("Monitoring key cloud save failed", error);
+    if (elements.generatedApiKey) elements.generatedApiKey.textContent = `New API key, shown once: ${newKey}. Cloud save needs attention.`;
+    return;
+  }
+  render();
+  const nextElements = monitoringElements();
+  if (nextElements.generatedApiKey) {
+    nextElements.generatedApiKey.textContent = `New API key, shown once: ${newKey}`;
+  }
+}
+
+async function repairMonitoringCloudKey() {
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Admin access is required to repair monitoring keys.";
+    return;
+  }
+  const apiKey = String(elements.deviceApiKey?.value || "").trim();
+  const uid = String(elements.deviceUid?.value || "").trim();
+  const deviceId = String(elements.deviceId?.value || elements.channelDevice?.value || "");
+  const device = getMonitoringDevice(deviceId) || state.monitoringDevices.find((item) => normalizeMonitoringDevice(item)?.deviceUid === uid);
+  if (!uid && !device?.deviceUid) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Enter or edit the device UID first.";
+    return;
+  }
+  if (!apiKey || apiKey.length < 16) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Paste the ESP32 API key first. It must be at least 16 characters.";
+    return;
+  }
+  try {
+    if (device) {
+      await syncMonitoringDeviceToSupabase({
+        ...device,
+        deviceUid: uid || device.deviceUid,
+        apiKeyLast4: apiKey.slice(-4),
+        updatedAt: new Date().toISOString()
+      }, apiKey);
+      device.apiKeyHash = await hashMonitoringApiKey(apiKey);
+      device.apiKeyLast4 = apiKey.slice(-4);
+      device.updatedAt = new Date().toISOString();
+      saveState();
+    } else {
+      await setMonitoringDeviceKeyInSupabaseByUid(uid, apiKey);
+    }
+    if (elements.deviceStatus) {
+      elements.deviceStatus.textContent = `Cloud key repaired. ESP32 key must end in ${apiKey.slice(-4)}.`;
+    }
+    const nextElements = monitoringElements();
+    if (nextElements.generatedApiKey) nextElements.generatedApiKey.textContent = "";
+  } catch (error) {
+    console.warn("Monitoring cloud key repair failed", error);
+    if (elements.deviceStatus) {
+      const message = String(error?.message || "Unknown error");
+      elements.deviceStatus.textContent = message.includes("siteworks_monitoring_set_device_api_key_by_uid")
+        ? "Cloud key repair needs the new Supabase SQL file run first."
+        : `Cloud key repair failed: ${message}`;
+    }
+  }
+}
+
+async function handleMonitoringDeviceSubmit(form) {
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Admin access is required to save monitoring devices.";
+    return;
+  }
+  try {
+    const panel = getAsset(elements.devicePanel?.value);
+    if (!panel || !isElectricalPanelAsset(panel)) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "Choose an electrical panel first.";
+      return;
+    }
+    const uid = String(elements.deviceUid?.value || "").trim();
+    const name = String(elements.deviceName?.value || "").trim();
+    if (!uid || !name) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "Device UID and name are required.";
+      return;
+    }
+    const existingId = String(elements.deviceId?.value || "");
+    const duplicate = state.monitoringDevices.find(device => {
+      const normalized = normalizeMonitoringDevice(device);
+      return normalized?.deviceUid === uid && String(normalized?.id || "") !== existingId;
+    });
+    if (duplicate) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "That device UID is already assigned.";
+      return;
+    }
+    const now = new Date().toISOString();
+    const apiKey = String(elements.deviceApiKey?.value || "").trim();
+    if (apiKey && apiKey.length < 16) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "API key must be at least 16 characters for ESP32 cloud testing.";
+      return;
+    }
+    const device = existingId ? getMonitoringDevice(existingId) : {
+      id: makeId(),
+      createdAt: now,
+      onlineStatus: "offline",
+      sourcePhases: normalizeMonitoringSourcePhases()
+    };
+    if (!device) {
+      if (elements.deviceStatus) elements.deviceStatus.textContent = "Device could not be found for editing.";
+      return;
+    }
+    device.customerId = panel.customerId || panel.customer_id || "";
+    device.locationId = panel.locationId || panel.location_id || "";
+    device.panelAssetId = panel.id;
+    device.deviceUid = uid;
+    device.name = name;
+    device.model = String(elements.deviceModel?.value || "").trim();
+    device.firmwareVersion = String(elements.deviceFirmware?.value || "").trim();
+    device.heartbeatSeconds = Math.max(30, Number(elements.deviceHeartbeat?.value || MONITORING_DEFAULT_HEARTBEAT_SECONDS));
+    device.maintenanceMode = Boolean(elements.deviceMaintenance?.checked);
+    device.sourcePhaseChannels = monitoringEngine()?.normalizeSourcePhaseChannels
+      ? monitoringEngine().normalizeSourcePhaseChannels({
+        A: elements.sourcePhaseAChannel?.value || "",
+        B: elements.sourcePhaseBChannel?.value || "",
+        C: elements.sourcePhaseCChannel?.value || ""
+      })
+      : {
+        A: String(elements.sourcePhaseAChannel?.value || "").trim(),
+        B: String(elements.sourcePhaseBChannel?.value || "").trim(),
+        C: String(elements.sourcePhaseCChannel?.value || "").trim()
+      };
+    device.updatedAt = now;
+    if (apiKey) {
+      device.apiKeyHash = await hashMonitoringApiKey(apiKey);
+      device.apiKeyLast4 = apiKey.slice(-4);
+    }
+    if (!existingId) {
+      state.monitoringDevices.push(device);
+      addMonitoringEvent({ deviceId: device.id, panelAssetId: panel.id, type: "device-created", message: `${name} was added.` });
+    } else {
+      addMonitoringEvent({ deviceId: device.id, panelAssetId: panel.id, type: "device-updated", message: `${name} was updated.` });
+    }
+    addActivity("Monitoring device saved", `${device.name} assigned to ${panel.name}`);
+    const savedDeviceId = String(device.id || "");
+    saveState();
+    let cloudSaved = false;
+    try {
+      cloudSaved = await syncMonitoringDeviceToSupabase(device, apiKey);
+    } catch (error) {
+      console.warn("Monitoring device cloud save failed", error);
+      if (elements.deviceStatus) elements.deviceStatus.textContent = `Device saved locally, but cloud save failed: ${error?.message || "Unknown error"}`;
+    }
+    form.reset();
+    if (elements.deviceId) elements.deviceId.value = "";
+    render();
+    const nextElements = monitoringElements();
+    const savedDevices = visibleMonitoringDevices();
+    const savedDeviceIsVisible = savedDevices.some(item => String(item.id || "") === savedDeviceId);
+    if (savedDeviceIsVisible) {
+      if (nextElements.channelDevice) {
+        nextElements.channelDevice.value = savedDeviceId;
+        renderMonitoringCircuitOptions(savedDeviceId);
+      }
+      if (nextElements.simulatorDevice) nextElements.simulatorDevice.value = savedDeviceId;
+    }
+    if (nextElements.deviceStatus) {
+      nextElements.deviceStatus.textContent = savedDeviceIsVisible
+        ? cloudSaved
+          ? "Device saved to SiteWorks. It is ready for channel mapping and ESP32 testing."
+          : "Device saved locally. Cloud save will retry with the normal sync."
+        : "Device saved, but it is hidden by the current customer or location filter.";
+    }
+  } catch (error) {
+    console.error("Monitoring device save failed", error);
+    if (elements.deviceStatus) elements.deviceStatus.textContent = `Device save failed: ${error?.message || "Unknown error"}`;
+  }
+}
+
+async function handleMonitoringChannelSubmit(form) {
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.channelStatus) elements.channelStatus.textContent = "Admin access is required to map breaker channels.";
+    return;
+  }
+  try {
+  const device = normalizeMonitoringDevice(getMonitoringDevice(elements.channelDevice?.value));
+  if (!device) {
+    if (elements.channelStatus) elements.channelStatus.textContent = "Choose a device first.";
+    return;
+  }
+  const physicalChannel = String(elements.channelNumber?.value || "").trim();
+  const circuitNumber = String(elements.channelCircuit?.value || elements.channelCircuitManual?.value || physicalChannel || "").trim();
+  const schedulePoleCount = inferMonitoringPoleCountFromSchedule(getAsset(device.panelAssetId), circuitNumber);
+  const poleCount = Math.max(1, Math.min(3, Number(schedulePoleCount || elements.channelPoles?.value || 1)));
+  const sourcePhases = getMonitoringChannelSourcePhases(elements, poleCount);
+  if (!circuitNumber || !physicalChannel) {
+    if (elements.channelStatus) elements.channelStatus.textContent = "Circuit and channel are required.";
+    return;
+  }
+  const physicalChannels = expandMonitoringPhysicalChannels(physicalChannel, poleCount);
+  const physicalChannelList = physicalChannels.join(",");
+  const editingChannel = editingMonitoringChannelId ? getMonitoringChannel(editingMonitoringChannelId) : null;
+  const editingGroupId = editingChannel?.breakerGroupId || editingChannel?.id || "";
+  const duplicate = state.monitoringChannels.find(channel => {
+    const channelGroupId = channel.breakerGroupId || channel.id || "";
+    if (editingGroupId && channelGroupId === editingGroupId) return false;
+    return channel.deviceId === device.id && physicalChannels.includes(String(channel.physicalChannel || ""));
+  });
+  if (duplicate) {
+    if (elements.channelStatus) elements.channelStatus.textContent = "One of those physical channels is already mapped on this device.";
+    return;
+  }
+  const created = monitoringEngine()?.createChannelRecords
+    ? monitoringEngine().createChannelRecords({
+      deviceId: device.id,
+      panelAssetId: device.panelAssetId,
+      circuitNumber,
+      physicalChannel: physicalChannelList,
+      sourcePhases,
+      poleCount,
+      alarmDelaySeconds: Math.max(0, Number(elements.channelDelay?.value || MONITORING_DEFAULT_DELAY_SECONDS)),
+      monitoringMode: String(elements.channelMode?.value || "normal"),
+      criticality: String(elements.channelCriticality?.value || "normal")
+    }, { makeId })
+    : { ok: true, records: [{
+      id: makeId(),
+      deviceId: device.id,
+      panelAssetId: device.panelAssetId,
+      circuitNumber,
+      physicalChannel: physicalChannelList,
+      sourcePhase: sourcePhases[0] || "A",
+      sourcePhases,
+      poleCount,
+      alarmDelaySeconds: Math.max(0, Number(elements.channelDelay?.value || MONITORING_DEFAULT_DELAY_SECONDS)),
+      monitoringMode: String(elements.channelMode?.value || "normal"),
+      criticality: String(elements.channelCriticality?.value || "normal"),
+      lastRawState: null,
+      lastDerivedState: "open",
+      firstAbsentAt: "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }] };
+  if (!created.ok) {
+    if (elements.channelStatus) elements.channelStatus.textContent = created.message || "Channel mapping is incomplete.";
+    return;
+  }
+  const replacedChannels = editingGroupId
+    ? state.monitoringChannels.filter(channel => (channel.breakerGroupId || channel.id || "") === editingGroupId)
+    : [];
+  if (replacedChannels.length) {
+    state.monitoringChannels = state.monitoringChannels.filter(channel => (channel.breakerGroupId || channel.id || "") !== editingGroupId);
+  }
+  state.monitoringChannels.push(...created.records);
+  created.records.forEach(channel => {
+    addMonitoringEvent({
+      deviceId: device.id,
+      channelId: channel.id,
+      panelAssetId: device.panelAssetId,
+      circuitNumber: channel.circuitNumber || circuitNumber,
+      breakerGroupId: channel.breakerGroupId || "",
+      type: replacedChannels.length ? "channel-updated" : "channel-mapped",
+      message: `Channel ${channel.physicalChannel} mapped to circuit ${channel.circuitNumber || circuitNumber}.`
+    });
+  });
+  addActivity(replacedChannels.length ? "Monitoring channel updated" : "Monitoring channel mapped", `${device.name} channel ${physicalChannelList} -> circuit ${circuitNumber}`);
+  const replacedChannelIds = replacedChannels.map(channel => channel.id).filter(Boolean);
+  editingMonitoringChannelId = "";
+  form.reset();
+  if (elements.channelDevice) elements.channelDevice.value = device.id;
+  saveState();
+  let cloudSaved = false;
+  try {
+    if (replacedChannelIds.length) await deleteStructuredRows("monitoring_channels", "id", replacedChannelIds);
+    cloudSaved = await syncMonitoringChannelsToSupabase(created.records);
+  } catch (error) {
+    console.warn("Monitoring channel cloud save failed", error);
+  }
+  render();
+  const nextElements = monitoringElements();
+  if (nextElements.channelStatus) {
+    nextElements.channelStatus.textContent = cloudSaved
+      ? (replacedChannels.length ? "Channel updated in SiteWorks." : "Channel mapped to SiteWorks.")
+      : (replacedChannels.length ? "Channel updated locally. Cloud save will retry with the normal sync." : "Channel mapped locally. Cloud save will retry with the normal sync.");
+  }
+  } catch (error) {
+    console.error("Monitoring channel save failed", error);
+    if (elements.channelStatus) elements.channelStatus.textContent = `Channel save failed: ${error?.message || "Unknown error"}`;
+  }
+}
+
+function handleMonitoringSimulatorSubmit(form) {
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Admin access is required to use the simulator.";
+    return;
+  }
+  try {
+  const device = normalizeMonitoringDevice(getMonitoringDevice(elements.simulatorDevice?.value));
+  if (!device) {
+    if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Choose a device first.";
+    return;
+  }
+  const formData = new FormData(form);
+  const mappedChannels = monitoringChannelsForDevice(device.id);
+  if (!mappedChannels.length) {
+    if (elements.simulatorStatus) elements.simulatorStatus.textContent = "Map at least one breaker channel for this device first.";
+    return;
+  }
+  const closedChannels = String(formData.get("closedChannels") || "")
+    .split(/[\s,]+/)
+    .map(value => value.trim().toLowerCase())
+    .filter(Boolean);
+  ingestMonitoringStatus({
+    deviceId: device.id,
+    deviceUid: device.deviceUid,
+    timestamp: new Date().toISOString(),
+    healthStatus: "ok",
+    sourcePhases: {
+      A: formData.has("sourceA"),
+      B: formData.has("sourceB"),
+      C: formData.has("sourceC")
+    },
+    channels: mappedChannels.map(channel => ({
+      channel: channel.physicalChannel,
+      closed: closedChannels.includes(String(channel.physicalChannel).toLowerCase())
+    }))
+  }, { simulated: true });
+  const successMessage = `Simulator status applied to ${mappedChannels.length} channel${mappedChannels.length === 1 ? "" : "s"}.`;
+  if (elements.simulatorStatus) elements.simulatorStatus.textContent = successMessage;
+  saveState();
+  render();
+  const nextElements = monitoringElements();
+  if (nextElements.simulatorStatus) nextElements.simulatorStatus.textContent = successMessage;
+  } catch (error) {
+    console.error("Monitoring simulator failed", error);
+    if (elements.simulatorStatus) elements.simulatorStatus.textContent = `Simulator failed: ${error?.message || "Unknown error"}`;
+  }
+}
+
+function ingestMonitoringStatus(payload, options = {}) {
+  ensureMonitoringCollections();
+  if (monitoringEngine()?.ingestStatus) {
+    return monitoringEngine().ingestStatus(state, payload, { ...options, makeId, now: payload.timestamp || new Date().toISOString() });
+  }
+  const device = state.monitoringDevices.find(item => item.deviceUid === payload.deviceUid || item.id === payload.deviceId);
+  if (!device) return { ok: false, message: "Unknown monitoring device." };
+  const now = payload.timestamp || new Date().toISOString();
+  device.lastSeenAt = now;
+  device.onlineStatus = "online";
+  device.healthStatus = payload.healthStatus || "ok";
+  device.sourcePhases = normalizeMonitoringSourcePhases(payload.sourcePhases);
+  device.mainVoltage = payload.mainVoltage ?? payload.main_voltage ?? payload.voltage ?? payload.lineVoltage ?? payload.line_voltage ?? device.mainVoltage ?? "";
+  device.mainCurrent = payload.mainCurrent ?? payload.main_current ?? payload.current ?? payload.loadCurrent ?? payload.load_current ?? payload.amps ?? payload.amperage ?? device.mainCurrent ?? "";
+  device.updatedAt = new Date().toISOString();
+  const channelStates = new Map((payload.channels || []).map(channel => [String(channel.channel), Boolean(channel.closed)]));
+  monitoringChannelsForDevice(device.id).forEach(channel => {
+    const rawClosed = channelStates.has(String(channel.physicalChannel)) ? channelStates.get(String(channel.physicalChannel)) : channel.lastRawState;
+    const previousRaw = channel.lastRawState;
+    const previousDerived = channel.lastDerivedState;
+    channel.lastRawState = rawClosed;
+    channel.lastDerivedState = deriveMonitoringChannelState(device, channel, rawClosed, now);
+    channel.updatedAt = new Date().toISOString();
+    if (previousRaw !== channel.lastRawState || previousDerived !== channel.lastDerivedState) {
+      addMonitoringEvent({
+        deviceId: device.id,
+        channelId: channel.id,
+        panelAssetId: channel.panelAssetId,
+        circuitNumber: channel.circuitNumber,
+        type: "state-change",
+        state: channel.lastDerivedState,
+        message: `Circuit ${channel.circuitNumber} is ${monitoringStateLabel(channel.lastDerivedState)}.`,
+        data: { simulated: Boolean(options.simulated), rawClosed }
+      });
+    }
+    if (channel.lastDerivedState === "suspected-trip") {
+      ensureMonitoringAlert(device, channel);
+    } else if (["energized", "maintenance-mode", "disabled", "upstream-power-loss"].includes(channel.lastDerivedState)) {
+      resolveMonitoringAlertsForChannel(channel.id, `Circuit moved to ${monitoringStateLabel(channel.lastDerivedState)}.`);
+    }
+  });
+  addMonitoringEvent({ deviceId: device.id, panelAssetId: device.panelAssetId, type: options.simulated ? "simulator-status" : "device-status", message: `${device.name} reported status.` });
+  return { ok: true };
+}
+
+function deriveMonitoringChannelState(device, channel, rawClosed, timestamp) {
+  if (monitoringEngine()?.deriveChannelState) return monitoringEngine().deriveChannelState(device, channel, rawClosed, timestamp);
+  if (device.maintenanceMode || channel.monitoringMode === "maintenance") return "maintenance-mode";
+  if (channel.monitoringMode === "disabled") return "disabled";
+  if (device.onlineStatus === "offline") return "monitoring-offline";
+  const sourcePhases = getMonitoringChannelPhaseList(channel);
+  if (sourcePhases.some(phase => device.sourcePhases?.[phase] === false)) {
+    channel.firstAbsentAt = "";
+    return "upstream-power-loss";
+  }
+  if (rawClosed === true) {
+    channel.firstAbsentAt = "";
+    return "energized";
+  }
+  if (!channel.firstAbsentAt) channel.firstAbsentAt = timestamp;
+  const elapsedSeconds = (new Date(timestamp).getTime() - new Date(channel.firstAbsentAt).getTime()) / 1000;
+  return elapsedSeconds >= Number(channel.alarmDelaySeconds || 0) ? "suspected-trip" : "open";
+}
+
+function runMonitoringOfflineCheck(shouldSave = true) {
+  if (!state?.monitoringDevices) return;
+  ensureMonitoringCollections();
+  if (monitoringEngine()?.runOfflineCheck) {
+    const result = monitoringEngine().runOfflineCheck(state, { makeId, now: new Date().toISOString() });
+    if (result.changed && shouldSave) {
+      saveStateQuietly();
+      render();
+    }
+    return;
+  }
+  let changed = false;
+  const now = Date.now();
+  state.monitoringDevices.forEach(device => {
+    if (!device.lastSeenAt) return;
+    const heartbeatMs = Number(device.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS) * 1000;
+    if (device.onlineStatus !== "offline" && now - new Date(device.lastSeenAt).getTime() > heartbeatMs + 60000) {
+      device.onlineStatus = "offline";
+      device.updatedAt = new Date().toISOString();
+      monitoringChannelsForDevice(device.id).forEach(channel => {
+        channel.lastDerivedState = "monitoring-offline";
+        channel.updatedAt = device.updatedAt;
+      });
+      addMonitoringEvent({ deviceId: device.id, panelAssetId: device.panelAssetId, type: "device-offline", state: "monitoring-offline", message: `${device.name} is offline.` });
+      changed = true;
+    }
+  });
+  if (changed && shouldSave) {
+    saveStateQuietly();
+    render();
+  }
+}
+
+function addMonitoringEvent(event) {
+  ensureMonitoringCollections();
+  state.monitoringEvents.unshift({
+    id: event.id || makeId(),
+    deviceId: event.deviceId || "",
+    channelId: event.channelId || "",
+    panelAssetId: event.panelAssetId || "",
+    circuitNumber: event.circuitNumber || "",
+    breakerGroupId: event.breakerGroupId || event.breaker_group_id || "",
+    type: event.type || "event",
+    state: event.state || "",
+    message: event.message || "",
+    data: event.data || {},
+    createdAt: event.createdAt || new Date().toISOString()
+  });
+  state.monitoringEvents = state.monitoringEvents.slice(0, 1000);
+}
+
+function ensureMonitoringAlert(device, channel) {
+  ensureMonitoringCollections();
+  const existing = state.monitoringAlerts.find(alert => alert.channelId === channel.id && alert.status !== "resolved");
+  if (existing) return existing;
+  const alert = {
+    id: makeId(),
+    deviceId: device.id,
+    channelId: channel.id,
+    panelAssetId: channel.panelAssetId,
+    circuitNumber: channel.circuitNumber,
+    breakerGroupId: channel.breakerGroupId || "",
+    status: "active",
+    severity: channel.criticality || "normal",
+    title: `Suspected trip on circuit ${channel.circuitNumber}`,
+    message: `${device.name} reports no breaker output while phase ${channel.sourcePhase} is healthy.`,
+    createdAt: new Date().toISOString(),
+    acknowledgedAt: "",
+    resolvedAt: "",
+    durationSeconds: null,
+    workOrderId: ""
+  };
+  state.monitoringAlerts.unshift(alert);
+  addMonitoringEvent({ deviceId: device.id, channelId: channel.id, panelAssetId: channel.panelAssetId, circuitNumber: channel.circuitNumber, breakerGroupId: channel.breakerGroupId || "", type: "alert-created", state: "suspected-trip", message: alert.title });
+  addActivity("Breaker alert created", alert.title);
+  return alert;
+}
+
+function resolveMonitoringAlertsForChannel(channelId, message) {
+  state.monitoringAlerts
+    .filter(alert => alert.channelId === channelId && alert.status !== "resolved")
+    .forEach(alert => {
+      alert.status = "resolved";
+      alert.resolvedAt = new Date().toISOString();
+      const started = new Date(alert.createdAt || alert.resolvedAt).getTime();
+      const ended = new Date(alert.resolvedAt).getTime();
+      alert.durationSeconds = Number.isFinite(started) && Number.isFinite(ended) ? Math.max(0, Math.round((ended - started) / 1000)) : null;
+      addMonitoringEvent({ deviceId: alert.deviceId, channelId, panelAssetId: alert.panelAssetId, circuitNumber: alert.circuitNumber, breakerGroupId: alert.breakerGroupId || "", type: "alert-resolved", message, data: { durationSeconds: alert.durationSeconds } });
+    });
+}
+
+function updateMonitoringAlertStatus(alertId, status) {
+  const alert = state.monitoringAlerts.find(item => item.id === alertId);
+  if (!alert) return;
+  const now = new Date().toISOString();
+  if (status === "acknowledged") {
+    alert.status = "acknowledged";
+    alert.acknowledgedAt = now;
+  } else if (status === "resolved") {
+    alert.status = "resolved";
+    alert.resolvedAt = now;
+    const started = new Date(alert.createdAt || now).getTime();
+    const ended = new Date(now).getTime();
+    alert.durationSeconds = Number.isFinite(started) && Number.isFinite(ended) ? Math.max(0, Math.round((ended - started) / 1000)) : null;
+  }
+  addMonitoringEvent({ deviceId: alert.deviceId, channelId: alert.channelId, panelAssetId: alert.panelAssetId, circuitNumber: alert.circuitNumber, breakerGroupId: alert.breakerGroupId || "", type: `alert-${status}`, message: `${alert.title} ${status}.`, data: status === "resolved" ? { durationSeconds: alert.durationSeconds } : {} });
+  addActivity("Breaker alert updated", `${alert.title} ${status}`);
+  saveState();
+  render();
+}
+
+function createMonitoringWorkOrder(alertId) {
+  const alert = state.monitoringAlerts.find(item => item.id === alertId);
+  const panel = alert ? getAsset(alert.panelAssetId) : null;
+  if (!alert || !panel) return;
+  const workOrder = {
+    id: makeId(),
+    issueNumber: nextIssueNumber(),
+    title: alert.title,
+    status: "Open",
+    priority: alert.severity === "critical" ? "High" : "Medium",
+    customerId: panel.customerId,
+    customerName: getCustomer(panel.customerId)?.name || "",
+    locationId: panel.locationId,
+    locationName: getLocation(panel.locationId)?.name || "",
+    assetId: panel.id,
+    assetName: panel.name,
+    areaName: "",
+    source: "breaker-monitoring",
+    notes: alert.message,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    dueAt: "",
+    history: []
+  };
+  state.workOrders.unshift(workOrder);
+  addWorkOrderHistory(workOrder, "Created", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
+  alert.workOrderId = workOrder.id;
+  alert.status = alert.status === "active" ? "acknowledged" : alert.status;
+  alert.acknowledgedAt = alert.acknowledgedAt || new Date().toISOString();
+  addMonitoringEvent({ deviceId: alert.deviceId, channelId: alert.channelId, panelAssetId: alert.panelAssetId, circuitNumber: alert.circuitNumber, type: "work-order-created", message: `${formatIssueNumber(workOrder)} created from breaker alert.` });
+  addActivity("Breaker work order created", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
+  saveState();
+  render();
+}
+
+function loadMonitoringDeviceForm(deviceId) {
+  const device = normalizeMonitoringDevice(getMonitoringDevice(deviceId));
+  const elements = monitoringElements();
+  if (!device || !elements.deviceForm) return;
+  elements.deviceId.value = device.id;
+  elements.devicePanel.value = device.panelAssetId || "";
+  elements.deviceUid.value = device.deviceUid || "";
+  elements.deviceName.value = device.name || "";
+  elements.deviceModel.value = device.model || "";
+  elements.deviceFirmware.value = device.firmwareVersion || "";
+  elements.deviceHeartbeat.value = device.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS;
+  elements.deviceMaintenance.checked = Boolean(device.maintenanceMode);
+  elements.deviceApiKey.value = "";
+  if (elements.sourcePhaseAChannel) elements.sourcePhaseAChannel.value = device.sourcePhaseChannels?.A || "";
+  if (elements.sourcePhaseBChannel) elements.sourcePhaseBChannel.value = device.sourcePhaseChannels?.B || "";
+  if (elements.sourcePhaseCChannel) elements.sourcePhaseCChannel.value = device.sourcePhaseChannels?.C || "";
+  if (elements.generatedApiKey) elements.generatedApiKey.textContent = "";
+  elements.deviceStatus.textContent = "Editing device. Enter a new API key only if you want to rotate it.";
+  elements.deviceForm.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function deleteMonitoringDevice(deviceId) {
+  if (!canManageMonitoringSetup()) return;
+  const device = getMonitoringDevice(deviceId);
+  if (!device || !window.confirm(`Delete monitoring device "${device.name}" and its channel mappings?`)) return;
+  state.monitoringDevices = state.monitoringDevices.filter(item => item.id !== deviceId);
+  state.monitoringChannels = state.monitoringChannels.filter(item => item.deviceId !== deviceId);
+  state.monitoringAlerts = state.monitoringAlerts.filter(item => item.deviceId !== deviceId);
+  addActivity("Monitoring device deleted", device.name);
+  saveState();
+  render();
+}
+
+function deleteMonitoringChannel(channelId) {
+  if (!canManageMonitoringSetup()) return;
+  const channel = getMonitoringChannel(channelId);
+  if (!channel) return;
+  state.monitoringChannels = state.monitoringChannels.filter(item => item.id !== channelId);
+  addMonitoringEvent({ deviceId: channel.deviceId, channelId, panelAssetId: channel.panelAssetId, circuitNumber: channel.circuitNumber, type: "channel-removed", message: `Circuit ${channel.circuitNumber} monitoring was removed.` });
+  addActivity("Monitoring channel removed", `Circuit ${channel.circuitNumber}`);
+  saveState();
+  render();
+}
+
+function loadMonitoringChannelForm(channelId) {
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.channelStatus) elements.channelStatus.textContent = "Admin access is required to edit breaker channels.";
+    return;
+  }
+  const channel = getMonitoringChannel(channelId);
+  if (!channel) return;
+  const groupId = channel.breakerGroupId || channel.id || "";
+  const groupChannels = state.monitoringChannels
+    .filter((item) => (item.breakerGroupId || item.id || "") === groupId)
+    .sort((a, b) => Number(a.poleIndex || 1) - Number(b.poleIndex || 1));
+  const members = groupChannels.length ? groupChannels : [channel];
+  const device = normalizeMonitoringDevice(getMonitoringDevice(channel.deviceId));
+  editingMonitoringChannelId = channel.id;
+  if (elements.channelDevice && device?.id) elements.channelDevice.value = device.id;
+  renderMonitoringCircuitOptions(device?.id || channel.deviceId);
+  const circuitNumber = channel.circuitNumber || members[0]?.circuitNumber || "";
+  if (elements.channelCircuit) {
+    const hasOption = [...elements.channelCircuit.options].some((option) => option.value === circuitNumber);
+    elements.channelCircuit.value = hasOption ? circuitNumber : "";
+    if (elements.channelCircuitManual && !hasOption) elements.channelCircuitManual.value = circuitNumber;
+  }
+  if (elements.channelNumber) elements.channelNumber.value = members.map((member) => member.physicalChannel).filter(Boolean).join(",");
+  const poleCount = Math.max(1, Math.min(3, Number(channel.breakerPoleCount || members.length || channel.poleCount || 1)));
+  if (elements.channelPoles) elements.channelPoles.value = String(poleCount);
+  const phases = members.map((member) => monitoringChannelPhaseLabel(member).split("/")[0]).filter(Boolean);
+  if (elements.channelPhase) elements.channelPhase.value = phases[0] || "A";
+  if (elements.channelPhase2) elements.channelPhase2.value = phases[1] || "B";
+  if (elements.channelPhase3) elements.channelPhase3.value = phases[2] || "C";
+  if (elements.channelDelay) elements.channelDelay.value = channel.alarmDelaySeconds ?? MONITORING_DEFAULT_DELAY_SECONDS;
+  if (elements.channelMode) elements.channelMode.value = channel.monitoringMode || "normal";
+  if (elements.channelCriticality) elements.channelCriticality.value = channel.criticality || "normal";
+  syncMonitoringPhaseSelectors();
+  const submitButton = elements.channelForm?.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.textContent = "Update Channel";
+  if (elements.channelStatus) elements.channelStatus.textContent = "Editing channel. Update the fields, then save.";
+  elements.channelForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderMonitoring() {
+  if (!currentUser) return;
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  if (!elements.livePanel) return;
+  const canSetupMonitoring = canManageMonitoringSetup();
+  if (elements.setupDrawer) {
+    elements.setupDrawer.classList.toggle("hidden", !canSetupMonitoring);
+    if (!canSetupMonitoring) elements.setupDrawer.open = false;
+  }
+  const panels = allElectricalPanelAssetsForMonitoring();
+  const hasCustomerScope = Boolean(selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS);
+  const panelOptions = panels.length ? panels.map(panel => {
+    const locationId = panel.locationId || panel.location_id || "";
+    return `<option value="${escapeHtml(panel.id)}">${escapeHtml(panel.name)} - ${escapeHtml(getLocation(locationId)?.name || "Unknown location")}</option>`;
+  }).join("") : `<option value="">${hasCustomerScope ? "No electrical panels for this customer" : "Choose a customer first"}</option>`;
+  if (elements.devicePanel && elements.devicePanel.innerHTML !== panelOptions) elements.devicePanel.innerHTML = panelOptions;
+  if (elements.devicePanel) elements.devicePanel.disabled = !hasCustomerScope || !panels.length;
+  const devices = visibleMonitoringDevices();
+  const selectablePanels = monitoringSelectablePanels(devices);
+  if (!selectedMonitoringPanelId || !selectablePanels.some(panel => String(panel.id || "") === String(selectedMonitoringPanelId))) {
+    selectedMonitoringPanelId = selectablePanels[0]?.id || "";
+  }
+  renderMonitoringPanelSelect(selectablePanels);
+  const selectedDevices = selectedMonitoringPanelId
+    ? devices.filter(device => String(device.panelAssetId || "") === String(selectedMonitoringPanelId))
+    : devices;
+  const deviceOptions = devices.map(device => {
+    const panel = getAsset(device.panelAssetId);
+    return `<option value="${escapeHtml(device.id)}">${escapeHtml(device.name)} - ${escapeHtml(panel?.name || "Panel")}</option>`;
+  }).join("");
+  const selectedChannelDevice = elements.channelDevice?.value || "";
+  const selectedSimulatorDevice = elements.simulatorDevice?.value || "";
+  if (elements.channelDevice) {
+    elements.channelDevice.innerHTML = deviceOptions || `<option value="">Add a device first</option>`;
+    const channelDeviceStillVisible = devices.some(device => String(device.id || "") === String(selectedChannelDevice));
+    elements.channelDevice.value = channelDeviceStillVisible ? selectedChannelDevice : (devices[0]?.id || "");
+  }
+  if (elements.simulatorDevice) {
+    elements.simulatorDevice.innerHTML = deviceOptions || `<option value="">Add a device first</option>`;
+    const simulatorDeviceStillVisible = devices.some(device => String(device.id || "") === String(selectedSimulatorDevice));
+    elements.simulatorDevice.value = simulatorDeviceStillVisible ? selectedSimulatorDevice : (devices[0]?.id || "");
+  }
+  renderMonitoringCircuitOptions(elements.channelDevice?.value || devices[0]?.id || "");
+  if (!editingMonitoringChannelId) applyMonitoringCircuitScheduleDefaults();
+  syncMonitoringPhaseSelectors();
+  const channelSubmitButton = elements.channelForm?.querySelector('button[type="submit"]');
+  if (channelSubmitButton) channelSubmitButton.textContent = editingMonitoringChannelId ? "Update Channel" : "Map Channel";
+  renderMonitoringDeviceList(devices);
+  renderMonitoringChannelList(devices, elements.channelDevice?.value || devices[0]?.id || "");
+  renderMonitoringDeviceDetails(devices, elements.channelDevice?.value || devices[0]?.id || "");
+  renderMonitoringSimulatorHistory(devices, elements.simulatorDevice?.value || devices[0]?.id || "");
+  renderMonitoringLivePanel(selectedDevices);
+  renderMonitoringAlerts(selectedDevices);
+  renderMonitoringEvents(selectedDevices);
+}
+
+function monitoringSelectablePanels(devices = []) {
+  const panelsById = new Map();
+  devices.forEach(device => {
+    const panel = getAsset(device.panelAssetId);
+    if (!panel?.id) return;
+    panelsById.set(panel.id, panel);
+  });
+  return [...panelsById.values()].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+function renderMonitoringPanelSelect(panels = []) {
+  const elements = monitoringElements();
+  if (!elements.panelSelect) return;
+  elements.panelSelect.innerHTML = panels.length
+    ? panels.map(panel => {
+      const locationName = getLocation(panel.locationId || panel.location_id || "")?.name || "Unknown location";
+      return `<option value="${escapeHtml(panel.id)}">${escapeHtml(panel.name || "Panel")} - ${escapeHtml(locationName)}</option>`;
+    }).join("")
+    : `<option value="">Add a monitoring device first</option>`;
+  elements.panelSelect.value = selectedMonitoringPanelId || "";
+}
+
+function renderMonitoringCircuitOptions(deviceId) {
+  const elements = monitoringElements();
+  const device = normalizeMonitoringDevice(getMonitoringDevice(deviceId));
+  const panel = device ? getAsset(device.panelAssetId) : null;
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const circuits = Array.isArray(schedule.circuits) ? schedule.circuits : [];
+  if (!elements.channelCircuit) return;
+  const selectedCircuit = String(elements.channelCircuit.value || "").trim();
+  if (!circuits.length && !elements.channelCircuitManualWrap && elements.channelCircuit.insertAdjacentHTML) {
+    const label = document.createElement("label");
+    label.id = "monitoringChannelCircuitManualWrap";
+    label.textContent = "Circuit number";
+    const input = document.createElement("input");
+    input.id = "monitoringChannelCircuitManual";
+    input.placeholder = "1";
+    label.appendChild(input);
+    elements.channelCircuit.closest("label")?.after(label);
+    elements.channelCircuitManualWrap = label;
+    elements.channelCircuitManual = input;
+  }
+  elements.channelCircuit.innerHTML = circuits.length
+    ? circuits.map(circuit => {
+        const cct = String(circuit.cct || circuit.circuit || circuit.number || "");
+        const label = [cct, panelCircuitLoadText(circuit) || circuit.description || circuit.loadServed || ""].filter(Boolean).join(" - ");
+        return `<option value="${escapeHtml(cct)}">${escapeHtml(label || cct)}</option>`;
+      }).join("")
+    : `<option value="">Manual circuit entry or use physical channel</option>`;
+  if (selectedCircuit && [...elements.channelCircuit.options].some((option) => option.value === selectedCircuit)) {
+    elements.channelCircuit.value = selectedCircuit;
+  }
+  elements.channelCircuit.disabled = !circuits.length;
+  elements.channelCircuitManualWrap?.classList.toggle("hidden", Boolean(circuits.length));
+  if (elements.channelCircuitManual) {
+    elements.channelCircuitManual.disabled = Boolean(circuits.length);
+    elements.channelCircuitManual.required = !circuits.length;
+    if (circuits.length) elements.channelCircuitManual.value = "";
+  }
+}
+
+function renderMonitoringDeviceList(devices) {
+  const elements = monitoringElements();
+  elements.deviceList.innerHTML = devices.length ? devices.map(device => {
+    const panel = getAsset(device.panelAssetId);
+    const status = device.onlineStatus || "offline";
+    return `
+      <div class="monitoring-record">
+        <div>
+          <h4>${escapeHtml(device.name)}</h4>
+          <p>${escapeHtml(panel?.name || "Panel")} | UID ${escapeHtml(device.deviceUid || "Not set")}</p>
+          <p>Last seen: ${device.lastSeenAt ? formatDateTime(device.lastSeenAt) : "Never"} | Firmware ${escapeHtml(device.firmwareVersion || "Unknown")}</p>
+        </div>
+        <div class="monitoring-record-actions">
+          <span class="monitoring-status-pill ${monitoringStatusClass(status)}">${escapeHtml(status)}</span>
+          <button type="button" data-monitoring-edit-device="${escapeHtml(device.id)}">Edit</button>
+          <button type="button" data-monitoring-delete-device="${escapeHtml(device.id)}">Delete</button>
+        </div>
+      </div>`;
+  }).join("") : `<p class="muted">No monitoring devices for this view yet.</p>`;
+}
+
+function renderMonitoringChannelList(devices, selectedDeviceId = "") {
+  const elements = monitoringElements();
+  const deviceIds = new Set(devices.map(device => String(device.id)));
+  const selectedId = String(selectedDeviceId || "");
+  const channels = state.monitoringChannels.filter(channel => {
+    const channelDeviceId = String(channel.deviceId || channel.device_id || "");
+    if (!deviceIds.has(channelDeviceId)) return false;
+    return !selectedId || channelDeviceId === selectedId;
+  });
+  elements.channelList.innerHTML = channels.length ? channels.map(channel => {
+    const device = getMonitoringDevice(channel.deviceId);
+    return `
+      <div class="monitoring-record">
+        <div>
+          <h4>${escapeHtml(device?.name || "Device")} channel ${escapeHtml(channel.physicalChannel)}</h4>
+          <p>Circuit ${escapeHtml(channel.circuitNumber)} | Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${escapeHtml(monitoringChannelPhaseLabel(channel))} | ${escapeHtml(channel.poleCount)} pole</p>
+          <p>${escapeHtml(channel.monitoringMode)} | ${escapeHtml(channel.criticality)} | ${escapeHtml(channel.alarmDelaySeconds)}s delay</p>
+        </div>
+        <div class="monitoring-record-actions">
+          <span class="monitoring-status-pill ${monitoringStatusClass(channel.lastDerivedState)}">${escapeHtml(monitoringStateLabel(channel.lastDerivedState))}</span>
+          <button type="button" data-monitoring-edit-channel="${escapeHtml(channel.id)}">Edit</button>
+          <button type="button" data-monitoring-delete-channel="${escapeHtml(channel.id)}">Remove</button>
+        </div>
+      </div>`;
+  }).join("") : `<p class="muted">No mapped breaker channels for this device yet.</p>`;
+}
+
+function renderMonitoringDeviceDetails(devices, selectedDeviceId = "") {
+  const elements = monitoringElements();
+  if (!elements.deviceDetails) return;
+  const device = normalizeMonitoringDevice(devices.find(item => String(item.id || "") === String(selectedDeviceId)) || devices[0]);
+  if (!device) {
+    elements.deviceDetails.innerHTML = `<p class="muted">Select a device to see details.</p>`;
+    return;
+  }
+  const panel = getAsset(device.panelAssetId);
+  const channels = monitoringChannelsForDevice(device.id);
+  const recentPayloads = (device.rawPayloads || []).slice(0, 5);
+  const recentErrors = (device.recentErrors || []).slice(0, 5);
+  const sourceMap = device.sourcePhaseChannels || {};
+  elements.deviceDetails.innerHTML = `
+    <details class="monitoring-detail-drawer" open>
+      <summary>Device Details</summary>
+      <div class="monitoring-detail-grid">
+        <div><span>Device UID</span><strong>${escapeHtml(device.deviceUid || "Not set")}</strong></div>
+        <div><span>State</span><strong>${escapeHtml(device.onlineStatus || "offline")}</strong></div>
+        <div><span>Last seen</span><strong>${escapeHtml(device.lastSeenAt ? formatDateTime(device.lastSeenAt) : "Never")}</strong></div>
+        <div><span>Firmware</span><strong>${escapeHtml(device.firmwareVersion || "Unknown")}</strong></div>
+        <div><span>Heartbeat</span><strong>${escapeHtml(device.heartbeatSeconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS)} seconds</strong></div>
+        <div><span>Assigned panel</span><strong>${escapeHtml(panel?.name || "Panel")}</strong></div>
+      </div>
+      <div class="monitoring-detail-block">
+        <span>Source-phase configuration</span>
+        <p>A: ${escapeHtml(sourceMap.A || "API field")} | B: ${escapeHtml(sourceMap.B || "API field")} | C: ${escapeHtml(sourceMap.C || "API field")}</p>
+      </div>
+      <div class="monitoring-detail-block">
+        <span>Mapped channels</span>
+        ${channels.length ? channels.map(channel => `<p>${escapeHtml(channel.physicalChannel)}: Circuit ${escapeHtml(channel.circuitNumber)} | Phase ${escapeHtml(monitoringChannelPhaseLabel(channel))}${channel.breakerGroupId ? ` | Group ${escapeHtml(channel.breakerGroupId)}` : ""}</p>`).join("") : `<p>No mapped channels.</p>`}
+      </div>
+      <div class="monitoring-detail-block">
+        <span>Recent raw payloads</span>
+        ${recentPayloads.length ? recentPayloads.map(item => `<pre>${escapeHtml(JSON.stringify(item.payload || item, null, 2))}</pre>`).join("") : `<p>No raw payloads yet.</p>`}
+      </div>
+      <div class="monitoring-detail-block">
+        <span>Recent errors</span>
+        ${recentErrors.length ? recentErrors.map(error => `<p>${escapeHtml(error.message || error)}</p>`).join("") : `<p>No recent errors.</p>`}
+      </div>
+    </details>
+  `;
+}
+
+function renderMonitoringSimulatorHistory(devices, selectedDeviceId = "") {
+  const elements = monitoringElements();
+  if (!elements.simulatorHistory) return;
+  const deviceIds = new Set(devices.map(device => String(device.id || "")));
+  const deviceId = String(selectedDeviceId || "");
+  const matchesDevice = (item) => deviceId ? String(item.deviceId || "") === deviceId : deviceIds.has(String(item.deviceId || ""));
+  const events = state.monitoringEvents.filter(matchesDevice).slice(0, 8);
+  const alerts = state.monitoringAlerts.filter(matchesDevice).slice(0, 5);
+  elements.simulatorHistory.innerHTML = `
+    <details class="monitoring-detail-drawer" open>
+      <summary>Simulator Event and Alarm History</summary>
+      <div class="monitoring-detail-block">
+        <span>Recent alarms</span>
+        ${alerts.length ? alerts.map(alert => `<p>${escapeHtml(alert.title)} | ${escapeHtml(alert.status)}${alert.durationSeconds !== null && alert.durationSeconds !== undefined ? ` | ${escapeHtml(alert.durationSeconds)}s` : ""}</p>`).join("") : `<p>No recent alarms.</p>`}
+      </div>
+      <div class="monitoring-detail-block">
+        <span>Recent events</span>
+        ${events.length ? events.map(event => `<p>${escapeHtml(formatDateTime(event.createdAt))} | ${escapeHtml(event.type)} | ${escapeHtml(event.message)}</p>`).join("") : `<p>No recent events.</p>`}
+      </div>
+    </details>
+  `;
+}
+
+function renderMonitoringLivePanel(devices) {
+  const elements = monitoringElements();
+  elements.breakerDetail?.classList.add("hidden");
+  if (elements.breakerDetail) elements.breakerDetail.innerHTML = "";
+  const deviceIds = new Set(devices.map(device => String(device.id)));
+  const channels = state.monitoringChannels.filter(channel => deviceIds.has(String(channel.deviceId || channel.device_id || "")));
+  const panel = selectedMonitoringPanelId
+    ? getAsset(selectedMonitoringPanelId)
+    : getAsset(devices[0]?.panelAssetId || channels[0]?.panelAssetId);
+  if (!panel && !channels.length) {
+    elements.livePanel.innerHTML = `<p class="muted">Add a monitoring device to select a panel and see its breaker layout.</p>`;
+    return;
+  }
+  const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
+  const circuitCount = monitoringPanelCircuitCount(panel, channels);
+  const channelByCircuit = monitoringChannelByCircuitMap(channels);
+  const rowCount = Math.ceil(circuitCount / 2);
+  const oddCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 1).filter(number => number <= circuitCount);
+  const evenCircuits = Array.from({ length: rowCount }, (_, index) => (index + 1) * 2).filter(number => number <= circuitCount);
+  const voltage = monitoringMainMeterValue(primaryDevice, ["mainVoltage", "main_voltage", "voltage", "lineVoltage", "line_voltage"]);
+  const current = monitoringMainMeterValue(primaryDevice, ["mainCurrent", "main_current", "current", "loadCurrent", "load_current", "amps", "amperage"]);
+  const meterHtml = voltage || current ? `
+    <div class="monitoring-main-meter">
+      ${voltage ? `<span><small>Main voltage</small><strong>${escapeHtml(voltage)}</strong></span>` : ""}
+      ${current ? `<span><small>Main current</small><strong>${escapeHtml(current)}</strong></span>` : ""}
+    </div>
+  ` : "";
+  elements.livePanel.innerHTML = `
+    ${meterHtml}
+    <div class="monitoring-panel-mockup generated-template" style="--monitoring-panel-rows:${escapeAttribute(rowCount)};" aria-label="${escapeAttribute(panel?.name || "Panel")} live monitor layout">
+      ${renderMonitoringPanelCabinetLabel(panel, getLocation(panel?.locationId || panel?.location_id || ""))}
+      <div class="monitoring-panel-rail-label" aria-hidden="true">
+        <span>Odd circuits</span>
+        <span>Even circuits</span>
+      </div>
+      <div class="monitoring-panel-board">
+        <div class="monitoring-breaker-column left">
+          ${renderMonitoringBreakerColumn(oddCircuits, channelByCircuit, panel, "left")}
+        </div>
+        ${renderMonitoringPanelCenter(panel, circuitCount)}
+        <div class="monitoring-breaker-column right">
+          ${renderMonitoringBreakerColumn(evenCircuits, channelByCircuit, panel, "right")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMonitoringPanelCabinetLabel(panel = null, location = null) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const title = schedule.panelName || panel?.name || "Electrical panel";
+  const locationName = location?.name || "";
+  const voltage = schedule.voltage || panel?.voltage || "";
+  const phase = schedule.phase || panel?.phase || "";
+  const mainBreaker = monitoringMainBreakerLabel(panel);
+  const circuitCount = monitoringPanelCircuitCount(panel, []);
+  return `
+    <div class="monitoring-panel-cabinet-label">
+      <strong>${escapeHtml(title)}</strong>
+      ${locationName ? `<span>${escapeHtml(locationName)}</span>` : ""}
+      <small>${escapeHtml([voltage, phase].filter(Boolean).join(" | ") || "Voltage not entered")}</small>
+      <small>${escapeHtml(`${mainBreaker} main | ${circuitCount} circuits`)}</small>
+    </div>
+  `;
+}
+
+function monitoringMainBreakerLabel(panel = null) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const value = schedule.mainBreaker || schedule.main_breaker || panel?.mainBreaker || panel?.main_breaker || "";
+  return value ? String(value) : "Main";
+}
+
+function renderMonitoringPanelTemplateLabels(panel = null) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const location = getLocation(panel?.locationId || panel?.location_id || "");
+  const title = schedule.panelName || panel?.name || "Electrical panel";
+  const centerTitle = String(schedule.panelName || title).replace(/^Electrical\s+/i, "");
+  const locationName = location?.name || "";
+  const voltage = schedule.voltage || panel?.voltage || "";
+  const phase = schedule.phase || panel?.phase || "";
+  const mainBreaker = monitoringMainBreakerLabel(panel);
+  const mainBreakerText = mainBreaker && mainBreaker !== "Main" ? mainBreaker : "";
+  const circuitCount = monitoringPanelCircuitCount(panel, []);
+  return `
+    <div class="monitoring-panel-cabinet-label monitoring-panel-template-label">
+      <strong>${escapeHtml(title)}</strong>
+      ${locationName ? `<span>${escapeHtml(locationName)}</span>` : ""}
+      <small>${escapeHtml([voltage, phase].filter(Boolean).join(" | ") || "Voltage not entered")}</small>
+      <small>${escapeHtml(`${mainBreakerText || "Main"} main | ${circuitCount} circuits`)}</small>
+    </div>
+    <div class="monitoring-panel-center-nameplate">${escapeHtml(centerTitle)}</div>
+    ${mainBreakerText ? `<div class="monitoring-panel-main-breaker-size">${escapeHtml(mainBreakerText)}</div>` : ""}
+  `;
+}
+
+function renderMonitoringPanelCenter(panel = null, circuitCount = 42) {
+  const schedule = isElectricalPanelAsset(panel) ? getElectricalPanelSchedule(panel) : {};
+  const panelTitle = String(schedule.panelName || panel?.name || "Panel").replace(/^Electrical\s+/i, "");
+  const voltage = schedule.voltage || panel?.voltage || "Voltage not entered";
+  const mainBreaker = monitoringMainBreakerLabel(panel);
+  const mainBreakerText = mainBreaker && mainBreaker !== "Main" ? mainBreaker : "Main";
+  const fedFrom = schedule.fedFrom || schedule.fed_from || panel?.fedFrom || panel?.fed_from || "";
+  return `
+    <div class="monitoring-panel-center">
+      <span class="monitoring-fed-label">${fedFrom ? `Fed from<br>${escapeHtml(fedFrom)}` : "&nbsp;"}</span>
+      <span class="monitoring-main-disconnect-label">Main disconnect</span>
+      <span class="monitoring-main-disconnect">
+        <strong>${escapeHtml(mainBreakerText)}</strong>
+        <i aria-hidden="true"></i>
+      </span>
+      <span class="monitoring-service-label">
+        Suitable for use as service equipment
+        <small>${escapeHtml(voltage)}</small>
+        <small>${escapeHtml(`${mainBreakerText} main | ${circuitCount} circuits`)}</small>
+      </span>
+      <span class="monitoring-danger-label"><b>Danger</b><small>Arc flash and shock hazard</small></span>
+      <span class="monitoring-panel-nameplate">${escapeHtml(panelTitle)}</span>
+      <span class="monitoring-phase-card" aria-label="Phase designation">
+        <b>A</b><b>B</b><b>C</b>
+      </span>
+    </div>
+  `;
+}
+
+function renderMonitoringTemplateRows(template, channelByCircuit, panel = null) {
+  return Array.from({ length: template.circuitCount }, (_, index) => index + 1)
+    .map((circuitNumber) => renderMonitoringTemplateCircuit(template, circuitNumber, channelByCircuit.get(circuitNumber), panel))
+    .join("");
+}
+
+function renderMonitoringTemplateCircuit(template, circuitNumber, channel = null, panel = null) {
+  const position = monitoringTemplateCircuitPosition(template, circuitNumber);
+  const zones = template.zones[position.side];
+  const state = channel?.lastDerivedState || "not-monitored";
+  const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber).trim();
+  const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber);
+  const faceLabel = circuitLabel || "";
+  const tooltipLabel = [
+    `Circuit ${circuitNumber}`,
+    faceLabel || "No panel label saved",
+    breakerSize ? `Breaker ${breakerSize}` : "",
+    channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored"
+  ].filter(Boolean).join(" | ");
+  const voltage = monitoringCircuitValue(channel, ["voltage", "lineVoltage", "line_voltage"]);
+  const temperature = monitoringCircuitValue(channel, ["temperature", "temp", "temperatureF", "temperature_f"]);
+  const highTemp = Number(String(temperature).replace(/[^\d.-]/g, "")) >= 120;
+  const selectedClass = selectedMonitoringBreakerCircuit === String(circuitNumber) ? " selected" : "";
+  const tempClass = highTemp ? " high-temperature" : "";
+  const rowStyle = monitoringOverlayStyle(zones.row, position.y, position.height);
+  return `
+    <button type="button" class="monitoring-panel-overlay-row monitoring-channel-card ${monitoringStatusClass(state)} ${escapeAttribute(position.side)}${selectedClass}${tempClass}" data-monitoring-breaker-detail="${escapeAttribute(channel?.id || "")}" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}" style="${rowStyle}">
+      <span class="monitoring-overlay-number" style="${monitoringOverlayInnerStyle(zones.row, zones.number, 100)}">${escapeHtml(circuitNumber)}</span>
+      <span class="monitoring-overlay-amps" style="${monitoringOverlayInnerStyle(zones.row, zones.amps, 100)}">${breakerSize ? escapeHtml(breakerSize) : ""}</span>
+      <span class="monitoring-overlay-label" style="${monitoringOverlayInnerStyle(zones.row, zones.label, 100)}">${escapeHtml(faceLabel)}</span>
+      <span class="monitoring-overlay-breaker" style="${monitoringOverlayInnerStyle(zones.row, zones.breaker, 100)}"><i></i></span>
+      <span class="monitoring-overlay-status" aria-label="${escapeAttribute(channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored")}" style="${monitoringOverlayInnerStyle(zones.row, zones.status, 100)}"></span>
+      <span class="monitoring-overlay-voltage" style="${monitoringOverlayInnerStyle(zones.row, zones.voltage, 100)}">${voltage ? escapeHtml(voltage) : ""}</span>
+      <span class="monitoring-overlay-temperature" style="${monitoringOverlayInnerStyle(zones.row, zones.temperature, 100)}">${temperature ? escapeHtml(temperature) : ""}</span>
+      <em class="monitoring-breaker-tooltip">${escapeHtml(tooltipLabel)}</em>
+    </button>
+  `;
+}
+
+function renderMonitoringBreakerColumn(circuitNumbers = [], channelByCircuit, panel = null, side = "left") {
+  const renderedChannelIds = new Set();
+  return circuitNumbers.map((circuitNumber) => {
+    if (!isFirstMonitoringPanelGroupCircuit(panel, circuitNumber, side)) return "";
+    const channel = channelByCircuit.get(circuitNumber);
+    if (channel) {
+      const channelKey = channel.id || `${channel.deviceId}-${channel.physicalChannel}-${channel.circuitNumber}`;
+      if (renderedChannelIds.has(channelKey)) return "";
+      renderedChannelIds.add(channelKey);
+    }
+    const scheduleSpan = monitoringPanelCircuitGroupSpan(panel, circuitNumber, side);
+    const span = Math.max(scheduleSpan, channel ? monitoringBreakerSpanForSide(channel, side) : 1);
+    return renderMonitoringBreakerSlot(circuitNumber, channel, panel, side, span);
+  }).join("");
+}
+
+function monitoringBreakerSpanForSide(channel = {}, side = "left") {
+  const wantOdd = side === "left";
+  const sideCircuits = parseMonitoringCircuitNumbers(channel.circuitNumber)
+    .filter(number => wantOdd ? number % 2 === 1 : number % 2 === 0)
+    .sort((a, b) => a - b);
+  if (sideCircuits.length >= 2) {
+    return Math.max(1, Math.floor((sideCircuits.at(-1) - sideCircuits[0]) / 2) + 1);
+  }
+  return Math.max(1, Number(channel.poleCount || 1));
+}
+
+function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null, side = "left", span = 1) {
+  const state = channel?.lastDerivedState || "not-monitored";
+  const label = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
+  const phaseText = channel ? `Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${monitoringChannelPhaseLabel(channel)}` : "";
+  const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber).trim();
+  const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber);
+  const groupNumbers = monitoringPanelCircuitGroupNumbers(panel, circuitNumber, side);
+  const circuitText = groupNumbers.length > 1 ? groupNumbers.join(",") : String(circuitNumber);
+  const displayNumbers = groupNumbers.length > 1 ? groupNumbers : [circuitNumber];
+  const hasCircuitLabel = Boolean(circuitLabel);
+  const tooltipLabel = [
+    `Circuit ${circuitText}`,
+    circuitLabel || "No panel label or input saved",
+    breakerSize ? `Breaker ${breakerSize}` : ""
+  ].filter(Boolean).join(" | ");
+  const faceLabel = circuitLabel;
+  const spanStyle = span > 1 ? ` style="grid-row: span ${span};"` : "";
+  const multiClass = span > 1 ? " multi-pole" : "";
+  if (!channel && !hasCircuitLabel) {
+    return `
+      <button type="button" class="monitoring-breaker-slot monitoring-channel-card blank-filler ${escapeAttribute(side)}" data-monitoring-breaker-detail="" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}"${spanStyle}>
+        <span>${escapeHtml(circuitNumber)}</span>
+        <i class="monitoring-breaker-blank-fill" aria-hidden="true"></i>
+        <em class="monitoring-breaker-tooltip">${escapeHtml(tooltipLabel)}</em>
+      </button>
+    `;
+  }
+  const content = `
+    <i class="monitoring-breaker-handle" aria-hidden="true"><span></span></i>
+    <span class="monitoring-breaker-number">
+      ${displayNumbers.map((number) => `
+        <b>${escapeHtml(number)}</b>
+        ${breakerSize ? `<small>${escapeHtml(breakerSize)}</small>` : "<small></small>"}
+      `).join("")}
+    </span>
+    <strong class="monitoring-channel-state">${escapeHtml(label)}</strong>
+    <small class="monitoring-breaker-load-label">${escapeHtml(faceLabel)}</small>
+    ${span > 1 ? `<small class="monitoring-breaker-pole-label">${escapeHtml(span === 2 ? "2 pole" : "3 pole")}</small>` : ""}
+    ${phaseText ? `<small class="monitoring-breaker-phase-label">${escapeHtml(phaseText)}</small>` : ""}
+    <em class="monitoring-breaker-tooltip">${escapeHtml(tooltipLabel)}</em>
+  `;
+  if (!channel) {
+    return `
+      <button type="button" class="monitoring-breaker-slot monitoring-channel-card not-monitored ${escapeAttribute(side)}${multiClass}" data-monitoring-breaker-detail="" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}"${spanStyle}>
+        ${content}
+      </button>
+    `;
+  }
+  return `
+    <button type="button" class="monitoring-breaker-slot monitoring-channel-card ${monitoringStatusClass(state)} ${escapeAttribute(side)}${multiClass}" data-monitoring-breaker-detail="${escapeAttribute(channel.id)}" data-monitoring-breaker-circuit="${escapeAttribute(circuitNumber)}" title="${escapeAttribute(tooltipLabel)}"${spanStyle}>
+      ${content}
+    </button>
+  `;
+}
+
+function renderMonitoringAlerts(devices) {
+  const elements = monitoringElements();
+  const deviceIds = new Set(devices.map(device => String(device.id)));
+  const alerts = state.monitoringAlerts.filter(alert => deviceIds.has(String(alert.deviceId || alert.device_id || "")) && alert.status !== "resolved");
+  elements.alertList.innerHTML = alerts.length ? alerts.map(alert => `
+    <div class="monitoring-record alert">
+      <div>
+        <h4>${escapeHtml(alert.title)}</h4>
+        <p>${escapeHtml(alert.message)}</p>
+        <p>${formatDateTime(alert.createdAt)} | ${escapeHtml(alert.status)} | ${escapeHtml(alert.severity)}</p>
+      </div>
+      <div class="monitoring-record-actions">
+        ${alert.status === "active" ? `<button type="button" data-monitoring-ack="${escapeHtml(alert.id)}">Acknowledge</button>` : ""}
+        <button type="button" data-monitoring-resolve="${escapeHtml(alert.id)}">Resolve</button>
+        ${alert.workOrderId ? `<span class="monitoring-status-pill acknowledged">Ticket created</span>` : `<button type="button" data-monitoring-work-order="${escapeHtml(alert.id)}">Create ticket</button>`}
+      </div>
+    </div>`).join("") : `<p class="muted">No active breaker alerts.</p>`;
+}
+
+function renderMonitoringEvents(devices) {
+  const elements = monitoringElements();
+  const deviceIds = new Set(devices.map(device => String(device.id)));
+  const events = state.monitoringEvents.filter(event => !event.deviceId || deviceIds.has(String(event.deviceId || event.device_id || ""))).slice(0, 50);
+  elements.eventList.innerHTML = events.length ? events.map(event => `
+    <div class="monitoring-record compact">
+      <div>
+        <h4>${escapeHtml(event.message || event.type)}</h4>
+        <p>${formatDateTime(event.createdAt)} | ${escapeHtml(event.type)}${event.circuitNumber ? ` | Circuit ${escapeHtml(event.circuitNumber)}` : ""}</p>
+      </div>
+    </div>`).join("") : `<p class="muted">No monitoring events yet.</p>`;
+}
+
+
+/* SiteWorks bundled feature modules - end */
+
+const STORAGE_KEY = "qr-pm-prototype-v3";
 const AUTO_BACKUP_KEY = "qr-pm-prototype-auto-backups-v1";
 const MAX_AUTO_BACKUPS = 5;
 const MAX_ACTIVITY_LOG_ENTRIES = 1000;
@@ -14,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260808-render-guard";
+const SITEWORKS_APP_VERSION = "20260809-structured-reload";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
