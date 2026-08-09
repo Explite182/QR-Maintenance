@@ -6362,6 +6362,27 @@ button.asset-detail-card {
   transform: rotate(-18deg);
 }
 
+.key-cabinet-context {
+  position: absolute;
+  left: 50%;
+  top: 72px;
+  z-index: 2;
+  max-width: calc(100% - 24px);
+  transform: translateX(-50%);
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(5, 8, 7, .58);
+  color: #fffdf4;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0,0,0,.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .key-cabinet-status {
   position: absolute;
   left: 50%;
