@@ -1,4 +1,4 @@
-/* SiteWorks Keybox styles version: 20260809-key-wizard-22 */
+/* SiteWorks Keybox styles version: 20260809-key-wizard-nfc-23 */
 
 .key-cabinet {
   margin-bottom: 14px;
@@ -683,6 +683,10 @@
 .key-wizard-panel.is-active {
   display: grid;
   gap: 12px;
+}
+
+.key-wizard-panel > .mini {
+  justify-self: start;
 }
 
 .key-wizard-actions {

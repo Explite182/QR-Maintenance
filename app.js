@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-wizard-22";
+const SITEWORKS_APP_VERSION = "20260809-key-wizard-nfc-23";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -7741,6 +7741,13 @@ els.keySetupWizard?.addEventListener("click", (event) => {
 });
 
 els.keyForm?.addEventListener("click", (event) => {
+  const scanNfcButton = event.target.closest("[data-key-wizard-scan-nfc]");
+  if (scanNfcButton) {
+    event.preventDefault();
+    scanKeyWizardNfcTag(scanNfcButton);
+    return;
+  }
+
   const nextButton = event.target.closest("[data-key-wizard-next]");
   if (nextButton) {
     event.preventDefault();
@@ -7830,6 +7837,48 @@ function buildKeyWizardReviewText() {
     els.keyNotes?.value.trim() ? "Notes added" : "No notes"
   ];
   return parts.join(" | ");
+}
+
+async function scanKeyWizardNfcTag(button = null) {
+  if (!canUseLocalNfcBridge()) {
+    if (els.keyStatus) {
+      els.keyStatus.textContent = "NFC scanning is available from a desktop browser connected to the local ACR122U bridge.";
+      els.keyStatus.className = "inline-status is-error";
+    }
+    return;
+  }
+  if (button) button.disabled = true;
+  if (els.keyStatus) {
+    els.keyStatus.textContent = "Hold the NFC tag on the ACR122U reader...";
+    els.keyStatus.className = "inline-status";
+  }
+  try {
+    const result = await callNfcBridgeWithFallback(["/nfc/read", "/nfc/verify"], {
+      expectedUid: "",
+      expectedUrl: "",
+      recordType: "key-setup"
+    });
+    const uid = normalizeNfcUid(getNfcResponseUid(result));
+    if (!uid) throw new Error("The NFC bridge did not return a tag UID.");
+    const existingKey = findKeyByNfcUid(uid);
+    if (existingKey) {
+      throw new Error(`Tag UID ${uid} is already assigned to ${existingKey.keyName || existingKey.name || "another key"}.`);
+    }
+    if (els.keyTagUid) els.keyTagUid.value = uid;
+    if (els.keyStatus) {
+      els.keyStatus.textContent = `Scanned NFC tag ${uid}.`;
+      els.keyStatus.className = "inline-status is-ok";
+    }
+    renderKeySetupWizard();
+  } catch (error) {
+    console.warn("Key setup NFC scan failed.", error);
+    if (els.keyStatus) {
+      els.keyStatus.textContent = `NFC scan failed: ${error.message || "Bridge unavailable."}`;
+      els.keyStatus.className = "inline-status is-error";
+    }
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 els.pmCalendarRange?.addEventListener("change", () => {
