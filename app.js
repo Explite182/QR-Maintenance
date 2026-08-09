@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-structured-reload";
+const SITEWORKS_APP_VERSION = "20260809-key-cabinet";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6934,6 +6934,20 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const cabinetSlot = event.target.closest("[data-key-cabinet-slot]");
+  if (cabinetSlot) {
+    event.preventDefault();
+    event.stopPropagation();
+    focusedKeyId = cabinetSlot.dataset.keyCabinetSlot || "";
+    renderKeys();
+    window.setTimeout(() => {
+      [...(els.keyList?.querySelectorAll("[data-key-summary]") || [])]
+        .find((summary) => summary.dataset.keySummary === focusedKeyId)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+    return;
+  }
+
   const actionButton = event.target.closest("[data-key-action]");
   if (actionButton) {
     event.preventDefault();
@@ -9507,8 +9521,75 @@ function renderKeys() {
   if (focusedKeyId && !keys.some((key) => key.id === focusedKeyId)) focusedKeyId = "";
   if (els.keyCount) els.keyCount.textContent = keys.length;
   els.keyList.innerHTML = keys.length
-    ? keys.map(renderKeyRecord).join("")
+    ? `${renderKeyCabinet(keys)}${keys.map(renderKeyRecord).join("")}`
     : `<p class="muted">No keys for this view yet.</p>`;
+}
+
+function renderKeyCabinet(keys = []) {
+  const visibleSlots = Math.max(24, Math.min(48, Math.ceil(keys.length / 6) * 6 || 24));
+  const slots = Array.from({ length: visibleSlots }, (_, index) => renderKeyCabinetSlot(keys[index], index));
+  const availableCount = keys.filter((key) => !isKeyCheckedOut(key) && !isKeyOverdue(key)).length;
+  const checkedOutCount = keys.filter((key) => isKeyCheckedOut(key)).length;
+  const overdueCount = keys.filter((key) => isKeyOverdue(key)).length;
+  const overflowCount = Math.max(0, keys.length - visibleSlots);
+  return `
+    <section class="key-cabinet" aria-label="Key control center">
+      <div class="key-cabinet-frame">
+        <div class="key-cabinet-title">
+          <strong>SITEWORKS</strong>
+          <span>Key Control Center</span>
+        </div>
+        <div class="key-cabinet-board">
+          <div class="key-cabinet-slots">
+            ${slots.join("")}
+          </div>
+          <aside class="key-cabinet-side">
+            <div class="key-cabinet-plate">
+              <strong>Key Control</strong>
+              <span>Sign out key</span>
+              <span>Return key</span>
+              <span>Verify key location</span>
+              <span>Report missing keys</span>
+            </div>
+            <div class="key-cabinet-plate key-cabinet-counts">
+              <strong>Status</strong>
+              <span><b>${availableCount}</b> available</span>
+              <span><b>${checkedOutCount}</b> checked out</span>
+              <span><b>${overdueCount}</b> overdue</span>
+              ${overflowCount ? `<span><b>${overflowCount}</b> more in list</span>` : ""}
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderKeyCabinetSlot(key, index) {
+  const slotNumber = key?.keyNumber || String(index + 1);
+  const label = key ? key.keyName || key.name || "Key" : "Spare";
+  const customer = key ? getCustomer(key.customerId) : null;
+  const locationRecord = key ? getLocation(key.locationId) : null;
+  const checkedOut = key ? isKeyCheckedOut(key) : false;
+  const overdue = key ? isKeyOverdue(key) : false;
+  const status = !key ? "empty" : overdue ? "overdue" : checkedOut ? "out" : "available";
+  const statusText = !key ? "Empty" : overdue ? "Overdue" : checkedOut ? "Checked out" : "Available";
+  const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key?.storageLocation || "Cabinet";
+  const title = key
+    ? `${label} | ${statusText} | ${holder}`
+    : `Slot ${slotNumber} | Empty`;
+  return `
+    <button type="button" class="key-cabinet-slot key-cabinet-slot-${status}" ${key ? `data-key-cabinet-slot="${escapeAttribute(key.id)}"` : "disabled"} title="${escapeAttribute(title)}">
+      <span class="key-cabinet-label">
+        <b>${escapeHtml(slotNumber)}</b>
+        <span>${escapeHtml(label)}</span>
+      </span>
+      <span class="key-cabinet-hook" aria-hidden="true"></span>
+      ${key && !checkedOut ? `<span class="key-cabinet-keyring" aria-hidden="true"><i></i><i></i><i></i></span>` : ""}
+      <span class="key-cabinet-status">${escapeHtml(statusText)}</span>
+      ${key ? `<small>${escapeHtml(locationRecord?.name || customer?.name || "Unassigned")}</small>` : ""}
+    </button>
+  `;
 }
 
 function renderKeyLocationOptions() {
