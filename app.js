@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-cabinet-12";
+const SITEWORKS_APP_VERSION = "20260809-key-cabinet-14";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9550,9 +9550,10 @@ function renderKeyCabinet(keys = []) {
   const slots = Array.from({ length: visibleSlots }, (_, index) => renderKeyCabinetSlot(keys[index], index));
   const focusedKey = focusedKeyId ? keys.find((key) => key.id === focusedKeyId) : null;
   const cabinetScopeLabel = getKeyCabinetScopeLabel(keys);
-  const availableCount = keys.filter((key) => !isKeyCheckedOut(key) && !isKeyOverdue(key)).length;
+  const availableCount = keys.filter((key) => getKeyCabinetStatus(key, isKeyCheckedOut(key), isKeyOverdue(key)) === "available").length;
   const checkedOutCount = keys.filter((key) => isKeyCheckedOut(key)).length;
   const overdueCount = keys.filter((key) => isKeyOverdue(key)).length;
+  const verifyOverdueCount = keys.filter((key) => isKeyVerificationOverdue(key)).length;
   const overflowCount = Math.max(0, keys.length - visibleSlots);
   return `
     <section class="key-cabinet" aria-label="Key control center">
@@ -9579,6 +9580,7 @@ function renderKeyCabinet(keys = []) {
               <span><b>${availableCount}</b> available</span>
               <span><b>${checkedOutCount}</b> checked out</span>
               <span><b>${overdueCount}</b> overdue</span>
+              ${verifyOverdueCount ? `<span><b>${verifyOverdueCount}</b> need verify</span>` : ""}
               ${overflowCount ? `<span><b>${overflowCount}</b> more in list</span>` : ""}
             </div>
           </aside>
@@ -9616,13 +9618,13 @@ function renderKeyCabinetSlot(key, index) {
   const holder = checkedOut ? key.currentHolderName || "Unknown holder" : key?.storageLocation || "Cabinet";
   const slotContext = key ? locationRecord?.name || customer?.name || "Unassigned" : getKeyCabinetSlotContext();
   const lastVerified = key ? getKeyCabinetLastVerifiedLabel(key) : "";
+  const verificationDue = key ? getKeyVerificationOverdueLabel(key) : "";
   const lastUser = key ? getKeyCabinetLastUserLabel(key, checkedOut) : "";
-  const cabinetNote = checkedOut
-    ? `With ${holder}`
-    : lastUser ? `Last: ${lastUser}` : slotContext;
-  const detailLine = lastVerified || (!key ? "No history yet" : slotContext);
+  const cabinetNote = checkedOut ? `With ${holder}` : slotContext;
+  const lastUserLine = key ? `Last user: ${lastUser || "No history yet"}` : "Last user: No history yet";
+  const verifiedLine = verificationDue || lastVerified || "Last verified: No history yet";
   const titleParts = key
-    ? [`Slot ${slotNumber} - ${label}`, `Status: ${statusText}`, checkedOut ? `With: ${holder}` : lastUser ? `Last user: ${lastUser}` : "", lastVerified, slotContext]
+    ? [`Slot ${slotNumber} - ${label}`, `Status: ${statusText}`, checkedOut ? `With: ${holder}` : lastUserLine, verificationDue, lastVerified, slotContext]
     : [`Slot ${slotNumber} - ${slotContext}`, "Status: Available", "Last verified: No history yet", "Last user: No history yet"];
   const title = titleParts.filter(Boolean).join(" | ");
   const selectedClass = key?.id && key.id === focusedKeyId ? " key-cabinet-slot-selected" : "";
@@ -9637,7 +9639,8 @@ function renderKeyCabinetSlot(key, index) {
       <span class="key-cabinet-status">${escapeHtml(statusText)}</span>
       <small>
         <span>${escapeHtml(cabinetNote)}</span>
-        <span>${escapeHtml(detailLine)}</span>
+        <span>${escapeHtml(lastUserLine)}</span>
+        <span>${escapeHtml(verifiedLine)}</span>
       </small>
     </button>
   `;
@@ -9660,6 +9663,7 @@ function renderKeyCabinetDrawer(key) {
   const overdue = isKeyOverdue(key);
   const status = getKeyCabinetStatus(key, checkedOut, overdue);
   const statusText = siteKeyCabinetStatusLabel(status);
+  const verificationDue = getKeyVerificationOverdueLabel(key);
   const latestCheckout = getLatestKeyLogForAction(key, "Check-Out");
   const latestReturn = getLatestKeyLogForAction(key, "Check-In");
   const latestVerified = getLatestKeyLogForAction(key, "NFC Verify") || getLatestKeyLogForAction(key, "Verify");
@@ -9686,6 +9690,7 @@ function renderKeyCabinetDrawer(key) {
       </div>
       <div class="key-cabinet-detail-grid">
         <span>Status</span><strong>${escapeHtml(statusText)}${checkedOut ? ` to ${escapeHtml(holder)}` : ""}</strong>
+        <span>Verification</span><strong>${escapeHtml(verificationDue || "Current")}</strong>
         <span>NFC tag ID</span><strong>${escapeHtml(tagUids.length ? tagUids.join(", ") : "Not assigned")}</strong>
         <span>QR link</span><strong><a href="${escapeAttribute(keyUrl)}" target="_blank" rel="noopener">Open key link</a></strong>
         <span>Last check-out</span><strong>${escapeHtml(latestCheckout ? `${formatDateTime(new Date(latestCheckout.timestamp || latestCheckout.createdAt || new Date()))} | ${latestCheckout.userName || key.currentHolderName || "SiteWorks"}` : "No checkout yet")}</strong>
@@ -9707,10 +9712,13 @@ function getLatestKeyLogForAction(key, action) {
     .sort((a, b) => String(b.timestamp || b.createdAt || "").localeCompare(String(a.timestamp || a.createdAt || "")))[0] || null;
 }
 
+const KEY_VERIFICATION_DUE_MS = 24 * 60 * 60 * 1000;
+
 function getKeyCabinetStatus(key, checkedOut = false, overdue = false) {
   if (!key) return "available";
   if (overdue) return "overdue";
   if (checkedOut) return "out";
+  if (isKeyVerificationOverdue(key)) return "verify-overdue";
   if (isKeyRecentlyReturned(key)) return "returned";
   if (isKeyMissingOrUnverified(key)) return "unverified";
   return "available";
@@ -9719,6 +9727,7 @@ function getKeyCabinetStatus(key, checkedOut = false, overdue = false) {
 function siteKeyCabinetStatusLabel(status) {
   if (status === "overdue") return "Overdue";
   if (status === "out") return "Checked out";
+  if (status === "verify-overdue") return "Verify overdue";
   if (status === "returned") return "Needs verify";
   if (status === "unverified") return "Unverified";
   return "Available";
@@ -9731,14 +9740,42 @@ function isKeyMissingOrUnverified(key) {
 }
 
 function isKeyRecentlyReturned(key) {
-  const latestCheckIn = (state.keyLogs || [])
-    .filter((log) => log.keyId === key?.id && log.action === "Check-In" && String(log.notes || "").toLowerCase().includes("checked in from"))
-    .sort((a, b) => String(b.timestamp || b.createdAt || "").localeCompare(String(a.timestamp || a.createdAt || "")))[0];
+  const date = getKeyReturnDateNeedingVerification(key);
+  return Number.isFinite(date?.getTime()) && Date.now() - date.getTime() < KEY_VERIFICATION_DUE_MS;
+}
+
+function getLatestKeyReturnLog(key) {
+  return (state.keyLogs || [])
+    .filter((log) => log.keyId === key?.id && String(log.action || "").toLowerCase() === "check-in")
+    .sort((a, b) => String(b.timestamp || b.createdAt || "").localeCompare(String(a.timestamp || a.createdAt || "")))[0] || null;
+}
+
+function getKeyReturnDateNeedingVerification(key) {
+  const latestCheckIn = getLatestKeyReturnLog(key);
   if (!latestCheckIn) return false;
   const date = new Date(latestCheckIn.timestamp || latestCheckIn.createdAt || "");
   const verifiedDate = getKeyCabinetLastVerifiedDate(key);
   if (verifiedDate && Number.isFinite(date.getTime()) && verifiedDate.getTime() >= date.getTime()) return false;
-  return Number.isFinite(date.getTime()) && Date.now() - date.getTime() < 48 * 60 * 60 * 1000;
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function isKeyVerificationOverdue(key) {
+  const date = getKeyReturnDateNeedingVerification(key);
+  return Number.isFinite(date?.getTime()) && Date.now() - date.getTime() >= KEY_VERIFICATION_DUE_MS;
+}
+
+function getKeyVerificationOverdueLabel(key) {
+  const date = getKeyReturnDateNeedingVerification(key);
+  if (!Number.isFinite(date?.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < KEY_VERIFICATION_DUE_MS) {
+    const hoursLeft = Math.max(1, Math.ceil((KEY_VERIFICATION_DUE_MS - diffMs) / 3600000));
+    return `Verify within ${hoursLeft}h`;
+  }
+  const hoursOver = Math.max(1, Math.floor((diffMs - KEY_VERIFICATION_DUE_MS) / 3600000));
+  if (hoursOver < 24) return `Verify overdue by ${hoursOver}h`;
+  const daysOver = Math.max(1, Math.floor(hoursOver / 24));
+  return `Verify overdue by ${daysOver} day${daysOver === 1 ? "" : "s"}`;
 }
 
 function getKeyCabinetSlotContext() {
