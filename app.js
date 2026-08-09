@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-cabinet";
+const SITEWORKS_APP_VERSION = "20260809-key-cabinet-2";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9520,9 +9520,11 @@ function renderKeys() {
   const keys = visibleKeys();
   if (focusedKeyId && !keys.some((key) => key.id === focusedKeyId)) focusedKeyId = "";
   if (els.keyCount) els.keyCount.textContent = keys.length;
-  els.keyList.innerHTML = keys.length
-    ? `${renderKeyCabinet(keys)}${keys.map(renderKeyRecord).join("")}`
-    : `<p class="muted">No keys for this view yet.</p>`;
+  els.keyList.innerHTML = `${renderKeyCabinet(keys)}${
+    keys.length
+      ? keys.map(renderKeyRecord).join("")
+      : `<p class="muted">No keys for this view yet.</p>`
+  }`;
 }
 
 function renderKeyCabinet(keys = []) {
