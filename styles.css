@@ -6365,7 +6365,7 @@ button.asset-detail-card {
 .key-cabinet-status {
   position: absolute;
   left: 50%;
-  bottom: 30px;
+  bottom: 44px;
   transform: translateX(-50%);
   padding: 3px 8px;
   border-radius: 99px;
@@ -6378,14 +6378,20 @@ button.asset-detail-card {
 
 .key-cabinet-slot small {
   position: absolute;
-  left: 50%;
-  bottom: 4px;
-  max-width: 100%;
-  transform: translateX(-50%);
-  color: rgba(255,255,255,.75);
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.14;
+  left: 8px;
+  right: 8px;
+  bottom: 6px;
+  display: grid;
+  gap: 1px;
+  min-height: 34px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: rgba(5, 8, 7, .46);
+  color: #fffdf4;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.12;
+  text-shadow: 0 1px 2px rgba(0,0,0,.68);
   white-space: normal;
   overflow: hidden;
 }
@@ -10964,7 +10970,7 @@ html[data-theme="dark"] .key-cabinet-frame {
   }
 
   .key-cabinet-slot {
-    min-height: 172px;
+    min-height: 184px;
   }
 
   .key-cabinet-side {
@@ -10997,6 +11003,10 @@ html[data-theme="dark"] .key-cabinet-frame {
   .key-cabinet-label span {
     font-size: 9px;
     padding-inline: 5px;
+  }
+
+  .key-cabinet-slot small {
+    font-size: 10px;
   }
 
   .key-cabinet-side {
