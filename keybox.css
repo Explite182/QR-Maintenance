@@ -1,7 +1,11 @@
-/* SiteWorks Keybox styles version: 20260809-key-wizard-write-24 */
+/* SiteWorks Keybox styles version: 20260809-key-search-25 */
 
 .key-cabinet {
   margin-bottom: 14px;
+}
+
+.key-search-field {
+  margin: 0 0 12px;
 }
 
 .key-cabinet-frame {

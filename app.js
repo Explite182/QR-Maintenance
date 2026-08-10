@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-wizard-write-24";
+const SITEWORKS_APP_VERSION = "20260809-key-search-25";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4959,6 +4959,7 @@ let pmCalendarDate = toDateInputValue(today);
 let selectedMonitoringPanelId = "";
 let selectedMonitoringBreakerCircuit = "";
 let assetQuery = "";
+let keyQuery = "";
 let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
 let assetSort = "due";
@@ -5402,6 +5403,7 @@ const els = {
   keySetupWizard: document.getElementById("keySetupWizard"),
   keyWizardReview: document.getElementById("keyWizardReview"),
   keyWriteAfterSave: document.getElementById("keyWriteAfterSave"),
+  keySearch: document.getElementById("keySearch"),
   keyCount: document.getElementById("keyCount"),
   keyList: document.getElementById("keyList"),
   serviceRequestCreateDrawer: document.getElementById("serviceRequestCreateDrawer"),
@@ -6783,6 +6785,13 @@ els.assetSearch.addEventListener("input", () => {
   assetQuery = els.assetSearch.value.trim().toLowerCase();
   assetPage = 1;
   render();
+});
+
+els.keySearch?.addEventListener("input", () => {
+  keyQuery = els.keySearch.value.trim().toLowerCase();
+  keyCabinetPage = 0;
+  focusedKeyId = "";
+  renderKeys();
 });
 
 els.globalSearch?.addEventListener("input", () => {
@@ -9693,6 +9702,7 @@ function renderKeys() {
   const keys = visibleKeys();
   if (focusedKeyId && !keys.some((key) => key.id === focusedKeyId)) focusedKeyId = "";
   if (els.keyCount) els.keyCount.textContent = keys.length;
+  if (els.keySearch && els.keySearch.value !== keyQuery) els.keySearch.value = keyQuery;
   els.keyList.innerHTML = `${renderKeyCabinet(keys)}${
     keys.length
       ? keys.map(renderKeyRecord).join("")
@@ -17779,10 +17789,29 @@ function visibleKeys(customerId = selectedCustomerId) {
     .filter((key) => canSeeCustomer(key.customerId))
     .filter((key) => !customerId || key.customerId === customerId || (currentRole === "Admin" && !getCustomer(customerId)))
     .filter((key) => selectedLocationId === "all" || !key.locationId || key.locationId === selectedLocationId)
+    .filter((key) => !keyQuery || keySearchText(key).includes(keyQuery))
     .sort((a, b) => {
       if ((a.currentStatus || "") !== (b.currentStatus || "")) return (a.currentStatus || "").localeCompare(b.currentStatus || "");
       return `${a.keyName || ""} ${a.keyNumber || ""}`.localeCompare(`${b.keyName || ""} ${b.keyNumber || ""}`);
     });
+}
+
+function keySearchText(key) {
+  const customer = getCustomer(key.customerId);
+  const locationRecord = getLocation(key.locationId);
+  return [
+    key.keyName,
+    key.name,
+    key.keyNumber,
+    key.storageLocation,
+    key.currentStatus,
+    key.currentHolderName,
+    key.notes,
+    key.uniqueTagId,
+    ...getKeyAdditionalTagUids(key),
+    customer?.name,
+    locationRecord?.name
+  ].filter(Boolean).join(" ").toLowerCase();
 }
 
 function visiblePreferredContractors(customerId = "") {
