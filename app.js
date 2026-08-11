@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260809-key-search-25";
+const SITEWORKS_APP_VERSION = "20260811-public-report-quota-26";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -12653,6 +12653,15 @@ function markSyncError(message) {
   renderSyncHealth();
 }
 
+function isSupabaseQuotaRestrictionError(value = "") {
+  const text = String(value || "").toLowerCase();
+  return text.includes("exceed_egress_quota")
+    || (
+      text.includes("service for this project is restricted")
+      && text.includes("upgrade their plan")
+    );
+}
+
 function renderQrSettings() {
   const repairedUrl = getQrBaseUrl();
   if (state.qrBaseUrl !== repairedUrl) {
@@ -18600,6 +18609,18 @@ async function syncPublicReportsFromSupabase(force = false) {
     remoteReportsLoaded = true;
     if (!response.ok) {
       const errorText = await response.text();
+      if (isSupabaseQuotaRestrictionError(errorText)) {
+        if (force) {
+          setSyncBanner(
+            "stale",
+            "Public reports paused",
+            "Supabase quota is blocking public report sync. SiteWorks app data is still active.",
+            7000
+          );
+        }
+        console.warn("Supabase public report sync paused by project quota.", errorText);
+        return 0;
+      }
       markSyncError(`Public report sync failed: ${errorText}`);
       console.warn("Supabase public report sync skipped.", errorText);
       return 0;
@@ -18609,6 +18630,18 @@ async function syncPublicReportsFromSupabase(force = false) {
   } catch (error) {
     remoteReportsLoading = false;
     remoteReportsLoaded = true;
+    if (isSupabaseQuotaRestrictionError(error?.message)) {
+      if (force) {
+        setSyncBanner(
+          "stale",
+          "Public reports paused",
+          "Supabase quota is blocking public report sync. SiteWorks app data is still active.",
+          7000
+        );
+      }
+      console.warn("Supabase public report sync paused by project quota.", error);
+      return 0;
+    }
     markSyncError(error?.message || "Public report sync failed.");
     console.warn("Supabase public report sync skipped.", error);
     return 0;
