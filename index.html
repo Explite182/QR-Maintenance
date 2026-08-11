@@ -176,6 +176,7 @@
           <option value="dark">Dark</option>
         </select>
       </label>
+      <button id="changePasswordBtn" class="secondary">Password</button>
       <button id="logoutBtn" class="secondary">Log Out</button>
       <input id="importDataInput" class="hidden-input" type="file" accept="application/json,.json">
     </div>
@@ -183,6 +184,32 @@
 
   <div id="loginGreetingToast" class="login-greeting-toast hidden" role="status" aria-live="polite"></div>
   <div id="syncBanner" class="sync-banner app-only hidden" role="status" aria-live="polite"></div>
+  <div id="passwordPanelBackdrop" class="password-panel-backdrop hidden" data-close-password-panel></div>
+  <section id="passwordPanel" class="password-panel hidden app-only" role="dialog" aria-modal="true" aria-labelledby="passwordPanelTitle">
+    <div class="section-title">
+      <div>
+        <p class="eyebrow">Account</p>
+        <h2 id="passwordPanelTitle">Change Password</h2>
+      </div>
+      <button type="button" class="secondary mini" data-close-password-panel aria-label="Close password panel">X</button>
+    </div>
+    <form id="changePasswordForm" class="stack">
+      <label>
+        Current password
+        <input id="currentPassword" required type="password" autocomplete="current-password" placeholder="Current password">
+      </label>
+      <label>
+        New password
+        <input id="newPassword" required type="password" autocomplete="new-password" placeholder="New password">
+      </label>
+      <label>
+        Confirm new password
+        <input id="newPasswordConfirm" required type="password" autocomplete="new-password" placeholder="Confirm new password">
+      </label>
+      <button id="changePasswordSubmitBtn" type="submit">Save Password</button>
+      <p id="changePasswordMessage" class="login-message"></p>
+    </form>
+  </section>
 
   <main class="app-shell app-only hidden">
     <aside id="appSidebar" class="sidebar">
@@ -1843,7 +1870,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/app.js?v=20260811-local-api-auth-28"></script>
+  <script src="/app.js?v=20260811-local-api-auth-29"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";

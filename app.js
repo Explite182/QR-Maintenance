@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260811-local-api-auth-28";
+const SITEWORKS_APP_VERSION = "20260811-local-api-auth-29";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5147,6 +5147,15 @@ const els = {
   themeSelect: document.getElementById("themeSelect"),
   currentUserName: document.getElementById("currentUserName"),
   currentUserRole: document.getElementById("currentUserRole"),
+  changePasswordBtn: document.getElementById("changePasswordBtn"),
+  passwordPanel: document.getElementById("passwordPanel"),
+  passwordPanelBackdrop: document.getElementById("passwordPanelBackdrop"),
+  changePasswordForm: document.getElementById("changePasswordForm"),
+  currentPassword: document.getElementById("currentPassword"),
+  newPassword: document.getElementById("newPassword"),
+  newPasswordConfirm: document.getElementById("newPasswordConfirm"),
+  changePasswordSubmitBtn: document.getElementById("changePasswordSubmitBtn"),
+  changePasswordMessage: document.getElementById("changePasswordMessage"),
   logoutBtn: document.getElementById("logoutBtn"),
   backupStatus: document.getElementById("backupStatus"),
   backupLocationBlock: document.getElementById("backupLocationBlock"),
@@ -5894,6 +5903,63 @@ els.accessRequestForm.addEventListener("submit", (event) => {
 
 els.logoutBtn.addEventListener("click", () => {
   logoutCurrentUser("manual");
+});
+
+function openPasswordPanel() {
+  els.changePasswordForm?.reset();
+  if (els.changePasswordMessage) els.changePasswordMessage.textContent = "";
+  els.passwordPanel?.classList.remove("hidden");
+  els.passwordPanelBackdrop?.classList.remove("hidden");
+  setTimeout(() => els.currentPassword?.focus(), 0);
+}
+
+function closePasswordPanel() {
+  els.passwordPanel?.classList.add("hidden");
+  els.passwordPanelBackdrop?.classList.add("hidden");
+  els.changePasswordForm?.reset();
+  if (els.changePasswordMessage) els.changePasswordMessage.textContent = "";
+}
+
+els.changePasswordBtn?.addEventListener("click", openPasswordPanel);
+
+document.querySelectorAll("[data-close-password-panel]").forEach((button) => {
+  button.addEventListener("click", closePasswordPanel);
+});
+
+els.changePasswordForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const currentPassword = els.currentPassword.value;
+  const newPassword = els.newPassword.value;
+  const confirmPassword = els.newPasswordConfirm.value;
+  if (!currentPassword.trim()) {
+    els.changePasswordMessage.textContent = "Enter your current password.";
+    return;
+  }
+  if (newPassword.length < 8) {
+    els.changePasswordMessage.textContent = "New password must be at least 8 characters.";
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    els.changePasswordMessage.textContent = "New passwords do not match.";
+    return;
+  }
+  els.changePasswordSubmitBtn.disabled = true;
+  els.changePasswordMessage.textContent = "Saving password...";
+  try {
+    const response = await siteworksApi.changePassword(currentPassword, newPassword);
+    if (!response.ok) {
+      els.changePasswordMessage.textContent = readableSupabaseError(await response.text()) || "Password was not changed.";
+      return;
+    }
+    els.changePasswordMessage.textContent = "Password changed.";
+    els.changePasswordForm.reset();
+    setTimeout(closePasswordPanel, 900);
+  } catch (error) {
+    console.error("Password change failed.", error);
+    els.changePasswordMessage.textContent = "Fetch failed. Check your connection and try again.";
+  } finally {
+    els.changePasswordSubmitBtn.disabled = false;
+  }
 });
 
 document.querySelector("#mobileLogoutBtn")?.addEventListener("click", () => {
@@ -18922,6 +18988,18 @@ const siteworksApi = {
       method: "POST",
       body: JSON.stringify({ email: loginEmail, password })
     });
+  },
+  changePassword(currentPassword, newPassword) {
+    if (siteworksServerEnabled()) {
+      return this.server("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+    }
+    return cloudApi.auth("user", {
+      method: "PUT",
+      body: JSON.stringify({ password: newPassword })
+    }, getSavedAuthSession());
   },
   createUser(email, password, name) {
     if (siteworksServerEnabled()) {
