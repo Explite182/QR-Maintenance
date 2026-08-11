@@ -4652,10 +4652,10 @@ const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
 const SUPABASE_STORAGE_BUCKET = "siteworks-files";
 const PRODUCTION_SITE_URL = "https://sitesworks.info/";
-const SITEWORKS_API_BASE_URL = "";
+const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260811-public-report-quota-26";
+const SITEWORKS_APP_VERSION = "20260811-local-api-auth-28";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -18429,7 +18429,7 @@ async function loadPublicKey(uid, keyId = "") {
 
 async function submitPublicKeyAction(action) {
   const uid = normalizeNfcUid(getShortKeyUidFromPath());
-  const keyId = getPublicKeyIdFromUrl();
+  const keyId = getPublicKeyIdFromUrl() || publicKeyLookupState.key?.id || "";
   const lookupToken = uid || keyId;
   let actionCompleted = false;
   const holder = els.publicKeyHolder.value.trim();
@@ -19014,32 +19014,40 @@ const siteworksApi = {
   async lookupPublicKeyDirect(uid, keyId = "") {
     if (siteworksServerEnabled()) return null;
     const normalizedUid = normalizeNfcUid(uid || "");
+    const publicKeySelect = "id,unique_tag_id,key_name,key_number,storage_location,current_status,current_holder_name,default_checkout_hours,due_back_at,customer_id,location_id,updated_at,data";
+    const publicKeyFromRow = (row) => row ? ({
+      found: true,
+      id: row.id,
+      unique_tag_id: row.unique_tag_id,
+      key_name: row.key_name || row.data?.keyName || row.data?.name || "",
+      key_number: row.key_number || row.data?.keyNumber || "",
+      storage_location: row.storage_location || row.data?.storageLocation || "",
+      current_status: row.current_status || row.data?.currentStatus || "Available",
+      current_holder_name: row.current_holder_name || row.data?.currentHolderName || "",
+      default_checkout_hours: row.default_checkout_hours || row.data?.defaultCheckoutHours,
+      due_back_at: row.due_back_at || row.data?.dueBackAt || "",
+      customer_id: row.customer_id || row.data?.customerId || "",
+      customer_name: "",
+      location_id: row.location_id || row.data?.locationId || "",
+      location_name: "",
+      updated_at: row.updated_at || row.data?.updatedAt || ""
+    }) : null;
     const filters = [];
     if (normalizedUid) filters.push(`unique_tag_id=eq.${encodeURIComponent(normalizedUid)}`);
     if (keyId) filters.push(`id=eq.${encodeURIComponent(keyId)}`);
     for (const filter of filters) {
-      const response = await cloudApi.rest(`keys?${filter}&select=id,unique_tag_id,key_name,key_number,storage_location,current_status,current_holder_name,default_checkout_hours,due_back_at,customer_id,location_id,updated_at&limit=1`, { forceAnon: true });
+      const response = await cloudApi.rest(`keys?${filter}&select=${publicKeySelect}&limit=1`, { forceAnon: true });
       if (!response.ok) continue;
       const rows = await response.json();
       const row = rows?.[0];
-      if (row) {
-        return {
-          found: true,
-          id: row.id,
-          unique_tag_id: row.unique_tag_id,
-          key_name: row.key_name,
-          key_number: row.key_number,
-          storage_location: row.storage_location,
-          current_status: row.current_status,
-          current_holder_name: row.current_holder_name,
-          default_checkout_hours: row.default_checkout_hours,
-          due_back_at: row.due_back_at,
-          customer_id: row.customer_id,
-          customer_name: "",
-          location_id: row.location_id,
-          location_name: "",
-          updated_at: row.updated_at
-        };
+      if (row) return publicKeyFromRow(row);
+    }
+    if (normalizedUid) {
+      const response = await cloudApi.rest(`keys?select=${publicKeySelect}&limit=1000`, { forceAnon: true });
+      if (response.ok) {
+        const rows = await response.json();
+        const row = rows?.find((item) => getAllKeyTagUids(keyFromStructuredRow(item)).includes(normalizedUid));
+        if (row) return publicKeyFromRow(row);
       }
     }
     return null;
@@ -19188,7 +19196,8 @@ async function signInWithSupabase(email, password, options = {}) {
       setQrLoginTrace("Password accepted. Opening SiteWorks...");
       await new Promise((resolve) => window.requestAnimationFrame(resolve));
     }
-    let profile = options.fastProfileFallback
+    let profile = session.profile ? profileFromSupabase(session.profile) : null;
+    if (!profile) profile = options.fastProfileFallback
       ? await runWithTimeout(getProfileForAuthUser(session.user), 3500, null)
       : await getProfileForAuthUser(session.user);
     if (!profile) {
