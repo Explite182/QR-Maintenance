@@ -4,9 +4,38 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SiteWorks</title>
-    <link rel="stylesheet" href="/styles.css?v=20260731-email-status">
+  <link rel="stylesheet" href="/styles.css?v=20260809-keybox-extract-20">
+  <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
+  <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
 <body>
+  <section id="publicKeyScreen" class="report-screen hidden">
+    <div class="report-card">
+      <div>
+        <p class="eyebrow">SiteWorks key custody</p>
+        <h1 id="publicKeyTitle">Key check-in</h1>
+        <p id="publicKeyContext" class="report-context"></p>
+      </div>
+      <div id="publicKeyCard" class="stack"></div>
+      <form id="publicKeyForm" class="stack hidden">
+        <label>
+          Your name
+          <input id="publicKeyHolder" required autocomplete="name" placeholder="Name or company">
+        </label>
+        <label>
+          Note
+          <textarea id="publicKeyNote" rows="3" placeholder="Optional note"></textarea>
+        </label>
+        <div class="form-grid">
+          <button id="publicKeyCheckOutBtn" type="button">Check Out Key</button>
+          <button id="publicKeyCheckInBtn" type="button" class="secondary">Check In Key</button>
+        </div>
+        <p id="publicKeyMessage" class="login-message"></p>
+      </form>
+      <small class="report-note">No SiteWorks login is required. This page only updates the scanned key.</small>
+    </div>
+  </section>
+
   <section id="publicReportScreen" class="report-screen hidden">
     <div class="report-card">
       <div>
@@ -158,9 +187,16 @@
   <main class="app-shell app-only hidden">
     <aside id="appSidebar" class="sidebar">
         <nav id="workNav" class="sidebar-work-nav" aria-label="Work shortcuts">
-          <button type="button" class="sidebar-nav-btn" data-open-target="pmCalendarPanel" aria-expanded="false">
-            <span>PM Calendar</span>
-          </button>
+          <div class="sidebar-nav-group" data-sidebar-group="pm">
+            <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-pm-menu-toggle aria-expanded="false">
+              <span>PM</span>
+              <span class="sidebar-submenu-arrow" aria-hidden="true"></span>
+            </button>
+            <div class="sidebar-submenu hidden" data-pm-submenu>
+              <button type="button" class="sidebar-submenu-btn is-active" data-open-pm-tab="calendar">Calendar</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-pm-tab="templates" data-template-nav>Templates</button>
+            </div>
+          </div>
           <button type="button" class="sidebar-nav-btn" data-open-target="assetRegisterDrawer" aria-expanded="false">
             <span>Equipment Register</span>
           </button>
@@ -170,12 +206,22 @@
           <button type="button" class="sidebar-nav-btn" data-open-target="serviceRequestsPanel" aria-expanded="false">
             <span>Service Requests</span>
           </button>
-          <button type="button" class="sidebar-nav-btn" data-open-target="inventoryPanel" aria-expanded="false">
-            <span>Inventory</span>
+          <button type="button" class="sidebar-nav-btn" data-open-target="siteMapPanel" aria-expanded="false">
+            <span>Site Map</span>
           </button>
-          <button type="button" class="sidebar-nav-btn" data-open-target="templatesPanel" data-template-nav aria-expanded="false">
-            <span>Templates</span>
+          <button type="button" class="sidebar-nav-btn" data-open-target="monitoringPanel" aria-expanded="false">
+            <span>Panel Monitor</span>
           </button>
+          <div class="sidebar-nav-group" data-sidebar-group="inventory">
+            <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-inventory-menu-toggle aria-expanded="false">
+              <span>Inventory</span>
+              <span class="sidebar-submenu-arrow" aria-hidden="true"></span>
+            </button>
+            <div class="sidebar-submenu hidden" data-inventory-submenu>
+              <button type="button" class="sidebar-submenu-btn is-active" data-open-inventory-tab="items">Parts & Materials</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="keys">Keys</button>
+            </div>
+          </div>
           <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
             <span>Completed Tickets</span>
           </button>
@@ -451,6 +497,7 @@
             <button id="newIssueBtn" type="button" class="secondary">New Ticket</button>
             <button id="newServiceRequestBtn" type="button" class="secondary">New Service Request</button>
             <button id="newInventoryBtn" type="button" class="secondary">New Inventory Item</button>
+            <button id="newKeyBtn" type="button" class="secondary">New Key</button>
           </div>
         </div>
       </section>
@@ -730,6 +777,60 @@
         </div>
       </section>
 
+      <section id="siteMapPanel" class="work-orders-panel site-map-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="siteMapPanel">
+          <h2>Site Map</h2>
+          <div class="panel-title-actions">
+            <span id="siteMapPinCount">0</span>
+          </div>
+        </div>
+        <div class="site-map-body" data-panel-body>
+          <div class="site-map-toolbar">
+            <label class="site-map-field site-map-file-field">
+              Map file
+              <input id="siteMapImageInput" type="file" accept="image/*,application/pdf,.pdf">
+            </label>
+            <label class="site-map-field">
+              Equipment
+              <select id="siteMapPinAsset"></select>
+            </label>
+            <label class="site-map-field">
+              Pin label
+              <input id="siteMapPinLabel" placeholder="Optional label">
+            </label>
+            <label class="site-map-field">
+              Zone / area
+              <input id="siteMapPinArea" placeholder="Reception, Mech Room">
+            </label>
+            <label class="site-map-field">
+              Layer
+              <select id="siteMapPinLayer">
+                <option value="">Auto</option>
+                <option value="electrical">Electrical</option>
+                <option value="hvac">HVAC</option>
+                <option value="life-safety">Life safety</option>
+                <option value="plumbing">Plumbing</option>
+                <option value="fitness">Fitness equipment</option>
+                <option value="construction">Future tenant / construction</option>
+              </select>
+            </label>
+            <div class="site-map-actions">
+              <button id="siteMapAddPinBtn" type="button" class="primary mini">Add Pin</button>
+              <button id="siteMapClearBtn" type="button" class="secondary mini">Clear Map</button>
+            </div>
+            <small class="site-map-help">PDF, PNG, or JPG. Original PDF floor plans usually look best.</small>
+          </div>
+          <div id="siteMapLevelTabs" class="site-map-level-tabs" aria-label="Site map areas"></div>
+          <p id="siteMapStatus" class="inline-status"></p>
+          <div class="site-map-layout">
+            <div id="siteMapCanvas" class="site-map-canvas" role="application" aria-label="Interactive site map">
+              <div id="siteMapEmpty" class="site-map-empty">Upload a site or floor plan image to start mapping equipment.</div>
+            </div>
+            <div id="siteMapPinList" class="site-map-pin-list"></div>
+          </div>
+        </div>
+      </section>
+
       <section id="pmCalendarPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="pmCalendarPanel">
           <h2>PM Calendar</h2>
@@ -963,6 +1064,220 @@
         </div>
       </section>
 
+      <section id="monitoringPanel" class="work-orders-panel monitoring-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="monitoringPanel">
+          <h2>Panel Monitor</h2>
+          <div class="panel-title-actions">
+            <span id="monitoringDeviceCount">0</span>
+          </div>
+        </div>
+        <div class="monitoring-body" data-panel-body>
+          <section class="monitoring-card monitoring-panel-live-card">
+            <div class="monitoring-panel-toolbar">
+              <label>
+                Panel
+                <select id="monitoringPanelSelect"></select>
+              </label>
+            </div>
+            <div id="monitoringLivePanel" class="monitoring-live-grid"></div>
+            <div id="monitoringBreakerDetail" class="monitoring-breaker-detail hidden"></div>
+          </section>
+
+          <details class="monitoring-setup-drawer">
+            <summary>Setup monitoring devices, channels, and simulator</summary>
+            <div class="monitoring-layout">
+              <section class="monitoring-card">
+              <h3>Monitoring Devices</h3>
+              <form id="monitoringDeviceForm" class="stack compact-form">
+                <input id="monitoringDeviceId" type="hidden">
+                <label>
+                  Existing electrical panel
+                  <select id="monitoringDevicePanel"></select>
+                </label>
+                <div class="form-grid">
+                  <label>
+                    Device UID
+                    <input id="monitoringDeviceUid" required placeholder="ESP32-CL16-PANEL-A">
+                  </label>
+                  <label>
+                    API key
+                    <input id="monitoringDeviceApiKey" placeholder="Leave blank to keep existing key">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Source phase A channel
+                    <input id="monitoringSourcePhaseAChannel" placeholder="Dedicated source input or blank">
+                  </label>
+                  <label>
+                    Source phase B channel
+                    <input id="monitoringSourcePhaseBChannel" placeholder="Dedicated source input or blank">
+                  </label>
+                  <label>
+                    Source phase C channel
+                    <input id="monitoringSourcePhaseCChannel" placeholder="Dedicated source input or blank">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Device name
+                    <input id="monitoringDeviceName" required placeholder="Panel A monitor">
+                  </label>
+                  <label>
+                    Model
+                    <input id="monitoringDeviceModel" placeholder="ESP32 or Modbus gateway">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Firmware
+                    <input id="monitoringDeviceFirmware" placeholder="1.0.0">
+                  </label>
+                  <label>
+                    Heartbeat seconds
+                    <input id="monitoringDeviceHeartbeat" type="number" min="30" step="1" value="120">
+                  </label>
+                </div>
+                <label class="check-row">
+                  <input id="monitoringDeviceMaintenance" type="checkbox">
+                  Maintenance mode
+                </label>
+                <div class="monitoring-key-actions">
+                  <button id="monitoringRotateKeyBtn" type="button" class="secondary mini">Rotate API Key</button>
+                  <button id="monitoringRepairKeyBtn" type="button" class="secondary mini">Repair Cloud Key</button>
+                  <p id="monitoringGeneratedApiKey" class="inline-status"></p>
+                </div>
+                <button type="submit" class="primary">Save Device</button>
+                <p id="monitoringDeviceStatus" class="inline-status"></p>
+              </form>
+              <div id="monitoringDeviceList" class="monitoring-list"></div>
+              <div id="monitoringDeviceDetails" class="monitoring-device-details"></div>
+              </section>
+
+              <section class="monitoring-card">
+              <h3>Channel Mapping</h3>
+              <form id="monitoringChannelForm" class="stack compact-form">
+                <div class="form-grid">
+                  <label>
+                    Device
+                    <select id="monitoringChannelDevice"></select>
+                  </label>
+                  <label>
+                    Panel circuit
+                    <select id="monitoringChannelCircuit"></select>
+                  </label>
+                  <label id="monitoringChannelCircuitManualWrap" class="hidden">
+                    Circuit number
+                    <input id="monitoringChannelCircuitManual" placeholder="1">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Physical channel
+                    <input id="monitoringChannelNumber" required placeholder="1">
+                  </label>
+                  <label>
+                    Phase 1
+                    <select id="monitoringChannelPhase">
+                      <option>A</option>
+                      <option>B</option>
+                      <option>C</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-grid monitoring-phase-selector-row">
+                  <label id="monitoringChannelPhase2Wrap" class="hidden">
+                    Phase 2
+                    <select id="monitoringChannelPhase2">
+                      <option>A</option>
+                      <option selected>B</option>
+                      <option>C</option>
+                    </select>
+                  </label>
+                  <label id="monitoringChannelPhase3Wrap" class="hidden">
+                    Phase 3
+                    <select id="monitoringChannelPhase3">
+                      <option>A</option>
+                      <option>B</option>
+                      <option selected>C</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Poles
+                    <select id="monitoringChannelPoles">
+                      <option value="1">Single pole</option>
+                      <option value="2">Two pole</option>
+                      <option value="3">Three pole</option>
+                    </select>
+                  </label>
+                  <label>
+                    Alarm delay seconds
+                    <input id="monitoringChannelDelay" type="number" min="0" step="1" value="30">
+                  </label>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Mode
+                    <select id="monitoringChannelMode">
+                      <option>Normal</option>
+                      <option>Maintenance</option>
+                      <option>Disabled</option>
+                    </select>
+                  </label>
+                  <label>
+                    Criticality
+                    <select id="monitoringChannelCriticality">
+                      <option>Normal</option>
+                      <option>Critical</option>
+                      <option>Life safety</option>
+                    </select>
+                  </label>
+                </div>
+                <button type="submit" class="primary">Map Channel</button>
+                <p id="monitoringChannelStatus" class="inline-status"></p>
+              </form>
+              <div id="monitoringChannelList" class="monitoring-list"></div>
+              </section>
+
+              <section class="monitoring-card">
+              <h3>Simulator</h3>
+              <form id="monitoringSimulatorForm" class="stack compact-form">
+                <label>
+                  Device
+                  <select id="monitoringSimulatorDevice"></select>
+                </label>
+                <div class="phase-toggle-row">
+                  <label><input id="monitoringSourceA" name="sourceA" type="checkbox" checked><span>Phase A healthy</span></label>
+                  <label><input id="monitoringSourceB" name="sourceB" type="checkbox" checked><span>Phase B healthy</span></label>
+                  <label><input id="monitoringSourceC" name="sourceC" type="checkbox" checked><span>Phase C healthy</span></label>
+                </div>
+                <label>
+                  Energized physical channels
+                  <input id="monitoringClosedChannels" name="closedChannels" placeholder="1, 2, 3">
+                </label>
+                <button type="submit" class="primary">Send Simulated Status</button>
+                <p id="monitoringSimulatorStatus" class="inline-status"></p>
+              </form>
+              <div id="monitoringSimulatorHistory" class="monitoring-simulator-history"></div>
+              </section>
+            </div>
+          </details>
+
+          <div class="monitoring-results-grid">
+            <details class="monitoring-card monitoring-result-drawer">
+              <summary>Active Alerts</summary>
+              <div id="monitoringAlertList" class="monitoring-list"></div>
+            </details>
+            <details class="monitoring-card monitoring-result-drawer">
+              <summary>Panel Event History</summary>
+              <div id="monitoringEventList" class="monitoring-list"></div>
+            </details>
+          </div>
+        </div>
+      </section>
+
         <section id="inventoryPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="inventoryPanel">
           <h2>Inventory</h2>
@@ -971,7 +1286,12 @@
           </div>
         </div>
         <div data-panel-body>
-          <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
+          <div class="asset-subnav inventory-subnav" aria-label="Inventory views">
+            <button type="button" class="asset-subnav-tab is-active" data-inventory-tab="items">Parts & Materials</button>
+            <button type="button" class="asset-subnav-tab" data-inventory-tab="keys">Keys</button>
+          </div>
+          <div id="inventoryItemsPane" class="inventory-tab-pane" data-inventory-pane="items">
+            <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
             <summary>Add Inventory Item</summary>
             <form id="inventoryForm" class="stack compact-form">
               <div class="form-grid">
@@ -1022,6 +1342,93 @@
             </form>
           </details>
           <div id="inventoryList" class="inventory-list"></div>
+          </div>
+          <div id="keysPanel" class="inventory-tab-pane hidden" data-inventory-pane="keys">
+            <div class="section-title inventory-subsection-title">
+              <h2>Keys</h2>
+              <div class="panel-title-actions">
+                <span id="keyCount">0</span>
+              </div>
+            </div>
+            <label class="search-field key-search-field">
+              Search keys
+              <input id="keySearch" type="search" placeholder="Key name, number, tag, location, holder">
+            </label>
+            <details id="keyCreateDrawer" class="service-request-create-drawer work-create-drawer">
+              <summary>Add Key</summary>
+              <div id="keySetupWizard" class="key-setup-wizard" aria-label="Key setup wizard">
+                <button type="button" class="is-active" data-key-wizard-target="0">1 Scan NFC</button>
+                <button type="button" data-key-wizard-target="1">2 Key Name</button>
+                <button type="button" data-key-wizard-target="2">3 Location</button>
+                <button type="button" data-key-wizard-target="3">4 Notes</button>
+                <button type="button" data-key-wizard-target="4">5 Save</button>
+              </div>
+              <form id="keyForm" class="stack compact-form">
+                <section class="key-wizard-panel is-active" data-key-wizard-panel="0">
+                  <label>
+                    NFC tag UID
+                    <input id="keyTagUid" placeholder="Scan or type tag UID">
+                  </label>
+                  <button type="button" class="secondary mini" data-key-wizard-scan-nfc>Scan Tag</button>
+                  <label>
+                    Extra NFC tag UIDs
+                    <textarea id="keyAdditionalTagUids" rows="2" placeholder="Optional box/home tags, one UID per line"></textarea>
+                  </label>
+                </section>
+                <section class="key-wizard-panel" data-key-wizard-panel="1">
+                  <div class="form-grid">
+                    <label>
+                      Key name
+                      <input id="keyName" required placeholder="Electrical room key">
+                    </label>
+                    <label>
+                      Key number
+                      <input id="keyNumber" placeholder="K-101">
+                    </label>
+                  </div>
+                </section>
+                <section class="key-wizard-panel" data-key-wizard-panel="2">
+                  <div class="form-grid">
+                    <label>
+                      Customer
+                      <select id="keyCustomer"></select>
+                    </label>
+                    <label>
+                      Location
+                      <select id="keyLocation"></select>
+                    </label>
+                  </div>
+                  <label>
+                    Storage location
+                    <input id="keyStorageLocation" placeholder="Lock box, office, cabinet">
+                  </label>
+                </section>
+                <section class="key-wizard-panel" data-key-wizard-panel="3">
+                  <label>
+                    Notes
+                    <textarea id="keyNotes" rows="3" placeholder="Access notes, lock info, or return instructions"></textarea>
+                  </label>
+                </section>
+                <section class="key-wizard-panel" data-key-wizard-panel="4">
+                  <div class="key-wizard-review">
+                    <strong>Review and save</strong>
+                    <span id="keyWizardReview">Enter key details, then save.</span>
+                  </div>
+                  <label class="check-row">
+                    <input id="keyWriteAfterSave" type="checkbox" checked>
+                    Write this key URL to the NFC tag after saving
+                  </label>
+                  <button type="submit" class="primary">Add Key</button>
+                </section>
+                <div class="key-wizard-actions">
+                  <button type="button" class="secondary mini" data-key-wizard-prev>Back</button>
+                  <button type="button" class="secondary mini" data-key-wizard-next>Next</button>
+                </div>
+                <p id="keyStatus" class="inline-status"></p>
+              </form>
+            </details>
+            <div id="keyList" class="inventory-list"></div>
+          </div>
         </div>
       </section>
 
@@ -1295,11 +1702,15 @@
       <span class="mobile-tab-icon mobile-tab-dashboard" aria-hidden="true"></span>
       <span>Dashboard</span>
     </button>
+    <button type="button" class="mobile-tab-btn mobile-pm-btn" id="mobilePmBtn" aria-expanded="false" aria-controls="mobilePmMenu">
+      <span class="mobile-tab-icon mobile-tab-pm" aria-hidden="true"></span>
+      <span>PM</span>
+    </button>
     <button type="button" class="mobile-tab-btn" data-mobile-tab="assetRegisterDrawer">
       <span class="mobile-tab-icon mobile-tab-equipment" aria-hidden="true"></span>
       <span>Equipment</span>
     </button>
-    <button type="button" class="mobile-tab-btn" data-mobile-tab="inventoryPanel">
+    <button type="button" class="mobile-tab-btn mobile-inventory-btn" id="mobileInventoryBtn" aria-expanded="false" aria-controls="mobileInventoryMenu">
       <span class="mobile-tab-icon mobile-tab-inventory" aria-hidden="true"></span>
       <span>Inventory</span>
     </button>
@@ -1320,6 +1731,17 @@
       <button type="button" data-mobile-create-action="newTicket">Create Ticket</button>
       <button type="button" data-mobile-create-action="newServiceRequest">Create Service Call</button>
       <button type="button" data-mobile-create-action="newInventory">Add Inventory Item</button>
+      <button type="button" data-mobile-create-action="newKey">Add Key</button>
+    </div>
+    <div id="mobilePmMenu" class="mobile-create-menu hidden" aria-label="Preventive maintenance">
+      <button type="button" data-mobile-pm-target="pmCalendarPanel">PM Calendar</button>
+      <button type="button" data-mobile-pm-target="templatesPanel" data-template-nav>Templates</button>
+      <button type="button" data-mobile-pm-target="siteMapPanel">Site Map</button>
+      <button type="button" data-mobile-pm-target="monitoringPanel">Panel Monitor</button>
+    </div>
+    <div id="mobileInventoryMenu" class="mobile-create-menu hidden" aria-label="Inventory">
+      <button type="button" data-mobile-inventory-target="items">Parts & Materials</button>
+      <button type="button" data-mobile-inventory-target="keys">Keys</button>
     </div>
   </nav>
 
@@ -1419,7 +1841,9 @@
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/app.js?v=20260731-email-status"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
+  <script src="/app.js?v=20260811-public-report-quota-26"></script>
   <script>
     (() => {
       const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
