@@ -2806,6 +2806,7 @@ function setMonitoringPanelSummary(device = null, channels = []) {
 
 function monitoringTripAlertsForCurrentView() {
   ensureMonitoringCollections();
+  const needsConfirmationStates = new Set(["open", "suspected-trip"]);
   const results = [];
   const seen = new Set();
   const addAlert = (alert = {}, channel = null, device = null) => {
@@ -2841,7 +2842,7 @@ function monitoringTripAlertsForCurrentView() {
     });
 
   state.monitoringChannels
-    .filter((channel) => String(channel.lastDerivedState || channel.last_derived_state || "").toLowerCase() === "suspected-trip")
+    .filter((channel) => needsConfirmationStates.has(String(channel.lastDerivedState || channel.last_derived_state || "").toLowerCase()))
     .forEach((channel) => {
       const device = normalizeMonitoringDevice(getMonitoringDevice(channel.deviceId || channel.device_id || ""));
       if (device && !monitoringDeviceIsFresh(device)) return;
@@ -4796,7 +4797,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-breaker-trip-alerts-43";
+const SITEWORKS_APP_VERSION = "20260812-open-breaker-yellow-44";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
