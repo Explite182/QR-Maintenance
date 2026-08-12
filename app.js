@@ -2853,9 +2853,20 @@ function monitoringDeviceIsFresh(device = null) {
   return Date.now() - lastSeenMs <= heartbeatMs + 60000;
 }
 
+function monitoringChannelsAreFresh(channels = [], device = null) {
+  const heartbeatMs = Number(device?.heartbeatSeconds || device?.heartbeat_seconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS) * 1000;
+  const freshnessMs = Math.max(heartbeatMs + 60000, 3 * 60 * 1000);
+  return channels.some((channel) => {
+    const updatedAt = channel.updatedAt || channel.updated_at || channel.lastSeenAt || channel.last_seen_at || "";
+    if (!updatedAt) return false;
+    const updatedMs = new Date(updatedAt).getTime();
+    return Number.isFinite(updatedMs) && Date.now() - updatedMs <= freshnessMs;
+  });
+}
+
 function setMonitoringPanelSummary(device = null, channels = []) {
   const elements = monitoringElements();
-  const isFresh = monitoringDeviceIsFresh(device);
+  const isFresh = monitoringDeviceIsFresh(device) || monitoringChannelsAreFresh(channels, device);
   const activeCount = isFresh ? channels.filter(channel => {
     const rawState = channel.lastRawState ?? channel.last_raw_state;
     const stateValue = String(channel.lastDerivedState || channel.last_derived_state || "").toLowerCase();
@@ -5046,7 +5057,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-notification-history-61";
+const SITEWORKS_APP_VERSION = "20260812-monitor-freshness-62";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
