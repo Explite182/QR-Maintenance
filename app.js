@@ -2801,7 +2801,7 @@ function setMonitoringPanelSummary(device = null, channels = []) {
     setMonitoringConnectionStatus("offline", "No ESP");
     return;
   }
-  setMonitoringConnectionStatus(isFresh ? "online" : "offline", isFresh ? "ESP online" : "ESP offline");
+  setMonitoringConnectionStatus(isFresh ? "online" : "offline", isFresh ? "Online" : "Offline");
 }
 
 function monitoringDisplayChannelsForDevice(device = null, channels = []) {
@@ -4734,7 +4734,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-panel-monitor-offline-display-35";
+const SITEWORKS_APP_VERSION = "20260812-panel-monitor-simple-status-36";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];

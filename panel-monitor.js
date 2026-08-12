@@ -97,7 +97,7 @@ function setMonitoringPanelSummary(device = null, channels = []) {
     setMonitoringConnectionStatus("offline", "No ESP");
     return;
   }
-  setMonitoringConnectionStatus(isFresh ? "online" : "offline", isFresh ? "ESP online" : "ESP offline");
+  setMonitoringConnectionStatus(isFresh ? "online" : "offline", isFresh ? "Online" : "Offline");
 }
 
 function monitoringDisplayChannelsForDevice(device = null, channels = []) {

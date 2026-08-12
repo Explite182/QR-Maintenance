@@ -1610,13 +1610,14 @@ html[data-theme="dark"] .sidebar .template-editor textarea {
 }
 
 .monitoring-connection-status {
-  min-width: 92px;
-  padding: 0 12px;
-  border: 1px solid var(--line, #d8e3e1);
-  gap: 7px;
-  background: #f6f8f6;
+  min-width: 0;
+  height: 28px;
+  padding: 0 2px;
+  border: 0;
+  gap: 6px;
+  background: transparent;
   color: #43504c;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0;
 }
@@ -1631,21 +1632,15 @@ html[data-theme="dark"] .sidebar .template-editor textarea {
 }
 
 .monitoring-connection-status.is-online {
-  border-color: rgba(16, 122, 85, 0.32);
-  background: #e9f7f1;
   color: #0b7f58;
 }
 
 .monitoring-connection-status.is-checking {
-  border-color: rgba(176, 113, 21, 0.34);
-  background: #fff7e8;
   color: #9b5f08;
 }
 
 .monitoring-connection-status.is-login,
 .monitoring-connection-status.is-offline {
-  border-color: rgba(178, 46, 37, 0.34);
-  background: #fff0ee;
   color: #b22e25;
 }
 
