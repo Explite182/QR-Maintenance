@@ -9329,6 +9329,19 @@ html[data-theme="dark"] .sync-banner small {
   background: #fbfefe;
 }
 
+.monitoring-breaker-detail.is-floating {
+  position: fixed;
+  z-index: 80;
+  top: var(--breaker-detail-top, 120px);
+  left: var(--breaker-detail-left, 120px);
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(460px, calc(100vh - 24px));
+  overflow: auto;
+  border-color: #9fbeb7;
+  background: rgba(251, 254, 254, 0.98);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
+}
+
 .monitoring-breaker-detail > div {
   display: grid;
   gap: 4px;

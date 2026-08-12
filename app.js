@@ -3595,7 +3595,38 @@ function preserveMonitoringBreakerConfirmation(existing = null, incoming = null)
   };
 }
 
-function showMonitoringBreakerDetail(channelId = "", circuitNumber = "") {
+function positionMonitoringBreakerDrawer(anchorElement = null) {
+  const elements = monitoringElements();
+  const detail = elements.breakerDetail;
+  if (!detail) return;
+  const circuitSelectorValue = window.CSS?.escape
+    ? CSS.escape(String(selectedMonitoringBreakerCircuit || ""))
+    : String(selectedMonitoringBreakerCircuit || "").replace(/"/g, '\\"');
+  const anchor = anchorElement || document.querySelector(`[data-monitoring-breaker-circuit="${circuitSelectorValue}"]`);
+  if (!anchor) {
+    detail.classList.remove("is-floating");
+    detail.style.removeProperty("--breaker-detail-left");
+    detail.style.removeProperty("--breaker-detail-top");
+    return;
+  }
+  const rect = anchor.getBoundingClientRect();
+  const drawerWidth = Math.min(360, Math.max(280, window.innerWidth - 24));
+  const drawerHeight = Math.min(460, Math.max(260, window.innerHeight - 24));
+  const gap = 12;
+  const openRight = rect.right + gap + drawerWidth <= window.innerWidth - 12;
+  const left = openRight
+    ? rect.right + gap
+    : Math.max(12, rect.left - drawerWidth - gap);
+  const top = Math.min(
+    Math.max(12, rect.top - 16),
+    Math.max(12, window.innerHeight - drawerHeight - 12)
+  );
+  detail.classList.add("is-floating");
+  detail.style.setProperty("--breaker-detail-left", `${Math.round(left)}px`);
+  detail.style.setProperty("--breaker-detail-top", `${Math.round(top)}px`);
+}
+
+function showMonitoringBreakerDetail(channelId = "", circuitNumber = "", anchorElement = null) {
   const elements = monitoringElements();
   if (!elements.breakerDetail) return;
   const channel = getMonitoringChannel(channelId);
@@ -3618,6 +3649,7 @@ function showMonitoringBreakerDetail(channelId = "", circuitNumber = "") {
     <div class="monitoring-breaker-confirm-actions">
       <button type="button" class="secondary mini" data-monitoring-confirm-breaker="${escapeAttribute(channel.id)}" data-confirm-state="off">Confirm Off</button>
       <button type="button" class="secondary mini warn-action" data-monitoring-confirm-breaker="${escapeAttribute(channel.id)}" data-confirm-state="tripped">Confirm Tripped</button>
+      <button type="button" class="secondary mini" data-monitoring-close-breaker-detail>Close</button>
     </div>
   ` : "";
   elements.breakerDetail.classList.remove("hidden");
@@ -3643,6 +3675,7 @@ function showMonitoringBreakerDetail(channelId = "", circuitNumber = "") {
     </dl>
     ${confirmActions}
   `;
+  positionMonitoringBreakerDrawer(anchorElement);
 }
 
 function syncMonitoringPhaseSelectors() {
@@ -4881,7 +4914,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-breaker-confirm-flow-45";
+const SITEWORKS_APP_VERSION = "20260812-breaker-side-drawer-46";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8888,6 +8921,12 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-monitoring-close-breaker-detail]")) {
+    event.preventDefault();
+    monitoringElements().breakerDetail?.classList.add("hidden");
+    return;
+  }
+
   const confirmBreaker = event.target.closest("[data-monitoring-confirm-breaker]");
   if (confirmBreaker) {
     event.preventDefault();
@@ -8899,7 +8938,7 @@ document.addEventListener("click", (event) => {
   if (breakerDetail) {
     event.preventDefault();
     selectedMonitoringBreakerCircuit = breakerDetail.dataset.monitoringBreakerCircuit || "";
-    showMonitoringBreakerDetail(breakerDetail.dataset.monitoringBreakerDetail, breakerDetail.dataset.monitoringBreakerCircuit);
+    showMonitoringBreakerDetail(breakerDetail.dataset.monitoringBreakerDetail, breakerDetail.dataset.monitoringBreakerCircuit, breakerDetail);
     return;
   }
 
