@@ -5200,7 +5200,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-key-overdue-alerts-66";
+const SITEWORKS_APP_VERSION = "20260812-local-users-67";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6981,7 +6981,7 @@ els.userForm.addEventListener("submit", async (event) => {
     submitButton.disabled = true;
     submitButton.textContent = "Creating...";
   }
-  setUserFormStatus("Creating server login...");
+  setUserFormStatus("Creating SiteWorks login...");
   const newUser = await signUpSupabaseUser(
     username,
     els.newUserPassword.value,
@@ -7015,10 +7015,9 @@ els.userForm.addEventListener("submit", async (event) => {
   els.userForm.reset();
   delete els.userForm.dataset.requestId;
   render();
-  window.setTimeout(() => loadSupabaseProfiles(), 500);
   setUserFormStatus(newUser.profileSyncFailed
-    ? `User kept locally, but the server profile did not save for ${newUser.username}.`
-    : `Server user created for ${newUser.username}.`);
+    ? `User kept on this device, but the SiteWorks server did not save ${newUser.username}.`
+    : `SiteWorks user created for ${newUser.username}.`);
 });
 
 els.userList.addEventListener("submit", async (event) => {
@@ -10915,8 +10914,9 @@ function renderUserItem(user) {
   const canEdit = canEditUserRecord(user);
   const disabled = canEdit ? "" : "disabled";
   const usesServerUsers = siteworksServerEnabled();
-  const passwordDisabled = usesServerUsers || user.localOnly || !isEmailAddress(user.username) ? disabled : "disabled";
-  const passwordHelp = usesServerUsers || user.localOnly || !isEmailAddress(user.username)
+  const canEditPassword = canEdit && (usesServerUsers || user.localOnly || !isEmailAddress(user.username));
+  const passwordDisabled = canEditPassword ? "" : "disabled";
+  const passwordHelp = canEditPassword
     ? "Leave blank to keep current password"
     : "Use account password change";
   const currentLabel = currentUser?.id === user.id ? `<span class="current-user-label">Current user</span>` : "";
@@ -10935,7 +10935,7 @@ function renderUserItem(user) {
       ? " | All locations"
       : "";
   const cloudLabel = isEmailAddress(user.username) && !user.localOnly
-    ? `<span class="user-cloud-label">Server login</span>`
+    ? `<span class="user-cloud-label">SiteWorks login</span>`
     : `<span class="user-local-label">Local only</span>`;
   return `
     <details class="user-list-item user-editor">
