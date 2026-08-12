@@ -2924,6 +2924,23 @@ function monitoringTripAlertsForCurrentView() {
       addAlert({}, channel, device);
     });
 
+  serverNotifications
+    .filter((notification) => notification.type === "breaker-trip" && normalizeNotificationStatus(notification.status) === "active")
+    .forEach((notification) => {
+      const metadata = notificationMetadata(notification);
+      addAlert({
+        id: notification.id,
+        channelId: metadata.channelId || notification.source_id || "",
+        panelAssetId: metadata.panelAssetId || "",
+        circuitNumber: metadata.circuitNumber || "",
+        title: notification.title || "Breaker trip needs confirmation",
+        message: notification.message || "",
+        status: notification.status || "active",
+        severity: notification.severity || "warning",
+        createdAt: notification.created_at || notification.createdAt || ""
+      });
+    });
+
   return results.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
@@ -3634,7 +3651,7 @@ function needsBreakerConfirmation(channel = null) {
   return stateValue === "open" || stateValue === "suspected-trip";
 }
 
-function confirmMonitoringBreaker(channelId = "", confirmationState = "") {
+async function confirmMonitoringBreaker(channelId = "", confirmationState = "") {
   const channel = getMonitoringChannel(channelId);
   if (!channel) return;
   const state = confirmationState === "tripped" ? "tripped" : "off";
@@ -3655,6 +3672,7 @@ function confirmMonitoringBreaker(channelId = "", confirmationState = "") {
   saveStateQuietly();
   render();
   showMonitoringBreakerDetail(channel.id, channel.circuitNumber || "");
+  await updateBreakerNotificationForConfirmation(channel, state);
 }
 
 function preserveMonitoringBreakerConfirmation(existing = null, incoming = null) {
@@ -3737,7 +3755,6 @@ function showMonitoringBreakerDetail(channelId = "", circuitNumber = "", anchorE
     <div class="monitoring-breaker-confirm-actions">
       <button type="button" class="secondary mini" data-monitoring-confirm-breaker="${escapeAttribute(channel.id)}" data-confirm-state="off">Confirm Off</button>
       <button type="button" class="secondary mini warn-action" data-monitoring-confirm-breaker="${escapeAttribute(channel.id)}" data-confirm-state="tripped">Confirm Tripped</button>
-      <button type="button" class="secondary mini" data-monitoring-close-breaker-detail>Close</button>
     </div>
   ` : "";
   elements.breakerDetail.classList.remove("hidden");
@@ -3764,6 +3781,16 @@ function showMonitoringBreakerDetail(channelId = "", circuitNumber = "", anchorE
     ${confirmActions}
   `;
   positionMonitoringBreakerDrawer(anchorElement);
+}
+
+function closeMonitoringBreakerDetail() {
+  selectedMonitoringBreakerChannelId = "";
+  selectedMonitoringBreakerCircuit = "";
+  const detail = monitoringElements().breakerDetail;
+  detail?.classList.add("hidden");
+  detail?.classList.remove("is-floating");
+  detail?.style.removeProperty("--breaker-detail-left");
+  detail?.style.removeProperty("--breaker-detail-top");
 }
 
 function syncMonitoringPhaseSelectors() {
@@ -5021,7 +5048,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-monitor-confirmation-55";
+const SITEWORKS_APP_VERSION = "20260812-notification-confirm-57";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9094,7 +9121,7 @@ document.addEventListener("submit", async (event) => {
   }
 });
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const openNotification = event.target.closest("[data-notification-open]");
   if (openNotification) {
     event.preventDefault();
@@ -9111,18 +9138,14 @@ document.addEventListener("click", (event) => {
 
   if (event.target.closest("[data-monitoring-close-breaker-detail]")) {
     event.preventDefault();
-    selectedMonitoringBreakerChannelId = "";
-    selectedMonitoringBreakerCircuit = "";
-    const detail = monitoringElements().breakerDetail;
-    detail?.classList.add("hidden");
-    detail?.classList.remove("is-floating");
+    closeMonitoringBreakerDetail();
     return;
   }
 
   const confirmBreaker = event.target.closest("[data-monitoring-confirm-breaker]");
   if (confirmBreaker) {
     event.preventDefault();
-    confirmMonitoringBreaker(confirmBreaker.dataset.monitoringConfirmBreaker, confirmBreaker.dataset.confirmState);
+    await confirmMonitoringBreaker(confirmBreaker.dataset.monitoringConfirmBreaker, confirmBreaker.dataset.confirmState);
     return;
   }
 
@@ -9133,6 +9156,16 @@ document.addEventListener("click", (event) => {
     selectedMonitoringBreakerCircuit = breakerDetail.dataset.monitoringBreakerCircuit || "";
     showMonitoringBreakerDetail(breakerDetail.dataset.monitoringBreakerDetail, breakerDetail.dataset.monitoringBreakerCircuit, breakerDetail);
     return;
+  }
+
+  const openBreakerDetail = monitoringElements().breakerDetail;
+  if (
+    openBreakerDetail &&
+    !openBreakerDetail.classList.contains("hidden") &&
+    openBreakerDetail.classList.contains("is-floating") &&
+    !event.target.closest("#monitoringBreakerDetail")
+  ) {
+    closeMonitoringBreakerDetail();
   }
 
   const openPanelAsset = event.target.closest("[data-open-asset]");
@@ -12078,6 +12111,46 @@ async function acknowledgeServerNotification(id) {
     renderServerNotifications();
   } catch (error) {
     setSyncBanner("error", "Notification issue", error?.message || "Could not acknowledge notification.", 4500);
+  }
+}
+
+function findBreakerNotificationForChannel(channel = null) {
+  if (!channel) return null;
+  const channelId = String(channel.id || "");
+  const panelAssetId = String(channel.panelAssetId || channel.panel_asset_id || "");
+  const circuitNumber = String(channel.circuitNumber || channel.circuit_number || "");
+  return serverNotifications.find((notification) => {
+    if (notification.type !== "breaker-trip" || normalizeNotificationStatus(notification.status) !== "active") return false;
+    const metadata = notificationMetadata(notification);
+    if (metadata.channelId && channelId && String(metadata.channelId) === channelId) return true;
+    const notificationSourceId = String(notification.source_id || notification.sourceId || "");
+    if (notificationSourceId && channelId && notificationSourceId === channelId) return true;
+    return Boolean(
+      panelAssetId &&
+      circuitNumber &&
+      String(metadata.panelAssetId || "") === panelAssetId &&
+      String(metadata.circuitNumber || "") === circuitNumber
+    );
+  }) || null;
+}
+
+async function updateBreakerNotificationForConfirmation(channel = null, confirmationState = "") {
+  if (!channel || !siteworksServerEnabled()) return;
+  let notification = findBreakerNotificationForChannel(channel);
+  if (!notification) {
+    await loadServerNotifications();
+    notification = findBreakerNotificationForChannel(channel);
+  }
+  if (!notification?.id) return;
+  try {
+    const response = confirmationState === "off"
+      ? await siteworksApi.resolveNotification(notification.id)
+      : await siteworksApi.acknowledgeNotification(notification.id);
+    if (!response.ok) throw new Error(await response.text());
+    serverNotifications = serverNotifications.filter((item) => String(item.id || "") !== String(notification.id));
+    renderServerNotifications();
+  } catch (error) {
+    setSyncBanner("error", "Notification issue", error?.message || "Could not update breaker notification.", 4500);
   }
 }
 
