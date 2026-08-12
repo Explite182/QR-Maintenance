@@ -227,7 +227,7 @@ async function syncMonitoringStatusFromApi() {
   }
   ensureMonitoringCollections();
   try {
-    const response = await fetch(MONITORING_LIVE_STATUS_API, { cache: "no-store" });
+    const response = await siteworksServerFetch("/api/breaker-monitor/status", { cache: "no-store" });
     if (!response.ok) return;
     const body = await response.json();
     if (!Array.isArray(body.devices) || !Array.isArray(body.channels)) return;
