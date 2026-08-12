@@ -485,42 +485,12 @@ textarea:disabled {
   line-height: 1;
 }
 
-#changePasswordBtn,
 #logoutBtn {
   flex: 0 0 96px;
   min-width: 96px;
   min-height: 44px;
   padding: 0 16px;
   white-space: nowrap;
-}
-
-.password-panel-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  background: rgba(13, 23, 28, 0.36);
-}
-
-.password-panel {
-  position: fixed;
-  top: 96px;
-  right: 28px;
-  z-index: 81;
-  width: min(420px, calc(100vw - 32px));
-  padding: 18px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-.password-panel h2 {
-  margin: 0;
-  font-size: 22px;
-}
-
-.password-panel form {
-  margin-top: 16px;
 }
 
 .backup-controls {
@@ -1313,7 +1283,6 @@ html[data-theme="dark"] .asset-import-drawer,
 html[data-theme="dark"] .metric-dropdown,
 html[data-theme="dark"] .command-palette,
 html[data-theme="dark"] .modal,
-html[data-theme="dark"] .password-panel,
 html[data-theme="dark"] .panel-schedule-sheet,
 html[data-theme="dark"] .route-asset-option,
 html[data-theme="dark"] .template-route-box,
@@ -7101,7 +7070,6 @@ body.panel-schedule-open {
     font-weight: 800;
   }
 
-  #changePasswordBtn,
   #logoutBtn {
     position: static;
     z-index: auto;
@@ -7120,14 +7088,6 @@ body.panel-schedule-open {
     backdrop-filter: blur(12px);
   }
 
-  .password-panel {
-    top: 78px;
-    right: 16px;
-    left: 16px;
-    width: auto;
-  }
-
-  html[data-theme="dark"] #changePasswordBtn,
   html[data-theme="dark"] #logoutBtn {
     color: var(--ink);
     background: #17222a;

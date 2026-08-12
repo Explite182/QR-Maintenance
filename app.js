@@ -4655,7 +4655,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260811-local-api-auth-29";
+const SITEWORKS_APP_VERSION = "20260811-local-api-auth-30";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5147,9 +5147,7 @@ const els = {
   themeSelect: document.getElementById("themeSelect"),
   currentUserName: document.getElementById("currentUserName"),
   currentUserRole: document.getElementById("currentUserRole"),
-  changePasswordBtn: document.getElementById("changePasswordBtn"),
   passwordPanel: document.getElementById("passwordPanel"),
-  passwordPanelBackdrop: document.getElementById("passwordPanelBackdrop"),
   changePasswordForm: document.getElementById("changePasswordForm"),
   currentPassword: document.getElementById("currentPassword"),
   newPassword: document.getElementById("newPassword"),
@@ -5908,23 +5906,18 @@ els.logoutBtn.addEventListener("click", () => {
 function openPasswordPanel() {
   els.changePasswordForm?.reset();
   if (els.changePasswordMessage) els.changePasswordMessage.textContent = "";
-  els.passwordPanel?.classList.remove("hidden");
-  els.passwordPanelBackdrop?.classList.remove("hidden");
+  if (els.userDrawer) els.userDrawer.open = true;
+  if (els.passwordPanel?.tagName === "DETAILS") els.passwordPanel.open = true;
+  else els.passwordPanel?.classList.remove("hidden");
   setTimeout(() => els.currentPassword?.focus(), 0);
 }
 
 function closePasswordPanel() {
-  els.passwordPanel?.classList.add("hidden");
-  els.passwordPanelBackdrop?.classList.add("hidden");
+  if (els.passwordPanel?.tagName === "DETAILS") els.passwordPanel.open = false;
+  else els.passwordPanel?.classList.add("hidden");
   els.changePasswordForm?.reset();
   if (els.changePasswordMessage) els.changePasswordMessage.textContent = "";
 }
-
-els.changePasswordBtn?.addEventListener("click", openPasswordPanel);
-
-document.querySelectorAll("[data-close-password-panel]").forEach((button) => {
-  button.addEventListener("click", closePasswordPanel);
-});
 
 els.changePasswordForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
