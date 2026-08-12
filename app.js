@@ -2819,6 +2819,7 @@ function monitoringElements() {
     simulatorDevice: document.getElementById("monitoringSimulatorDevice"),
     simulatorStatus: document.getElementById("monitoringSimulatorStatus"),
     simulatorHistory: document.getElementById("monitoringSimulatorHistory"),
+    createDemoBtn: document.getElementById("monitoringCreateDemoBtn"),
     panelSelect: document.getElementById("monitoringPanelSelect"),
     livePanel: document.getElementById("monitoringLivePanel"),
     breakerDetail: document.getElementById("monitoringBreakerDetail"),
@@ -2832,18 +2833,20 @@ function monitoringElements() {
 function setMonitoringConnectionStatus(status = "offline", label = "") {
   const statusEl = monitoringElements().connectionStatus;
   if (!statusEl) return;
-  const normalizedStatus = ["online", "offline", "checking", "login"].includes(status) ? status : "offline";
+  const normalizedStatus = ["online", "offline", "checking", "login", "demo"].includes(status) ? status : "offline";
   statusEl.className = `monitoring-connection-status is-${normalizedStatus}`;
   statusEl.textContent = label || ({
     online: "Online",
     offline: "Offline",
     checking: "Checking",
-    login: "Login required"
+    login: "Login required",
+    demo: "Demo"
   }[normalizedStatus] || "Offline");
 }
 
 function monitoringDeviceIsFresh(device = null) {
   if (!device) return false;
+  if (isDemoMonitoringDevice(device)) return true;
   if (String(device.onlineStatus || device.online_status || "").toLowerCase() === "offline") return false;
   const lastSeenAt = device.lastSeenAt || device.last_seen_at || "";
   if (!lastSeenAt) return false;
@@ -2851,6 +2854,11 @@ function monitoringDeviceIsFresh(device = null) {
   if (!Number.isFinite(lastSeenMs)) return false;
   const heartbeatMs = Number(device.heartbeatSeconds || device.heartbeat_seconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS) * 1000;
   return Date.now() - lastSeenMs <= heartbeatMs + 60000;
+}
+
+function isDemoMonitoringDevice(device = null) {
+  const data = device?.data && typeof device.data === "object" ? device.data : {};
+  return Boolean(device?.demoMode || device?.demo_mode || data.demoMode);
 }
 
 function monitoringChannelsAreFresh(channels = [], device = null) {
@@ -2882,7 +2890,7 @@ function setMonitoringPanelSummary(device = null, channels = []) {
     setMonitoringConnectionStatus("offline", "No ESP");
     return;
   }
-  setMonitoringConnectionStatus(isFresh ? "online" : "offline", isFresh ? "Online" : "Offline");
+  setMonitoringConnectionStatus(isFresh ? (isDemoMonitoringDevice(device) ? "demo" : "online") : "offline", isFresh ? (isDemoMonitoringDevice(device) ? "Demo" : "Online") : "Offline");
 }
 
 function monitoringTripAlertsForCurrentView() {
@@ -2954,7 +2962,7 @@ function monitoringTripAlertsForCurrentView() {
 }
 
 function monitoringDisplayChannelsForDevice(device = null, channels = []) {
-  if (monitoringDeviceIsFresh(device)) return channels;
+  if (monitoringDeviceIsFresh(device) || isDemoMonitoringDevice(device)) return channels;
   return channels.map(channel => ({
     ...channel,
     lastRawState: null,
@@ -4206,6 +4214,141 @@ function handleMonitoringSimulatorSubmit(form) {
   }
 }
 
+async function createDemoMonitoringPanel() {
+  ensureMonitoringCollections();
+  const elements = monitoringElements();
+  if (!canManageMonitoringSetup()) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Admin access is required to create demo monitoring.";
+    return;
+  }
+  const panel = getAsset(elements.devicePanel?.value || selectedMonitoringPanelId);
+  if (!panel || !isElectricalPanelAsset(panel)) {
+    if (elements.deviceStatus) elements.deviceStatus.textContent = "Choose an electrical panel first.";
+    return;
+  }
+  const now = new Date().toISOString();
+  const existing = state.monitoringDevices.find((device) =>
+    isDemoMonitoringDevice(device) && String(device.panelAssetId || device.panel_asset_id || "") === String(panel.id || "")
+  );
+  const device = existing || {
+    id: makeId(),
+    createdAt: now,
+    deviceUid: `DEMO-${String(panel.id || makeId()).slice(0, 8).toUpperCase()}`,
+    apiKeyLast4: "demo"
+  };
+  device.customerId = panel.customerId || panel.customer_id || "";
+  device.locationId = panel.locationId || panel.location_id || "";
+  device.panelAssetId = panel.id;
+  device.name = `${panel.name || "Panel"} Demo Monitor`;
+  device.model = "SiteWorks Demo";
+  device.firmwareVersion = "demo";
+  device.heartbeatSeconds = 120;
+  device.maintenanceMode = false;
+  device.onlineStatus = "online";
+  device.healthStatus = "demo";
+  device.sourcePhases = { A: true, B: true, C: true };
+  device.lastSeenAt = now;
+  device.updatedAt = now;
+  device.demoMode = true;
+  device.data = { ...(device.data && typeof device.data === "object" ? device.data : {}), demoMode: true };
+  if (!existing) state.monitoringDevices.push(device);
+
+  const existingChannelKeys = new Set(
+    state.monitoringChannels
+      .filter((channel) => String(channel.deviceId || channel.device_id || "") === String(device.id))
+      .map((channel) => String(channel.physicalChannel || channel.physical_channel || ""))
+  );
+  const createdChannels = [];
+  for (let input = 1; input <= 8; input += 1) {
+    if (existingChannelKeys.has(String(input))) continue;
+    const circuitNumber = String(input);
+    createdChannels.push({
+      id: makeId(),
+      deviceId: device.id,
+      customerId: device.customerId,
+      locationId: device.locationId,
+      panelAssetId: panel.id,
+      circuitNumber,
+      physicalChannel: String(input),
+      sourcePhase: input % 3 === 1 ? "A" : input % 3 === 2 ? "B" : "C",
+      sourcePhases: [input % 3 === 1 ? "A" : input % 3 === 2 ? "B" : "C"],
+      poleCount: 1,
+      monitoringMode: "normal",
+      criticality: "normal",
+      alarmDelaySeconds: 0,
+      lastRawState: true,
+      lastDerivedState: "energized",
+      firstAbsentAt: "",
+      createdAt: now,
+      updatedAt: now,
+      data: { demoMode: true }
+    });
+  }
+  if (createdChannels.length) state.monitoringChannels.push(...createdChannels);
+  addMonitoringEvent({
+    deviceId: device.id,
+    panelAssetId: panel.id,
+    type: existing ? "demo-monitor-updated" : "demo-monitor-created",
+    state: "online",
+    message: `${device.name} is ready for demo use.`
+  });
+  selectedMonitoringPanelId = panel.id;
+  saveState();
+  try {
+    await syncMonitoringDeviceToSupabase(device);
+    if (createdChannels.length) await syncMonitoringChannelsToSupabase(createdChannels);
+  } catch (error) {
+    console.warn("Demo monitor server save failed", error);
+  }
+  render();
+  const nextElements = monitoringElements();
+  if (nextElements.simulatorDevice) nextElements.simulatorDevice.value = device.id;
+  if (nextElements.deviceStatus) {
+    nextElements.deviceStatus.textContent = `${device.name} created with 8 demo inputs. Click demo breakers to cycle on, off, and trip.`;
+  }
+}
+
+function cycleDemoMonitoringBreaker(channel = null) {
+  if (!channel) return;
+  const device = getMonitoringDevice(channel.deviceId || channel.device_id || "");
+  if (!isDemoMonitoringDevice(device)) return;
+  const currentState = monitoringDisplayState(channel);
+  const now = new Date().toISOString();
+  if (currentState === "energized") {
+    channel.lastRawState = false;
+    channel.lastDerivedState = "confirmed-off";
+    channel.data = { ...(channel.data && typeof channel.data === "object" ? channel.data : {}), demoMode: true, breakerConfirmation: { state: "off", confirmedAt: now, confirmedBy: "Demo mode" } };
+  } else if (currentState === "confirmed-off") {
+    channel.lastRawState = false;
+    channel.lastDerivedState = "suspected-trip";
+    channel.data = { ...(channel.data && typeof channel.data === "object" ? channel.data : {}), demoMode: true };
+    delete channel.data.breakerConfirmation;
+    ensureMonitoringAlert(device, channel);
+  } else {
+    channel.lastRawState = true;
+    channel.lastDerivedState = "energized";
+    channel.firstAbsentAt = "";
+    channel.data = { ...(channel.data && typeof channel.data === "object" ? channel.data : {}), demoMode: true };
+    delete channel.data.breakerConfirmation;
+    resolveMonitoringAlertsForChannel(channel.id, `Demo circuit ${channel.circuitNumber || ""} returned on.`);
+  }
+  channel.updatedAt = now;
+  device.lastSeenAt = now;
+  device.updatedAt = now;
+  device.onlineStatus = "online";
+  addMonitoringEvent({
+    deviceId: device.id,
+    channelId: channel.id,
+    panelAssetId: channel.panelAssetId,
+    circuitNumber: channel.circuitNumber,
+    type: "demo-breaker-toggle",
+    state: channel.lastDerivedState,
+    message: `Demo circuit ${channel.circuitNumber || ""} is ${monitoringStateLabel(channel.lastDerivedState)}.`
+  });
+  saveStateQuietly();
+  render();
+}
+
 function ingestMonitoringStatus(payload, options = {}) {
   ensureMonitoringCollections();
   if (monitoringEngine()?.ingestStatus) {
@@ -5057,7 +5200,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-monitor-freshness-62";
+const SITEWORKS_APP_VERSION = "20260812-demo-monitor-63";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6509,6 +6652,10 @@ els.mobileCreateMenu?.addEventListener("click", (event) => {
   event.stopPropagation();
   closeMobileCreateMenu();
   runMobileCreateAction(button.dataset.mobileCreateAction);
+});
+
+monitoringElements().createDemoBtn?.addEventListener("click", () => {
+  createDemoMonitoringPanel();
 });
 
 els.notificationCenterBtn?.addEventListener("click", (event) => {
@@ -9209,6 +9356,12 @@ document.addEventListener("click", async (event) => {
   const breakerDetail = event.target.closest("[data-monitoring-breaker-detail]");
   if (breakerDetail) {
     event.preventDefault();
+    const breakerChannel = getMonitoringChannel(breakerDetail.dataset.monitoringBreakerDetail || "");
+    const breakerDevice = breakerChannel ? getMonitoringDevice(breakerChannel.deviceId || breakerChannel.device_id || "") : null;
+    if (isDemoMonitoringDevice(breakerDevice)) {
+      cycleDemoMonitoringBreaker(breakerChannel);
+      return;
+    }
     selectedMonitoringBreakerChannelId = breakerDetail.dataset.monitoringBreakerDetail || "";
     selectedMonitoringBreakerCircuit = breakerDetail.dataset.monitoringBreakerCircuit || "";
     showMonitoringBreakerDetail(breakerDetail.dataset.monitoringBreakerDetail, breakerDetail.dataset.monitoringBreakerCircuit, breakerDetail);

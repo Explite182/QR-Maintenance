@@ -1677,6 +1677,10 @@ html[data-theme="dark"] .sidebar .template-editor textarea {
   color: #9b5f08;
 }
 
+.monitoring-connection-status.is-demo {
+  color: #8a5a00;
+}
+
 .monitoring-connection-status.is-login,
 .monitoring-connection-status.is-offline {
   color: #b22e25;
@@ -8603,6 +8607,25 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-card h3 {
   margin: 0 0 10px;
+}
+
+.monitoring-demo-actions {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #d7e2de;
+  border-radius: 8px;
+  background: #f8fbfa;
+}
+
+.monitoring-demo-actions button {
+  width: fit-content;
+}
+
+.monitoring-demo-actions small {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .monitoring-result-drawer {
