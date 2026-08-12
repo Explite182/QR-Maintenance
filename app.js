@@ -4942,7 +4942,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-server-users-source-51";
+const SITEWORKS_APP_VERSION = "20260812-server-user-management-52";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6711,7 +6711,14 @@ els.userList.addEventListener("submit", async (event) => {
   if (user.localOnly && password) user.password = password;
   if (!user.localOnly && isEmailAddress(username)) user.password = "";
   user.updatedAt = new Date().toISOString();
-  if (!user.localOnly && isEmailAddress(username)) await saveSupabaseProfile({ ...user, pendingPassword: password });
+  if (!user.localOnly && isEmailAddress(username)) {
+    const serverSaved = await saveServerUserProfile({ ...user, pendingPassword: password });
+    if (!serverSaved) {
+      alert(lastAuthError || "Server did not save this user. No local-only change was kept.");
+      await loadSupabaseProfiles({ renderAfter: true });
+      return;
+    }
+  }
   if (currentUser?.id === user.id) {
     currentUser = user;
     currentRole = user.role;
@@ -6738,7 +6745,11 @@ els.userList.addEventListener("click", async (event) => {
       return;
     }
     if (!confirm(`Delete user ${user.username}?`)) return;
-    await deleteSupabaseProfile(user.id);
+    const serverDeleted = await deleteServerUserProfile(user.id);
+    if (!serverDeleted) {
+      alert(lastAuthError || "Server did not delete this user. Try refreshing server users.");
+      return;
+    }
     addActivity("User deleted", `${user.username} (${user.role})`);
     state.users = state.users.filter((item) => item.id !== user.id);
     saveState();
@@ -10509,7 +10520,7 @@ function renderUserItem(user) {
   const passwordDisabled = usesServerUsers || user.localOnly || !isEmailAddress(user.username) ? disabled : "disabled";
   const passwordHelp = usesServerUsers || user.localOnly || !isEmailAddress(user.username)
     ? "Leave blank to keep current password"
-    : "Use account password reset";
+    : "Use account password change";
   const currentLabel = currentUser?.id === user.id ? `<span class="current-user-label">Current user</span>` : "";
   const customer = getCustomer(user.customerId);
   const customerOptions = manageableUserCustomers().map((customerRecord) =>
@@ -19844,18 +19855,41 @@ async function saveSupabaseProfile(profile) {
       delete fallbackPayload.location_id;
       const fallbackResponse = await siteworksApi.saveProfile(fallbackPayload);
       if (fallbackResponse.ok) return true;
-      console.warn("Supabase profile save skipped.", await fallbackResponse.text());
+      console.warn("Server profile save skipped.", await fallbackResponse.text());
       return false;
     }
-    console.warn("Supabase profile save skipped.", errorText);
+    console.warn("Server profile save skipped.", errorText);
     return false;
   }
   return false;
 }
 
+async function saveServerUserProfile(profile) {
+  lastAuthError = "";
+  const saved = await saveSupabaseProfile(profile);
+  if (!saved && !lastAuthError) lastAuthError = "Server user save failed.";
+  return saved;
+}
+
 async function deleteSupabaseProfile(userId) {
   const response = await siteworksApi.deleteProfile(userId);
-  if (!response.ok) console.warn("Supabase profile delete skipped.", await response.text());
+  if (!response.ok) console.warn("Server profile delete skipped.", await response.text());
+}
+
+async function deleteServerUserProfile(userId) {
+  lastAuthError = "";
+  try {
+    const response = await siteworksApi.deleteProfile(userId);
+    if (response.ok) return true;
+    const errorText = await response.text();
+    lastAuthError = readableSupabaseError(errorText) || "Server user delete failed.";
+    console.warn("Server user delete skipped.", errorText);
+    return false;
+  } catch (error) {
+    lastAuthError = error?.message || "Server user delete failed.";
+    console.warn("Server user delete skipped.", error);
+    return false;
+  }
 }
 
 async function getProfileForAuthUser(authUser) {
