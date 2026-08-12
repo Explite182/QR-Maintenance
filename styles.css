@@ -2465,6 +2465,33 @@ textarea {
   gap: 8px;
 }
 
+.notification-center-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #eef4f1;
+}
+
+.notification-center-tabs button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.notification-center-tabs button.is-active {
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgba(6, 26, 32, 0.12);
+}
+
 .notification-center-item {
   display: grid;
   gap: 10px;
@@ -2488,6 +2515,17 @@ textarea {
 .notification-center-item strong {
   display: block;
   font-size: 13px;
+}
+
+.notification-center-item strong span {
+  display: inline-flex;
+  margin-left: 5px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #dfe9e5;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
 }
 
 .notification-center-item small {

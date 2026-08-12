@@ -5046,7 +5046,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-notification-center-60";
+const SITEWORKS_APP_VERSION = "20260812-notification-history-61";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5471,6 +5471,7 @@ let syncHealth = {
 let serverNotifications = [];
 let serverNotificationsLoading = false;
 let lastNotificationLoadAt = "";
+let notificationCenterTab = "active";
 let notificationRules = [];
 let notificationRulesLoading = false;
 let editingAssetDetailField = "";
@@ -6507,6 +6508,12 @@ els.notificationCenterBtn?.addEventListener("click", (event) => {
 
 els.notificationCenterPanel?.addEventListener("click", (event) => {
   event.stopPropagation();
+  const tabButton = event.target.closest("[data-notification-tab]");
+  if (tabButton) {
+    event.preventDefault();
+    notificationCenterTab = tabButton.dataset.notificationTab === "history" ? "history" : "active";
+    renderServerNotifications();
+  }
 });
 
 els.userSwitcher?.addEventListener("change", () => {
@@ -12138,6 +12145,8 @@ function renderNotificationCenter(activeNotifications = null) {
     normalizeNotificationStatus(notification.status) === "active" && notificationMatchesCurrentView(notification)
   );
   const visible = serverNotifications.filter(notificationMatchesCurrentView);
+  const history = visible.filter((notification) => normalizeNotificationStatus(notification.status) !== "active");
+  const list = notificationCenterTab === "history" ? history : active;
   els.notificationCenterWrap?.classList.toggle("hidden", !currentUser);
   if (els.notificationCenterCount) els.notificationCenterCount.textContent = String(active.length);
   els.notificationCenterBtn?.classList.toggle("has-alerts", active.length > 0);
@@ -12156,8 +12165,14 @@ function renderNotificationCenter(activeNotifications = null) {
       <strong>Notifications</strong>
       <small>${active.length} active${lastNotificationLoadAt ? ` | Updated ${formatDateTime(lastNotificationLoadAt)}` : ""}</small>
     </div>
+    <div class="notification-center-tabs" role="tablist" aria-label="Notification view">
+      <button type="button" class="${notificationCenterTab === "active" ? "is-active" : ""}" data-notification-tab="active">Active ${active.length}</button>
+      <button type="button" class="${notificationCenterTab === "history" ? "is-active" : ""}" data-notification-tab="history">History ${history.length}</button>
+    </div>
     <div class="notification-center-list">
-      ${visible.slice(0, 8).map(renderNotificationCenterItem).join("")}
+      ${list.length
+        ? list.slice(0, 10).map(renderNotificationCenterItem).join("")
+        : `<div class="notification-center-empty"><strong>${notificationCenterTab === "history" ? "No history yet" : "No active alerts"}</strong><small>${notificationCenterTab === "history" ? "Acknowledged and resolved notifications will show here." : "You are caught up."}</small></div>`}
     </div>
   `;
 }
@@ -12167,11 +12182,15 @@ function renderNotificationCenterItem(notification = {}) {
   const title = notification.title || "SiteWorks notification";
   const severity = String(notification.severity || "warning").toLowerCase();
   const detail = notificationDetailText(notification);
+  const handled = status === "resolved"
+    ? notification.resolved_at || notification.resolvedAt || ""
+    : notification.acknowledged_at || notification.acknowledgedAt || "";
   return `
     <article class="notification-center-item is-${escapeAttribute(status)} is-${escapeAttribute(severity)}">
       <div>
-        <strong>${escapeHtml(title)}</strong>
+        <strong>${escapeHtml(title)}${status !== "active" ? ` <span>${escapeHtml(status)}</span>` : ""}</strong>
         <small>${escapeHtml(detail || status)}</small>
+        ${handled ? `<small>${escapeHtml(status === "resolved" ? "Resolved" : "Acknowledged")} ${escapeHtml(formatDateTime(handled))}</small>` : ""}
       </div>
       <div class="notification-center-actions">
         ${notification.type === "breaker-trip" ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
@@ -12287,7 +12306,7 @@ async function loadServerNotifications() {
   if (!currentUser || !siteworksServerEnabled() || serverNotificationsLoading) return;
   serverNotificationsLoading = true;
   try {
-    const response = await siteworksApi.loadNotifications("active");
+    const response = await siteworksApi.loadNotifications("all");
     if (!response.ok) throw new Error(await response.text());
     const payload = await response.json().catch(() => ({}));
     serverNotifications = Array.isArray(payload.notifications) ? payload.notifications : [];
@@ -12305,7 +12324,18 @@ async function acknowledgeServerNotification(id) {
   try {
     const response = await siteworksApi.acknowledgeNotification(id);
     if (!response.ok) throw new Error(await response.text());
-    serverNotifications = serverNotifications.filter((notification) => String(notification.id || "") !== String(id));
+    const payload = await response.json().catch(() => ({}));
+    if (payload.notification) {
+      serverNotifications = serverNotifications.map((notification) =>
+        String(notification.id || "") === String(id) ? payload.notification : notification
+      );
+    } else {
+      serverNotifications = serverNotifications.map((notification) =>
+        String(notification.id || "") === String(id)
+          ? { ...notification, status: "acknowledged", acknowledged_at: new Date().toISOString() }
+          : notification
+      );
+    }
     renderServerNotifications();
   } catch (error) {
     setSyncBanner("error", "Notification issue", error?.message || "Could not acknowledge notification.", 4500);
@@ -12317,7 +12347,18 @@ async function resolveServerNotification(id) {
   try {
     const response = await siteworksApi.resolveNotification(id);
     if (!response.ok) throw new Error(await response.text());
-    serverNotifications = serverNotifications.filter((notification) => String(notification.id || "") !== String(id));
+    const payload = await response.json().catch(() => ({}));
+    if (payload.notification) {
+      serverNotifications = serverNotifications.map((notification) =>
+        String(notification.id || "") === String(id) ? payload.notification : notification
+      );
+    } else {
+      serverNotifications = serverNotifications.map((notification) =>
+        String(notification.id || "") === String(id)
+          ? { ...notification, status: "resolved", resolved_at: new Date().toISOString() }
+          : notification
+      );
+    }
     renderServerNotifications();
   } catch (error) {
     setSyncBanner("error", "Notification issue", error?.message || "Could not resolve notification.", 4500);
@@ -12357,7 +12398,18 @@ async function updateBreakerNotificationForConfirmation(channel = null, confirma
       ? await siteworksApi.resolveNotification(notification.id)
       : await siteworksApi.acknowledgeNotification(notification.id);
     if (!response.ok) throw new Error(await response.text());
-    serverNotifications = serverNotifications.filter((item) => String(item.id || "") !== String(notification.id));
+    const payload = await response.json().catch(() => ({}));
+    if (payload.notification) {
+      serverNotifications = serverNotifications.map((item) =>
+        String(item.id || "") === String(notification.id) ? payload.notification : item
+      );
+    } else {
+      serverNotifications = serverNotifications.map((item) =>
+        String(item.id || "") === String(notification.id)
+          ? { ...item, status: confirmationState === "off" ? "resolved" : "acknowledged", updated_at: new Date().toISOString() }
+          : item
+      );
+    }
     renderServerNotifications();
   } catch (error) {
     setSyncBanner("error", "Notification issue", error?.message || "Could not update breaker notification.", 4500);
