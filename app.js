@@ -4734,7 +4734,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-panel-monitor-simple-status-36";
+const SITEWORKS_APP_VERSION = "20260812-local-users-ui-37";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5678,16 +5678,16 @@ els.passwordResetForm?.addEventListener("submit", async (event) => {
 
 els.refreshCloudUsersBtn?.addEventListener("click", async () => {
   if (!canManageUsers()) return;
-  els.cloudUsersStatus.textContent = "Checking Supabase users...";
+  els.cloudUsersStatus.textContent = "Checking server users...";
   els.cloudUsersStatus.classList.remove("is-error");
   els.cloudUsersStatus.classList.remove("is-ok");
   const result = await loadSupabaseProfiles({ renderAfter: true });
   if (!result.ok) {
-    els.cloudUsersStatus.textContent = result.message || "Could not load cloud users.";
+    els.cloudUsersStatus.textContent = result.message || "Could not load server users.";
     els.cloudUsersStatus.classList.add("is-error");
     return;
   }
-  els.cloudUsersStatus.textContent = `Loaded ${result.cloudCount} cloud user${result.cloudCount === 1 ? "" : "s"} from Supabase. Showing ${visibleManagedUsers().length} user${visibleManagedUsers().length === 1 ? "" : "s"} for your access.`;
+  els.cloudUsersStatus.textContent = `Loaded ${result.cloudCount} server user${result.cloudCount === 1 ? "" : "s"}. Showing ${visibleManagedUsers().length} user${visibleManagedUsers().length === 1 ? "" : "s"} for your access.`;
   els.cloudUsersStatus.classList.add("is-ok");
 });
 
@@ -6405,7 +6405,7 @@ els.userForm.addEventListener("submit", async (event) => {
     submitButton.disabled = true;
     submitButton.textContent = "Creating...";
   }
-  setUserFormStatus("Creating Supabase login...");
+  setUserFormStatus("Creating server login...");
   const newUser = await signUpSupabaseUser(
     username,
     els.newUserPassword.value,
@@ -6419,7 +6419,7 @@ els.userForm.addEventListener("submit", async (event) => {
     submitButton.textContent = originalButtonText;
   }
   if (!newUser) {
-    setUserFormStatus(lastAuthError || "Could not create that Supabase user.", true);
+    setUserFormStatus(lastAuthError || "Could not create that server user.", true);
     return;
   }
   upsertLocalUser(newUser);
@@ -6441,8 +6441,8 @@ els.userForm.addEventListener("submit", async (event) => {
   render();
   window.setTimeout(() => loadSupabaseProfiles(), 500);
   setUserFormStatus(newUser.profileSyncFailed
-    ? `User kept locally, but the cloud profile did not save. Check Supabase profiles policy for ${newUser.username}.`
-    : `Cloud user created for ${newUser.username}.`);
+    ? `User kept locally, but the server profile did not save for ${newUser.username}.`
+    : `Server user created for ${newUser.username}.`);
 });
 
 els.userList.addEventListener("submit", async (event) => {
@@ -19073,11 +19073,18 @@ const siteworksApi = {
       body: JSON.stringify({ password: newPassword })
     }, getSavedAuthSession());
   },
-  createUser(email, password, name) {
+  createUser(email, password, name, role = "Technician", customerId = "", locationId = "") {
     if (siteworksServerEnabled()) {
       return this.server("/api/users", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password, name })
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+          name,
+          role,
+          customer_id: customerId,
+          location_id: locationId
+        })
       });
     }
     return cloudApi.auth("signup", {
@@ -19441,40 +19448,42 @@ function readableSupabaseError(errorText) {
 async function signUpSupabaseUser(email, password, name, role, customerId, locationId = "") {
   lastAuthError = "";
   try {
-    const response = await siteworksApi.createUser(email, password, name);
+    const response = await siteworksApi.createUser(email, password, name, role, customerId, locationId);
     if (!response.ok) {
       const errorText = await response.text();
-      lastAuthError = readableSupabaseError(errorText) || "Supabase could not create this user.";
-      console.warn("Supabase sign up failed.", errorText);
+      lastAuthError = readableSupabaseError(errorText) || "Server could not create this user.";
+      console.warn("Server user creation failed.", errorText);
       return null;
     }
     const authData = await response.json();
-    const authUser = authData.user || authData;
+    const authUser = Array.isArray(authData) ? authData[0] : (authData.user || authData);
     const session = authData.session || (authData.access_token ? authData : null);
     if (!authUser?.id) {
-      lastAuthError = "Supabase created no user record. Check Auth email settings.";
+      lastAuthError = "Server created no user record.";
       return null;
     }
     const profile = {
       id: authUser.id,
-      username: authUser.email || email.trim().toLowerCase(),
+      username: authUser.email || authUser.username || email.trim().toLowerCase(),
       name: name || authUser.email || email,
-      role,
-      customerId,
-      locationId: role === "Admin" ? "" : locationId || "",
-      createdAt: new Date().toISOString(),
+      role: authUser.role || role,
+      customerId: authUser.customer_id || authUser.customerId || customerId,
+      locationId: authUser.location_id || authUser.locationId || (role === "Admin" ? "" : locationId || ""),
+      createdAt: authUser.created_at || authUser.createdAt || new Date().toISOString(),
       session
     };
-    const profileSaved = await saveSupabaseProfile(profile);
-    if (!profileSaved) {
-      profile.profileSyncFailed = true;
-      lastAuthError = "Supabase created the login, but SiteWorks could not save its user profile.";
+    if (!siteworksServerEnabled()) {
+      const profileSaved = await saveSupabaseProfile(profile);
+      if (!profileSaved) {
+        profile.profileSyncFailed = true;
+        lastAuthError = "Supabase created the login, but SiteWorks could not save its user profile.";
+      }
     }
     upsertLocalUser(profile);
     return profile;
   } catch (error) {
-    lastAuthError = error?.message || "Supabase sign up failed.";
-    console.warn("Supabase sign up failed.", error);
+    lastAuthError = error?.message || "Server user creation failed.";
+    console.warn("Server user creation failed.", error);
     return null;
   }
 }
