@@ -2354,6 +2354,57 @@ textarea {
   gap: 12px;
 }
 
+.server-notification-panel {
+  display: grid;
+  grid-column: 2;
+  gap: 8px;
+  margin: 0;
+}
+
+.server-notification {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid #f4ca72;
+  border-radius: 8px;
+  background: #fff7de;
+  color: #34230a;
+}
+
+.server-notification strong {
+  display: block;
+  font-size: 14px;
+}
+
+.server-notification small {
+  display: block;
+  margin-top: 3px;
+  color: #6b5b3d;
+}
+
+.server-notification-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.server-notification-actions button {
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 8px;
+}
+
+.notification-rules-drawer .form-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.notification-rules-drawer .inline-check {
+  align-items: center;
+}
+
 .metric-card {
   position: relative;
   display: grid;

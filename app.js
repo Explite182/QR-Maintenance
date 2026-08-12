@@ -5048,7 +5048,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-notification-confirm-57";
+const SITEWORKS_APP_VERSION = "20260812-notification-rules-ui-58";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5473,6 +5473,8 @@ let syncHealth = {
 let serverNotifications = [];
 let serverNotificationsLoading = false;
 let lastNotificationLoadAt = "";
+let notificationRules = [];
+let notificationRulesLoading = false;
 let editingAssetDetailField = "";
 let storageFullWarningShown = false;
 let suppressStorageFullWarning = false;
@@ -5601,6 +5603,17 @@ const els = {
   newPasswordConfirm: document.getElementById("newPasswordConfirm"),
   changePasswordSubmitBtn: document.getElementById("changePasswordSubmitBtn"),
   changePasswordMessage: document.getElementById("changePasswordMessage"),
+  notificationRulesDrawer: document.getElementById("notificationRulesDrawer"),
+  notificationRuleForm: document.getElementById("notificationRuleForm"),
+  notificationRuleId: document.getElementById("notificationRuleId"),
+  notificationRuleEnabled: document.getElementById("notificationRuleEnabled"),
+  notificationRuleSeverity: document.getElementById("notificationRuleSeverity"),
+  notificationRuleInApp: document.getElementById("notificationRuleInApp"),
+  notificationRuleQuietStart: document.getElementById("notificationRuleQuietStart"),
+  notificationRuleQuietEnd: document.getElementById("notificationRuleQuietEnd"),
+  notificationRuleEscalation: document.getElementById("notificationRuleEscalation"),
+  notificationRuleCount: document.getElementById("notificationRuleCount"),
+  notificationRuleStatus: document.getElementById("notificationRuleStatus"),
   logoutBtn: document.getElementById("logoutBtn"),
   backupStatus: document.getElementById("backupStatus"),
   backupLocationBlock: document.getElementById("backupLocationBlock"),
@@ -5913,11 +5926,13 @@ setupInactivityLogout();
 window.setTimeout(bootstrapCloudData, 0);
 window.setTimeout(initializeRealtimeSync, 1200);
 window.setTimeout(loadServerNotifications, 1800);
+window.setTimeout(loadNotificationRules, 2200);
 window.setInterval(syncPublicReportsFromSupabase, PUBLIC_REPORT_SYNC_INTERVAL_MS);
 window.setInterval(refreshCloudDataFromSupabase, CLOUD_REFRESH_INTERVAL_MS);
 window.setInterval(runMonitoringOfflineCheck, 60000);
 window.setInterval(syncMonitoringStatusFromApi, MONITORING_LIVE_SYNC_INTERVAL_MS);
 window.setInterval(loadServerNotifications, 30000);
+window.setInterval(loadNotificationRules, 5 * 60 * 1000);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 initPasswordRecoveryFromUrl();
 
@@ -9119,6 +9134,9 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     handleMonitoringSimulatorSubmit(form);
   }
+  if (form.id === "notificationRuleForm") {
+    await handleNotificationRuleSubmit(event);
+  }
 });
 
 document.addEventListener("click", async (event) => {
@@ -10014,6 +10032,8 @@ function renderRole() {
   els.userForm?.classList.toggle("hidden", !userManagementAllowed);
   els.currentUsersDrawer?.classList.toggle("hidden", !userManagementAllowed);
   if (!userManagementAllowed && els.currentUsersDrawer) els.currentUsersDrawer.open = false;
+  els.notificationRulesDrawer?.classList.toggle("hidden", !userManagementAllowed);
+  if (!userManagementAllowed && els.notificationRulesDrawer) els.notificationRulesDrawer.open = false;
   els.passwordPanel?.classList.toggle("hidden", !accountSettingsAllowed);
   els.accessRequestsBlock?.classList.toggle("hidden", !userManagementAllowed);
   els.accessRequestList?.classList.toggle("hidden", !userManagementAllowed);
@@ -12083,6 +12103,89 @@ function renderServerNotifications() {
 function normalizeNotificationStatus(value = "") {
   const text = String(value || "").trim().toLowerCase();
   return ["active", "acknowledged", "resolved"].includes(text) ? text : "active";
+}
+
+function normalizeNotificationChannels(value = null) {
+  const channels = Array.isArray(value) ? value : ["in-app"];
+  const clean = channels
+    .map((channel) => String(channel || "").trim().toLowerCase())
+    .filter((channel) => ["in-app", "email", "sms", "push"].includes(channel));
+  return clean.length ? [...new Set(clean)] : ["in-app"];
+}
+
+function breakerTripNotificationRule() {
+  return notificationRules.find((rule) => String(rule.event_type || rule.eventType || "") === "breaker-trip") || {
+    id: "",
+    event_type: "breaker-trip",
+    enabled: true,
+    severity: "warning",
+    channels: ["in-app"],
+    quiet_hours_start: "",
+    quiet_hours_end: "",
+    escalation_minutes: 0
+  };
+}
+
+function renderNotificationRuleForm() {
+  if (!els.notificationRuleForm) return;
+  const rule = breakerTripNotificationRule();
+  const channels = normalizeNotificationChannels(rule.channels);
+  if (els.notificationRuleId) els.notificationRuleId.value = rule.id || "";
+  if (els.notificationRuleEnabled) els.notificationRuleEnabled.checked = rule.enabled !== false;
+  if (els.notificationRuleSeverity) els.notificationRuleSeverity.value = rule.severity || "warning";
+  if (els.notificationRuleInApp) els.notificationRuleInApp.checked = channels.includes("in-app");
+  if (els.notificationRuleQuietStart) els.notificationRuleQuietStart.value = rule.quiet_hours_start || rule.quietHoursStart || "";
+  if (els.notificationRuleQuietEnd) els.notificationRuleQuietEnd.value = rule.quiet_hours_end || rule.quietHoursEnd || "";
+  if (els.notificationRuleEscalation) els.notificationRuleEscalation.value = String(rule.escalation_minutes ?? rule.escalationMinutes ?? 0);
+  if (els.notificationRuleCount) els.notificationRuleCount.textContent = notificationRules.length || 1;
+}
+
+async function loadNotificationRules() {
+  if (!currentUser || !siteworksServerEnabled() || notificationRulesLoading || !els.notificationRuleForm) return;
+  notificationRulesLoading = true;
+  if (els.notificationRuleStatus) els.notificationRuleStatus.textContent = "Loading rules...";
+  try {
+    const response = await siteworksApi.loadNotificationRules();
+    if (!response.ok) throw new Error(await response.text());
+    const payload = await response.json().catch(() => ({}));
+    notificationRules = Array.isArray(payload.rules) ? payload.rules : [];
+    renderNotificationRuleForm();
+    if (els.notificationRuleStatus) els.notificationRuleStatus.textContent = notificationRules.length ? "Rules loaded." : "Using default breaker trip rule.";
+  } catch (error) {
+    if (els.notificationRuleStatus) els.notificationRuleStatus.textContent = error?.message || "Could not load rules.";
+  } finally {
+    notificationRulesLoading = false;
+  }
+}
+
+async function handleNotificationRuleSubmit(event) {
+  event.preventDefault();
+  if (!siteworksServerEnabled()) return;
+  const channels = els.notificationRuleInApp?.checked ? ["in-app"] : [];
+  const payload = {
+    id: els.notificationRuleId?.value || undefined,
+    event_type: "breaker-trip",
+    enabled: Boolean(els.notificationRuleEnabled?.checked),
+    severity: els.notificationRuleSeverity?.value || "warning",
+    channels,
+    quiet_hours_start: els.notificationRuleQuietStart?.value || null,
+    quiet_hours_end: els.notificationRuleQuietEnd?.value || null,
+    escalation_minutes: Math.max(0, Number(els.notificationRuleEscalation?.value || 0))
+  };
+  if (els.notificationRuleStatus) els.notificationRuleStatus.textContent = "Saving rule...";
+  try {
+    const response = await siteworksApi.saveNotificationRule(payload);
+    if (!response.ok) throw new Error(await response.text());
+    const result = await response.json().catch(() => ({}));
+    if (result.rule) {
+      notificationRules = notificationRules.filter((rule) => String(rule.id || "") !== String(result.rule.id || ""));
+      notificationRules.unshift(result.rule);
+    }
+    renderNotificationRuleForm();
+    if (els.notificationRuleStatus) els.notificationRuleStatus.textContent = "Notification rule saved.";
+  } catch (error) {
+    if (els.notificationRuleStatus) els.notificationRuleStatus.textContent = error?.message || "Could not save rule.";
+  }
 }
 
 async function loadServerNotifications() {
@@ -19808,6 +19911,17 @@ const siteworksApi = {
   resolveNotification(id) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     return this.server(`/api/notifications/${encodeURIComponent(id)}/resolve`, { method: "POST" });
+  },
+  loadNotificationRules() {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ rules: [] }), { status: 200 }));
+    return this.server("/api/notification-rules");
+  },
+  saveNotificationRule(rule) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, rule }), { status: 200 }));
+    return this.server("/api/notification-rules", {
+      method: "POST",
+      body: JSON.stringify(rule)
+    });
   },
   lookupPublicKey(uid, keyId = "") {
     if (siteworksServerEnabled()) {
