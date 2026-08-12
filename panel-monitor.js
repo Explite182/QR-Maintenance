@@ -49,6 +49,7 @@ function monitoringElements() {
     livePanel: document.getElementById("monitoringLivePanel"),
     breakerDetail: document.getElementById("monitoringBreakerDetail"),
     connectionStatus: document.getElementById("monitoringConnectionStatus"),
+    deviceCount: document.getElementById("monitoringDeviceCount"),
     alertList: document.getElementById("monitoringAlertList"),
     eventList: document.getElementById("monitoringEventList")
   };
@@ -65,6 +66,35 @@ function setMonitoringConnectionStatus(status = "offline", label = "") {
     checking: "Checking",
     login: "Login required"
   }[normalizedStatus] || "Offline");
+}
+
+function monitoringDeviceIsFresh(device = null) {
+  if (!device) return false;
+  if (String(device.onlineStatus || device.online_status || "").toLowerCase() === "offline") return false;
+  const lastSeenAt = device.lastSeenAt || device.last_seen_at || "";
+  if (!lastSeenAt) return false;
+  const lastSeenMs = new Date(lastSeenAt).getTime();
+  if (!Number.isFinite(lastSeenMs)) return false;
+  const heartbeatMs = Number(device.heartbeatSeconds || device.heartbeat_seconds || MONITORING_DEFAULT_HEARTBEAT_SECONDS) * 1000;
+  return Date.now() - lastSeenMs <= heartbeatMs + 60000;
+}
+
+function setMonitoringPanelSummary(device = null, channels = []) {
+  const elements = monitoringElements();
+  const activeCount = channels.filter(channel => {
+    const rawState = channel.lastRawState ?? channel.last_raw_state;
+    const stateValue = String(channel.lastDerivedState || channel.last_derived_state || "").toLowerCase();
+    return rawState === true || rawState === "true" || rawState === 1 || rawState === "1" || stateValue === "energized";
+  }).length;
+  if (elements.deviceCount) {
+    elements.deviceCount.title = `${activeCount} triggered / ${channels.length} monitored inputs`;
+    elements.deviceCount.textContent = channels.length ? `${activeCount}/${channels.length}` : "0";
+  }
+  if (!device) {
+    setMonitoringConnectionStatus("offline", "No ESP");
+    return;
+  }
+  setMonitoringConnectionStatus(monitoringDeviceIsFresh(device) ? "online" : "offline", monitoringDeviceIsFresh(device) ? "ESP online" : "ESP offline");
 }
 
 function ensureMonitoringCollections() {
@@ -256,7 +286,7 @@ async function syncMonitoringStatusFromApi() {
       setMonitoringConnectionStatus("offline");
       return;
     }
-    setMonitoringConnectionStatus("online");
+    setMonitoringConnectionStatus("online", "API online");
 
     const deviceIdByApiId = new Map();
     let changed = false;
@@ -1702,6 +1732,7 @@ function renderMonitoringLivePanel(devices) {
     return;
   }
   const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
+  setMonitoringPanelSummary(primaryDevice, channels);
   const circuitCount = monitoringPanelCircuitCount(fallbackPanel, channels);
   const channelByCircuit = monitoringChannelByCircuitMap(channels);
   const rowCount = Math.ceil(circuitCount / 2);
