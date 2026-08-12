@@ -4942,7 +4942,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-breaker-new-trip-reset-50";
+const SITEWORKS_APP_VERSION = "20260812-server-users-source-51";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -19796,7 +19796,7 @@ async function signUpSupabaseUser(email, password, name, role, customerId, locat
 }
 
 async function loadSupabaseProfiles(options = {}) {
-  if (authProfilesLoading) return { ok: false, message: "Cloud users are already refreshing.", cloudCount: 0 };
+  if (authProfilesLoading) return { ok: false, message: "Server users are already refreshing.", cloudCount: 0 };
   authProfilesLoading = true;
   try {
     const response = await siteworksApi.loadProfiles();
@@ -19804,11 +19804,11 @@ async function loadSupabaseProfiles(options = {}) {
     authProfilesLoaded = true;
     if (!response.ok) {
       const errorText = await response.text();
-      console.warn("Supabase profiles sync skipped.", errorText);
-      return { ok: false, message: `Supabase profiles sync skipped: ${errorText}`, cloudCount: 0 };
+      console.warn("Server users sync skipped.", errorText);
+      return { ok: false, message: `Server users sync skipped: ${errorText}`, cloudCount: 0 };
     }
     const profiles = await response.json();
-    state.users = mergeProfileUsers(profiles.map(profileFromSupabase), state.users || []);
+    state.users = replaceUsersFromServerProfiles(profiles.map(profileFromSupabase), state.users || []);
     restoreSavedSessionUser();
     persistLocalStateOnly();
     if (options.renderAfter !== false) render();
@@ -19819,8 +19819,8 @@ async function loadSupabaseProfiles(options = {}) {
   } catch (error) {
     authProfilesLoading = false;
     authProfilesLoaded = true;
-    console.warn("Supabase profiles sync skipped.", error);
-    return { ok: false, message: error?.message || "Could not load cloud users.", cloudCount: 0 };
+    console.warn("Server users sync skipped.", error);
+    return { ok: false, message: error?.message || "Could not load server users.", cloudCount: 0 };
   }
 }
 
@@ -19963,6 +19963,12 @@ function restoreSavedSessionUser() {
   currentUser = user;
   currentRole = user.role || "Customer";
   state.currentUserId = user.id;
+}
+
+function replaceUsersFromServerProfiles(profileUsers = [], localUsers = []) {
+  const serverUsers = mergeProfileUsers(profileUsers, []);
+  const scanUser = localUsers.find((user) => user.username === "scan-customer");
+  return scanUser ? [...serverUsers, sanitizeSharedUser(scanUser)] : serverUsers;
 }
 
 function findStateUserForCurrentSession() {
