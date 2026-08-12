@@ -2804,6 +2804,53 @@ function setMonitoringPanelSummary(device = null, channels = []) {
   setMonitoringConnectionStatus(isFresh ? "online" : "offline", isFresh ? "Online" : "Offline");
 }
 
+function monitoringTripAlertsForCurrentView() {
+  ensureMonitoringCollections();
+  const results = [];
+  const seen = new Set();
+  const addAlert = (alert = {}, channel = null, device = null) => {
+    const channelId = String(alert.channelId || alert.channel_id || channel?.id || "");
+    const panelAssetId = String(alert.panelAssetId || alert.panel_asset_id || channel?.panelAssetId || channel?.panel_asset_id || device?.panelAssetId || "");
+    const circuitNumber = String(alert.circuitNumber || alert.circuit_number || channel?.circuitNumber || channel?.circuit_number || "");
+    const key = channelId || `${panelAssetId}-${circuitNumber}`;
+    if (!key || seen.has(key)) return;
+    const panel = getAsset(panelAssetId);
+    if (panel && !isCurrentViewAsset(panel)) return;
+    const fallback = panel || device || channel;
+    if (!panel && !monitoringRecordMatchesCurrentView(alert, fallback)) return;
+    seen.add(key);
+    results.push({
+      id: alert.id || channelId || key,
+      channelId,
+      panelAssetId,
+      circuitNumber,
+      title: alert.title || `Breaker trip needs confirmation`,
+      message: alert.message || `Circuit ${circuitNumber || "unknown"} changed state and needs confirmation.`,
+      status: alert.status || "active",
+      severity: alert.severity || channel?.criticality || "warning",
+      createdAt: alert.createdAt || alert.created_at || channel?.updatedAt || channel?.updated_at || ""
+    });
+  };
+
+  state.monitoringAlerts
+    .filter((alert) => String(alert.status || "active") !== "resolved")
+    .forEach((alert) => {
+      const channel = getMonitoringChannel(alert.channelId || alert.channel_id || "");
+      const device = getMonitoringDevice(alert.deviceId || alert.device_id || channel?.deviceId || channel?.device_id || "");
+      addAlert(alert, channel, device);
+    });
+
+  state.monitoringChannels
+    .filter((channel) => String(channel.lastDerivedState || channel.last_derived_state || "").toLowerCase() === "suspected-trip")
+    .forEach((channel) => {
+      const device = normalizeMonitoringDevice(getMonitoringDevice(channel.deviceId || channel.device_id || ""));
+      if (device && !monitoringDeviceIsFresh(device)) return;
+      addAlert({}, channel, device);
+    });
+
+  return results.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+
 function monitoringDisplayChannelsForDevice(device = null, channels = []) {
   if (monitoringDeviceIsFresh(device)) return channels;
   return channels.map(channel => ({
@@ -3060,6 +3107,21 @@ async function syncMonitoringStatusFromApi() {
         changed = true;
       });
       state.monitoringEvents = state.monitoringEvents.slice(0, 1000);
+    }
+
+    if (Array.isArray(body.alerts)) {
+      body.alerts.forEach((row) => {
+        const incoming = monitoringAlertFromStructuredRow(row);
+        incoming.deviceId = deviceIdByApiId.get(String(incoming.deviceId || "")) || incoming.deviceId;
+        if (!incoming.id) return;
+        const existing = state.monitoringAlerts.find((alert) => String(alert.id || "") === String(incoming.id));
+        if (existing) {
+          Object.assign(existing, { ...existing, ...incoming });
+        } else {
+          state.monitoringAlerts.push(incoming);
+        }
+        changed = true;
+      });
     }
 
     if (changed) renderMonitoring();
@@ -4734,7 +4796,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-technician-password-settings-42";
+const SITEWORKS_APP_VERSION = "20260812-breaker-trip-alerts-43";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5447,6 +5509,7 @@ const els = {
   waitingPartsIssues: document.getElementById("waitingPartsIssues"),
   reportedIssues: document.getElementById("reportedIssues"),
   failedPmIssues: document.getElementById("failedPmIssues"),
+  breakerTripAlerts: document.getElementById("breakerTripAlerts"),
   activeLocations: document.getElementById("activeLocations"),
   assignedToMeIssues: document.getElementById("assignedToMeIssues"),
   pmCalendarCount: document.getElementById("pmCalendarCount"),
@@ -11584,6 +11647,7 @@ function renderDashboard() {
   const activeIssues = filteredWorkOrders().filter((item) => item.status !== "Closed");
   const activeServiceRequests = filteredServiceRequests().filter((item) => item.status !== "Completed" && item.status !== "Declined");
   const completedIssues = completedTicketRecords();
+  const breakerTrips = monitoringTripAlertsForCurrentView();
   const currentCustomer = getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
   if (els.currentViewLabel) {
@@ -11599,9 +11663,10 @@ function renderDashboard() {
   if (els.assignedToMeIssues) els.assignedToMeIssues.textContent = activeIssues.filter((item) => item.assignedUserId === currentUser?.id).length;
   if (els.reportedIssues) els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
   if (els.failedPmIssues) els.failedPmIssues.textContent = activeIssues.filter(isFailedPmIssue).length;
+  if (els.breakerTripAlerts) els.breakerTripAlerts.textContent = breakerTrips.length;
   if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
   if (els.globalSearch) els.globalSearch.value = globalQuery;
-  renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues });
+  renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips });
   syncMobileMetricVisibility();
   renderGlobalSearchResults();
 }
@@ -12052,7 +12117,7 @@ function exportPmCalendarCsv() {
   URL.revokeObjectURL(url);
 }
 
-function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues }) {
+function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips = [] }) {
   const scopedDueInfos = dueInfos.filter((item) => item?.asset && isCurrentViewAsset(item.asset));
   const scopedActiveIssues = activeIssues.filter(isCurrentViewWorkOrder);
   const scopedServiceRequests = activeServiceRequests.filter(isCurrentViewServiceRequest);
@@ -12075,6 +12140,7 @@ function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceReq
     workOrders: dashboardIssueItems(scopedActiveIssues, "No open tickets for this view."),
     reportedIssues: dashboardIssueItems(customerReports, "No customer reports for this view."),
     failedPmIssues: dashboardIssueItems(failedPmIssues, "No failed PM follow-ups for this view."),
+    breakerTrips: dashboardBreakerTripItems(breakerTrips, "No breaker trips need confirmation."),
     serviceRequests: dashboardServiceRequestItems(scopedServiceRequests, "No service requests for this view."),
     highPriority: dashboardIssueItems(highPriorityIssues, "No high priority tickets for this view."),
     waitingParts: dashboardIssueItems(waitingPartsIssues, "No waiting parts tickets for this view."),
@@ -12086,6 +12152,26 @@ function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceReq
       menu.innerHTML = html;
     });
   });
+}
+
+function dashboardBreakerTripItems(alerts, emptyText) {
+  return alerts.length
+    ? alerts.slice(0, 6).map((alert) => {
+        const panel = getAsset(alert.panelAssetId);
+        return renderDashboardMenuItem({
+          type: "breaker-alert",
+          id: alert.id,
+          label: alert.title || "Breaker trip needs confirmation",
+          meta: [
+            panel?.name || "Panel monitor",
+            alert.circuitNumber ? `Circuit ${alert.circuitNumber}` : "",
+            alert.status || "active",
+            alert.createdAt ? formatDateTime(alert.createdAt) : ""
+          ].filter(Boolean).join(" | "),
+          badge: "Confirm"
+        });
+      }).join("") + renderDashboardMoreCount(alerts.length)
+    : renderDashboardEmpty(emptyText);
 }
 
 function dashboardAssetItems(assets, emptyText) {
@@ -13343,6 +13429,14 @@ function openDashboardResult(type, id) {
     focusedCompletedRecordId = "";
     serviceRequestDrawerTab = "notes";
     openPanel("serviceRequestsPanel");
+  } else if (type === "breaker-alert") {
+    const alert = monitoringTripAlertsForCurrentView().find((item) => String(item.id || "") === String(id));
+    if (!alert) return;
+    selectedMonitoringPanelId = alert.panelAssetId || selectedMonitoringPanelId;
+    selectedMonitoringBreakerCircuit = alert.circuitNumber || "";
+    closeOtherSidebarTargets("monitoringPanel");
+    openPanel("monitoringPanel");
+    setMobileTabState("monitoringPanel");
   } else if (type === "completed") {
     if (!openCompletedRecord(id, false)) return;
   }
@@ -13353,7 +13447,9 @@ function openDashboardResult(type, id) {
       ? document.getElementById("workOrdersPanel")
       : type === "service"
         ? document.getElementById("serviceRequestsPanel")
-        : document.getElementById("completedPmPanel");
+        : type === "breaker-alert"
+          ? document.getElementById("monitoringPanel")
+          : document.getElementById("completedPmPanel");
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
