@@ -2396,6 +2396,119 @@ textarea {
   border-radius: 8px;
 }
 
+.notification-center-wrap {
+  position: relative;
+}
+
+.notification-center-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.notification-center-btn span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #dfe9e5;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.notification-center-btn.has-alerts span {
+  background: #f6c85f;
+  color: #2a1d06;
+}
+
+.notification-center-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 80;
+  width: min(380px, calc(100vw - 28px));
+  max-height: 70vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.notification-center-heading,
+.notification-center-empty {
+  display: grid;
+  gap: 3px;
+  padding: 4px 4px 10px;
+}
+
+.notification-center-heading strong,
+.notification-center-empty strong {
+  font-size: 14px;
+}
+
+.notification-center-heading small,
+.notification-center-empty small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notification-center-list {
+  display: grid;
+  gap: 8px;
+}
+
+.notification-center-item {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #d9e3df;
+  border-radius: 8px;
+  background: #f8fbfa;
+}
+
+.notification-center-item.is-warning,
+.notification-center-item.is-critical {
+  border-color: #f1c85a;
+  background: #fff8df;
+}
+
+.notification-center-item.is-critical {
+  border-color: #dc7a7a;
+  background: #fff0ee;
+}
+
+.notification-center-item strong {
+  display: block;
+  font-size: 13px;
+}
+
+.notification-center-item small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.notification-center-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.notification-center-actions button {
+  min-height: 30px;
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+
 .notification-rules-drawer .form-grid {
   grid-template-columns: 1fr 1fr;
   gap: 8px;

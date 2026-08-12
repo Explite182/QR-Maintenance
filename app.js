@@ -5046,7 +5046,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-user-switch-sticky-59";
+const SITEWORKS_APP_VERSION = "20260812-notification-center-60";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5594,6 +5594,10 @@ const els = {
   themeSelect: document.getElementById("themeSelect"),
   currentUserName: document.getElementById("currentUserName"),
   currentUserRole: document.getElementById("currentUserRole"),
+  notificationCenterWrap: document.getElementById("notificationCenterWrap"),
+  notificationCenterBtn: document.getElementById("notificationCenterBtn"),
+  notificationCenterCount: document.getElementById("notificationCenterCount"),
+  notificationCenterPanel: document.getElementById("notificationCenterPanel"),
   passwordPanel: document.getElementById("passwordPanel"),
   changePasswordForm: document.getElementById("changePasswordForm"),
   currentPassword: document.getElementById("currentPassword"),
@@ -6493,6 +6497,16 @@ els.mobileCreateMenu?.addEventListener("click", (event) => {
   event.stopPropagation();
   closeMobileCreateMenu();
   runMobileCreateAction(button.dataset.mobileCreateAction);
+});
+
+els.notificationCenterBtn?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  toggleNotificationCenter();
+});
+
+els.notificationCenterPanel?.addEventListener("click", (event) => {
+  event.stopPropagation();
 });
 
 els.userSwitcher?.addEventListener("change", () => {
@@ -9138,6 +9152,8 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  if (!event.target.closest("#notificationCenterWrap")) closeNotificationCenter();
+
   const openNotification = event.target.closest("[data-notification-open]");
   if (openNotification) {
     event.preventDefault();
@@ -9149,6 +9165,13 @@ document.addEventListener("click", async (event) => {
   if (ackNotification) {
     event.preventDefault();
     acknowledgeServerNotification(ackNotification.dataset.notificationAck);
+    return;
+  }
+
+  const resolveNotification = event.target.closest("[data-notification-resolve]");
+  if (resolveNotification) {
+    event.preventDefault();
+    resolveServerNotification(resolveNotification.dataset.notificationResolve);
     return;
   }
 
@@ -12068,6 +12091,7 @@ function renderServerNotifications() {
   const visible = serverNotifications.filter((notification) =>
     normalizeNotificationStatus(notification.status) === "active" && notificationMatchesCurrentView(notification)
   );
+  renderNotificationCenter(visible);
   els.serverNotificationPanel.classList.toggle("hidden", !visible.length);
   if (!visible.length) {
     els.serverNotificationPanel.innerHTML = "";
@@ -12096,6 +12120,79 @@ function renderServerNotifications() {
       </div>
     `;
   }).join("");
+}
+
+function notificationDetailText(notification = {}) {
+  const metadata = notificationMetadata(notification);
+  const panel = getAsset(metadata.panelAssetId);
+  return [
+    notification.message || "",
+    panel?.name || "",
+    metadata.circuitNumber ? `Circuit ${metadata.circuitNumber}` : "",
+    notification.created_at ? formatDateTime(notification.created_at) : ""
+  ].filter(Boolean).join(" | ");
+}
+
+function renderNotificationCenter(activeNotifications = null) {
+  const active = activeNotifications || serverNotifications.filter((notification) =>
+    normalizeNotificationStatus(notification.status) === "active" && notificationMatchesCurrentView(notification)
+  );
+  const visible = serverNotifications.filter(notificationMatchesCurrentView);
+  els.notificationCenterWrap?.classList.toggle("hidden", !currentUser);
+  if (els.notificationCenterCount) els.notificationCenterCount.textContent = String(active.length);
+  els.notificationCenterBtn?.classList.toggle("has-alerts", active.length > 0);
+  if (!els.notificationCenterPanel) return;
+  if (!visible.length) {
+    els.notificationCenterPanel.innerHTML = `
+      <div class="notification-center-empty">
+        <strong>No active alerts</strong>
+        <small>New SiteWorks notifications will show here.</small>
+      </div>
+    `;
+    return;
+  }
+  els.notificationCenterPanel.innerHTML = `
+    <div class="notification-center-heading">
+      <strong>Notifications</strong>
+      <small>${active.length} active${lastNotificationLoadAt ? ` | Updated ${formatDateTime(lastNotificationLoadAt)}` : ""}</small>
+    </div>
+    <div class="notification-center-list">
+      ${visible.slice(0, 8).map(renderNotificationCenterItem).join("")}
+    </div>
+  `;
+}
+
+function renderNotificationCenterItem(notification = {}) {
+  const status = normalizeNotificationStatus(notification.status);
+  const title = notification.title || "SiteWorks notification";
+  const severity = String(notification.severity || "warning").toLowerCase();
+  const detail = notificationDetailText(notification);
+  return `
+    <article class="notification-center-item is-${escapeAttribute(status)} is-${escapeAttribute(severity)}">
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(detail || status)}</small>
+      </div>
+      <div class="notification-center-actions">
+        ${notification.type === "breaker-trip" ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
+        ${status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
+        ${status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function toggleNotificationCenter() {
+  if (!els.notificationCenterPanel || !els.notificationCenterBtn) return;
+  const willOpen = els.notificationCenterPanel.classList.contains("hidden");
+  els.notificationCenterPanel.classList.toggle("hidden", !willOpen);
+  els.notificationCenterBtn.setAttribute("aria-expanded", String(willOpen));
+  if (willOpen) loadServerNotifications();
+}
+
+function closeNotificationCenter() {
+  els.notificationCenterPanel?.classList.add("hidden");
+  els.notificationCenterBtn?.setAttribute("aria-expanded", "false");
 }
 
 function normalizeNotificationStatus(value = "") {
@@ -12215,6 +12312,18 @@ async function acknowledgeServerNotification(id) {
   }
 }
 
+async function resolveServerNotification(id) {
+  if (!id) return;
+  try {
+    const response = await siteworksApi.resolveNotification(id);
+    if (!response.ok) throw new Error(await response.text());
+    serverNotifications = serverNotifications.filter((notification) => String(notification.id || "") !== String(id));
+    renderServerNotifications();
+  } catch (error) {
+    setSyncBanner("error", "Notification issue", error?.message || "Could not resolve notification.", 4500);
+  }
+}
+
 function findBreakerNotificationForChannel(channel = null) {
   if (!channel) return null;
   const channelId = String(channel.id || "");
@@ -12258,6 +12367,7 @@ async function updateBreakerNotificationForConfirmation(channel = null, confirma
 function openServerNotification(id) {
   const notification = serverNotifications.find((item) => String(item.id || "") === String(id));
   if (!notification) return;
+  closeNotificationCenter();
   const metadata = notificationMetadata(notification);
   if (notification.type === "breaker-trip") {
     selectedMonitoringPanelId = metadata.panelAssetId || selectedMonitoringPanelId;
