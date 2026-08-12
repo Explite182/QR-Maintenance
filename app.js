@@ -5200,7 +5200,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-local-users-67";
+const SITEWORKS_APP_VERSION = "20260812-local-public-reports-68";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6085,7 +6085,7 @@ window.setTimeout(bootstrapCloudData, 0);
 window.setTimeout(initializeRealtimeSync, 1200);
 window.setTimeout(loadServerNotifications, 1800);
 window.setTimeout(loadNotificationRules, 2200);
-window.setInterval(syncPublicReportsFromSupabase, PUBLIC_REPORT_SYNC_INTERVAL_MS);
+window.setInterval(syncPublicReportsFromServer, PUBLIC_REPORT_SYNC_INTERVAL_MS);
 window.setInterval(refreshCloudDataFromSupabase, CLOUD_REFRESH_INTERVAL_MS);
 window.setInterval(runMonitoringOfflineCheck, 60000);
 window.setInterval(syncMonitoringStatusFromApi, MONITORING_LIVE_SYNC_INTERVAL_MS);
@@ -6467,10 +6467,10 @@ els.publicReportForm.addEventListener("submit", async (event) => {
     const note = els.publicReportNote.value.trim();
     const contact = els.publicReportContact.value.trim();
     const ticket = createIssueFromPublicReport(report, note, contact, photo);
-    let remoteId = await savePublicReportToSupabase(report, note, contact, photo);
+    let remoteId = await savePublicReportToServer(report, note, contact, photo);
     if (!remoteId && photo) {
       els.publicReportMessage.textContent = "Photo could not be attached, so SiteWorks is sending the report without it...";
-      remoteId = await savePublicReportToSupabase(report, note, contact, null);
+      remoteId = await savePublicReportToServer(report, note, contact, null);
       ticket.photo = null;
     }
     if (!remoteId) {
@@ -8703,7 +8703,7 @@ els.removeLocalCopiesBtn?.addEventListener("click", () => {
 
 els.refreshCloudNowBtn?.addEventListener("click", async () => {
   await refreshCloudDataFromSupabase();
-  const importedReports = await syncPublicReportsFromSupabase(true);
+  const importedReports = await syncPublicReportsFromServer(true);
   if (Number.isFinite(importedReports)) {
     updateCloudCleanupStatus(importedReports
       ? `Imported ${importedReports} public QR report${importedReports === 1 ? "" : "s"} from Supabase.`
@@ -9479,7 +9479,7 @@ function render() {
   resetInactivityLogoutTimer();
   restoreScannedAssetSelection();
   restoreScannedInventorySelection();
-  syncPublicReportsFromSupabase();
+  syncPublicReportsFromServer();
   ensureSelection();
   renderUsers();
   renderPreferredContractors();
@@ -19767,7 +19767,7 @@ function createIssueFromPublicReport(report, note, contact, photo) {
   };
 }
 
-async function savePublicReportToSupabase(report, note, contact, photo) {
+async function savePublicReportToServer(report, note, contact, photo) {
   lastPublicReportError = "";
   const payload = {
     id: crypto.randomUUID(),
@@ -19788,12 +19788,12 @@ async function savePublicReportToSupabase(report, note, contact, photo) {
     return payload.id;
   } catch (error) {
     lastPublicReportError = "Report was not sent to SiteWorks. Try again with a smaller photo or no photo.";
-    console.warn("Supabase public report save skipped.", error);
+    console.warn("SiteWorks public report save skipped.", error);
     return "";
   }
 }
 
-async function syncPublicReportsFromSupabase(force = false) {
+async function syncPublicReportsFromServer(force = false) {
   if (remoteReportsLoading || !canManageWorkOrders()) return 0;
   const now = Date.now();
   if (!force && now - lastRemoteReportsSyncAt < PUBLIC_REPORT_SYNC_MIN_AGE_MS) return 0;
@@ -19806,20 +19806,8 @@ async function syncPublicReportsFromSupabase(force = false) {
     remoteReportsLoaded = true;
     if (!response.ok) {
       const errorText = await response.text();
-      if (isSupabaseQuotaRestrictionError(errorText)) {
-        if (force) {
-          setSyncBanner(
-            "stale",
-            "Public reports paused",
-            "Supabase quota is blocking public report sync. SiteWorks app data is still active.",
-            7000
-          );
-        }
-        console.warn("Supabase public report sync paused by project quota.", errorText);
-        return 0;
-      }
       markSyncError(`Public report sync failed: ${errorText}`);
-      console.warn("Supabase public report sync skipped.", errorText);
+      console.warn("SiteWorks public report sync skipped.", errorText);
       return 0;
     }
     data = await response.json();
@@ -19827,20 +19815,8 @@ async function syncPublicReportsFromSupabase(force = false) {
   } catch (error) {
     remoteReportsLoading = false;
     remoteReportsLoaded = true;
-    if (isSupabaseQuotaRestrictionError(error?.message)) {
-      if (force) {
-        setSyncBanner(
-          "stale",
-          "Public reports paused",
-          "Supabase quota is blocking public report sync. SiteWorks app data is still active.",
-          7000
-        );
-      }
-      console.warn("Supabase public report sync paused by project quota.", error);
-      return 0;
-    }
     markSyncError(error?.message || "Public report sync failed.");
-    console.warn("Supabase public report sync skipped.", error);
+    console.warn("SiteWorks public report sync skipped.", error);
     return 0;
   }
   const added = (data || []).reduce((count, report) => {
@@ -19853,7 +19829,7 @@ async function syncPublicReportsFromSupabase(force = false) {
     return count + 1;
   }, 0);
   if (added) {
-    addActivity("Public reports synced", `${added} report${added === 1 ? "" : "s"} imported from Supabase.`);
+    addActivity("Public reports synced", `${added} report${added === 1 ? "" : "s"} imported from SiteWorks server.`);
     saveState();
     render();
   }
@@ -19959,10 +19935,10 @@ function handleRealtimeCloudChange(payload = {}) {
   realtimeRefreshTimer = window.setTimeout(async () => {
     try {
       if (table === "public_reports") {
-        await syncPublicReportsFromSupabase(true);
+        await syncPublicReportsFromServer(true);
       } else {
         await refreshCloudDataFromSupabase();
-        await syncPublicReportsFromSupabase(true);
+        await syncPublicReportsFromServer(true);
       }
       render();
       setSyncBanner("ok", "Updated from cloud", "", 2600);
@@ -20194,28 +20170,15 @@ const siteworksApi = {
     });
   },
   submitPublicReport(payload) {
-    if (siteworksServerEnabled()) {
-      return this.server("/api/public/reports", {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
-    }
-    return cloudApi.rest("public_reports", {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response("SiteWorks server is required for public reports.", { status: 503 }));
+    return this.server("/api/public/reports", {
       method: "POST",
-      headers: { Prefer: "return=minimal" },
       body: JSON.stringify(payload)
     });
   },
   loadPublicReports() {
     if (siteworksServerEnabled()) return this.server("/api/public/reports?limit=50");
-    const filter = customerScopeQuery("customer_id");
-    const query = [
-      "select=id,equipment_id,customer_id,customer_name,location_id,location_name,equipment_name,note,contact,photo_data_url,photo_name,created_at",
-      "order=created_at.desc",
-      "limit=50",
-      filter
-    ].filter(Boolean).join("&");
-    return cloudApi.rest(`public_reports?${query}`);
+    return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
   },
   loadNotifications(status = "active") {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ notifications: [] }), { status: 200 }));
@@ -20887,7 +20850,7 @@ async function bootstrapCloudData() {
   ) {
     await loadSharedStateFromSupabase();
   }
-  await syncPublicReportsFromSupabase(true);
+  await syncPublicReportsFromServer(true);
   if (!focusScannedAssetContext()) {
     restoreScannedAssetSelection();
     syncFiltersToSelectedAsset();
@@ -20911,7 +20874,7 @@ async function refreshCloudDataFromSupabase() {
   ) {
     await loadSharedStateFromSupabase();
   }
-  await syncPublicReportsFromSupabase(true);
+  await syncPublicReportsFromServer(true);
   restoreScannedAssetSelection();
   render();
 }
