@@ -3629,6 +3629,8 @@ function positionMonitoringBreakerDrawer(anchorElement = null) {
 function showMonitoringBreakerDetail(channelId = "", circuitNumber = "", anchorElement = null) {
   const elements = monitoringElements();
   if (!elements.breakerDetail) return;
+  selectedMonitoringBreakerChannelId = channelId || selectedMonitoringBreakerChannelId;
+  selectedMonitoringBreakerCircuit = circuitNumber || selectedMonitoringBreakerCircuit;
   const channel = getMonitoringChannel(channelId);
   const panel = getAsset(channel?.panelAssetId || selectedMonitoringPanelId);
   const device = channel ? getMonitoringDevice(channel.deviceId) : null;
@@ -4612,8 +4614,11 @@ function renderMonitoringSimulatorHistory(devices, selectedDeviceId = "") {
 
 function renderMonitoringLivePanel(devices) {
   const elements = monitoringElements();
-  elements.breakerDetail?.classList.add("hidden");
-  if (elements.breakerDetail) elements.breakerDetail.innerHTML = "";
+  const shouldRestoreBreakerDetail = Boolean(
+    selectedMonitoringBreakerCircuit &&
+    elements.breakerDetail &&
+    !elements.breakerDetail.classList.contains("hidden")
+  );
   const deviceIds = new Set(devices.map(device => String(device.id)));
   const panel = selectedMonitoringPanelId
     ? getAsset(selectedMonitoringPanelId)
@@ -4664,6 +4669,22 @@ function renderMonitoringLivePanel(devices) {
       </div>
     </div>
   `;
+  if (shouldRestoreBreakerDetail) {
+    const circuitSelectorValue = window.CSS?.escape
+      ? CSS.escape(String(selectedMonitoringBreakerCircuit || ""))
+      : String(selectedMonitoringBreakerCircuit || "").replace(/"/g, '\\"');
+    const anchor = document.querySelector(`[data-monitoring-breaker-circuit="${circuitSelectorValue}"]`);
+    const channelId = anchor?.dataset.monitoringBreakerDetail || selectedMonitoringBreakerChannelId;
+    if (anchor && channelId) {
+      showMonitoringBreakerDetail(channelId, selectedMonitoringBreakerCircuit, anchor);
+    } else {
+      selectedMonitoringBreakerChannelId = "";
+      selectedMonitoringBreakerCircuit = "";
+      elements.breakerDetail.classList.add("hidden");
+      elements.breakerDetail.innerHTML = "";
+      elements.breakerDetail.classList.remove("is-floating");
+    }
+  }
 }
 
 function renderMonitoringPanelCabinetLabel(panel = null, location = null) {
@@ -4914,7 +4935,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-breaker-compact-alert-47";
+const SITEWORKS_APP_VERSION = "20260812-monitor-refresh-30s-49";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4929,7 +4950,7 @@ const MONITORING_DEFAULT_DELAY_SECONDS = 30;
 const MONITORING_LIVE_STATUS_API = SITEWORKS_API_BASE_URL
   ? `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/breaker-monitor/status`
   : "";
-const MONITORING_LIVE_SYNC_INTERVAL_MS = 5000;
+const MONITORING_LIVE_SYNC_INTERVAL_MS = 30000;
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
 const USER_SWITCH_SELECTED_KEY = "siteworks-user-switch-selected-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
@@ -5217,6 +5238,7 @@ let workOrderNumberFilter = "all";
 let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
 let selectedMonitoringPanelId = "";
+let selectedMonitoringBreakerChannelId = "";
 let selectedMonitoringBreakerCircuit = "";
 let assetQuery = "";
 let keyQuery = "";
@@ -8923,7 +8945,11 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("click", (event) => {
   if (event.target.closest("[data-monitoring-close-breaker-detail]")) {
     event.preventDefault();
-    monitoringElements().breakerDetail?.classList.add("hidden");
+    selectedMonitoringBreakerChannelId = "";
+    selectedMonitoringBreakerCircuit = "";
+    const detail = monitoringElements().breakerDetail;
+    detail?.classList.add("hidden");
+    detail?.classList.remove("is-floating");
     return;
   }
 
@@ -8937,6 +8963,7 @@ document.addEventListener("click", (event) => {
   const breakerDetail = event.target.closest("[data-monitoring-breaker-detail]");
   if (breakerDetail) {
     event.preventDefault();
+    selectedMonitoringBreakerChannelId = breakerDetail.dataset.monitoringBreakerDetail || "";
     selectedMonitoringBreakerCircuit = breakerDetail.dataset.monitoringBreakerCircuit || "";
     showMonitoringBreakerDetail(breakerDetail.dataset.monitoringBreakerDetail, breakerDetail.dataset.monitoringBreakerCircuit, breakerDetail);
     return;
