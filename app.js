@@ -3612,6 +3612,7 @@ function monitoringBreakerConfirmation(channel = null) {
 function monitoringDisplayState(channel = null) {
   const liveState = String(channel?.lastDerivedState || channel?.last_derived_state || "not-monitored").toLowerCase();
   if (liveState === "energized") return "energized";
+  if (liveState === "confirmed-off" || liveState === "confirmed-trip") return liveState;
   const confirmedState = String(monitoringBreakerConfirmation(channel).state || "").toLowerCase();
   if (liveState === "open" || liveState === "suspected-trip") {
     if (confirmedState === "off") return "confirmed-off";
@@ -3661,6 +3662,12 @@ function preserveMonitoringBreakerConfirmation(existing = null, incoming = null)
   if (!["open", "suspected-trip"].includes(incomingState)) return incoming?.data || {};
   const existingConfirmation = existing?.data?.breakerConfirmation;
   if (!existingConfirmation) return incoming?.data || {};
+  if (String(existingConfirmation.state || "").toLowerCase() === "off") {
+    return {
+      ...(incoming?.data || {}),
+      breakerConfirmation: incoming?.data?.breakerConfirmation || existingConfirmation
+    };
+  }
   const confirmedAtMs = existingConfirmation.confirmedAt ? new Date(existingConfirmation.confirmedAt).getTime() : 0;
   const incomingUpdatedAtMs = incoming?.updatedAt || incoming?.updated_at ? new Date(incoming.updatedAt || incoming.updated_at).getTime() : 0;
   if (incomingUpdatedAtMs && confirmedAtMs && incomingUpdatedAtMs > confirmedAtMs + 1000) {
@@ -5014,7 +5021,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-site-map-entities-53";
+const SITEWORKS_APP_VERSION = "20260812-monitor-confirmation-55";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5436,6 +5443,9 @@ let syncHealth = {
   lastErrorAt: "",
   lastError: ""
 };
+let serverNotifications = [];
+let serverNotificationsLoading = false;
+let lastNotificationLoadAt = "";
 let editingAssetDetailField = "";
 let storageFullWarningShown = false;
 let suppressStorageFullWarning = false;
@@ -5579,6 +5589,7 @@ const els = {
   syncHealthPanel: document.getElementById("syncHealthPanel"),
   syncHealthSummary: document.getElementById("syncHealthSummary"),
   syncHealthGrid: document.getElementById("syncHealthGrid"),
+  serverNotificationPanel: document.getElementById("serverNotificationPanel"),
   refreshCloudNowBtn: document.getElementById("refreshCloudNowBtn"),
   cloudCleanupBlock: document.getElementById("cloudCleanupBlock"),
   cloudCleanupStatus: document.getElementById("cloudCleanupStatus"),
@@ -5874,10 +5885,12 @@ window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
 window.setTimeout(bootstrapCloudData, 0);
 window.setTimeout(initializeRealtimeSync, 1200);
+window.setTimeout(loadServerNotifications, 1800);
 window.setInterval(syncPublicReportsFromSupabase, PUBLIC_REPORT_SYNC_INTERVAL_MS);
 window.setInterval(refreshCloudDataFromSupabase, CLOUD_REFRESH_INTERVAL_MS);
 window.setInterval(runMonitoringOfflineCheck, 60000);
 window.setInterval(syncMonitoringStatusFromApi, MONITORING_LIVE_SYNC_INTERVAL_MS);
+window.setInterval(loadServerNotifications, 30000);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 initPasswordRecoveryFromUrl();
 
@@ -9082,6 +9095,20 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const openNotification = event.target.closest("[data-notification-open]");
+  if (openNotification) {
+    event.preventDefault();
+    openServerNotification(openNotification.dataset.notificationOpen);
+    return;
+  }
+
+  const ackNotification = event.target.closest("[data-notification-ack]");
+  if (ackNotification) {
+    event.preventDefault();
+    acknowledgeServerNotification(ackNotification.dataset.notificationAck);
+    return;
+  }
+
   if (event.target.closest("[data-monitoring-close-breaker-detail]")) {
     event.preventDefault();
     selectedMonitoringBreakerChannelId = "";
@@ -11963,11 +11990,111 @@ function renderDashboard() {
   if (els.failedPmIssues) els.failedPmIssues.textContent = activeIssues.filter(isFailedPmIssue).length;
   if (els.breakerTripAlerts) els.breakerTripAlerts.textContent = breakerTrips.length;
   syncBreakerTripMetricTile(breakerTrips);
+  renderServerNotifications();
   if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
   if (els.globalSearch) els.globalSearch.value = globalQuery;
   renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips });
   syncMobileMetricVisibility();
   renderGlobalSearchResults();
+}
+
+function notificationMatchesCurrentView(notification = {}) {
+  if (!notification) return false;
+  const customerId = notification.customer_id || notification.customerId || "";
+  const locationId = notification.location_id || notification.locationId || "";
+  if (selectedCustomerId !== "all" && customerId && customerId !== selectedCustomerId) return false;
+  if (selectedLocationId !== "all" && locationId && locationId !== selectedLocationId) return false;
+  return true;
+}
+
+function notificationMetadata(notification = {}) {
+  const metadata = notification.metadata;
+  return metadata && typeof metadata === "object" ? metadata : {};
+}
+
+function renderServerNotifications() {
+  if (!els.serverNotificationPanel) return;
+  const visible = serverNotifications.filter((notification) =>
+    normalizeNotificationStatus(notification.status) === "active" && notificationMatchesCurrentView(notification)
+  );
+  els.serverNotificationPanel.classList.toggle("hidden", !visible.length);
+  if (!visible.length) {
+    els.serverNotificationPanel.innerHTML = "";
+    return;
+  }
+  els.serverNotificationPanel.innerHTML = visible.slice(0, 3).map((notification) => {
+    const metadata = notificationMetadata(notification);
+    const title = notification.title || "SiteWorks notification";
+    const panel = getAsset(metadata.panelAssetId);
+    const detail = [
+      notification.message || "",
+      panel?.name || "",
+      metadata.circuitNumber ? `Circuit ${metadata.circuitNumber}` : "",
+      notification.created_at ? formatDateTime(notification.created_at) : ""
+    ].filter(Boolean).join(" | ");
+    return `
+      <div class="server-notification" data-server-notification-id="${escapeAttribute(notification.id)}">
+        <div>
+          <strong>${escapeHtml(title)}</strong>
+          <small>${escapeHtml(detail)}</small>
+        </div>
+        <div class="server-notification-actions">
+          ${notification.type === "breaker-trip" ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Panel</button>` : ""}
+          <button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Acknowledge</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function normalizeNotificationStatus(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  return ["active", "acknowledged", "resolved"].includes(text) ? text : "active";
+}
+
+async function loadServerNotifications() {
+  if (!currentUser || !siteworksServerEnabled() || serverNotificationsLoading) return;
+  serverNotificationsLoading = true;
+  try {
+    const response = await siteworksApi.loadNotifications("active");
+    if (!response.ok) throw new Error(await response.text());
+    const payload = await response.json().catch(() => ({}));
+    serverNotifications = Array.isArray(payload.notifications) ? payload.notifications : [];
+    lastNotificationLoadAt = new Date().toISOString();
+    renderServerNotifications();
+  } catch (error) {
+    console.warn("Server notifications failed to load.", error?.message || error);
+  } finally {
+    serverNotificationsLoading = false;
+  }
+}
+
+async function acknowledgeServerNotification(id) {
+  if (!id) return;
+  try {
+    const response = await siteworksApi.acknowledgeNotification(id);
+    if (!response.ok) throw new Error(await response.text());
+    serverNotifications = serverNotifications.filter((notification) => String(notification.id || "") !== String(id));
+    renderServerNotifications();
+  } catch (error) {
+    setSyncBanner("error", "Notification issue", error?.message || "Could not acknowledge notification.", 4500);
+  }
+}
+
+function openServerNotification(id) {
+  const notification = serverNotifications.find((item) => String(item.id || "") === String(id));
+  if (!notification) return;
+  const metadata = notificationMetadata(notification);
+  if (notification.type === "breaker-trip") {
+    selectedMonitoringPanelId = metadata.panelAssetId || selectedMonitoringPanelId;
+    selectedMonitoringBreakerCircuit = metadata.circuitNumber || "";
+    selectedMonitoringBreakerChannelId = metadata.channelId || "";
+    closeOtherSidebarTargets("monitoringPanel");
+    openPanel("monitoringPanel");
+    setMobileTabState("monitoringPanel");
+    render();
+    document.getElementById("monitoringPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function syncBreakerTripMetricTile(alerts = []) {
@@ -19596,6 +19723,18 @@ const siteworksApi = {
       filter
     ].filter(Boolean).join("&");
     return cloudApi.rest(`public_reports?${query}`);
+  },
+  loadNotifications(status = "active") {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ notifications: [] }), { status: 200 }));
+    return this.server(`/api/notifications?status=${encodeURIComponent(status)}&limit=30`);
+  },
+  acknowledgeNotification(id) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    return this.server(`/api/notifications/${encodeURIComponent(id)}/acknowledge`, { method: "POST" });
+  },
+  resolveNotification(id) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    return this.server(`/api/notifications/${encodeURIComponent(id)}/resolve`, { method: "POST" });
   },
   lookupPublicKey(uid, keyId = "") {
     if (siteworksServerEnabled()) {
