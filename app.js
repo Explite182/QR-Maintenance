@@ -5200,7 +5200,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-alerts-header-only-64";
+const SITEWORKS_APP_VERSION = "20260812-key-overdue-alerts-66";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5763,6 +5763,7 @@ const els = {
   notificationRulesDrawer: document.getElementById("notificationRulesDrawer"),
   notificationRuleForm: document.getElementById("notificationRuleForm"),
   notificationRuleId: document.getElementById("notificationRuleId"),
+  notificationRuleType: document.getElementById("notificationRuleType"),
   notificationRuleEnabled: document.getElementById("notificationRuleEnabled"),
   notificationRuleSeverity: document.getElementById("notificationRuleSeverity"),
   notificationRuleInApp: document.getElementById("notificationRuleInApp"),
@@ -6672,6 +6673,10 @@ els.notificationCenterPanel?.addEventListener("click", (event) => {
     notificationCenterTab = tabButton.dataset.notificationTab === "history" ? "history" : "active";
     renderServerNotifications();
   }
+});
+
+els.notificationRuleType?.addEventListener("change", () => {
+  renderNotificationRuleForm();
 });
 
 els.userSwitcher?.addEventListener("change", () => {
@@ -12331,7 +12336,7 @@ function renderNotificationCenterItem(notification = {}) {
         ${handled ? `<small>${escapeHtml(status === "resolved" ? "Resolved" : "Acknowledged")} ${escapeHtml(formatDateTime(handled))}</small>` : ""}
       </div>
       <div class="notification-center-actions">
-        ${notification.type === "breaker-trip" ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
+        ${["breaker-trip", "esp-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
         ${status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
         ${status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
       </div>
@@ -12365,10 +12370,16 @@ function normalizeNotificationChannels(value = null) {
   return clean.length ? [...new Set(clean)] : ["in-app"];
 }
 
-function breakerTripNotificationRule() {
-  return notificationRules.find((rule) => String(rule.event_type || rule.eventType || "") === "breaker-trip") || {
+function selectedNotificationRuleType() {
+  const type = String(els.notificationRuleType?.value || "breaker-trip").trim();
+  return ["breaker-trip", "esp-offline", "key-overdue"].includes(type) ? type : "breaker-trip";
+}
+
+function notificationRuleForType(type = "breaker-trip") {
+  const eventType = ["breaker-trip", "esp-offline", "key-overdue"].includes(type) ? type : "breaker-trip";
+  return notificationRules.find((rule) => String(rule.event_type || rule.eventType || "") === eventType) || {
     id: "",
-    event_type: "breaker-trip",
+    event_type: eventType,
     enabled: true,
     severity: "warning",
     channels: ["in-app"],
@@ -12380,7 +12391,7 @@ function breakerTripNotificationRule() {
 
 function renderNotificationRuleForm() {
   if (!els.notificationRuleForm) return;
-  const rule = breakerTripNotificationRule();
+  const rule = notificationRuleForType(selectedNotificationRuleType());
   const channels = normalizeNotificationChannels(rule.channels);
   if (els.notificationRuleId) els.notificationRuleId.value = rule.id || "";
   if (els.notificationRuleEnabled) els.notificationRuleEnabled.checked = rule.enabled !== false;
@@ -12416,7 +12427,7 @@ async function handleNotificationRuleSubmit(event) {
   const channels = els.notificationRuleInApp?.checked ? ["in-app"] : [];
   const payload = {
     id: els.notificationRuleId?.value || undefined,
-    event_type: "breaker-trip",
+    event_type: selectedNotificationRuleType(),
     enabled: Boolean(els.notificationRuleEnabled?.checked),
     severity: els.notificationRuleSeverity?.value || "warning",
     channels,
@@ -12559,7 +12570,7 @@ function openServerNotification(id) {
   if (!notification) return;
   closeNotificationCenter();
   const metadata = notificationMetadata(notification);
-  if (notification.type === "breaker-trip") {
+  if (notification.type === "breaker-trip" || notification.type === "esp-offline") {
     selectedMonitoringPanelId = metadata.panelAssetId || selectedMonitoringPanelId;
     selectedMonitoringBreakerCircuit = metadata.circuitNumber || "";
     selectedMonitoringBreakerChannelId = metadata.channelId || "";
@@ -12568,6 +12579,14 @@ function openServerNotification(id) {
     setMobileTabState("monitoringPanel");
     render();
     document.getElementById("monitoringPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (notification.type === "key-overdue") {
+    focusedKeyId = metadata.keyId || metadata.sourceId || "";
+    setInventoryTab("keys");
+    closeOtherSidebarTargets("inventoryPanel");
+    openPanel("inventoryPanel");
+    setMobileTabState("inventoryPanel");
+    render();
+    els.keysPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 
