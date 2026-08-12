@@ -754,16 +754,21 @@ textarea:disabled {
 }
 
 .user-editor summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+  align-items: start;
   cursor: pointer;
 }
 
 .user-editor summary span {
   display: grid;
   gap: 2px;
+  min-width: 0;
+}
+
+.user-editor summary strong {
+  overflow-wrap: anywhere;
 }
 
 .user-editor summary .user-summary-badges {
@@ -777,6 +782,8 @@ textarea:disabled {
 .user-editor summary small {
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .user-editor form {
@@ -1158,6 +1165,37 @@ textarea:disabled {
 .sidebar .activity-log-item {
   background: rgba(255, 255, 255, 0.96);
   border-color: var(--line);
+}
+
+.sidebar .user-list-item {
+  padding: 0;
+  overflow: hidden;
+}
+
+.sidebar .user-editor > summary {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 12px 10px;
+}
+
+.sidebar .user-editor > summary > span:first-child {
+  gap: 4px;
+}
+
+.sidebar .user-editor summary .user-summary-badges {
+  justify-content: flex-start;
+}
+
+.sidebar .user-editor > form {
+  padding: 0 10px 12px;
+}
+
+.sidebar .user-cloud-label,
+.sidebar .user-local-label,
+.sidebar .current-user-label {
+  padding: 4px 8px;
+  font-size: 10px;
+  line-height: 1;
 }
 
 .sidebar .location-list {
