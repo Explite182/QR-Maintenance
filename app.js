@@ -4914,7 +4914,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-breaker-side-drawer-46";
+const SITEWORKS_APP_VERSION = "20260812-breaker-compact-alert-47";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5619,7 +5619,7 @@ const els = {
   historyList: document.getElementById("historyList"),
   historyCount: document.getElementById("historyCount"),
   dueToday: document.getElementById("dueToday"),
-  breakerTripBanner: document.getElementById("breakerTripBanner"),
+  breakerTripMetricWrap: document.getElementById("breakerTripMetricWrap"),
   overdue: document.getElementById("overdue"),
   completed: document.getElementById("completed"),
   openWorkOrders: document.getElementById("openWorkOrders"),
@@ -11796,7 +11796,7 @@ function renderDashboard() {
   if (els.reportedIssues) els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
   if (els.failedPmIssues) els.failedPmIssues.textContent = activeIssues.filter(isFailedPmIssue).length;
   if (els.breakerTripAlerts) els.breakerTripAlerts.textContent = breakerTrips.length;
-  renderBreakerTripBanner(breakerTrips);
+  syncBreakerTripMetricTile(breakerTrips);
   if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
   if (els.globalSearch) els.globalSearch.value = globalQuery;
   renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips });
@@ -11804,22 +11804,8 @@ function renderDashboard() {
   renderGlobalSearchResults();
 }
 
-function renderBreakerTripBanner(alerts = []) {
-  if (!els.breakerTripBanner) return;
-  els.breakerTripBanner.classList.toggle("hidden", !alerts.length);
-  if (!alerts.length) {
-    els.breakerTripBanner.innerHTML = "";
-    return;
-  }
-  const first = alerts[0];
-  const panel = getAsset(first.panelAssetId);
-  els.breakerTripBanner.innerHTML = `
-    <div>
-      <strong>${alerts.length} breaker issue${alerts.length === 1 ? "" : "s"} need confirmation</strong>
-      <span>${escapeHtml(panel?.name || "Panel monitor")} ${first.circuitNumber ? `| Circuit ${escapeHtml(first.circuitNumber)}` : ""}</span>
-    </div>
-    <button type="button" class="secondary mini" data-dashboard-result-type="breaker-alert" data-dashboard-result-id="${escapeAttribute(first.id)}">Open Panel Monitor</button>
-  `;
+function syncBreakerTripMetricTile(alerts = []) {
+  els.breakerTripMetricWrap?.classList.toggle("hidden", !alerts.length);
 }
 
 function syncMobileMetricVisibility() {

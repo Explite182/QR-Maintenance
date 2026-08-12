@@ -2350,7 +2350,7 @@ textarea {
 
 .dashboard {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 12px;
 }
 
@@ -2559,33 +2559,6 @@ textarea {
 
 .metric-breaker:hover {
   background: #fff0bd;
-}
-
-.breaker-trip-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0 0 14px;
-  padding: 12px 14px;
-  border: 1px solid #efd08b;
-  border-radius: 8px;
-  background: #fff7df;
-  color: #14202a;
-}
-
-.breaker-trip-banner div {
-  display: grid;
-  gap: 2px;
-}
-
-.breaker-trip-banner strong {
-  font-size: 1rem;
-}
-
-.breaker-trip-banner span {
-  color: #6d5208;
-  font-weight: 800;
 }
 
 .metric-ok:hover {
