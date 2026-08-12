@@ -4734,7 +4734,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-local-users-ui-37";
+const SITEWORKS_APP_VERSION = "20260812-local-user-password-ui-38";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6493,7 +6493,7 @@ els.userList.addEventListener("submit", async (event) => {
   if (user.localOnly && password) user.password = password;
   if (!user.localOnly && isEmailAddress(username)) user.password = "";
   user.updatedAt = new Date().toISOString();
-  if (!user.localOnly && isEmailAddress(username)) await saveSupabaseProfile(user);
+  if (!user.localOnly && isEmailAddress(username)) await saveSupabaseProfile({ ...user, pendingPassword: password });
   if (currentUser?.id === user.id) {
     currentUser = user;
     currentRole = user.role;
@@ -10237,10 +10237,11 @@ async function deleteServiceRequest(requestId) {
 function renderUserItem(user) {
   const canEdit = canEditUserRecord(user);
   const disabled = canEdit ? "" : "disabled";
-  const passwordDisabled = user.localOnly || !isEmailAddress(user.username) ? disabled : "disabled";
-  const passwordHelp = user.localOnly || !isEmailAddress(user.username)
+  const usesServerUsers = siteworksServerEnabled();
+  const passwordDisabled = usesServerUsers || user.localOnly || !isEmailAddress(user.username) ? disabled : "disabled";
+  const passwordHelp = usesServerUsers || user.localOnly || !isEmailAddress(user.username)
     ? "Leave blank to keep current password"
-    : "Use Supabase password reset";
+    : "Use account password reset";
   const currentLabel = currentUser?.id === user.id ? `<span class="current-user-label">Current user</span>` : "";
   const customer = getCustomer(user.customerId);
   const customerOptions = manageableUserCustomers().map((customerRecord) =>
@@ -10257,7 +10258,7 @@ function renderUserItem(user) {
       ? " | All locations"
       : "";
   const cloudLabel = isEmailAddress(user.username) && !user.localOnly
-    ? `<span class="user-cloud-label">Cloud login</span>`
+    ? `<span class="user-cloud-label">${usesServerUsers ? "Server login" : "Cloud login"}</span>`
     : `<span class="user-local-label">Local only</span>`;
   return `
     <details class="user-list-item user-editor">
@@ -10278,7 +10279,7 @@ function renderUserItem(user) {
           <input name="name" required value="${escapeAttribute(user.name || user.username)}" ${disabled}>
         </label>
         <label>
-          Password
+          New password
           <input name="password" type="password" placeholder="${passwordHelp}" ${passwordDisabled}>
         </label>
         <label>
@@ -10362,7 +10363,7 @@ function renderAccessRequestHistoryItem(request) {
     ? `${approvedCustomer.name}${approvedLocation ? ` | ${approvedLocation.name}` : " | All locations"}`
     : request.company || "No assigned customer found";
   const userText = matchedUser
-    ? `${matchedUser.username} | ${matchedUser.role}${matchedUser.localOnly ? " | Local only" : " | Cloud login"}`
+    ? `${matchedUser.username} | ${matchedUser.role}${matchedUser.localOnly ? " | Local only" : " | Server login"}`
     : status === "Approved"
       ? "Approved request, but matching current user was not found"
       : "No user created yet";
@@ -19527,6 +19528,7 @@ async function saveSupabaseProfile(profile) {
     location_id: profile.role === "Admin" ? "" : profile.locationId || "",
     updated_at: new Date().toISOString()
   };
+  if (profile.pendingPassword) payload.password = profile.pendingPassword;
   const response = await siteworksApi.saveProfile(payload);
   if (response.ok) return true;
   if (!response.ok) {
