@@ -1609,6 +1609,46 @@ html[data-theme="dark"] .sidebar .template-editor textarea {
   background: transparent;
 }
 
+.monitoring-connection-status {
+  min-width: 92px;
+  padding: 0 12px;
+  border: 1px solid var(--line, #d8e3e1);
+  gap: 7px;
+  background: #f6f8f6;
+  color: #43504c;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.monitoring-connection-status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 3px rgba(67, 80, 76, 0.12);
+}
+
+.monitoring-connection-status.is-online {
+  border-color: rgba(16, 122, 85, 0.32);
+  background: #e9f7f1;
+  color: #0b7f58;
+}
+
+.monitoring-connection-status.is-checking {
+  border-color: rgba(176, 113, 21, 0.34);
+  background: #fff7e8;
+  color: #9b5f08;
+}
+
+.monitoring-connection-status.is-login,
+.monitoring-connection-status.is-offline {
+  border-color: rgba(178, 46, 37, 0.34);
+  background: #fff0ee;
+  color: #b22e25;
+}
+
 .history-title-actions {
   display: inline-flex;
   align-items: center;

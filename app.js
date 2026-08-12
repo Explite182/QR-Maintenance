@@ -2752,9 +2752,23 @@ function monitoringElements() {
     panelSelect: document.getElementById("monitoringPanelSelect"),
     livePanel: document.getElementById("monitoringLivePanel"),
     breakerDetail: document.getElementById("monitoringBreakerDetail"),
+    connectionStatus: document.getElementById("monitoringConnectionStatus"),
     alertList: document.getElementById("monitoringAlertList"),
     eventList: document.getElementById("monitoringEventList")
   };
+}
+
+function setMonitoringConnectionStatus(status = "offline", label = "") {
+  const statusEl = monitoringElements().connectionStatus;
+  if (!statusEl) return;
+  const normalizedStatus = ["online", "offline", "checking", "login"].includes(status) ? status : "offline";
+  statusEl.className = `monitoring-connection-status is-${normalizedStatus}`;
+  statusEl.textContent = label || ({
+    online: "Online",
+    offline: "Offline",
+    checking: "Checking",
+    login: "Login required"
+  }[normalizedStatus] || "Offline");
 }
 
 function ensureMonitoringCollections() {
@@ -2924,17 +2938,29 @@ function monitoringApiStatusToEvent(row, deviceIdByApiId) {
 }
 
 async function syncMonitoringStatusFromApi() {
-  if (document.hidden || !currentUser) return;
+  if (document.hidden) return;
+  if (!currentUser) {
+    setMonitoringConnectionStatus("login");
+    return;
+  }
   if (!MONITORING_LIVE_STATUS_API) {
     await syncMonitoringStatusFromSupabase();
     return;
   }
   ensureMonitoringCollections();
+  setMonitoringConnectionStatus("checking");
   try {
     const response = await siteworksServerFetch("/api/breaker-monitor/status", { cache: "no-store" });
-    if (!response.ok) return;
+    if (!response.ok) {
+      setMonitoringConnectionStatus(response.status === 401 || response.status === 403 ? "login" : "offline");
+      return;
+    }
     const body = await response.json();
-    if (!Array.isArray(body.devices) || !Array.isArray(body.channels)) return;
+    if (!Array.isArray(body.devices) || !Array.isArray(body.channels)) {
+      setMonitoringConnectionStatus("offline");
+      return;
+    }
+    setMonitoringConnectionStatus("online");
 
     const deviceIdByApiId = new Map();
     let changed = false;
@@ -2994,6 +3020,7 @@ async function syncMonitoringStatusFromApi() {
 
     if (changed) renderMonitoring();
   } catch (error) {
+    setMonitoringConnectionStatus("offline");
     console.warn("Monitoring live status sync failed", error);
   }
 }
@@ -4655,7 +4682,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-panel-monitor-auth-31";
+const SITEWORKS_APP_VERSION = "20260812-panel-monitor-status-32";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
