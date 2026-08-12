@@ -5200,7 +5200,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-demo-monitor-63";
+const SITEWORKS_APP_VERSION = "20260812-alerts-header-only-64";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -12258,39 +12258,13 @@ function notificationMetadata(notification = {}) {
 }
 
 function renderServerNotifications() {
-  if (!els.serverNotificationPanel) return;
   const visible = serverNotifications.filter((notification) =>
     normalizeNotificationStatus(notification.status) === "active" && notificationMatchesCurrentView(notification)
   );
   renderNotificationCenter(visible);
-  els.serverNotificationPanel.classList.toggle("hidden", !visible.length);
-  if (!visible.length) {
-    els.serverNotificationPanel.innerHTML = "";
-    return;
-  }
-  els.serverNotificationPanel.innerHTML = visible.slice(0, 3).map((notification) => {
-    const metadata = notificationMetadata(notification);
-    const title = notification.title || "SiteWorks notification";
-    const panel = getAsset(metadata.panelAssetId);
-    const detail = [
-      notification.message || "",
-      panel?.name || "",
-      metadata.circuitNumber ? `Circuit ${metadata.circuitNumber}` : "",
-      notification.created_at ? formatDateTime(notification.created_at) : ""
-    ].filter(Boolean).join(" | ");
-    return `
-      <div class="server-notification" data-server-notification-id="${escapeAttribute(notification.id)}">
-        <div>
-          <strong>${escapeHtml(title)}</strong>
-          <small>${escapeHtml(detail)}</small>
-        </div>
-        <div class="server-notification-actions">
-          ${notification.type === "breaker-trip" ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Panel</button>` : ""}
-          <button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Acknowledge</button>
-        </div>
-      </div>
-    `;
-  }).join("");
+  if (!els.serverNotificationPanel) return;
+  els.serverNotificationPanel.classList.add("hidden");
+  els.serverNotificationPanel.innerHTML = "";
 }
 
 function notificationDetailText(notification = {}) {
