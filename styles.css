@@ -2561,6 +2561,33 @@ textarea {
   background: #fff0bd;
 }
 
+.breaker-trip-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #efd08b;
+  border-radius: 8px;
+  background: #fff7df;
+  color: #14202a;
+}
+
+.breaker-trip-banner div {
+  display: grid;
+  gap: 2px;
+}
+
+.breaker-trip-banner strong {
+  font-size: 1rem;
+}
+
+.breaker-trip-banner span {
+  color: #6d5208;
+  font-weight: 800;
+}
+
 .metric-ok:hover {
   background: #e6f5ec;
 }
@@ -8896,17 +8923,24 @@ html[data-theme="dark"] .sync-banner small {
 
 .monitoring-channel-card.energized .monitoring-breaker-handle span {
   left: 48px;
-  background: linear-gradient(180deg, #4f5b60, #182126);
+  background: linear-gradient(180deg, #23c46f, #08713f);
+  box-shadow:
+    inset 0 8px 8px rgba(255, 255, 255, 0.18),
+    inset 0 -8px 10px rgba(0, 0, 0, 0.3),
+    0 0 0 2px rgba(20, 163, 92, 0.3),
+    0 0 10px rgba(20, 163, 92, 0.38);
 }
 
 .monitoring-channel-card.upstream-power-loss .monitoring-breaker-handle span,
-.monitoring-channel-card.not-monitored .monitoring-breaker-handle span {
+.monitoring-channel-card.not-monitored .monitoring-breaker-handle span,
+.monitoring-channel-card.confirmed-off .monitoring-breaker-handle span {
   left: 5px;
   background: linear-gradient(180deg, #31393d, #0f1518);
 }
 
 .monitoring-channel-card.open .monitoring-breaker-handle span,
-.monitoring-channel-card.suspected-trip .monitoring-breaker-handle span {
+.monitoring-channel-card.suspected-trip .monitoring-breaker-handle span,
+.monitoring-channel-card.confirmed-trip .monitoring-breaker-handle span {
   left: 25px;
   background: linear-gradient(180deg, #f2c94c, #a66a00);
   box-shadow:
@@ -9100,13 +9134,18 @@ html[data-theme="dark"] .sync-banner small {
   background: #16a058;
 }
 
-.monitoring-channel-card.suspected-trip .monitoring-channel-state::before {
+.monitoring-channel-card.suspected-trip .monitoring-channel-state::before,
+.monitoring-channel-card.open .monitoring-channel-state::before,
+.monitoring-channel-card.confirmed-trip .monitoring-channel-state::before {
   background: #f2c94c;
 }
 
-.monitoring-channel-card.open .monitoring-channel-state::before,
 .monitoring-channel-card.upstream-power-loss .monitoring-channel-state::before {
   background: #d99200;
+}
+
+.monitoring-channel-card.confirmed-off .monitoring-channel-state::before {
+  background: #111517;
 }
 
 .monitoring-panel-center {
@@ -9334,6 +9373,19 @@ html[data-theme="dark"] .sync-banner small {
   font-weight: 800;
 }
 
+.monitoring-breaker-confirm-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.monitoring-breaker-confirm-actions .warn-action {
+  border-color: #efd08b;
+  background: #fff7df;
+  color: #7a4d00;
+}
+
 .monitoring-record {
   display: flex;
   justify-content: space-between;
@@ -9390,6 +9442,12 @@ html[data-theme="dark"] .sync-banner small {
   border-color: #b8e5ca;
 }
 
+.monitoring-status-pill.confirmed-off {
+  background: #edf1ef;
+  color: #111517;
+  border-color: #c5cecb;
+}
+
 .monitoring-status-pill.offline,
 .monitoring-status-pill.monitoring-offline {
   background: #fff0ed;
@@ -9400,7 +9458,8 @@ html[data-theme="dark"] .sync-banner small {
 .monitoring-status-pill.acknowledged,
 .monitoring-status-pill.open,
 .monitoring-status-pill.upstream-power-loss,
-.monitoring-status-pill.suspected-trip {
+.monitoring-status-pill.suspected-trip,
+.monitoring-status-pill.confirmed-trip {
   background: #fff7df;
   color: #8a5b00;
   border-color: #efd08b;
@@ -9454,7 +9513,8 @@ html[data-theme="dark"] .sync-banner small {
   border-left: 6px solid #14a35c;
 }
 
-.monitoring-channel-card.suspected-trip {
+.monitoring-channel-card.suspected-trip,
+.monitoring-channel-card.confirmed-trip {
   border-color: #efd08b;
   background: #fff7df;
   border-left: 6px solid #d99000;
@@ -9467,13 +9527,20 @@ html[data-theme="dark"] .sync-banner small {
   border-left: 6px solid #d99000;
 }
 
+.monitoring-channel-card.confirmed-off {
+  border-color: #c5cecb;
+  background: #edf1ef;
+  border-left: 6px solid #111517;
+}
+
 .monitoring-channel-card.energized .monitoring-channel-state {
   border-color: #b8e5ca;
   background: #dff5e9;
   color: #08713f;
 }
 
-.monitoring-channel-card.suspected-trip .monitoring-channel-state {
+.monitoring-channel-card.suspected-trip .monitoring-channel-state,
+.monitoring-channel-card.confirmed-trip .monitoring-channel-state {
   border-color: #efd08b;
   background: #ffefbd;
   color: #7a4d00;
@@ -9484,6 +9551,12 @@ html[data-theme="dark"] .sync-banner small {
   border-color: #efd08b;
   background: #ffefbd;
   color: #7a4d00;
+}
+
+.monitoring-channel-card.confirmed-off .monitoring-channel-state {
+  border-color: #c5cecb;
+  background: #f3f5f4;
+  color: #111517;
 }
 
 .monitoring-panel-mockup .monitoring-channel-card {
@@ -9501,7 +9574,9 @@ html[data-theme="dark"] .sync-banner small {
 .monitoring-panel-mockup .monitoring-channel-card.energized,
 .monitoring-panel-mockup .monitoring-channel-card.suspected-trip,
 .monitoring-panel-mockup .monitoring-channel-card.upstream-power-loss,
-.monitoring-panel-mockup .monitoring-channel-card.open {
+.monitoring-panel-mockup .monitoring-channel-card.open,
+.monitoring-panel-mockup .monitoring-channel-card.confirmed-trip,
+.monitoring-panel-mockup .monitoring-channel-card.confirmed-off {
   background: rgba(210, 211, 204, 0.28);
   border-left: 0;
 }
@@ -9515,8 +9590,13 @@ html[data-theme="dark"] .sync-banner small {
 }
 
 .monitoring-panel-mockup .monitoring-channel-card.open,
+.monitoring-panel-mockup .monitoring-channel-card.confirmed-trip,
 .monitoring-panel-mockup .monitoring-channel-card.upstream-power-loss {
   border-color: rgba(217, 146, 0, 0.42);
+}
+
+.monitoring-panel-mockup .monitoring-channel-card.confirmed-off {
+  border-color: rgba(17, 21, 23, 0.46);
 }
 
 .monitoring-panel-mockup .monitoring-channel-card span {
@@ -10233,7 +10313,8 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
   left: 5px;
 }
 
-.monitoring-panel-mockup.generated-template .monitoring-channel-card.open .monitoring-breaker-handle span {
+.monitoring-panel-mockup.generated-template .monitoring-channel-card.open .monitoring-breaker-handle span,
+.monitoring-panel-mockup.generated-template .monitoring-channel-card.confirmed-trip .monitoring-breaker-handle span {
   left: 28px;
 }
 
@@ -10252,12 +10333,14 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
 }
 
 .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.upstream-power-loss .monitoring-breaker-handle span,
-.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.not-monitored .monitoring-breaker-handle span {
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.not-monitored .monitoring-breaker-handle span,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.confirmed-off .monitoring-breaker-handle span {
   left: 50px;
 }
 
 .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.open .monitoring-breaker-handle span,
-.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.suspected-trip .monitoring-breaker-handle span {
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.suspected-trip .monitoring-breaker-handle span,
+.monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.confirmed-trip .monitoring-breaker-handle span {
   left: 28px;
 }
 
@@ -10387,7 +10470,8 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
     left: 4px;
   }
 
-  .monitoring-panel-mockup.generated-template .monitoring-channel-card.open .monitoring-breaker-handle span {
+  .monitoring-panel-mockup.generated-template .monitoring-channel-card.open .monitoring-breaker-handle span,
+  .monitoring-panel-mockup.generated-template .monitoring-channel-card.confirmed-trip .monitoring-breaker-handle span {
     left: 23px;
   }
 
@@ -10396,12 +10480,14 @@ html[data-theme="dark"] .monitoring-panel-mockup.image-template .monitoring-over
   }
 
   .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.upstream-power-loss .monitoring-breaker-handle span,
-  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.not-monitored .monitoring-breaker-handle span {
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.not-monitored .monitoring-breaker-handle span,
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.confirmed-off .monitoring-breaker-handle span {
     left: 41px;
   }
 
   .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.open .monitoring-breaker-handle span,
-  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.suspected-trip .monitoring-breaker-handle span {
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.suspected-trip .monitoring-breaker-handle span,
+  .monitoring-panel-mockup.generated-template .monitoring-breaker-slot.right.confirmed-trip .monitoring-breaker-handle span {
     left: 23px;
   }
 

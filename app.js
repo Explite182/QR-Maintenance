@@ -2806,7 +2806,6 @@ function setMonitoringPanelSummary(device = null, channels = []) {
 
 function monitoringTripAlertsForCurrentView() {
   ensureMonitoringCollections();
-  const needsConfirmationStates = new Set(["open", "suspected-trip"]);
   const results = [];
   const seen = new Set();
   const addAlert = (alert = {}, channel = null, device = null) => {
@@ -2837,12 +2836,16 @@ function monitoringTripAlertsForCurrentView() {
     .filter((alert) => String(alert.status || "active") !== "resolved")
     .forEach((alert) => {
       const channel = getMonitoringChannel(alert.channelId || alert.channel_id || "");
+      if (monitoringDisplayState(channel) === "confirmed-off") return;
       const device = getMonitoringDevice(alert.deviceId || alert.device_id || channel?.deviceId || channel?.device_id || "");
       addAlert(alert, channel, device);
     });
 
   state.monitoringChannels
-    .filter((channel) => needsConfirmationStates.has(String(channel.lastDerivedState || channel.last_derived_state || "").toLowerCase()))
+    .filter((channel) => {
+      const stateValue = monitoringDisplayState(channel);
+      return stateValue === "open" || stateValue === "suspected-trip" || stateValue === "confirmed-trip";
+    })
     .forEach((channel) => {
       const device = normalizeMonitoringDevice(getMonitoringDevice(channel.deviceId || channel.device_id || ""));
       if (device && !monitoringDeviceIsFresh(device)) return;
@@ -3092,6 +3095,7 @@ async function syncMonitoringStatusFromApi() {
           );
       });
       const next = { ...(existing || {}), ...incoming };
+      next.data = preserveMonitoringBreakerConfirmation(existing, incoming);
       if (existing) {
         Object.assign(existing, next);
       } else {
@@ -3180,6 +3184,7 @@ async function syncMonitoringStatusFromSupabase() {
           );
       });
       const next = { ...(existing || {}), ...incoming };
+      next.data = preserveMonitoringBreakerConfirmation(existing, incoming);
       if (existing) {
         Object.assign(existing, next);
       } else {
@@ -3527,6 +3532,69 @@ function monitoringCircuitValue(channel = null, names = []) {
   return "";
 }
 
+function monitoringBreakerConfirmation(channel = null) {
+  const value = channel?.data?.breakerConfirmation || {};
+  return value && typeof value === "object" ? value : {};
+}
+
+function monitoringDisplayState(channel = null) {
+  const liveState = String(channel?.lastDerivedState || channel?.last_derived_state || "not-monitored").toLowerCase();
+  if (liveState === "energized") return "energized";
+  const confirmedState = String(monitoringBreakerConfirmation(channel).state || "").toLowerCase();
+  if (liveState === "open" || liveState === "suspected-trip") {
+    if (confirmedState === "off") return "confirmed-off";
+    if (confirmedState === "tripped") return "confirmed-trip";
+  }
+  return liveState;
+}
+
+function monitoringDisplayLabel(channel = null) {
+  const stateValue = monitoringDisplayState(channel);
+  if (stateValue === "confirmed-off") return "Confirmed off";
+  if (stateValue === "confirmed-trip") return "Confirmed trip";
+  if (stateValue === "open") return "Needs check";
+  return monitoringStateLabel(stateValue);
+}
+
+function needsBreakerConfirmation(channel = null) {
+  const stateValue = monitoringDisplayState(channel);
+  return stateValue === "open" || stateValue === "suspected-trip";
+}
+
+function confirmMonitoringBreaker(channelId = "", confirmationState = "") {
+  const channel = getMonitoringChannel(channelId);
+  if (!channel) return;
+  const state = confirmationState === "tripped" ? "tripped" : "off";
+  channel.data = channel.data && typeof channel.data === "object" ? channel.data : {};
+  channel.data.breakerConfirmation = {
+    state,
+    confirmedAt: new Date().toISOString(),
+    confirmedBy: getCurrentUserLabel()
+  };
+  channel.updatedAt = new Date().toISOString();
+  if (state === "off") {
+    resolveMonitoringAlertsForChannel(channel.id, `Circuit ${channel.circuitNumber || ""} confirmed off.`);
+  } else {
+    const device = getMonitoringDevice(channel.deviceId || channel.device_id || "");
+    if (device) ensureMonitoringAlert(device, channel);
+    addActivity("Breaker trip confirmed", `Circuit ${channel.circuitNumber || ""}`);
+  }
+  saveStateQuietly();
+  render();
+  showMonitoringBreakerDetail(channel.id, channel.circuitNumber || "");
+}
+
+function preserveMonitoringBreakerConfirmation(existing = null, incoming = null) {
+  const incomingState = String(incoming?.lastDerivedState || incoming?.last_derived_state || "").toLowerCase();
+  if (!["open", "suspected-trip"].includes(incomingState)) return incoming?.data || {};
+  const existingConfirmation = existing?.data?.breakerConfirmation;
+  if (!existingConfirmation) return incoming?.data || {};
+  return {
+    ...(incoming?.data || {}),
+    breakerConfirmation: incoming?.data?.breakerConfirmation || existingConfirmation
+  };
+}
+
 function showMonitoringBreakerDetail(channelId = "", circuitNumber = "") {
   const elements = monitoringElements();
   if (!elements.breakerDetail) return;
@@ -3540,7 +3608,18 @@ function showMonitoringBreakerDetail(channelId = "", circuitNumber = "") {
   const current = monitoringCircuitValue(channel, ["current", "amps", "amperage", "loadCurrent", "load_current"]) || "Not reported";
   const temperature = monitoringCircuitValue(channel, ["temperature", "temp", "temperatureF", "temperature_f"]) || "Not reported";
   const power = monitoringCircuitValue(channel, ["kw", "kW", "power", "powerKw", "power_kw"]) || "Not reported";
-  const status = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
+  const status = channel ? monitoringDisplayLabel(channel) : "Not monitored";
+  const liveStatus = channel ? monitoringStateLabel(channel.lastDerivedState || channel.last_derived_state) : "Not monitored";
+  const confirmation = monitoringBreakerConfirmation(channel);
+  const confirmationText = confirmation.state
+    ? `${confirmation.state === "tripped" ? "Confirmed tripped" : "Confirmed off"} by ${confirmation.confirmedBy || "unknown"}${confirmation.confirmedAt ? ` on ${formatDateTime(confirmation.confirmedAt)}` : ""}`
+    : "Not confirmed yet";
+  const confirmActions = channel ? `
+    <div class="monitoring-breaker-confirm-actions">
+      <button type="button" class="secondary mini" data-monitoring-confirm-breaker="${escapeAttribute(channel.id)}" data-confirm-state="off">Confirm Off</button>
+      <button type="button" class="secondary mini warn-action" data-monitoring-confirm-breaker="${escapeAttribute(channel.id)}" data-confirm-state="tripped">Confirm Tripped</button>
+    </div>
+  ` : "";
   elements.breakerDetail.classList.remove("hidden");
   elements.breakerDetail.innerHTML = `
     <div>
@@ -3559,7 +3638,10 @@ function showMonitoringBreakerDetail(channelId = "", circuitNumber = "") {
       <div><dt>Temperature</dt><dd>${escapeHtml(temperature)}</dd></div>
       <div><dt>Device</dt><dd>${escapeHtml(device?.name || "No monitor")}</dd></div>
       <div><dt>Last update</dt><dd>${escapeHtml(channel?.updatedAt ? formatDateTime(channel.updatedAt) : "Not monitored")}</dd></div>
+      <div><dt>Live input</dt><dd>${escapeHtml(liveStatus)}</dd></div>
+      <div><dt>Verification</dt><dd>${escapeHtml(confirmationText)}</dd></div>
     </dl>
+    ${confirmActions}
   `;
 }
 
@@ -3576,6 +3658,8 @@ function monitoringStateLabel(stateValue) {
   const labels = {
     energized: "Energized",
     open: "Open",
+    "confirmed-off": "Confirmed off",
+    "confirmed-trip": "Confirmed trip",
     "suspected-trip": "Suspected trip",
     "upstream-power-loss": "Upstream phase loss",
     "monitoring-offline": "Monitoring offline",
@@ -4418,7 +4502,7 @@ function renderMonitoringChannelList(devices, selectedDeviceId = "") {
           <p>${escapeHtml(channel.monitoringMode)} | ${escapeHtml(channel.criticality)} | ${escapeHtml(channel.alarmDelaySeconds)}s delay</p>
         </div>
         <div class="monitoring-record-actions">
-          <span class="monitoring-status-pill ${monitoringStatusClass(channel.lastDerivedState)}">${escapeHtml(monitoringStateLabel(channel.lastDerivedState))}</span>
+          <span class="monitoring-status-pill ${monitoringStatusClass(monitoringDisplayState(channel))}">${escapeHtml(monitoringDisplayLabel(channel))}</span>
           <button type="button" data-monitoring-edit-channel="${escapeHtml(channel.id)}">Edit</button>
           <button type="button" data-monitoring-delete-channel="${escapeHtml(channel.id)}">Remove</button>
         </div>
@@ -4634,7 +4718,7 @@ function renderMonitoringTemplateRows(template, channelByCircuit, panel = null) 
 function renderMonitoringTemplateCircuit(template, circuitNumber, channel = null, panel = null) {
   const position = monitoringTemplateCircuitPosition(template, circuitNumber);
   const zones = template.zones[position.side];
-  const state = channel?.lastDerivedState || "not-monitored";
+  const state = channel ? monitoringDisplayState(channel) : "not-monitored";
   const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber).trim();
   const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber);
   const faceLabel = circuitLabel || "";
@@ -4642,7 +4726,7 @@ function renderMonitoringTemplateCircuit(template, circuitNumber, channel = null
     `Circuit ${circuitNumber}`,
     faceLabel || "No panel label saved",
     breakerSize ? `Breaker ${breakerSize}` : "",
-    channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored"
+    channel ? monitoringDisplayLabel(channel) : "Not monitored"
   ].filter(Boolean).join(" | ");
   const voltage = monitoringCircuitValue(channel, ["voltage", "lineVoltage", "line_voltage"]);
   const temperature = monitoringCircuitValue(channel, ["temperature", "temp", "temperatureF", "temperature_f"]);
@@ -4656,7 +4740,7 @@ function renderMonitoringTemplateCircuit(template, circuitNumber, channel = null
       <span class="monitoring-overlay-amps" style="${monitoringOverlayInnerStyle(zones.row, zones.amps, 100)}">${breakerSize ? escapeHtml(breakerSize) : ""}</span>
       <span class="monitoring-overlay-label" style="${monitoringOverlayInnerStyle(zones.row, zones.label, 100)}">${escapeHtml(faceLabel)}</span>
       <span class="monitoring-overlay-breaker" style="${monitoringOverlayInnerStyle(zones.row, zones.breaker, 100)}"><i></i></span>
-      <span class="monitoring-overlay-status" aria-label="${escapeAttribute(channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored")}" style="${monitoringOverlayInnerStyle(zones.row, zones.status, 100)}"></span>
+      <span class="monitoring-overlay-status" aria-label="${escapeAttribute(channel ? monitoringDisplayLabel(channel) : "Not monitored")}" style="${monitoringOverlayInnerStyle(zones.row, zones.status, 100)}"></span>
       <span class="monitoring-overlay-voltage" style="${monitoringOverlayInnerStyle(zones.row, zones.voltage, 100)}">${voltage ? escapeHtml(voltage) : ""}</span>
       <span class="monitoring-overlay-temperature" style="${monitoringOverlayInnerStyle(zones.row, zones.temperature, 100)}">${temperature ? escapeHtml(temperature) : ""}</span>
       <em class="monitoring-breaker-tooltip">${escapeHtml(tooltipLabel)}</em>
@@ -4692,8 +4776,8 @@ function monitoringBreakerSpanForSide(channel = {}, side = "left") {
 }
 
 function renderMonitoringBreakerSlot(circuitNumber, channel = null, panel = null, side = "left", span = 1) {
-  const state = channel?.lastDerivedState || "not-monitored";
-  const label = channel ? monitoringStateLabel(channel.lastDerivedState) : "Not monitored";
+  const state = channel ? monitoringDisplayState(channel) : "not-monitored";
+  const label = channel ? monitoringDisplayLabel(channel) : "Not monitored";
   const phaseText = channel ? `Phase${Number(channel.poleCount || 1) > 1 ? "s" : ""} ${monitoringChannelPhaseLabel(channel)}` : "";
   const circuitLabel = monitoringPanelCircuitLabel(panel, circuitNumber).trim();
   const breakerSize = monitoringPanelCircuitBreakerSize(panel, circuitNumber);
@@ -4797,7 +4881,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-open-breaker-yellow-44";
+const SITEWORKS_APP_VERSION = "20260812-breaker-confirm-flow-45";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5502,6 +5586,7 @@ const els = {
   historyList: document.getElementById("historyList"),
   historyCount: document.getElementById("historyCount"),
   dueToday: document.getElementById("dueToday"),
+  breakerTripBanner: document.getElementById("breakerTripBanner"),
   overdue: document.getElementById("overdue"),
   completed: document.getElementById("completed"),
   openWorkOrders: document.getElementById("openWorkOrders"),
@@ -8803,6 +8888,13 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const confirmBreaker = event.target.closest("[data-monitoring-confirm-breaker]");
+  if (confirmBreaker) {
+    event.preventDefault();
+    confirmMonitoringBreaker(confirmBreaker.dataset.monitoringConfirmBreaker, confirmBreaker.dataset.confirmState);
+    return;
+  }
+
   const breakerDetail = event.target.closest("[data-monitoring-breaker-detail]");
   if (breakerDetail) {
     event.preventDefault();
@@ -11665,11 +11757,30 @@ function renderDashboard() {
   if (els.reportedIssues) els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
   if (els.failedPmIssues) els.failedPmIssues.textContent = activeIssues.filter(isFailedPmIssue).length;
   if (els.breakerTripAlerts) els.breakerTripAlerts.textContent = breakerTrips.length;
+  renderBreakerTripBanner(breakerTrips);
   if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
   if (els.globalSearch) els.globalSearch.value = globalQuery;
   renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips });
   syncMobileMetricVisibility();
   renderGlobalSearchResults();
+}
+
+function renderBreakerTripBanner(alerts = []) {
+  if (!els.breakerTripBanner) return;
+  els.breakerTripBanner.classList.toggle("hidden", !alerts.length);
+  if (!alerts.length) {
+    els.breakerTripBanner.innerHTML = "";
+    return;
+  }
+  const first = alerts[0];
+  const panel = getAsset(first.panelAssetId);
+  els.breakerTripBanner.innerHTML = `
+    <div>
+      <strong>${alerts.length} breaker issue${alerts.length === 1 ? "" : "s"} need confirmation</strong>
+      <span>${escapeHtml(panel?.name || "Panel monitor")} ${first.circuitNumber ? `| Circuit ${escapeHtml(first.circuitNumber)}` : ""}</span>
+    </div>
+    <button type="button" class="secondary mini" data-dashboard-result-type="breaker-alert" data-dashboard-result-id="${escapeAttribute(first.id)}">Open Panel Monitor</button>
+  `;
 }
 
 function syncMobileMetricVisibility() {
