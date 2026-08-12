@@ -236,8 +236,7 @@ function applyStructuredState(rows, updatedAt = "") {
     currentUserId: localCurrentUserId,
     sharedDataUpdatedAt: updatedAt || newestStructuredUpdatedAt(rows)
   });
-  currentUser = findStateUserForCurrentSession() || currentUser;
-  currentRole = currentUser?.role || "Customer";
+  restoreCurrentUserFromState();
   restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId);
   selectedId = getAssetIdFromUrl() || selectedId;
   persistLocalStateOnly(false);
@@ -774,8 +773,7 @@ function applySharedState(sharedData, updatedAt = "") {
     currentUserId: localCurrentUserId,
     sharedDataUpdatedAt: updatedAt || sharedData.sharedDataUpdatedAt || ""
   });
-  currentUser = findStateUserForCurrentSession() || currentUser;
-  currentRole = currentUser?.role || "Customer";
+  restoreCurrentUserFromState();
   restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId);
   selectedId = getAssetIdFromUrl() || null;
   persistLocalStateOnly();
@@ -5048,7 +5046,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-notification-rules-ui-58";
+const SITEWORKS_APP_VERSION = "20260812-user-switch-sticky-59";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
