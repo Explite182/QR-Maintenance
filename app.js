@@ -544,6 +544,7 @@ function siteMapFromStructuredRow(row) {
     locationId: row.location_id || payload.locationId || "",
     name: row.name || payload.name || "",
     image: row.image || payload.image || null,
+    entities: Array.isArray(payload.entities) ? payload.entities : [],
     pins: Array.isArray(row.pins) ? row.pins : Array.isArray(payload.pins) ? payload.pins : [],
     levels: Array.isArray(payload.levels) ? payload.levels : Array.isArray(payload.areas) ? payload.areas : [],
     createdAt: row.created_at || payload.createdAt || "",
@@ -1017,12 +1018,14 @@ function buildStructuredSiteMapRow(map, cloudLocationIds = null) {
     ...map,
     locationId: locationId || "",
     levels: ensureSiteMapLevels(map, true).map((level) => normalizeSiteMapLevel(level)),
+    entities: normalizeSiteMapEntities(map.entities || map.pins),
     pins: normalizeSiteMapPins(map.pins)
   };
   const mainLevel = mapForCloud.levels.find((level) => level.id === "main");
   if (mainLevel) {
     mapForCloud.image = mainLevel.image || mapForCloud.image || null;
-    mapForCloud.pins = normalizeSiteMapPins(mainLevel.pins);
+    mapForCloud.entities = normalizeSiteMapEntities(mainLevel.entities?.length ? mainLevel.entities : mainLevel.pins, "main");
+    mapForCloud.pins = normalizeSiteMapPins(mainLevel.pins?.length ? mainLevel.pins : mainLevel.entities);
   }
   return {
     id: map.id,
@@ -1628,33 +1631,80 @@ function normalizeSiteMapLevelId(value = "") {
     .slice(0, 42) || "main";
 }
 
+function makeSiteMapEntityId() {
+  return makeId();
+}
+
+function normalizeSiteMapEntityType(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  return ["asset", "sensor", "panel", "zone", "hazard", "document", "route", "camera"].includes(text) ? text : "asset";
+}
+
+function normalizeSiteMapEntity(entity = {}, fallback = {}) {
+  const type = normalizeSiteMapEntityType(entity.type || fallback.type || (entity.assetId || fallback.assetId ? "asset" : ""));
+  const refId = entity.refId || entity.assetId || fallback.refId || fallback.assetId || "";
+  const label = entity.label || fallback.label || "";
+  const createdAt = entity.createdAt || fallback.createdAt || new Date().toISOString();
+  return {
+    id: entity.id || fallback.id || makeSiteMapEntityId(),
+    type,
+    refId,
+    assetId: type === "asset" ? refId : entity.assetId || fallback.assetId || "",
+    levelId: entity.levelId || fallback.levelId || "",
+    layer: normalizeSiteMapLayer(entity.layer || entity.system || entity.category || fallback.layer || fallback.system || fallback.category),
+    x: clampPercent(entity.x ?? fallback.x),
+    y: clampPercent(entity.y ?? fallback.y),
+    label,
+    area: getSiteMapPinArea(entity) || getSiteMapPinArea(fallback),
+    status: entity.status || fallback.status || "",
+    metadata: entity.metadata && typeof entity.metadata === "object" ? entity.metadata : {},
+    createdAt,
+    updatedAt: entity.updatedAt || fallback.updatedAt || createdAt
+  };
+}
+
+function normalizeSiteMapEntities(entities = [], fallbackLevelId = "") {
+  return Array.isArray(entities)
+    ? entities
+      .map((entity) => normalizeSiteMapEntity(entity, { levelId: fallbackLevelId }))
+      .filter((entity) => entity.refId || entity.label)
+    : [];
+}
+
+function siteMapEntityToPin(entity = {}) {
+  const normalized = normalizeSiteMapEntity(entity);
+  return {
+    ...normalized,
+    assetId: normalized.type === "asset" ? normalized.refId : normalized.assetId || "",
+    refId: normalized.refId,
+    type: normalized.type
+  };
+}
+
 function normalizeSiteMapPins(pins = []) {
   return Array.isArray(pins)
-    ? pins.map((pin) => ({
-      ...pin,
-      id: pin.id || crypto.randomUUID(),
-      assetId: pin.assetId || "",
-      label: pin.label || "",
-      area: getSiteMapPinArea(pin),
-      layer: normalizeSiteMapLayer(pin.layer || pin.system || pin.category),
-      x: clampPercent(pin.x),
-      y: clampPercent(pin.y),
-      createdAt: pin.createdAt || new Date().toISOString()
-    })).filter((pin) => pin.assetId || pin.label)
+    ? normalizeSiteMapEntities(pins).map(siteMapEntityToPin)
     : [];
 }
 
 function normalizeSiteMapLevel(level = {}, fallback = {}) {
   const id = normalizeSiteMapLevelId(level.id || fallback.id || level.name || fallback.name);
-  return {
+  const next = {
     id,
     name: String(level.name || fallback.name || "Map area").trim(),
     type: String(level.type || fallback.type || id || "area").trim(),
     image: level.image || null,
-    pins: normalizeSiteMapPins(level.pins),
+    entities: normalizeSiteMapEntities(
+      Array.isArray(level.entities) && level.entities.length ? level.entities : level.pins,
+      id
+    ),
+    pins: normalizeSiteMapPins(Array.isArray(level.pins) && level.pins.length ? level.pins : level.entities),
     createdAt: level.createdAt || new Date().toISOString(),
     updatedAt: level.updatedAt || level.createdAt || new Date().toISOString()
   };
+  next.pins = next.pins.map((pin) => ({ ...pin, levelId: pin.levelId || next.id }));
+  next.entities = next.entities.map((entity) => ({ ...entity, levelId: entity.levelId || next.id }));
+  return next;
 }
 
 function ensureSiteMapLevels(map = null, create = false) {
@@ -1679,6 +1729,7 @@ function ensureSiteMapLevels(map = null, create = false) {
   if (main) {
     map.image = main.image || null;
     map.pins = main.pins || [];
+    map.entities = main.entities || [];
   }
   return map.levels || [];
 }
@@ -2572,32 +2623,41 @@ async function addSiteMapPinFromEvent(event) {
   const area = pendingPin.area || els.siteMapPinArea?.value.trim() || "";
   const layer = normalizeSiteMapLayer(pendingPin.layer || els.siteMapPinLayer?.value || "") || inferSiteMapLayer(getRawAsset(assetId));
   activeLevel.pins = Array.isArray(activeLevel.pins) ? activeLevel.pins : [];
+  activeLevel.entities = Array.isArray(activeLevel.entities) ? activeLevel.entities : [];
   if (assetId && getAllSiteMapPins(map).some((pin) => pin.assetId === assetId)) {
     pendingSiteMapPin = null;
     renderSiteMap();
     updateSiteMapStatus("That equipment is already pinned on this map.");
     return;
   }
-  const newPin = {
+  const updatedAt = new Date().toISOString();
+  const newEntity = normalizeSiteMapEntity({
     id: crypto.randomUUID(),
-    assetId,
+    type: assetId ? "asset" : "zone",
+    refId: assetId,
     label,
     area,
     layer,
     x,
     y,
-    createdAt: new Date().toISOString()
-  };
-  const updatedAt = new Date().toISOString();
+    createdAt: updatedAt,
+    updatedAt,
+    levelId: activeLevel.id
+  });
+  const newPin = siteMapEntityToPin(newEntity);
+  activeLevel.entities.push(newEntity);
   activeLevel.pins.push(newPin);
   activeLevel.updatedAt = updatedAt;
   const levels = ensureSiteMapLevels(map, true);
   const storedLevel = levels.find((level) => level.id === activeLevel.id) || activeLevel;
   storedLevel.pins = Array.isArray(storedLevel.pins) ? storedLevel.pins : [];
+  storedLevel.entities = Array.isArray(storedLevel.entities) ? storedLevel.entities : [];
   if (!storedLevel.pins.some((pin) => pin.id === newPin.id)) storedLevel.pins.push(newPin);
+  if (!storedLevel.entities.some((entity) => entity.id === newEntity.id)) storedLevel.entities.push(newEntity);
   storedLevel.updatedAt = updatedAt;
   if (storedLevel.id === "main") {
     map.pins = storedLevel.pins;
+    map.entities = storedLevel.entities;
     map.image = storedLevel.image || map.image || null;
   }
   map.levels = levels;
@@ -2635,11 +2695,17 @@ async function addSiteMapPinFromEvent(event) {
 function deleteSiteMapPin(pinId) {
   const map = getCurrentSiteMap(false);
   const activeLevel = getActiveSiteMapLevel(map, false);
-  if (!map || !activeLevel || !Array.isArray(activeLevel.pins)) return;
-  activeLevel.pins = activeLevel.pins.filter((pin) => pin.id !== pinId);
-  activeLevel.updatedAt = new Date().toISOString();
+  if (!map || !activeLevel || (!Array.isArray(activeLevel.pins) && !Array.isArray(activeLevel.entities))) return;
+  const updatedAt = new Date().toISOString();
+  activeLevel.pins = (activeLevel.pins || []).filter((pin) => pin.id !== pinId);
+  activeLevel.entities = (activeLevel.entities || []).filter((entity) => entity.id !== pinId);
+  activeLevel.updatedAt = updatedAt;
   ensureSiteMapLevels(map, true);
-  map.updatedAt = new Date().toISOString();
+  if (activeLevel.id === "main") {
+    map.pins = activeLevel.pins;
+    map.entities = activeLevel.entities;
+  }
+  map.updatedAt = updatedAt;
   saveState();
   renderSiteMap();
   updateSiteMapStatus("Pin removed.");
@@ -2670,15 +2736,21 @@ function clearCurrentSiteMap() {
   }
   const map = getCurrentSiteMap(false);
   const activeLevel = getActiveSiteMapLevel(map, false);
-  if (!activeLevel?.image && !activeLevel?.pins?.length) {
+  if (!activeLevel?.image && !activeLevel?.pins?.length && !activeLevel?.entities?.length) {
     updateSiteMapStatus("No map to clear for this area.");
     return;
   }
   if (!confirm(`Clear ${activeLevel.name || "this map area"} image and pins?`)) return;
   activeLevel.image = null;
   activeLevel.pins = [];
+  activeLevel.entities = [];
   activeLevel.updatedAt = new Date().toISOString();
   ensureSiteMapLevels(map, true);
+  if (activeLevel.id === "main") {
+    map.image = null;
+    map.pins = [];
+    map.entities = [];
+  }
   map.updatedAt = new Date().toISOString();
   pendingSiteMapPin = null;
   saveState();
@@ -4942,7 +5014,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-server-user-management-52";
+const SITEWORKS_APP_VERSION = "20260812-site-map-entities-53";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4998,33 +5070,80 @@ function getSiteMapPinArea(pin = {}) {
   return String(pin.area || pin.zone || pin.locationArea || "").trim();
 }
 
+function makeSiteMapEntityId() {
+  return crypto.randomUUID();
+}
+
+function normalizeSiteMapEntityType(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  return ["asset", "sensor", "panel", "zone", "hazard", "document", "route", "camera"].includes(text) ? text : "asset";
+}
+
+function normalizeSiteMapEntity(entity = {}, fallback = {}) {
+  const type = normalizeSiteMapEntityType(entity.type || fallback.type || (entity.assetId || fallback.assetId ? "asset" : ""));
+  const refId = entity.refId || entity.assetId || fallback.refId || fallback.assetId || "";
+  const label = entity.label || fallback.label || "";
+  const createdAt = entity.createdAt || fallback.createdAt || new Date().toISOString();
+  return {
+    id: entity.id || fallback.id || makeSiteMapEntityId(),
+    type,
+    refId,
+    assetId: type === "asset" ? refId : entity.assetId || fallback.assetId || "",
+    levelId: entity.levelId || fallback.levelId || "",
+    layer: normalizeSiteMapLayer(entity.layer || entity.system || entity.category || fallback.layer || fallback.system || fallback.category),
+    x: clampPercent(entity.x ?? fallback.x),
+    y: clampPercent(entity.y ?? fallback.y),
+    label,
+    area: getSiteMapPinArea(entity) || getSiteMapPinArea(fallback),
+    status: entity.status || fallback.status || "",
+    metadata: entity.metadata && typeof entity.metadata === "object" ? entity.metadata : {},
+    createdAt,
+    updatedAt: entity.updatedAt || fallback.updatedAt || createdAt
+  };
+}
+
+function normalizeSiteMapEntities(entities = [], fallbackLevelId = "") {
+  return Array.isArray(entities)
+    ? entities
+      .map((entity) => normalizeSiteMapEntity(entity, { levelId: fallbackLevelId }))
+      .filter((entity) => entity.refId || entity.label)
+    : [];
+}
+
+function siteMapEntityToPin(entity = {}) {
+  const normalized = normalizeSiteMapEntity(entity);
+  return {
+    ...normalized,
+    assetId: normalized.type === "asset" ? normalized.refId : normalized.assetId || "",
+    refId: normalized.refId,
+    type: normalized.type
+  };
+}
+
 function normalizeSiteMapPins(pins = []) {
   return Array.isArray(pins)
-    ? pins.map((pin) => ({
-      ...pin,
-      id: pin.id || makeId(),
-      assetId: pin.assetId || "",
-      label: pin.label || "",
-      area: getSiteMapPinArea(pin),
-      layer: normalizeSiteMapLayer(pin.layer || pin.system || pin.category),
-      x: clampPercent(pin.x),
-      y: clampPercent(pin.y),
-      createdAt: pin.createdAt || new Date().toISOString()
-    })).filter((pin) => pin.assetId || pin.label)
+    ? normalizeSiteMapEntities(pins).map(siteMapEntityToPin)
     : [];
 }
 
 function normalizeSiteMapLevel(level = {}, fallback = {}) {
   const id = normalizeSiteMapLevelId(level.id || fallback.id || level.name || fallback.name);
-  return {
+  const next = {
     id,
     name: String(level.name || fallback.name || "Map area").trim(),
     type: String(level.type || fallback.type || id || "area").trim(),
     image: level.image || null,
-    pins: normalizeSiteMapPins(level.pins),
+    entities: normalizeSiteMapEntities(
+      Array.isArray(level.entities) && level.entities.length ? level.entities : level.pins,
+      id
+    ),
+    pins: normalizeSiteMapPins(Array.isArray(level.pins) && level.pins.length ? level.pins : level.entities),
     createdAt: level.createdAt || new Date().toISOString(),
     updatedAt: level.updatedAt || level.createdAt || new Date().toISOString()
   };
+  next.pins = next.pins.map((pin) => ({ ...pin, levelId: pin.levelId || next.id }));
+  next.entities = next.entities.map((entity) => ({ ...entity, levelId: entity.levelId || next.id }));
+  return next;
 }
 
 function ensureSiteMapLevels(map = null, create = false) {
@@ -5034,7 +5153,8 @@ function ensureSiteMapLevels(map = null, create = false) {
     map.levels = SITE_MAP_DEFAULT_LEVELS.map((level) => normalizeSiteMapLevel({
       ...level,
       image: level.id === "main" ? map.image || null : null,
-      pins: level.id === "main" ? map.pins || [] : []
+      entities: level.id === "main" ? map.entities || map.pins || [] : [],
+      pins: level.id === "main" ? map.pins || map.entities || [] : []
     }, level));
   } else if (existing.length) {
     map.levels = existing.map((level) => normalizeSiteMapLevel(level));
@@ -5049,6 +5169,7 @@ function ensureSiteMapLevels(map = null, create = false) {
   if (main) {
     map.image = main.image || null;
     map.pins = main.pins || [];
+    map.entities = main.entities || [];
   }
   return map.levels || [];
 }
@@ -20590,6 +20711,7 @@ function normalizeState(input) {
       locationId: map.locationId || "",
       name: map.name || "",
       image: map.image || null,
+      entities: normalizeSiteMapEntities(map.entities || map.pins),
       pins: normalizeSiteMapPins(map.pins),
       levels: Array.isArray(map.levels) ? map.levels : Array.isArray(map.areas) ? map.areas : [],
       createdAt: map.createdAt || new Date().toISOString(),
