@@ -1687,16 +1687,22 @@ function renderMonitoringLivePanel(devices) {
   elements.breakerDetail?.classList.add("hidden");
   if (elements.breakerDetail) elements.breakerDetail.innerHTML = "";
   const deviceIds = new Set(devices.map(device => String(device.id)));
-  const channels = state.monitoringChannels.filter(channel => deviceIds.has(String(channel.deviceId || channel.device_id || "")));
   const panel = selectedMonitoringPanelId
     ? getAsset(selectedMonitoringPanelId)
-    : getAsset(devices[0]?.panelAssetId || channels[0]?.panelAssetId);
-  if (!panel && !channels.length) {
+    : getAsset(devices[0]?.panelAssetId || devices[0]?.panel_asset_id || "");
+  const panelId = String(panel?.id || selectedMonitoringPanelId || "");
+  const channels = state.monitoringChannels.filter(channel => {
+    const channelDeviceId = String(channel.deviceId || channel.device_id || "");
+    const channelPanelId = String(channel.panelAssetId || channel.panel_asset_id || "");
+    return deviceIds.has(channelDeviceId) || (panelId && channelPanelId === panelId);
+  });
+  const fallbackPanel = panel || getAsset(channels[0]?.panelAssetId || channels[0]?.panel_asset_id || "");
+  if (!fallbackPanel && !channels.length) {
     elements.livePanel.innerHTML = `<p class="muted">Add a monitoring device to select a panel and see its breaker layout.</p>`;
     return;
   }
   const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
-  const circuitCount = monitoringPanelCircuitCount(panel, channels);
+  const circuitCount = monitoringPanelCircuitCount(fallbackPanel, channels);
   const channelByCircuit = monitoringChannelByCircuitMap(channels);
   const rowCount = Math.ceil(circuitCount / 2);
   const oddCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 1).filter(number => number <= circuitCount);
@@ -1711,19 +1717,19 @@ function renderMonitoringLivePanel(devices) {
   ` : "";
   elements.livePanel.innerHTML = `
     ${meterHtml}
-    <div class="monitoring-panel-mockup generated-template" style="--monitoring-panel-rows:${escapeAttribute(rowCount)};" aria-label="${escapeAttribute(panel?.name || "Panel")} live monitor layout">
-      ${renderMonitoringPanelCabinetLabel(panel, getLocation(panel?.locationId || panel?.location_id || ""))}
+    <div class="monitoring-panel-mockup generated-template" style="--monitoring-panel-rows:${escapeAttribute(rowCount)};" aria-label="${escapeAttribute(fallbackPanel?.name || "Panel")} live monitor layout">
+      ${renderMonitoringPanelCabinetLabel(fallbackPanel, getLocation(fallbackPanel?.locationId || fallbackPanel?.location_id || ""))}
       <div class="monitoring-panel-rail-label" aria-hidden="true">
         <span>Odd circuits</span>
         <span>Even circuits</span>
       </div>
       <div class="monitoring-panel-board">
         <div class="monitoring-breaker-column left">
-          ${renderMonitoringBreakerColumn(oddCircuits, channelByCircuit, panel, "left")}
+          ${renderMonitoringBreakerColumn(oddCircuits, channelByCircuit, fallbackPanel, "left")}
         </div>
-        ${renderMonitoringPanelCenter(panel, circuitCount)}
+        ${renderMonitoringPanelCenter(fallbackPanel, circuitCount)}
         <div class="monitoring-breaker-column right">
-          ${renderMonitoringBreakerColumn(evenCircuits, channelByCircuit, panel, "right")}
+          ${renderMonitoringBreakerColumn(evenCircuits, channelByCircuit, fallbackPanel, "right")}
         </div>
       </div>
     </div>
