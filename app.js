@@ -3589,6 +3589,13 @@ function preserveMonitoringBreakerConfirmation(existing = null, incoming = null)
   if (!["open", "suspected-trip"].includes(incomingState)) return incoming?.data || {};
   const existingConfirmation = existing?.data?.breakerConfirmation;
   if (!existingConfirmation) return incoming?.data || {};
+  const confirmedAtMs = existingConfirmation.confirmedAt ? new Date(existingConfirmation.confirmedAt).getTime() : 0;
+  const incomingUpdatedAtMs = incoming?.updatedAt || incoming?.updated_at ? new Date(incoming.updatedAt || incoming.updated_at).getTime() : 0;
+  if (incomingUpdatedAtMs && confirmedAtMs && incomingUpdatedAtMs > confirmedAtMs + 1000) {
+    const nextData = { ...(incoming?.data || {}) };
+    delete nextData.breakerConfirmation;
+    return nextData;
+  }
   return {
     ...(incoming?.data || {}),
     breakerConfirmation: incoming?.data?.breakerConfirmation || existingConfirmation
@@ -4935,7 +4942,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-monitor-refresh-30s-49";
+const SITEWORKS_APP_VERSION = "20260812-breaker-new-trip-reset-50";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
