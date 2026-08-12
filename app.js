@@ -4734,7 +4734,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-local-user-password-ui-38";
+const SITEWORKS_APP_VERSION = "20260812-server-login-label-39";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -10258,7 +10258,7 @@ function renderUserItem(user) {
       ? " | All locations"
       : "";
   const cloudLabel = isEmailAddress(user.username) && !user.localOnly
-    ? `<span class="user-cloud-label">${usesServerUsers ? "Server login" : "Cloud login"}</span>`
+    ? `<span class="user-cloud-label">Server login</span>`
     : `<span class="user-local-label">Local only</span>`;
   return `
     <details class="user-list-item user-editor">
