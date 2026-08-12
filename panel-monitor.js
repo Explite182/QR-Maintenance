@@ -81,20 +81,34 @@ function monitoringDeviceIsFresh(device = null) {
 
 function setMonitoringPanelSummary(device = null, channels = []) {
   const elements = monitoringElements();
-  const activeCount = channels.filter(channel => {
+  const isFresh = monitoringDeviceIsFresh(device);
+  const activeCount = isFresh ? channels.filter(channel => {
     const rawState = channel.lastRawState ?? channel.last_raw_state;
     const stateValue = String(channel.lastDerivedState || channel.last_derived_state || "").toLowerCase();
     return rawState === true || rawState === "true" || rawState === 1 || rawState === "1" || stateValue === "energized";
-  }).length;
+  }).length : 0;
   if (elements.deviceCount) {
-    elements.deviceCount.title = `${activeCount} triggered / ${channels.length} monitored inputs`;
+    elements.deviceCount.title = isFresh
+      ? `${activeCount} triggered / ${channels.length} monitored inputs`
+      : `ESP offline | ${channels.length} monitored inputs`;
     elements.deviceCount.textContent = channels.length ? `${activeCount}/${channels.length}` : "0";
   }
   if (!device) {
     setMonitoringConnectionStatus("offline", "No ESP");
     return;
   }
-  setMonitoringConnectionStatus(monitoringDeviceIsFresh(device) ? "online" : "offline", monitoringDeviceIsFresh(device) ? "ESP online" : "ESP offline");
+  setMonitoringConnectionStatus(isFresh ? "online" : "offline", isFresh ? "ESP online" : "ESP offline");
+}
+
+function monitoringDisplayChannelsForDevice(device = null, channels = []) {
+  if (monitoringDeviceIsFresh(device)) return channels;
+  return channels.map(channel => ({
+    ...channel,
+    lastRawState: null,
+    last_raw_state: null,
+    lastDerivedState: "monitoring-offline",
+    last_derived_state: "monitoring-offline"
+  }));
 }
 
 function ensureMonitoringCollections() {
@@ -1733,8 +1747,9 @@ function renderMonitoringLivePanel(devices) {
   }
   const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
   setMonitoringPanelSummary(primaryDevice, channels);
-  const circuitCount = monitoringPanelCircuitCount(fallbackPanel, channels);
-  const channelByCircuit = monitoringChannelByCircuitMap(channels);
+  const displayChannels = monitoringDisplayChannelsForDevice(primaryDevice, channels);
+  const circuitCount = monitoringPanelCircuitCount(fallbackPanel, displayChannels);
+  const channelByCircuit = monitoringChannelByCircuitMap(displayChannels);
   const rowCount = Math.ceil(circuitCount / 2);
   const oddCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 1).filter(number => number <= circuitCount);
   const evenCircuits = Array.from({ length: rowCount }, (_, index) => (index + 1) * 2).filter(number => number <= circuitCount);
