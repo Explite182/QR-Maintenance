@@ -4734,7 +4734,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-user-list-layout-40";
+const SITEWORKS_APP_VERSION = "20260812-technician-password-settings-42";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -4751,6 +4751,7 @@ const MONITORING_LIVE_STATUS_API = SITEWORKS_API_BASE_URL
   : "";
 const MONITORING_LIVE_SYNC_INTERVAL_MS = 5000;
 const USER_SWITCH_ADMIN_KEY = "siteworks-user-switch-admin-v1";
+const USER_SWITCH_SELECTED_KEY = "siteworks-user-switch-selected-v1";
 const SCANNED_QR_CONTEXT_KEY = "siteworks-scanned-qr-context-v1";
 const THEME_STORAGE_KEY = "siteworks-theme-v1";
 const NFC_BRIDGE_BASE_URLS = [
@@ -5273,6 +5274,7 @@ const els = {
   templateList: document.getElementById("templateList"),
   templatesPanel: document.getElementById("templatesPanel"),
   userForm: document.getElementById("userForm"),
+  userManagementActions: document.getElementById("userManagementActions"),
   refreshCloudUsersBtn: document.getElementById("refreshCloudUsersBtn"),
   cloudUsersStatus: document.getElementById("cloudUsersStatus"),
   newUsername: document.getElementById("newUsername"),
@@ -5283,10 +5285,13 @@ const els = {
   newUserLocation: document.getElementById("newUserLocation"),
   userFormStatus: document.getElementById("userFormStatus"),
   userCount: document.getElementById("userCount"),
+  currentUsersDrawer: document.getElementById("currentUsersDrawer"),
   userList: document.getElementById("userList"),
   accessRequestCount: document.getElementById("accessRequestCount"),
+  accessRequestsBlock: document.getElementById("accessRequestsBlock"),
   accessRequestList: document.getElementById("accessRequestList"),
   accessRequestHistoryCount: document.getElementById("accessRequestHistoryCount"),
+  accessRequestHistoryDrawer: document.getElementById("accessRequestHistoryDrawer"),
   accessRequestHistoryList: document.getElementById("accessRequestHistoryList"),
   contractorForm: document.getElementById("contractorForm"),
   contractorCustomer: document.getElementById("contractorCustomer"),
@@ -6111,6 +6116,7 @@ els.userSwitcher?.addEventListener("change", () => {
   currentUser = user;
   currentRole = user.role;
   state.currentUserId = user.id;
+  rememberSelectedTestUser(user);
   selectedCustomerId = visibleCustomers()[0]?.id || "";
   selectedLocationId = "all";
   selectedId = null;
@@ -6187,6 +6193,7 @@ function logoutCurrentUser(reason = "manual") {
   currentRole = "Customer";
   state.currentUserId = "";
   sessionStorage.removeItem(USER_SWITCH_ADMIN_KEY);
+  sessionStorage.removeItem(USER_SWITCH_SELECTED_KEY);
   clearAuthSession();
   clearRememberedScannedQrContext();
   history.replaceState(null, "", getCurrentPageUrl());
@@ -9316,6 +9323,27 @@ function canUseUserSwitcher() {
   return Boolean(adminId && state.users.some((user) => user.id === adminId && user.role === "Admin"));
 }
 
+function rememberSelectedTestUser(user) {
+  if (!user?.id || !canUseUserSwitcher()) return;
+  sessionStorage.setItem(USER_SWITCH_SELECTED_KEY, user.id);
+}
+
+function getRememberedTestUser() {
+  if (!canUseUserSwitcher()) return null;
+  const selectedId = sessionStorage.getItem(USER_SWITCH_SELECTED_KEY) || "";
+  if (!selectedId) return null;
+  return state.users.find((user) => user.id === selectedId && user.username !== "scan-customer") || null;
+}
+
+function restoreCurrentUserFromState() {
+  const user = getRememberedTestUser()
+    || state.users.find((item) => item.id === state.currentUserId)
+    || findStateUserForCurrentSession();
+  currentUser = user || null;
+  currentRole = currentUser?.role || "Customer";
+  if (currentUser?.id) state.currentUserId = currentUser.id;
+}
+
 function renderUserSwitcher() {
   const canSwitch = canUseUserSwitcher();
   els.userSwitcherWrap?.classList.toggle("hidden", !canSwitch);
@@ -9494,6 +9522,7 @@ function isManagerRole(role = currentRole) {
 function renderRole() {
   const setupDisabled = !canManageSetup();
   const userManagementAllowed = canManageUsers();
+  const accountSettingsAllowed = Boolean(currentUser);
   const contractorManagementAllowed = canManageContractors();
   const inventoryManagementAllowed = canManageInventory();
   const keyManagementAllowed = canManageKeys();
@@ -9506,7 +9535,7 @@ function renderRole() {
   const canCreateKey = canManageKeys();
   const canUseNewActions = canAddAssets || canCreateTickets || canCreateServiceRequests() || canCreateInventory || canCreateKey;
   const isCustomer = currentRole === "Customer";
-  const hasAdminToolsAccess = isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed || canViewActivityLog();
+  const hasAdminToolsAccess = accountSettingsAllowed || isAdmin || setupDisabled === false || userManagementAllowed || contractorManagementAllowed || canViewActivityLog();
   const canUseWorkNav = !isCustomer;
   const hasSidebarAccess = canUseWorkNav || hasAdminToolsAccess;
   els.appShell?.classList.toggle("no-sidebar", !hasSidebarAccess);
@@ -9557,8 +9586,18 @@ function renderRole() {
   if (!isAdmin) els.backupDrawer.open = false;
   els.contractorDrawer.classList.toggle("hidden", !contractorManagementAllowed);
   if (!contractorManagementAllowed) els.contractorDrawer.open = false;
-  els.userDrawer.classList.toggle("hidden", !userManagementAllowed);
-  if (!userManagementAllowed) els.userDrawer.open = false;
+  els.userDrawer.classList.toggle("hidden", !(userManagementAllowed || accountSettingsAllowed));
+  if (!userManagementAllowed && !accountSettingsAllowed) els.userDrawer.open = false;
+  els.userManagementActions?.classList.toggle("hidden", !userManagementAllowed);
+  els.cloudUsersStatus?.classList.toggle("hidden", !userManagementAllowed);
+  els.userForm?.classList.toggle("hidden", !userManagementAllowed);
+  els.currentUsersDrawer?.classList.toggle("hidden", !userManagementAllowed);
+  if (!userManagementAllowed && els.currentUsersDrawer) els.currentUsersDrawer.open = false;
+  els.passwordPanel?.classList.toggle("hidden", !accountSettingsAllowed);
+  els.accessRequestsBlock?.classList.toggle("hidden", !userManagementAllowed);
+  els.accessRequestList?.classList.toggle("hidden", !userManagementAllowed);
+  els.accessRequestHistoryDrawer?.classList.toggle("hidden", !userManagementAllowed);
+  if (!userManagementAllowed && els.accessRequestHistoryDrawer) els.accessRequestHistoryDrawer.open = false;
   els.activityLogDrawer?.classList.toggle("hidden", !canViewActivityLog());
   if (!canViewActivityLog() && els.activityLogDrawer) els.activityLogDrawer.open = false;
   els.backupLocationBlock.classList.toggle("hidden", currentRole !== "Admin");
@@ -19652,7 +19691,7 @@ function fallbackProfileFromAuthUser(authUser) {
 
 function restoreSavedSessionUser() {
   if (currentUser || isPublicReportUrl()) return;
-  const user = findStateUserForCurrentSession();
+  const user = getRememberedTestUser() || findStateUserForCurrentSession();
   if (!user || user.username === "scan-customer") return;
   currentUser = user;
   currentRole = user.role || "Customer";
@@ -19749,6 +19788,7 @@ function applyForcedLogoutFromUrl() {
   state.currentUserId = "";
   try {
     sessionStorage.removeItem(USER_SWITCH_ADMIN_KEY);
+    sessionStorage.removeItem(USER_SWITCH_SELECTED_KEY);
   } catch (error) {
     console.warn("Admin switcher session could not be cleared.", error);
   }
@@ -20892,8 +20932,7 @@ async function importDataBackup(file) {
     const payload = JSON.parse(text);
     const importedState = payload.state || payload;
     state = normalizeState(importedState);
-    currentUser = state.users.find((user) => user.id === state.currentUserId) || null;
-    currentRole = currentUser?.role || "Customer";
+    restoreCurrentUserFromState();
     selectedCustomerId = state.customers[0]?.id || "";
     selectedLocationId = "all";
     selectedId = getAssetIdFromUrl() || null;
@@ -20911,8 +20950,7 @@ async function restoreLatestAutoBackup() {
   const latest = getAutoBackups()[0];
   if (!latest) return;
   state = normalizeState(latest.state);
-  currentUser = state.users.find((user) => user.id === state.currentUserId) || null;
-  currentRole = currentUser?.role || "Customer";
+  restoreCurrentUserFromState();
   selectedCustomerId = state.customers[0]?.id || "";
   selectedLocationId = "all";
   selectedId = getAssetIdFromUrl() || null;
