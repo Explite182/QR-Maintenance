@@ -1933,7 +1933,6 @@
       }
     });
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
   <script src="/app.js?v=20260812-server-storage-69"></script>
@@ -1975,45 +1974,25 @@
         context.textContent = pieces.join(" | ");
       }
 
-      const headers = {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": "application/json"
-      };
-
-      async function getRows(path) {
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers });
-        if (!response.ok) return [];
-        return response.json();
-      }
-
       async function resolveCustomer() {
         if (params.get("cid")) return { id: params.get("cid"), name: params.get("c") || "" };
         const name = params.get("c") || "";
-        if (!name) return { id: null, name: "" };
-        const rows = await getRows(`customers?name=eq.${encodeURIComponent(name)}&select=id,name&limit=1`);
-        return rows[0] || { id: `scan-customer-${slugify(name)}`, name };
+        return { id: null, name };
       }
 
       async function resolveLocation(customer) {
         if (params.get("lid")) return { id: params.get("lid"), name: params.get("l") || "" };
         const name = params.get("l") || "";
-        if (!name) return { id: null, name: "" };
-        const customerFilter = customer?.id ? `&customer_id=eq.${encodeURIComponent(customer.id)}` : "";
-        const rows = await getRows(`locations?name=eq.${encodeURIComponent(name)}${customerFilter}&select=id,name,customer_id&limit=1`);
-        return rows[0] || { id: `scan-location-${slugify(customer?.name || "customer")}-${slugify(name)}`, name };
+        return { id: null, name };
       }
 
       async function resolveAsset() {
         const assetId = params.get("a") || "";
-        if (!assetId) return { id: null, name: params.get("n") || "" };
-        const rows = await getRows(`assets?id=eq.${encodeURIComponent(assetId)}&select=id,name,customer_id,location_id&limit=1`);
-        const asset = rows[0] || null;
         return {
-          id: asset?.id || assetId,
-          name: asset?.name || params.get("n") || "",
-          customerId: asset?.customer_id || "",
-          locationId: asset?.location_id || ""
+          id: assetId || null,
+          name: params.get("n") || "",
+          customerId: params.get("cid") || "",
+          locationId: params.get("lid") || ""
         };
       }
 
