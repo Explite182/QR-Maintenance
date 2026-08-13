@@ -3697,12 +3697,6 @@ function preserveMonitoringBreakerConfirmation(existing = null, incoming = null)
   if (!["open", "suspected-trip"].includes(incomingState)) return incoming?.data || {};
   const existingConfirmation = existing?.data?.breakerConfirmation;
   if (!existingConfirmation) return incoming?.data || {};
-  if (String(existingConfirmation.state || "").toLowerCase() === "off") {
-    return {
-      ...(incoming?.data || {}),
-      breakerConfirmation: incoming?.data?.breakerConfirmation || existingConfirmation
-    };
-  }
   const confirmedAtMs = existingConfirmation.confirmedAt ? new Date(existingConfirmation.confirmedAt).getTime() : 0;
   const incomingUpdatedAtMs = incoming?.updatedAt || incoming?.updated_at ? new Date(incoming.updatedAt || incoming.updated_at).getTime() : 0;
   if (incomingUpdatedAtMs && confirmedAtMs && incomingUpdatedAtMs > confirmedAtMs + 1000) {
