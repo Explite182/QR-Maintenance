@@ -12230,7 +12230,7 @@ function localBreakerTripNotifications() {
   const localNotifications = [];
   const seenChannels = new Set();
   const hasServerNotificationForChannel = (channelId = "") => serverNotifications.some((notification) => {
-    if (notification.type !== "breaker-trip") return false;
+    if (notification.type !== "breaker-trip" || normalizeNotificationStatus(notification.status) !== "active") return false;
     const metadata = notificationMetadata(notification);
     const notificationChannelId = String(metadata.channelId || notification.source_id || notification.sourceId || "");
     return notificationChannelId && channelId && notificationChannelId === channelId;
@@ -19847,16 +19847,17 @@ async function syncPublicReportsFromServer(force = false) {
     remoteReportsLoaded = true;
     if (!response.ok) {
       const errorText = await response.text();
-      markSyncError(`Public report sync failed: ${errorText}`);
+      lastPublicReportError = `Public report sync failed: ${errorText}`;
       console.warn("SiteWorks public report sync skipped.", errorText);
       return 0;
     }
     data = await response.json();
+    lastPublicReportError = "";
     markSyncSuccess("publicReports");
   } catch (error) {
     remoteReportsLoading = false;
     remoteReportsLoaded = true;
-    markSyncError(error?.message || "Public report sync failed.");
+    lastPublicReportError = error?.message || "Public report sync failed.";
     console.warn("SiteWorks public report sync skipped.", error);
     return 0;
   }
