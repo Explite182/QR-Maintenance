@@ -6180,19 +6180,13 @@ async function handleLoginSubmit(event = null) {
 
 els.loginForm.addEventListener("submit", handleLoginSubmit);
 
-els.forgotPasswordBtn?.addEventListener("click", async () => {
+els.forgotPasswordBtn?.addEventListener("click", () => {
   const email = String(els.loginUsername.value || "").trim().toLowerCase();
   if (!isEmailAddress(email)) {
-    setQrLoginTrace("Enter the user's email address first, then tap Forgot password.");
+    setQrLoginTrace("Enter your email, then ask an Admin or Manager to reset your SiteWorks password.");
     return;
   }
-  els.forgotPasswordBtn.disabled = true;
-  setQrLoginTrace("Sending password reset email...");
-  const result = await sendPasswordResetEmail(email);
-  els.forgotPasswordBtn.disabled = false;
-  setQrLoginTrace(result.ok
-    ? `Password reset email sent to ${email}.`
-    : result.message || "Password reset email could not be sent.");
+  setQrLoginTrace(`Ask an Admin or Manager to reset the SiteWorks password for ${email}.`);
 });
 
 els.passwordResetForm?.addEventListener("submit", async (event) => {
@@ -6293,29 +6287,6 @@ function runWithTimeout(promise, timeoutMs, timeoutValue = false) {
   ]);
 }
 
-function recoveryRedirectUrl() {
-  if (/sitesworks\.info$/i.test(location.hostname)) return PRODUCTION_SITE_URL;
-  return `${location.origin}${location.pathname}`;
-}
-
-async function sendPasswordResetEmail(email) {
-  try {
-    const response = await cloudApi.auth(`recover?redirect_to=${encodeURIComponent(recoveryRedirectUrl())}`, {
-      method: "POST",
-      body: JSON.stringify({ email })
-    });
-    if (!response.ok) {
-      return { ok: false, message: readableSupabaseError(await response.text()) || "SiteWorks could not send the reset email." };
-    }
-    addActivity("Password reset email sent", email);
-    saveStateQuietly();
-    return { ok: true };
-  } catch (error) {
-    console.warn("Password reset email failed.", error);
-    return { ok: false, message: error?.message || "Password reset email failed." };
-  }
-}
-
 function passwordRecoverySessionFromUrl() {
   const hashText = String(location.hash || "").replace(/^#/, "");
   if (!hashText) return null;
@@ -6334,35 +6305,14 @@ function passwordRecoverySessionFromUrl() {
 function initPasswordRecoveryFromUrl() {
   const session = passwordRecoverySessionFromUrl();
   if (!session) return;
-  passwordRecoveryMode = true;
-  saveAuthSession(session);
-  currentUser = null;
-  currentRole = "Customer";
-  state.currentUserId = "";
-  els.loginForm?.classList.add("hidden");
-  els.loginQrReportPrompt?.classList.add("hidden");
-  els.passwordResetForm?.classList.remove("hidden");
-  if (els.resetPasswordMessage) els.resetPasswordMessage.textContent = "Choose a new password to finish the reset.";
+  passwordRecoveryMode = false;
+  clearAuthSession();
+  history.replaceState(null, "", location.pathname + location.search);
+  if (els.loginError) els.loginError.textContent = "Password reset links are no longer used. Ask an Admin or Manager to reset your SiteWorks password.";
 }
 
 async function updateRecoveredPassword(password) {
-  const session = getSavedAuthSession();
-  if (!session?.access_token) return { ok: false, message: "The password reset link is missing or expired." };
-  try {
-    const response = await cloudApi.auth("user", {
-      method: "PUT",
-      body: JSON.stringify({ password })
-    }, session);
-    if (!response.ok) {
-      return { ok: false, message: readableSupabaseError(await response.text()) || "SiteWorks could not update the password." };
-    }
-    addActivity("Password updated", session.user?.email || "Recovery login");
-    saveStateQuietly();
-    return { ok: true };
-  } catch (error) {
-    console.warn("Password update failed.", error);
-    return { ok: false, message: error?.message || "Password update failed." };
-  }
+  return { ok: false, message: "Password reset links are no longer used. Ask an Admin or Manager to reset your SiteWorks password." };
 }
 
 async function openScannedAssetAfterLogin() {
