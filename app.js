@@ -20445,8 +20445,8 @@ async function signInWithSupabase(email, password, options = {}) {
     const response = await siteworksApi.login(email, password);
     if (!response.ok) {
       const errorText = await response.text();
-      lastAuthError = readableSupabaseError(errorText) || "Supabase login failed. Check the email, password, and Auth settings.";
-      console.warn("Supabase sign in failed.", errorText);
+      lastAuthError = readableSupabaseError(errorText) || "SiteWorks login failed. Check the email and password.";
+      console.warn("SiteWorks sign in failed.", errorText);
       return null;
     }
     const session = await response.json();
@@ -20474,15 +20474,15 @@ async function signInWithSupabase(email, password, options = {}) {
           upsertLocalUser(profile);
           return profile;
         }
-        lastAuthError = "Login worked, but SiteWorks could not create the missing profile. Run the Supabase SQL and try again.";
+        lastAuthError = "Login worked, but SiteWorks could not load this user's profile.";
         return null;
       }
     }
     upsertLocalUser(profile);
     return profile;
   } catch (error) {
-    lastAuthError = "Could not reach Supabase Auth. Local login will still work if this browser has a saved admin.";
-    console.warn("Supabase sign in failed.", error);
+    lastAuthError = "Could not reach the SiteWorks server. Local saved login may still work on this browser.";
+    console.warn("SiteWorks sign in failed.", error);
     return null;
   }
 }
