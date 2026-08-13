@@ -5186,7 +5186,6 @@ const ACTIVITY_LOG_VISIBLE_ENTRIES = 100;
 const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
 const SUPABASE_URL = "";
 const SUPABASE_ANON_KEY = "";
-const ISSUE_REPORT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-issue-report`;
 const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
 const SUPABASE_STORAGE_BUCKET = "siteworks-files";
@@ -6109,7 +6108,7 @@ async function handleLoginSubmit(event = null) {
     lastAuthError = "";
     const isQrLogin = isScannedItemUrl();
     const user = await runWithTimeout(
-      signInWithSupabase(els.loginUsername.value, els.loginPassword.value, { fastProfileFallback: isQrLogin }),
+      signInWithSiteWorks(els.loginUsername.value, els.loginPassword.value, { fastProfileFallback: isQrLogin }),
       isQrLogin ? 20000 : 12000,
       null
     );
@@ -6219,7 +6218,7 @@ els.refreshCloudUsersBtn?.addEventListener("click", async () => {
   els.cloudUsersStatus.textContent = "Checking server users...";
   els.cloudUsersStatus.classList.remove("is-error");
   els.cloudUsersStatus.classList.remove("is-ok");
-  const result = await loadSupabaseProfiles({ renderAfter: true });
+  const result = await loadSiteWorksProfiles({ renderAfter: true });
   if (!result.ok) {
     els.cloudUsersStatus.textContent = result.message || "Could not load server users.";
     els.cloudUsersStatus.classList.add("is-error");
@@ -6337,7 +6336,7 @@ els.firstAdminForm.addEventListener("submit", async (event) => {
     return;
   }
   els.firstAdminMessage.textContent = "Creating admin...";
-  const user = await signUpSupabaseUser(email, password, name, "Admin", "");
+  const user = await createSiteWorksUser(email, password, name, "Admin", "");
   if (!user) {
     if (lastAuthError.toLowerCase().includes("already")) {
       els.firstAdminMessage.textContent = "That email already exists in SiteWorks. Use the Log In form once and SiteWorks will attach the first Admin profile.";
@@ -6514,7 +6513,7 @@ els.changePasswordForm?.addEventListener("submit", async (event) => {
   try {
     const response = await siteworksApi.changePassword(currentPassword, newPassword);
     if (!response.ok) {
-      els.changePasswordMessage.textContent = readableSupabaseError(await response.text()) || "Password was not changed.";
+      els.changePasswordMessage.textContent = readableServerError(await response.text()) || "Password was not changed.";
       return;
     }
     els.changePasswordMessage.textContent = "Password changed.";
@@ -6926,7 +6925,7 @@ els.userForm.addEventListener("submit", async (event) => {
     submitButton.textContent = "Creating...";
   }
   setUserFormStatus("Creating SiteWorks login...");
-  const newUser = await signUpSupabaseUser(
+  const newUser = await createSiteWorksUser(
     username,
     els.newUserPassword.value,
     els.newUserName.value.trim(),
@@ -7016,7 +7015,7 @@ els.userList.addEventListener("submit", async (event) => {
     const serverSaved = await saveServerUserProfile({ ...user, pendingPassword: password });
     if (!serverSaved) {
       alert(lastAuthError || "Server did not save this user. No local-only change was kept.");
-      await loadSupabaseProfiles({ renderAfter: true });
+      await loadSiteWorksProfiles({ renderAfter: true });
       return;
     }
   }
@@ -17293,14 +17292,6 @@ function restoreEmailActionButton(button, label) {
   button.textContent = label;
 }
 
-function supabaseFunctionHeaders() {
-  return {
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    "Content-Type": "application/json"
-  };
-}
-
 function sendSiteWorksEmail(kind, payload) {
   return siteworksApi.sendEmail(kind, payload);
 }
@@ -19689,7 +19680,7 @@ async function submitPublicKeyAction(action) {
     els.publicKeyNote.value = "";
   } catch (error) {
     console.warn("Public key action failed.", error);
-    publicKeyLookupState.message = `Key was not updated: ${readableSupabaseError(error?.message || error) || "Try again."}`;
+    publicKeyLookupState.message = `Key was not updated: ${readableServerError(error?.message || error) || "Try again."}`;
   } finally {
     renderPublicKeyScan();
     if (actionCompleted) {
@@ -19870,7 +19861,7 @@ async function supabaseFetch(path, options = {}) {
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   let session = getSavedAuthSession();
   if (options.requireAuth && !hasAuthenticatedCloudSession()) {
-    session = await refreshSupabaseAuthSession();
+    session = await refreshSiteWorksAuthSession();
     if (!session?.access_token || !hasAuthenticatedCloudSession()) {
       return new Response("Missing authenticated Supabase session.", { status: 401 });
     }
@@ -19889,8 +19880,8 @@ async function supabaseFetch(path, options = {}) {
   const response = await runRequest(session);
   if (forceAnon || response.ok || response.status !== 401) return response;
   const errorText = await response.clone().text().catch(() => "");
-  if (!isSupabaseJwtExpiredText(errorText)) return response;
-  const refreshedSession = await refreshSupabaseAuthSession();
+  if (!isExpiredAuthText(errorText)) return response;
+  const refreshedSession = await refreshSiteWorksAuthSession();
   if (!refreshedSession?.access_token) return response;
   return runRequest(refreshedSession);
 }
@@ -20097,7 +20088,7 @@ const siteworksApi = {
         body: JSON.stringify({ login: email, password })
       });
     }
-    const loginEmail = await resolveSupabaseLoginEmail(email);
+    const loginEmail = await resolveSiteWorksLoginEmail(email);
     return cloudApi.auth("token?grant_type=password", {
       method: "POST",
       body: JSON.stringify({ email: loginEmail, password })
@@ -20375,27 +20366,20 @@ const siteworksApi = {
     });
   },
   sendEmail(kind, payload) {
-    if (siteworksServerEnabled()) {
-      return this.server(`/api/email/${encodeURIComponent(kind)}`, {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
-    }
-    return fetch(ISSUE_REPORT_FUNCTION_URL, {
+    return this.server(`/api/email/${encodeURIComponent(kind)}`, {
       method: "POST",
-      headers: supabaseFunctionHeaders(),
       body: JSON.stringify(payload)
     });
   }
 };
 
-async function signInWithSupabase(email, password, options = {}) {
+async function signInWithSiteWorks(email, password, options = {}) {
   lastAuthError = "";
   try {
     const response = await siteworksApi.login(email, password);
     if (!response.ok) {
       const errorText = await response.text();
-      lastAuthError = readableSupabaseError(errorText) || "SiteWorks login failed. Check the email and password.";
+      lastAuthError = readableServerError(errorText) || "SiteWorks login failed. Check the email and password.";
       console.warn("SiteWorks sign in failed.", errorText);
       return null;
     }
@@ -20405,7 +20389,7 @@ async function signInWithSupabase(email, password, options = {}) {
       setQrLoginTrace("Password accepted. Opening SiteWorks...");
       await new Promise((resolve) => window.requestAnimationFrame(resolve));
     }
-    let profile = session.profile ? profileFromSupabase(session.profile) : null;
+    let profile = session.profile ? profileFromServer(session.profile) : null;
     if (!profile) profile = options.fastProfileFallback
       ? await runWithTimeout(getProfileForAuthUser(session.user), 3500, null)
       : await getProfileForAuthUser(session.user);
@@ -20465,7 +20449,7 @@ function repairSelectedCustomerToPopulatedDuplicate(customers = visibleCustomers
   selectedLocationId = "all";
 }
 
-async function resolveSupabaseLoginEmail(identifier) {
+async function resolveSiteWorksLoginEmail(identifier) {
   const clean = String(identifier || "").trim();
   const lower = clean.toLowerCase();
   if (isEmailAddress(lower)) return lower;
@@ -20483,12 +20467,12 @@ async function createMissingAuthProfile(authUser) {
     customerId: "",
     createdAt: new Date().toISOString()
   };
-  await saveSupabaseProfile(profile);
+  await saveSiteWorksProfile(profile);
   upsertLocalUser(profile);
   return profile;
 }
 
-function readableSupabaseError(errorText) {
+function readableServerError(errorText) {
   try {
     const error = JSON.parse(errorText);
     return error.msg || error.message || error.error_description || error.error || "";
@@ -20497,13 +20481,13 @@ function readableSupabaseError(errorText) {
   }
 }
 
-async function signUpSupabaseUser(email, password, name, role, customerId, locationId = "") {
+async function createSiteWorksUser(email, password, name, role, customerId, locationId = "") {
   lastAuthError = "";
   try {
     const response = await siteworksApi.createUser(email, password, name, role, customerId, locationId);
     if (!response.ok) {
       const errorText = await response.text();
-      lastAuthError = readableSupabaseError(errorText) || "Server could not create this user.";
+      lastAuthError = readableServerError(errorText) || "Server could not create this user.";
       console.warn("Server user creation failed.", errorText);
       return null;
     }
@@ -20525,7 +20509,7 @@ async function signUpSupabaseUser(email, password, name, role, customerId, locat
       session
     };
     if (!siteworksServerEnabled()) {
-      const profileSaved = await saveSupabaseProfile(profile);
+      const profileSaved = await saveSiteWorksProfile(profile);
       if (!profileSaved) {
         profile.profileSyncFailed = true;
         lastAuthError = "Supabase created the login, but SiteWorks could not save its user profile.";
@@ -20540,7 +20524,7 @@ async function signUpSupabaseUser(email, password, name, role, customerId, locat
   }
 }
 
-async function loadSupabaseProfiles(options = {}) {
+async function loadSiteWorksProfiles(options = {}) {
   if (authProfilesLoading) return { ok: false, message: "Server users are already refreshing.", cloudCount: 0 };
   authProfilesLoading = true;
   try {
@@ -20553,7 +20537,7 @@ async function loadSupabaseProfiles(options = {}) {
       return { ok: false, message: `Server users sync skipped: ${errorText}`, cloudCount: 0 };
     }
     const profiles = await response.json();
-    state.users = replaceUsersFromServerProfiles(profiles.map(profileFromSupabase), state.users || []);
+    state.users = replaceUsersFromServerProfiles(profiles.map(profileFromServer), state.users || []);
     restoreSavedSessionUser();
     persistLocalStateOnly();
     if (options.renderAfter !== false) render();
@@ -20569,7 +20553,7 @@ async function loadSupabaseProfiles(options = {}) {
   }
 }
 
-async function saveSupabaseProfile(profile) {
+async function saveSiteWorksProfile(profile) {
   const payload = {
     id: profile.id,
     email: profile.username,
@@ -20600,12 +20584,12 @@ async function saveSupabaseProfile(profile) {
 
 async function saveServerUserProfile(profile) {
   lastAuthError = "";
-  const saved = await saveSupabaseProfile(profile);
+  const saved = await saveSiteWorksProfile(profile);
   if (!saved && !lastAuthError) lastAuthError = "Server user save failed.";
   return saved;
 }
 
-async function deleteSupabaseProfile(userId) {
+async function deleteSiteWorksProfile(userId) {
   const response = await siteworksApi.deleteProfile(userId);
   if (!response.ok) console.warn("Server profile delete skipped.", await response.text());
 }
@@ -20616,7 +20600,7 @@ async function deleteServerUserProfile(userId) {
     const response = await siteworksApi.deleteProfile(userId);
     if (response.ok) return true;
     const errorText = await response.text();
-    lastAuthError = readableSupabaseError(errorText) || "Server user delete failed.";
+    lastAuthError = readableServerError(errorText) || "Server user delete failed.";
     console.warn("Server user delete skipped.", errorText);
     return false;
   } catch (error) {
@@ -20634,7 +20618,7 @@ async function getProfileForAuthUser(authUser) {
     return null;
   }
   const rows = await response.json();
-  return rows?.[0] ? profileFromSupabase(rows[0]) : null;
+  return rows?.[0] ? profileFromServer(rows[0]) : null;
 }
 
 async function getProfileForAuthEmail(email) {
@@ -20646,14 +20630,14 @@ async function getProfileForAuthEmail(email) {
       return null;
     }
     const rows = await response.json();
-    return rows?.[0] ? profileFromSupabase(rows[0]) : null;
+    return rows?.[0] ? profileFromServer(rows[0]) : null;
   } catch (error) {
     console.warn("Supabase profile email lookup skipped.", error);
     return null;
   }
 }
 
-function profileFromSupabase(profile) {
+function profileFromServer(profile) {
   return {
     id: profile.id,
     username: profile.email || "",
@@ -20783,13 +20767,13 @@ function clearAuthSession() {
   }
 }
 
-function isSupabaseJwtExpiredText(text = "") {
+function isExpiredAuthText(text = "") {
   return /jwt\s+expired|token\s+expired|invalid\s+jwt/i.test(String(text || ""));
 }
 
 let authRefreshPromise = null;
 
-async function refreshSupabaseAuthSession() {
+async function refreshSiteWorksAuthSession() {
   if (siteworksServerEnabled()) return getSavedAuthSession();
   const savedSession = getSavedAuthSession();
   if (!savedSession?.refresh_token) return savedSession;
@@ -20845,7 +20829,7 @@ function applyForcedLogoutFromUrl() {
 }
 
 async function bootstrapCloudData() {
-  await loadSupabaseProfiles({ renderAfter: false });
+  await loadSiteWorksProfiles({ renderAfter: false });
   const loadedStructuredData = typeof loadStructuredDataFromSupabase === "function"
     ? await loadStructuredDataFromSupabase({ forceReload: true })
     : false;
@@ -20869,7 +20853,7 @@ async function refreshCloudDataFromSupabase() {
   if (currentUser && !isPublicReportUrl()) {
     setSyncBanner("loading", "Checking cloud", "", 1200);
   }
-  await loadSupabaseProfiles({ renderAfter: false });
+  await loadSiteWorksProfiles({ renderAfter: false });
   const loadedStructuredData = typeof loadStructuredDataFromSupabase === "function"
     ? await loadStructuredDataFromSupabase({ forceReload: true })
     : false;
