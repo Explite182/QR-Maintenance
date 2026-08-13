@@ -5200,7 +5200,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260812-local-public-reports-68";
+const SITEWORKS_APP_VERSION = "20260812-server-storage-69";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -20028,30 +20028,7 @@ const cloudApi = {
     return supabaseAuthFetch(path, options, session);
   },
   async uploadFile(file, folder = "uploads", session = null) {
-    if (!file || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
-    const cleanFolder = slugifyStoragePath(folder || "uploads");
-    const cleanName = slugifyStoragePath(file.name || "file");
-    const path = `${cleanFolder}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${cleanName}`;
-    const token = session?.access_token || SUPABASE_ANON_KEY;
-    const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_STORAGE_BUCKET}/${path}`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${token}`,
-        "Content-Type": file.type || "application/octet-stream",
-        "x-upsert": "false"
-      },
-      body: file
-    });
-    if (!response.ok) throw new Error(await response.text());
-    return {
-      name: file.name,
-      type: file.type || "application/octet-stream",
-      size: file.size || 0,
-      bucket: SUPABASE_STORAGE_BUCKET,
-      path,
-      url: `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/${encodeURI(path)}`
-    };
+    return null;
   },
   async select(path) {
     const response = await this.rest(path);
@@ -21918,7 +21895,7 @@ async function migrateLocalFilesToCloud() {
     updateCloudCleanupStatus("No old browser-stored photos or PDFs were found.");
     return;
   }
-  const confirmed = window.confirm(`Move ${items.length} old browser-stored file${items.length === 1 ? "" : "s"} to Supabase Storage? A complete backup will download first.`);
+  const confirmed = window.confirm(`Move ${items.length} old browser-stored file${items.length === 1 ? "" : "s"} to SiteWorks server storage? A complete backup will download first.`);
   if (!confirmed) return;
   exportCompleteBackup();
   els.cloudCleanupBlock?.classList.add("is-working");
@@ -21930,7 +21907,7 @@ async function migrateLocalFilesToCloud() {
     for (const item of items) {
       updateCloudCleanupStatus(`Moving ${moved + 1} of ${items.length}: ${item.name || "file"}...`);
       const localFile = item.get();
-      const stored = await uploadDataUrlToSupabaseStorage(localFile, item.folder);
+      const stored = await uploadDataUrlToServerStorage(localFile, item.folder);
       if (stored) {
         item.set({ ...localFile, ...stored, dataUrl: "" });
         moved += 1;
@@ -21939,7 +21916,7 @@ async function migrateLocalFilesToCloud() {
       }
     }
     if (moved) {
-      addActivity("Local files moved to cloud", `${moved} file${moved === 1 ? "" : "s"} moved to Supabase Storage.`);
+      addActivity("Local files moved to server", `${moved} file${moved === 1 ? "" : "s"} moved to SiteWorks server storage.`);
       saveState();
       render();
     }
@@ -21953,12 +21930,12 @@ async function migrateLocalFilesToCloud() {
   }
 }
 
-async function uploadDataUrlToSupabaseStorage(file, folder) {
+async function uploadDataUrlToServerStorage(file, folder) {
   if (!file?.dataUrl) return null;
   const blob = dataUrlToBlob(file.dataUrl);
   const uploadName = file.name || `${folder || "file"}-${Date.now()}`;
   const uploadFile = new File([blob], uploadName, { type: file.type || blob.type || "application/octet-stream" });
-  return uploadFileToSupabaseStorage(uploadFile, folder);
+  return uploadFileToServerStorage(uploadFile, folder);
 }
 
 async function importDataBackup(file) {
@@ -22232,7 +22209,7 @@ async function renderSiteMapPdf(file) {
 async function storeSiteMapImageFile(file, dataUrl, sourceName = "") {
   const blob = dataUrlToBlob(dataUrl);
   const uploadFile = new File([blob], replaceFileExtension(file.name || "site-map.jpg", "jpg"), { type: "image/jpeg" });
-  const stored = await uploadFileToSupabaseStorage(uploadFile, "site-maps");
+  const stored = await uploadFileToServerStorage(uploadFile, "site-maps");
   return stored ? {
     ...stored,
     originalName: sourceName || file.name,
@@ -22259,12 +22236,12 @@ async function readDocumentFile(file, expectedType) {
     alert("Please choose a PDF file.");
     return null;
   }
-  const stored = await uploadFileToSupabaseStorage(file, "manuals");
+  const stored = await uploadFileToServerStorage(file, "manuals");
   if (stored) {
     return stored;
   }
   if (file.size > 4 * 1024 * 1024) {
-    alert("That PDF could not be uploaded to cloud storage and is too large for browser storage. Run the Supabase Storage setup, then try again.");
+    alert("That PDF could not be uploaded to SiteWorks server storage and is too large for browser storage. Try a smaller PDF, then try again.");
     return null;
   }
   const dataUrl = await fileToDataUrl(file);
@@ -22274,16 +22251,16 @@ async function readDocumentFile(file, expectedType) {
 async function storeResizedPhotoFile(file, dataUrl, folder) {
   const blob = dataUrlToBlob(dataUrl);
   const uploadFile = new File([blob], replaceFileExtension(file.name || "photo.jpg", "jpg"), { type: "image/jpeg" });
-  const stored = await uploadFileToSupabaseStorage(uploadFile, folder);
+  const stored = await uploadFileToServerStorage(uploadFile, folder);
   return stored || { name: file.name, type: "image/jpeg", dataUrl };
 }
 
-async function uploadFileToSupabaseStorage(file, folder = "uploads") {
+async function uploadFileToServerStorage(file, folder = "uploads") {
   if (!file) return null;
   try {
     return await siteworksApi.uploadFile(file, folder, getSavedAuthSession());
   } catch (error) {
-    console.warn("Supabase Storage upload skipped.", error);
+    console.warn("SiteWorks server storage upload skipped.", error);
     return null;
   }
 }
@@ -22328,9 +22305,9 @@ function hasMedia(file) {
 }
 
 function signedMediaKey(file) {
-  const path = getSupabaseStoragePath(file);
+  const path = getServerStoragePath(file);
   if (!path) return "";
-  return `${file.bucket || file.storageBucket || SUPABASE_STORAGE_BUCKET}:${path}`;
+  return `${file.bucket || file.storageBucket || "local"}:${path}`;
 }
 
 function signedMediaSource(file) {
@@ -22347,7 +22324,7 @@ function requestSignedMediaUrl(file, key = signedMediaKey(file)) {
   signedMediaUrlPending.add(key);
   const request = siteworksServerEnabled()
     ? siteworksApi.getSignedFileUrl(file)
-    : getSupabaseSignedFileUrl(file);
+    : Promise.resolve(null);
   request
     .then(async (response) => {
       if (!response?.ok) return;
@@ -22355,9 +22332,7 @@ function requestSignedMediaUrl(file, key = signedMediaKey(file)) {
       const signedUrl = data?.signedUrl || data?.signedURL;
       if (!signedUrl) return;
       signedMediaUrlCache.set(key, {
-        url: signedUrl.startsWith("http")
-          ? signedUrl
-          : `${SUPABASE_URL}${signedUrl.startsWith("/storage/v1/") ? "" : "/storage/v1"}${signedUrl}`,
+        url: signedUrl,
         expiresAt: Date.now() + Number(data.expiresIn || 600) * 1000
       });
       window.setTimeout(render, 0);
@@ -22366,7 +22341,7 @@ function requestSignedMediaUrl(file, key = signedMediaKey(file)) {
     .finally(() => signedMediaUrlPending.delete(key));
 }
 
-function getSupabaseStoragePath(file) {
+function getServerStoragePath(file) {
   const directPath = file?.storageKey || file?.storage_key || file?.path || "";
   if (directPath) return directPath;
   const url = String(file?.url || file?.publicUrl || file?.public_url || "");
@@ -22385,23 +22360,6 @@ function getSupabaseStoragePath(file) {
   } catch {
     return encodedPath.split(/[?#]/)[0];
   }
-}
-
-function getSupabaseSignedFileUrl(file) {
-  const path = getSupabaseStoragePath(file);
-  const session = getSavedAuthSession();
-  if (!path || !session?.access_token) return Promise.resolve(null);
-  const bucket = file?.bucket || file?.storageBucket || SUPABASE_STORAGE_BUCKET;
-  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-  return fetch(`${SUPABASE_URL}/storage/v1/object/sign/${encodeURIComponent(bucket)}/${encodedPath}`, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${session.access_token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ expiresIn: 3600 })
-  });
 }
 
 function fileToDataUrl(file) {
