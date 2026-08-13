@@ -3351,7 +3351,6 @@ textarea {
   display: block;
   width: 100%;
   height: auto;
-  min-height: 520px;
   object-fit: contain;
   background: #ffffff;
 }
@@ -3391,9 +3390,6 @@ textarea {
     min-height: 680px;
   }
 
-  .app-shell.site-map-focus .site-map-image {
-    min-height: 640px;
-  }
 }
 
 .site-map-empty {
@@ -7176,10 +7172,6 @@ body.panel-schedule-open {
     min-height: 680px;
   }
 
-  .app-shell.site-map-focus .site-map-image {
-    min-height: 640px;
-  }
-
   .app-shell.calendar-focus #pmCalendarPanel {
     padding: 12px;
   }
@@ -7719,10 +7711,6 @@ body.panel-schedule-open {
     height: min(46vh, 390px);
     min-height: 240px;
     padding: 10px;
-  }
-
-  .site-map-image {
-    min-height: 220px;
   }
 
   .site-map-controls {
