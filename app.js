@@ -1502,28 +1502,28 @@ async function upsertStructuredRows(table, rows) {
         delete fallbackRow.customer_id;
         return fallbackRow;
       }));
-      markSyncError("Maintenance templates saved without customer-specific scope. Run the Phase 1 Supabase SQL to enable customer-specific templates.");
+      markSyncError("Maintenance templates saved without customer-specific scope. Check the SiteWorks server template schema.");
       return;
     }
     if (table === "assets" && hasMissingAssetNfcColumnError(error)) {
       await siteworksApi.saveRows(table, rows.map(stripAssetNfcColumns));
-      markSyncError("NFC tag details saved inside equipment data. Run the NFC Supabase SQL to enable short NFC lookup columns.");
+      markSyncError("NFC tag details saved inside equipment data. Check the SiteWorks server NFC columns.");
       return;
     }
     if (["keys", "key_logs", "site_maps"].includes(table) && isMissingStructuredTableError(error)) {
       markSyncError(table === "site_maps"
-        ? "Site maps are local only until supabase-site-maps.sql is run in Supabase."
-        : "Key custody is local only until supabase-key-custody.sql is run in Supabase.");
+        ? "Site maps are local only until the SiteWorks server table is available."
+        : "Key custody is local only until the SiteWorks server key tables are available.");
       return;
     }
     if (table === "locations" && isRowLevelSecurityError(error)) {
-      const message = "Location cloud save is blocked. Run supabase-locations-rls-fix.sql in Supabase.";
+      const message = "Location server save is blocked. Check the SiteWorks server policy for locations.";
       markSyncError(message);
-      console.warn("Location cloud save skipped because Supabase denied location table writes.", error);
+      console.warn("Location server save skipped because the server denied location table writes.", error);
       throw new Error(message);
     }
     if (table === "customers" && isRowLevelSecurityError(error)) {
-      console.warn("Customer cloud save skipped because Supabase denied customer table writes.", error);
+      console.warn("Customer server save skipped because the server denied customer table writes.", error);
       return;
     }
     const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
@@ -1589,7 +1589,7 @@ async function finishCloudDelete(label, deleteResultPromise) {
   const results = Array.isArray(result) ? result : [result];
   const failed = results.some((item) => item === false);
   if (failed) {
-    alert(`${label} was removed on this device, but Supabase did not accept the cloud delete. It may come back on refresh until the delete policy is fixed.`);
+    alert(`${label} was removed on this device, but the SiteWorks server did not accept the delete. It may come back on refresh until the server policy is fixed.`);
     return false;
   }
   await syncStructuredDataToSupabase();
@@ -3928,7 +3928,7 @@ async function repairMonitoringCloudKey() {
     if (elements.deviceStatus) {
       const message = String(error?.message || "Unknown error");
       elements.deviceStatus.textContent = message.includes("siteworks_monitoring_set_device_api_key_by_uid")
-        ? "Cloud key repair needs the new Supabase SQL file run first."
+        ? "Key repair needs the SiteWorks server key function/table first."
         : `Cloud key repair failed: ${message}`;
     }
   }
@@ -5184,15 +5184,15 @@ const MAX_AUTO_BACKUPS = 5;
 const MAX_ACTIVITY_LOG_ENTRIES = 1000;
 const ACTIVITY_LOG_VISIBLE_ENTRIES = 100;
 const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
-const SUPABASE_URL = "https://chpjmtfxmkcelszeixnu.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_HduxX7ZCGdxQpT0xtDv7hQ_dVz_fAwr";
+const SUPABASE_URL = "";
+const SUPABASE_ANON_KEY = "";
 const ISSUE_REPORT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-issue-report`;
 const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
 const SUPABASE_STORAGE_BUCKET = "siteworks-files";
 const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
-const SITEWORKS_API_MODE = SITEWORKS_API_BASE_URL ? "server" : "supabase";
+const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
 const SITEWORKS_APP_VERSION = "20260812-server-storage-69";
 const ALL_CUSTOMERS = "all";
@@ -6305,7 +6305,7 @@ async function sendPasswordResetEmail(email) {
       body: JSON.stringify({ email })
     });
     if (!response.ok) {
-      return { ok: false, message: readableSupabaseError(await response.text()) || "Supabase could not send the reset email." };
+      return { ok: false, message: readableSupabaseError(await response.text()) || "SiteWorks could not send the reset email." };
     }
     addActivity("Password reset email sent", email);
     saveStateQuietly();
@@ -6354,7 +6354,7 @@ async function updateRecoveredPassword(password) {
       body: JSON.stringify({ password })
     }, session);
     if (!response.ok) {
-      return { ok: false, message: readableSupabaseError(await response.text()) || "Supabase could not update the password." };
+      return { ok: false, message: readableSupabaseError(await response.text()) || "SiteWorks could not update the password." };
     }
     addActivity("Password updated", session.user?.email || "Recovery login");
     saveStateQuietly();
@@ -6390,7 +6390,7 @@ els.firstAdminForm.addEventListener("submit", async (event) => {
   const user = await signUpSupabaseUser(email, password, name, "Admin", "");
   if (!user) {
     if (lastAuthError.toLowerCase().includes("already")) {
-      els.firstAdminMessage.textContent = "That email already exists in Supabase. Use the Log In form once and SiteWorks will attach the first Admin profile.";
+      els.firstAdminMessage.textContent = "That email already exists in SiteWorks. Use the Log In form once and SiteWorks will attach the first Admin profile.";
       return;
     }
     els.firstAdminMessage.textContent = lastAuthError || "Could not create admin. If email confirmation is on, confirm the email and then log in.";
@@ -8700,7 +8700,7 @@ els.refreshCloudNowBtn?.addEventListener("click", async () => {
   const importedReports = await syncPublicReportsFromServer(true);
   if (Number.isFinite(importedReports)) {
     updateCloudCleanupStatus(importedReports
-      ? `Imported ${importedReports} public QR report${importedReports === 1 ? "" : "s"} from Supabase.`
+      ? `Imported ${importedReports} public QR report${importedReports === 1 ? "" : "s"} from the SiteWorks server.`
       : "Cloud refreshed. No new public QR reports were found.");
   }
   render();
@@ -17526,14 +17526,14 @@ function buildEmailHistoryDetails(recipient, result) {
   const receiptId = getEmailReceiptId(result);
   return receiptId
     ? `Sent to ${recipient}. Resend ID: ${receiptId}`
-    : `Sent to ${recipient}. Email service accepted the request, but no Resend receipt ID was returned. Check the Supabase Edge Function logs before assuming it delivered.`;
+    : `Sent to ${recipient}. Email service accepted the request, but no Resend receipt ID was returned. Check the SiteWorks server logs before assuming it delivered.`;
 }
 
 function buildEmailSuccessAlert(label, result) {
   const receiptId = getEmailReceiptId(result);
   return receiptId
     ? `${label} sent.\n\nResend ID: ${receiptId}`
-    : `${label} was accepted by the email function, but no Resend receipt ID came back. Check the Supabase Edge Function logs before assuming it delivered.`;
+    : `${label} was accepted by the email service, but no Resend receipt ID came back. Check the SiteWorks server logs before assuming it delivered.`;
 }
 
 function getEmailFunctionError(result, fallback) {
@@ -17549,7 +17549,7 @@ function buildEmailFailurePrompt(error, contactLabel = "contact") {
     "",
     `Reason: ${message}`,
     "",
-    "This usually means the Supabase email function is not deployed, the Resend API key is missing, the sender address is not allowed by Resend, the sender domain is not verified, or the photo/PDF was rejected.",
+    "This usually means the SiteWorks email service is not configured, the Resend API key is missing, the sender address is not allowed by Resend, the sender domain is not verified, or the photo/PDF was rejected.",
     "",
     `Open a regular email draft to this ${contactLabel} instead?`
   ].join("\n");
@@ -20135,7 +20135,7 @@ const siteworksApi = {
     return SITEWORKS_API_MODE;
   },
   backendLabel() {
-    return siteworksServerEnabled() ? "SiteWorks server" : "Supabase prototype";
+    return "SiteWorks server";
   },
   server(path, options = {}) {
     return siteworksServerFetch(path, options);
