@@ -3376,14 +3376,44 @@ textarea {
   display: none;
 }
 
-.app-shell.site-map-fullscreen #siteMapPanel {
+body:has(.app-shell.site-map-fullscreen) {
+  overflow: hidden;
+}
+
+body.site-map-fullscreen-active {
+  overflow: hidden;
+}
+
+.app-header:has(+ .app-shell.site-map-fullscreen),
+body.site-map-fullscreen-active .app-header,
+.app-shell.site-map-fullscreen .sidebar {
+  display: none;
+}
+
+.app-shell.site-map-fullscreen {
   position: fixed;
-  z-index: 2000;
+  z-index: 5000;
   inset: 0;
   display: block;
-  margin: 0;
-  padding: 10px;
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
   overflow: hidden;
+  padding: 0;
+  background: var(--bg);
+}
+
+.app-shell.site-map-fullscreen #siteMapPanel {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 8px;
+  overflow: hidden;
+  border: 0;
   border-radius: 0;
   background: var(--bg);
 }
@@ -3406,14 +3436,15 @@ textarea {
 
 .app-shell.site-map-fullscreen .site-map-canvas {
   height: 100%;
+  width: 100%;
   min-height: 0;
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 .app-shell.site-map-fullscreen .site-map-viewport {
-  height: calc(100vh - 22px);
+  height: calc(100vh - 16px);
   min-height: 0;
-  padding: 14px;
+  padding: 10px;
 }
 
 .app-shell.site-map-fullscreen .site-map-controls {

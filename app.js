@@ -9700,6 +9700,7 @@ function syncCalendarFocusState() {
   els.appShell?.classList.toggle("calendar-focus", calendarOpen);
   els.appShell?.classList.toggle("site-map-focus", siteMapOpen);
   els.appShell?.classList.toggle("site-map-fullscreen", Boolean(siteMapFullScreen && siteMapOpen));
+  document.body?.classList.toggle("site-map-fullscreen-active", Boolean(siteMapFullScreen && siteMapOpen));
 }
 
 function restoreMobileDashboardAfterSiteMapClose() {
