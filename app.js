@@ -12398,6 +12398,7 @@ function renderNotificationCenterItem(notification = {}) {
   const handled = status === "resolved"
     ? notification.resolved_at || notification.resolvedAt || ""
     : notification.acknowledged_at || notification.acknowledgedAt || "";
+  const isBreakerTrip = notification.type === "breaker-trip";
   return `
     <article class="notification-center-item is-${escapeAttribute(status)} is-${escapeAttribute(severity)}">
       <div>
@@ -12406,9 +12407,10 @@ function renderNotificationCenterItem(notification = {}) {
         ${handled ? `<small>${escapeHtml(status === "resolved" ? "Resolved" : "Acknowledged")} ${escapeHtml(formatDateTime(handled))}</small>` : ""}
       </div>
       <div class="notification-center-actions">
-        ${["breaker-trip", "esp-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
-        ${status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
-        ${status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
+        ${isBreakerTrip ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Panel</button>` : ""}
+        ${!isBreakerTrip && ["esp-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
+        ${!isBreakerTrip && status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
+        ${!isBreakerTrip && status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
       </div>
     </article>
   `;
@@ -12636,7 +12638,7 @@ async function updateBreakerNotificationForConfirmation(channel = null, confirma
 }
 
 function openServerNotification(id) {
-  const notification = serverNotifications.find((item) => String(item.id || "") === String(id));
+  const notification = visibleNotifications().find((item) => String(item.id || "") === String(id));
   if (!notification) return;
   closeNotificationCenter();
   const metadata = notificationMetadata(notification);
@@ -12648,6 +12650,14 @@ function openServerNotification(id) {
     openPanel("monitoringPanel");
     setMobileTabState("monitoringPanel");
     render();
+    const channel = selectedMonitoringBreakerChannelId ? getMonitoringChannel(selectedMonitoringBreakerChannelId) : null;
+    if (channel) {
+      window.setTimeout(() => {
+        const selector = `[data-monitoring-breaker-circuit="${String(selectedMonitoringBreakerCircuit || channel.circuitNumber || "").replace(/"/g, '\\"')}"]`;
+        const anchor = document.querySelector(selector);
+        showMonitoringBreakerDetail(channel.id, channel.circuitNumber || selectedMonitoringBreakerCircuit || "", anchor);
+      }, 50);
+    }
     document.getElementById("monitoringPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
   } else if (notification.type === "key-overdue") {
     focusedKeyId = metadata.keyId || metadata.sourceId || "";
