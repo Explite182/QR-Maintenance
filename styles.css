@@ -3366,8 +3366,58 @@ textarea {
   color: var(--accent-strong);
 }
 
+.site-map-fullscreen-toggle.is-active {
+  border-color: rgba(20, 122, 106, 0.46);
+  background: rgba(20, 122, 106, 0.16);
+  color: var(--accent-strong);
+}
+
 .app-shell.site-map-focus .dashboard-panel {
   display: none;
+}
+
+.app-shell.site-map-fullscreen #siteMapPanel {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  display: block;
+  margin: 0;
+  padding: 10px;
+  overflow: hidden;
+  border-radius: 0;
+  background: var(--bg);
+}
+
+.app-shell.site-map-fullscreen #siteMapPanel > .section-title,
+.app-shell.site-map-fullscreen .site-map-toolbar,
+.app-shell.site-map-fullscreen .site-map-help,
+.app-shell.site-map-fullscreen .site-map-level-tabs {
+  display: none;
+}
+
+.app-shell.site-map-fullscreen .site-map-layout {
+  display: block;
+  height: 100%;
+}
+
+.app-shell.site-map-fullscreen .site-map-pin-list {
+  display: none;
+}
+
+.app-shell.site-map-fullscreen .site-map-canvas {
+  height: 100%;
+  min-height: 0;
+  border-radius: 10px;
+}
+
+.app-shell.site-map-fullscreen .site-map-viewport {
+  height: calc(100vh - 22px);
+  min-height: 0;
+  padding: 14px;
+}
+
+.app-shell.site-map-fullscreen .site-map-controls {
+  z-index: 30;
 }
 
 @media (min-width: 1181px) {

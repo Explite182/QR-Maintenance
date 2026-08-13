@@ -2264,6 +2264,7 @@ function renderSiteMap() {
           <button type="button" class="secondary mini" data-site-map-zoom="in">+</button>
           <button type="button" class="secondary mini" data-site-map-zoom="reset">Reset</button>
           <button type="button" class="secondary mini site-map-clean-toggle${siteMapCleanView ? " is-active" : ""}" data-site-map-clean>${siteMapCleanView ? "Full plan" : "Clean plan"}</button>
+          <button type="button" class="secondary mini site-map-fullscreen-toggle${siteMapFullScreen ? " is-active" : ""}" data-site-map-fullscreen>${siteMapFullScreen ? "Close" : "Full screen"}</button>
         </div>
         <div class="site-map-viewport" data-site-map-viewport>
           <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%;">
@@ -5561,6 +5562,7 @@ let siteMapAreaFilter = "all";
 let siteMapOverlayMode = "normal";
 let selectedSiteMapOverlayAssetId = "";
 let siteMapCleanView = false;
+let siteMapFullScreen = false;
 let siteMapLevelId = "main";
 let siteMapViewportMemory = { left: 0, top: 0 };
 let siteMapDragState = null;
@@ -7416,6 +7418,12 @@ document.addEventListener("keydown", (event) => {
     closeCommandPalette();
     return;
   }
+  if (event.key === "Escape" && siteMapFullScreen) {
+    siteMapFullScreen = false;
+    syncCalendarFocusState();
+    renderSiteMapIfReady();
+    return;
+  }
   if (event.key === "Escape" && document.querySelector(".ticket-action-menu[open]")) {
     closeOpenTicketActionMenus();
     return;
@@ -8902,6 +8910,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const siteMapFullScreenButton = event.target.closest("[data-site-map-fullscreen]");
+  if (siteMapFullScreenButton) {
+    event.preventDefault();
+    updateSiteMapViewportMemory();
+    siteMapFullScreen = !siteMapFullScreen;
+    syncCalendarFocusState();
+    renderSiteMapIfReady();
+    return;
+  }
+
   const mobileTabButton = event.target.closest("[data-mobile-tab]");
   if (mobileTabButton) {
     event.preventDefault();
@@ -9681,6 +9699,7 @@ function syncCalendarFocusState() {
   const siteMapOpen = isPanelVisiblyOpen("siteMapPanel");
   els.appShell?.classList.toggle("calendar-focus", calendarOpen);
   els.appShell?.classList.toggle("site-map-focus", siteMapOpen);
+  els.appShell?.classList.toggle("site-map-fullscreen", Boolean(siteMapFullScreen && siteMapOpen));
 }
 
 function restoreMobileDashboardAfterSiteMapClose() {
