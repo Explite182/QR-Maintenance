@@ -2,11 +2,11 @@
 
 // SiteWorks structured cloud sync module.
 // Loaded before app.js as a classic script so existing app state, permissions, and helpers stay shared.
-// Keep Supabase structured row loading, merging, saving, and delete helpers here.
+// Keep SiteWorks server structured row loading, merging, saving, and delete helpers here.
 
-async function loadStructuredDataFromSupabase(options = {}) {
+async function loadStructuredDataFromServer(options = {}) {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return false;
-  if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY) return false;
   structuredDataLoading = true;
   try {
     const forceReload = Boolean(options.forceReload);
@@ -89,7 +89,7 @@ async function loadStructuredDataFromSupabase(options = {}) {
     if (structuredRowsMissingAssets(structuredRows)) {
       markSyncError("Structured cloud load returned related records but no equipment. Keeping/restoring the last known equipment list.");
       const restoredSharedState = canUseSharedStateFallback()
-        ? await loadSharedStateFromSupabase(true)
+        ? await loadSharedStateFromServer(true)
         : false;
       if (!restoredSharedState && state.assets?.length) scheduleStructuredDataSync(0);
       return Boolean(restoredSharedState || state.assets?.length);
@@ -107,7 +107,7 @@ async function loadStructuredDataFromSupabase(options = {}) {
     structuredDataLoading = false;
     structuredDataReady = true;
     markSyncError(error?.message || "Structured cloud load failed.");
-    console.warn("Structured Supabase load skipped.", error);
+    console.warn("Structured SiteWorks server load skipped.", error);
     return false;
   }
 }
@@ -128,7 +128,7 @@ async function fetchStructuredRows(table, order = "updated_at.asc") {
   } catch (error) {
     const message = `Structured cloud load failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
-    console.warn(`Structured Supabase load skipped for ${table}.`, error);
+    console.warn(`Structured SiteWorks server load skipped for ${table}.`, error);
     throw new Error(message);
   }
 }
@@ -137,7 +137,7 @@ async function fetchOptionalStructuredRows(table, order = "updated_at.asc") {
   try {
     return await siteworksApi.loadRows(table, order);
   } catch (error) {
-    console.warn(`Optional Supabase table ${table} is not available yet.`, error);
+    console.warn(`Optional SiteWorks server table ${table} is not available yet.`, error);
     return [];
   }
 }
@@ -177,7 +177,7 @@ async function fetchStructuredTimestampRows(table, timestampColumn) {
   } catch (error) {
     const message = `Structured cloud change check failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
-    console.warn(`Structured Supabase change check skipped for ${table}.`, error);
+    console.warn(`Structured SiteWorks server change check skipped for ${table}.`, error);
     throw new Error(message);
   }
 }
@@ -186,7 +186,7 @@ async function fetchOptionalStructuredTimestampRows(table, timestampColumn) {
   try {
     return await siteworksApi.peekRows(table, timestampColumn);
   } catch (error) {
-    console.warn(`Optional Supabase table ${table} is not available yet.`, error);
+    console.warn(`Optional SiteWorks server table ${table} is not available yet.`, error);
     return [];
   }
 }
@@ -705,8 +705,8 @@ function newestTimestampFromRows(rows = []) {
     .at(-1) || new Date().toISOString();
 }
 
-async function loadSharedStateFromSupabase(forceApplyAssets = false) {
-  if (!canUseSharedStateFallback() || sharedStateLoading || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+async function loadSharedStateFromServer(forceApplyAssets = false) {
+  if (!canUseSharedStateFallback() || sharedStateLoading || !LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY) return false;
   sharedStateLoading = true;
   const localHadSharedData = hasSharedMaintenanceData(state);
 
@@ -718,7 +718,7 @@ async function loadSharedStateFromSupabase(forceApplyAssets = false) {
     if (!response.ok) {
       const errorText = await response.text();
       markSyncError(`Shared cloud load failed: ${errorText}`);
-      console.warn("Supabase shared data sync skipped.", errorText);
+      console.warn("SiteWorks server shared data sync skipped.", errorText);
       return;
     }
 
@@ -747,7 +747,7 @@ async function loadSharedStateFromSupabase(forceApplyAssets = false) {
     sharedStateLoading = false;
     sharedStateReady = true;
     markSyncError(error?.message || "Shared cloud load failed.");
-    console.warn("Supabase shared data sync skipped.", error);
+    console.warn("SiteWorks server shared data sync skipped.", error);
     return false;
   }
 }
@@ -840,10 +840,10 @@ function scheduleSharedStateSave(delay = 1200) {
   return;
   if (!sharedStateReady || applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state) || !hasAuthenticatedCloudSession()) return;
   window.clearTimeout(sharedStateSaveTimer);
-  sharedStateSaveTimer = window.setTimeout(saveSharedStateToSupabase, delay);
+  sharedStateSaveTimer = window.setTimeout(saveSharedStateToServer, delay);
 }
 
-async function saveSharedStateToSupabase() {
+async function saveSharedStateToServer() {
   return;
   if (!sharedStateReady || applyingSharedState || !hasSharedMaintenanceData(state) || !hasAuthenticatedCloudSession()) return;
   const uploadedAt = new Date().toISOString();
@@ -858,7 +858,7 @@ async function saveSharedStateToSupabase() {
     if (!response.ok) {
       const errorText = await response.text();
       markSyncError(`Shared cloud save failed: ${errorText}`);
-      console.warn("Supabase shared data save skipped.", errorText);
+      console.warn("SiteWorks server shared data save skipped.", errorText);
       return;
     }
     state.sharedDataUpdatedAt = uploadedAt;
@@ -866,7 +866,7 @@ async function saveSharedStateToSupabase() {
     markSyncSuccess("save");
   } catch (error) {
     markSyncError(error?.message || "Shared cloud save failed.");
-    console.warn("Supabase shared data save skipped.", error);
+    console.warn("SiteWorks server shared data save skipped.", error);
   }
 }
 
@@ -922,7 +922,7 @@ function scheduleStructuredDataSync(delay = 2000) {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return;
   if (applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
   window.clearTimeout(structuredSyncTimer);
-  structuredSyncTimer = window.setTimeout(syncStructuredDataToSupabase, delay);
+  structuredSyncTimer = window.setTimeout(syncStructuredDataToServer, delay);
 }
 
 function leanCloudData(value) {
@@ -1141,7 +1141,7 @@ function buildMonitoringAlertRow(alert, cloudLocationIds = null) {
   };
 }
 
-async function setMonitoringDeviceKeyInSupabase(deviceId, apiKey) {
+async function setMonitoringDeviceKeyOnServer(deviceId, apiKey) {
   if (!deviceId || !apiKey || !hasAuthenticatedCloudSession()) return false;
   const response = await cloudApi.rest("rpc/siteworks_monitoring_set_device_api_key", {
     method: "POST",
@@ -1154,7 +1154,7 @@ async function setMonitoringDeviceKeyInSupabase(deviceId, apiKey) {
   return true;
 }
 
-async function setMonitoringDeviceKeyInSupabaseByUid(deviceUid, apiKey) {
+async function setMonitoringDeviceKeyOnServerByUid(deviceUid, apiKey) {
   if (!deviceUid || !apiKey || !hasAuthenticatedCloudSession()) return false;
   const response = await cloudApi.rest("rpc/siteworks_monitoring_set_device_api_key_by_uid", {
     method: "POST",
@@ -1167,30 +1167,30 @@ async function setMonitoringDeviceKeyInSupabaseByUid(deviceUid, apiKey) {
   return true;
 }
 
-async function syncMonitoringDeviceToSupabase(device, apiKey = "") {
-  if (!STRUCTURED_DATA_SYNC_ENABLED || !device?.id || !SUPABASE_URL || !SUPABASE_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
+async function syncMonitoringDeviceToServer(device, apiKey = "") {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !device?.id || !LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
   const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
   await upsertStructuredRows("monitoring_devices", [buildMonitoringDeviceRow(device, cloudLocationIds)]);
   if (apiKey) {
     try {
-      await setMonitoringDeviceKeyInSupabaseByUid(device.deviceUid, apiKey);
+      await setMonitoringDeviceKeyOnServerByUid(device.deviceUid, apiKey);
     } catch (error) {
       console.warn("Monitoring key by UID failed; trying device id.", error);
-      await setMonitoringDeviceKeyInSupabase(device.id, apiKey);
+      await setMonitoringDeviceKeyOnServer(device.id, apiKey);
     }
   }
   return true;
 }
 
-async function syncMonitoringChannelsToSupabase(channels = []) {
-  if (!STRUCTURED_DATA_SYNC_ENABLED || !channels.length || !SUPABASE_URL || !SUPABASE_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
+async function syncMonitoringChannelsToServer(channels = []) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !channels.length || !LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
   const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
   await upsertStructuredRows("monitoring_channels", channels.map((channel) => buildMonitoringChannelRow(channel, cloudLocationIds)));
   return true;
 }
 
-async function syncSingleKeyToSupabase(key) {
-  if (!STRUCTURED_DATA_SYNC_ENABLED || !key?.id || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+async function syncSingleKeyToServer(key) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !key?.id || !LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY) return;
   const customerId = activeCloudCustomerId();
   if (customerId && key.customerId !== customerId) return;
   const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
@@ -1218,7 +1218,7 @@ async function syncSingleKeyToSupabase(key) {
   }
 }
 
-async function syncStructuredDataToSupabase() {
+async function syncStructuredDataToServer() {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return;
   if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
   structuredSyncActive = true;
@@ -1485,7 +1485,7 @@ async function syncStructuredDataToSupabase() {
     markSyncSuccess("save");
   } catch (error) {
     markSyncError(error?.message || "Structured cloud save failed.");
-    console.warn("Structured Supabase sync skipped.", error);
+    console.warn("Structured SiteWorks server sync skipped.", error);
   } finally {
     structuredSyncActive = false;
   }
@@ -1528,7 +1528,7 @@ async function upsertStructuredRows(table, rows) {
     }
     const message = `Structured cloud save failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
-    console.warn(`Structured Supabase sync skipped for ${table}.`, error);
+    console.warn(`Structured SiteWorks server sync skipped for ${table}.`, error);
     throw new Error(message);
   }
 }
@@ -1579,7 +1579,7 @@ async function deleteStructuredRows(table, column, values) {
   } catch (error) {
     const message = `Cloud delete failed for ${table}: ${error?.message || error}`;
     markSyncError(message);
-    console.warn(`Structured Supabase delete skipped for ${table}.`, error);
+    console.warn(`Structured SiteWorks server delete skipped for ${table}.`, error);
     return false;
   }
 }
@@ -1592,7 +1592,7 @@ async function finishCloudDelete(label, deleteResultPromise) {
     alert(`${label} was removed on this device, but the SiteWorks server did not accept the delete. It may come back on refresh until the server policy is fixed.`);
     return false;
   }
-  await syncStructuredDataToSupabase();
+  await syncStructuredDataToServer();
   return true;
 }
 
@@ -3145,7 +3145,7 @@ async function syncMonitoringStatusFromApi() {
     return;
   }
   if (!MONITORING_LIVE_STATUS_API) {
-    await syncMonitoringStatusFromSupabase();
+    await syncMonitoringStatusFromServer();
     return;
   }
   ensureMonitoringCollections();
@@ -3242,7 +3242,7 @@ async function syncMonitoringStatusFromApi() {
   }
 }
 
-async function syncMonitoringStatusFromSupabase() {
+async function syncMonitoringStatusFromServer() {
   ensureMonitoringCollections();
   try {
     const [
@@ -3329,7 +3329,7 @@ async function syncMonitoringStatusFromSupabase() {
       renderMonitoring();
     }
   } catch (error) {
-    console.warn("Monitoring Supabase status sync failed", error);
+    console.warn("Monitoring SiteWorks server status sync failed", error);
   }
 }
 
@@ -3871,7 +3871,7 @@ async function rotateMonitoringDeviceKey() {
   addMonitoringEvent({ deviceId: device.id, panelAssetId: device.panelAssetId, type: "api-key-rotated", message: `${device.name} API key was rotated.` });
   saveState();
   try {
-    await syncMonitoringDeviceToSupabase(device, newKey);
+    await syncMonitoringDeviceToServer(device, newKey);
   } catch (error) {
     console.warn("Monitoring key cloud save failed", error);
     if (elements.generatedApiKey) elements.generatedApiKey.textContent = `New API key, shown once: ${newKey}. Cloud save needs attention.`;
@@ -3905,7 +3905,7 @@ async function repairMonitoringCloudKey() {
   }
   try {
     if (device) {
-      await syncMonitoringDeviceToSupabase({
+      await syncMonitoringDeviceToServer({
         ...device,
         deviceUid: uid || device.deviceUid,
         apiKeyLast4: apiKey.slice(-4),
@@ -3916,7 +3916,7 @@ async function repairMonitoringCloudKey() {
       device.updatedAt = new Date().toISOString();
       saveState();
     } else {
-      await setMonitoringDeviceKeyInSupabaseByUid(uid, apiKey);
+      await setMonitoringDeviceKeyOnServerByUid(uid, apiKey);
     }
     if (elements.deviceStatus) {
       elements.deviceStatus.textContent = `Cloud key repaired. ESP32 key must end in ${apiKey.slice(-4)}.`;
@@ -4014,7 +4014,7 @@ async function handleMonitoringDeviceSubmit(form) {
     saveState();
     let cloudSaved = false;
     try {
-      cloudSaved = await syncMonitoringDeviceToSupabase(device, apiKey);
+      cloudSaved = await syncMonitoringDeviceToServer(device, apiKey);
     } catch (error) {
       console.warn("Monitoring device cloud save failed", error);
       if (elements.deviceStatus) elements.deviceStatus.textContent = `Device saved locally, but cloud save failed: ${error?.message || "Unknown error"}`;
@@ -4141,7 +4141,7 @@ async function handleMonitoringChannelSubmit(form) {
   let cloudSaved = false;
   try {
     if (replacedChannelIds.length) await deleteStructuredRows("monitoring_channels", "id", replacedChannelIds);
-    cloudSaved = await syncMonitoringChannelsToSupabase(created.records);
+    cloudSaved = await syncMonitoringChannelsToServer(created.records);
   } catch (error) {
     console.warn("Monitoring channel cloud save failed", error);
   }
@@ -4289,8 +4289,8 @@ async function createDemoMonitoringPanel() {
   selectedMonitoringPanelId = panel.id;
   saveState();
   try {
-    await syncMonitoringDeviceToSupabase(device);
-    if (createdChannels.length) await syncMonitoringChannelsToSupabase(createdChannels);
+    await syncMonitoringDeviceToServer(device);
+    if (createdChannels.length) await syncMonitoringChannelsToServer(createdChannels);
   } catch (error) {
     console.warn("Demo monitor server save failed", error);
   }
@@ -5184,11 +5184,11 @@ const MAX_AUTO_BACKUPS = 5;
 const MAX_ACTIVITY_LOG_ENTRIES = 1000;
 const ACTIVITY_LOG_VISIBLE_ENTRIES = 100;
 const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
-const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
+const LEGACY_CLOUD_URL = "";
+const LEGACY_CLOUD_ANON_KEY = "";
 const SHARED_APP_STATE_ID = "main";
-const AUTH_SESSION_KEY = "qr-maintenance-supabase-session-v1";
-const SUPABASE_STORAGE_BUCKET = "siteworks-files";
+const AUTH_SESSION_KEY = "siteworks-session-v1";
+const LEGACY_STORAGE_BUCKET = "siteworks-files";
 const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
@@ -6079,7 +6079,7 @@ window.setTimeout(initializeRealtimeSync, 1200);
 window.setTimeout(loadServerNotifications, 1800);
 window.setTimeout(loadNotificationRules, 2200);
 window.setInterval(syncPublicReportsFromServer, PUBLIC_REPORT_SYNC_INTERVAL_MS);
-window.setInterval(refreshCloudDataFromSupabase, CLOUD_REFRESH_INTERVAL_MS);
+window.setInterval(refreshCloudDataFromServer, CLOUD_REFRESH_INTERVAL_MS);
 window.setInterval(runMonitoringOfflineCheck, 60000);
 window.setInterval(syncMonitoringStatusFromApi, MONITORING_LIVE_SYNC_INTERVAL_MS);
 window.setInterval(loadServerNotifications, 30000);
@@ -6317,7 +6317,7 @@ async function updateRecoveredPassword(password) {
 async function openScannedAssetAfterLogin() {
   let openedScannedAsset = focusScannedAssetContext() || focusScannedInventoryContext() || focusScannedKeyContext();
   if (!openedScannedAsset && isScannedItemUrl()) {
-    await runWithTimeout(refreshCloudDataFromSupabase(), 5000);
+    await runWithTimeout(refreshCloudDataFromServer(), 5000);
     openedScannedAsset = focusScannedAssetContext() || focusScannedInventoryContext() || focusScannedKeyContext();
   }
   if (!openedScannedAsset) notifyUnassignedShortNfcTag();
@@ -7645,7 +7645,7 @@ document.addEventListener("click", async (event) => {
     }
     key.updatedAt = new Date().toISOString();
     saveState();
-    await syncSingleKeyToSupabase(key);
+    await syncSingleKeyToServer(key);
     render();
     return;
   }
@@ -7778,7 +7778,7 @@ document.addEventListener("submit", async (event) => {
   key.updatedAt = new Date().toISOString();
   addActivity("Key edited", key.keyName || key.name);
   saveState();
-  await syncSingleKeyToSupabase(key);
+  await syncSingleKeyToServer(key);
   render();
 });
 
@@ -8398,7 +8398,7 @@ els.keyForm?.addEventListener("submit", async (event) => {
   addKeyLog(key, "Check-In", "Key record created.");
   addActivity("Key added", key.keyName);
   saveState();
-  await syncSingleKeyToSupabase(key);
+  await syncSingleKeyToServer(key);
   if (shouldWriteNfcTag) {
     if (els.keyStatus) {
       els.keyStatus.textContent = "Key saved. Writing NFC tag...";
@@ -8645,7 +8645,7 @@ els.removeLocalCopiesBtn?.addEventListener("click", () => {
 });
 
 els.refreshCloudNowBtn?.addEventListener("click", async () => {
-  await refreshCloudDataFromSupabase();
+  await refreshCloudDataFromServer();
   const importedReports = await syncPublicReportsFromServer(true);
   if (Number.isFinite(importedReports)) {
     updateCloudCleanupStatus(importedReports
@@ -13869,7 +13869,7 @@ function markSyncError(message) {
   renderSyncHealth();
 }
 
-function isSupabaseQuotaRestrictionError(value = "") {
+function isCloudQuotaRestrictionError(value = "") {
   const text = String(value || "").toLowerCase();
   return text.includes("exceed_egress_quota")
     || (
@@ -15537,7 +15537,7 @@ async function writeKeyNfcTag(key) {
       key.updatedAt = new Date().toISOString();
       addActivity("Key NFC write request sent", key.keyName || key.name || "Key");
       saveState();
-      await syncSingleKeyToSupabase(key);
+      await syncSingleKeyToServer(key);
       render();
       return;
     }
@@ -15560,7 +15560,7 @@ async function writeKeyNfcTag(key) {
     addKeyLog(key, "Check-In", `NFC tag written: ${normalizedUid}${tagSlot === "extra" ? " (additional tag)" : ""}.`);
     addActivity("Key NFC tag written", `${key.keyName || key.name || "Key"} | ${normalizedUid}`);
     saveState();
-    await syncSingleKeyToSupabase(key);
+    await syncSingleKeyToServer(key);
     render();
   } catch (error) {
     console.warn("Key NFC write failed.", error);
@@ -15602,7 +15602,7 @@ async function verifyKeyNfcTag(key) {
     addKeyLog(key, "Check-In", `NFC tag verified: ${normalizedUid}${tagSlot === "extra" ? " (additional tag)" : ""}.`);
     addActivity("Key NFC tag verified", `${key.keyName || key.name || "Key"} | ${normalizedUid}`);
     saveState();
-    await syncSingleKeyToSupabase(key);
+    await syncSingleKeyToServer(key);
     render();
   } catch (error) {
     console.warn("Key NFC verify failed.", error);
@@ -15624,7 +15624,7 @@ async function verifyKeyManually(key) {
   addKeyLog(key, "Verify", `Manually verified by ${verifiedBy}.`);
   addActivity("Key verified", `${key.keyName || key.name || "Key"} | ${verifiedBy}`);
   saveState();
-  await syncSingleKeyToSupabase(key);
+  await syncSingleKeyToServer(key);
   render();
 }
 
@@ -19857,20 +19857,20 @@ async function syncPublicReportsFromServer(force = false) {
   return added;
 }
 
-async function supabaseFetch(path, options = {}) {
-  const url = `${SUPABASE_URL}/rest/v1/${path}`;
+async function legacyCloudFetch(path, options = {}) {
+  const url = `${LEGACY_CLOUD_URL}/rest/v1/${path}`;
   let session = getSavedAuthSession();
   if (options.requireAuth && !hasAuthenticatedCloudSession()) {
     session = await refreshSiteWorksAuthSession();
     if (!session?.access_token || !hasAuthenticatedCloudSession()) {
-      return new Response("Missing authenticated Supabase session.", { status: 401 });
+      return new Response("Missing authenticated SiteWorks server session.", { status: 401 });
     }
   }
   const { forceAnon, requireAuth, ...fetchOptions } = options;
   const runRequest = (tokenSession = null) => {
-    const token = forceAnon ? SUPABASE_ANON_KEY : (tokenSession?.access_token || SUPABASE_ANON_KEY);
+    const token = forceAnon ? LEGACY_CLOUD_ANON_KEY : (tokenSession?.access_token || LEGACY_CLOUD_ANON_KEY);
     const headers = {
-      apikey: SUPABASE_ANON_KEY,
+      apikey: LEGACY_CLOUD_ANON_KEY,
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...(options.headers || {})
@@ -19886,11 +19886,11 @@ async function supabaseFetch(path, options = {}) {
   return runRequest(refreshedSession);
 }
 
-function supabaseAuthFetch(path, options = {}, session = null) {
-  const url = `${SUPABASE_URL}/auth/v1/${path}`;
-  const token = session?.access_token || SUPABASE_ANON_KEY;
+function legacyCloudAuthFetch(path, options = {}, session = null) {
+  const url = `${LEGACY_CLOUD_URL}/auth/v1/${path}`;
+  const token = session?.access_token || LEGACY_CLOUD_ANON_KEY;
   const headers = {
-    apikey: SUPABASE_ANON_KEY,
+    apikey: LEGACY_CLOUD_ANON_KEY,
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
     ...(options.headers || {})
@@ -19901,16 +19901,16 @@ function supabaseAuthFetch(path, options = {}, session = null) {
 async function initializeRealtimeSync() {
   if (!STRUCTURED_DATA_SYNC_ENABLED || siteworksServerEnabled() || isPublicReportUrl()) return;
   if (realtimeChannel || realtimeClient) return;
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    setSyncBanner("stale", "Live sync unavailable", "Missing Supabase settings.", 5000);
+  if (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY) {
+    setSyncBanner("stale", "Live sync unavailable", "Missing SiteWorks server settings.", 5000);
     return;
   }
-  if (!window.supabase?.createClient) {
+  if (!window.siteworksServer?.createClient) {
     setSyncBanner("refresh", "Cloud refresh active", "Live updates are reconnecting. Timed checks are still running.", 5000);
     return;
   }
   try {
-    realtimeClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    realtimeClient = window.siteworksServer.createClient(LEGACY_CLOUD_URL, LEGACY_CLOUD_ANON_KEY, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
@@ -19943,7 +19943,7 @@ async function initializeRealtimeSync() {
   } catch (error) {
     realtimeConnected = false;
     setSyncBanner("refresh", "Cloud refresh active", "Live updates are reconnecting. Timed checks are still running.", 5000);
-    console.warn("Supabase Realtime sync was not started.", error);
+    console.warn("SiteWorks server Realtime sync was not started.", error);
     renderSyncHealth();
   }
 }
@@ -19958,7 +19958,7 @@ function handleRealtimeCloudChange(payload = {}) {
       if (table === "public_reports") {
         await syncPublicReportsFromServer(true);
       } else {
-        await refreshCloudDataFromSupabase();
+        await refreshCloudDataFromServer();
         await syncPublicReportsFromServer(true);
       }
       render();
@@ -20043,10 +20043,10 @@ function canSyncHistoryRecord(asset) {
 
 const cloudApi = {
   rest(path, options = {}) {
-    return supabaseFetch(path, options);
+    return legacyCloudFetch(path, options);
   },
   auth(path, options = {}, session = null) {
-    return supabaseAuthFetch(path, options, session);
+    return legacyCloudAuthFetch(path, options, session);
   },
   async uploadFile(file, folder = "uploads", session = null) {
     return null;
@@ -20512,7 +20512,7 @@ async function createSiteWorksUser(email, password, name, role, customerId, loca
       const profileSaved = await saveSiteWorksProfile(profile);
       if (!profileSaved) {
         profile.profileSyncFailed = true;
-        lastAuthError = "Supabase created the login, but SiteWorks could not save its user profile.";
+        lastAuthError = "SiteWorks server created the login, but SiteWorks could not save its user profile.";
       }
     }
     upsertLocalUser(profile);
@@ -20614,7 +20614,7 @@ async function getProfileForAuthUser(authUser) {
   if (!authUser?.id) return null;
   const response = await siteworksApi.loadProfile(authUser.id);
   if (!response.ok) {
-    console.warn("Supabase profile lookup failed.", await response.text());
+    console.warn("SiteWorks server profile lookup failed.", await response.text());
     return null;
   }
   const rows = await response.json();
@@ -20626,13 +20626,13 @@ async function getProfileForAuthEmail(email) {
   try {
     const response = await cloudApi.rest(`profiles?email=eq.${encodeURIComponent(email.trim().toLowerCase())}&select=*&limit=1`);
     if (!response.ok) {
-      console.warn("Supabase profile email lookup failed.", await response.text());
+      console.warn("SiteWorks server profile email lookup failed.", await response.text());
       return null;
     }
     const rows = await response.json();
     return rows?.[0] ? profileFromServer(rows[0]) : null;
   } catch (error) {
-    console.warn("Supabase profile email lookup skipped.", error);
+    console.warn("SiteWorks server profile email lookup skipped.", error);
     return null;
   }
 }
@@ -20785,7 +20785,7 @@ async function refreshSiteWorksAuthSession() {
         body: JSON.stringify({ refresh_token: savedSession.refresh_token })
       });
       if (!response.ok) {
-        console.warn("Supabase session refresh failed.", await response.text());
+        console.warn("SiteWorks server session refresh failed.", await response.text());
         return savedSession;
       }
       const refreshedSession = await response.json();
@@ -20798,7 +20798,7 @@ async function refreshSiteWorksAuthSession() {
       saveAuthSession(mergedSession);
       return getSavedAuthSession() || mergedSession;
     } catch (error) {
-      console.warn("Supabase session refresh skipped.", error);
+      console.warn("SiteWorks server session refresh skipped.", error);
       return savedSession;
     } finally {
       authRefreshPromise = null;
@@ -20830,16 +20830,16 @@ function applyForcedLogoutFromUrl() {
 
 async function bootstrapCloudData() {
   await loadSiteWorksProfiles({ renderAfter: false });
-  const loadedStructuredData = typeof loadStructuredDataFromSupabase === "function"
-    ? await loadStructuredDataFromSupabase({ forceReload: true })
+  const loadedStructuredData = typeof loadStructuredDataFromServer === "function"
+    ? await loadStructuredDataFromServer({ forceReload: true })
     : false;
   if (
     !loadedStructuredData &&
     typeof canUseSharedStateFallback === "function" &&
     canUseSharedStateFallback() &&
-    typeof loadSharedStateFromSupabase === "function"
+    typeof loadSharedStateFromServer === "function"
   ) {
-    await loadSharedStateFromSupabase();
+    await loadSharedStateFromServer();
   }
   await syncPublicReportsFromServer(true);
   if (!focusScannedAssetContext()) {
@@ -20849,21 +20849,21 @@ async function bootstrapCloudData() {
   render();
 }
 
-async function refreshCloudDataFromSupabase() {
+async function refreshCloudDataFromServer() {
   if (currentUser && !isPublicReportUrl()) {
     setSyncBanner("loading", "Checking cloud", "", 1200);
   }
   await loadSiteWorksProfiles({ renderAfter: false });
-  const loadedStructuredData = typeof loadStructuredDataFromSupabase === "function"
-    ? await loadStructuredDataFromSupabase({ forceReload: true })
+  const loadedStructuredData = typeof loadStructuredDataFromServer === "function"
+    ? await loadStructuredDataFromServer({ forceReload: true })
     : false;
   if (
     !loadedStructuredData &&
     typeof canUseSharedStateFallback === "function" &&
     canUseSharedStateFallback() &&
-    typeof loadSharedStateFromSupabase === "function"
+    typeof loadSharedStateFromServer === "function"
   ) {
-    await loadSharedStateFromSupabase();
+    await loadSharedStateFromServer();
   }
   await syncPublicReportsFromServer(true);
   restoreScannedAssetSelection();
@@ -21991,8 +21991,8 @@ async function publishRestoredDataToCloud() {
   if (!hasSharedMaintenanceData(state) || isPublicReportUrl()) return;
   sharedStateReady = true;
   sharedStateLoading = false;
-  if (typeof saveSharedStateToSupabase === "function") await saveSharedStateToSupabase();
-  if (typeof syncStructuredDataToSupabase === "function") await syncStructuredDataToSupabase();
+  if (typeof saveSharedStateToServer === "function") await saveSharedStateToServer();
+  if (typeof syncStructuredDataToServer === "function") await syncStructuredDataToServer();
 }
 
 function seedTemplates() {
@@ -22359,8 +22359,8 @@ function getServerStoragePath(file) {
   const directPath = file?.storageKey || file?.storage_key || file?.path || "";
   if (directPath) return directPath;
   const url = String(file?.url || file?.publicUrl || file?.public_url || "");
-  const marker = `/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/`;
-  const authenticatedMarker = `/storage/v1/object/authenticated/${SUPABASE_STORAGE_BUCKET}/`;
+  const marker = `/storage/v1/object/public/${LEGACY_STORAGE_BUCKET}/`;
+  const authenticatedMarker = `/storage/v1/object/authenticated/${LEGACY_STORAGE_BUCKET}/`;
   const markerIndex = url.indexOf(marker);
   const authenticatedIndex = url.indexOf(authenticatedMarker);
   const encodedPath = markerIndex >= 0
