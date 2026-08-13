@@ -12257,14 +12257,57 @@ function notificationMetadata(notification = {}) {
 }
 
 function localBreakerTripNotifications() {
-  return monitoringTripAlertsForCurrentView()
+  ensureMonitoringCollections();
+  const localNotifications = [];
+  const seenChannels = new Set();
+  const hasServerNotificationForChannel = (channelId = "") => serverNotifications.some((notification) => {
+    if (notification.type !== "breaker-trip") return false;
+    const metadata = notificationMetadata(notification);
+    const notificationChannelId = String(metadata.channelId || notification.source_id || notification.sourceId || "");
+    return notificationChannelId && channelId && notificationChannelId === channelId;
+  });
+
+  state.monitoringAlerts
+    .filter((alert) => String(alert.status || "active") !== "hidden")
+    .forEach((alert) => {
+      const channelId = String(alert.channelId || alert.channel_id || "");
+      if (!channelId || hasServerNotificationForChannel(channelId)) return;
+      const channel = getMonitoringChannel(channelId);
+      const device = getMonitoringDevice(alert.deviceId || alert.device_id || channel?.deviceId || channel?.device_id || "");
+      const panelAssetId = alert.panelAssetId || alert.panel_asset_id || channel?.panelAssetId || channel?.panel_asset_id || device?.panelAssetId || "";
+      const panel = getAsset(panelAssetId);
+      if (panel && !isCurrentViewAsset(panel)) return;
+      if (!panel && !monitoringRecordMatchesCurrentView(alert, device || channel)) return;
+      seenChannels.add(channelId);
+      localNotifications.push({
+        id: `local-breaker-${alert.id || channelId}`,
+        type: "breaker-trip",
+        status: normalizeNotificationStatus(alert.status || "active"),
+        severity: alert.severity || channel?.criticality || "warning",
+        title: alert.title || "Breaker trip needs confirmation",
+        message: alert.message || "",
+        created_at: alert.createdAt || alert.created_at || channel?.updatedAt || channel?.updated_at || "",
+        acknowledged_at: alert.acknowledgedAt || alert.acknowledged_at || "",
+        resolved_at: alert.resolvedAt || alert.resolved_at || "",
+        metadata: {
+          localOnly: true,
+          channelId,
+          panelAssetId,
+          circuitNumber: alert.circuitNumber || alert.circuit_number || channel?.circuitNumber || channel?.circuit_number || ""
+        }
+      });
+    });
+
+  monitoringTripAlertsForCurrentView()
     .filter((alert) => !serverNotifications.some((notification) => {
       if (notification.type !== "breaker-trip" || normalizeNotificationStatus(notification.status) !== "active") return false;
       const metadata = notificationMetadata(notification);
       const notificationChannelId = String(metadata.channelId || notification.source_id || notification.sourceId || "");
       return notificationChannelId && alert.channelId && notificationChannelId === alert.channelId;
     }))
-    .map((alert) => ({
+    .filter((alert) => !seenChannels.has(String(alert.channelId || "")))
+    .forEach((alert) => {
+      localNotifications.push({
       id: `local-breaker-${alert.channelId || alert.id}`,
       type: "breaker-trip",
       status: "active",
@@ -12278,7 +12321,10 @@ function localBreakerTripNotifications() {
         panelAssetId: alert.panelAssetId || "",
         circuitNumber: alert.circuitNumber || ""
       }
-    }));
+      });
+    });
+
+  return localNotifications;
 }
 
 function visibleNotifications() {
