@@ -12256,11 +12256,41 @@ function notificationMetadata(notification = {}) {
   return metadata && typeof metadata === "object" ? metadata : {};
 }
 
+function localBreakerTripNotifications() {
+  return monitoringTripAlertsForCurrentView()
+    .filter((alert) => !serverNotifications.some((notification) => {
+      if (notification.type !== "breaker-trip" || normalizeNotificationStatus(notification.status) !== "active") return false;
+      const metadata = notificationMetadata(notification);
+      const notificationChannelId = String(metadata.channelId || notification.source_id || notification.sourceId || "");
+      return notificationChannelId && alert.channelId && notificationChannelId === alert.channelId;
+    }))
+    .map((alert) => ({
+      id: `local-breaker-${alert.channelId || alert.id}`,
+      type: "breaker-trip",
+      status: "active",
+      severity: alert.severity || "warning",
+      title: alert.title || "Breaker trip needs confirmation",
+      message: alert.message || "",
+      created_at: alert.createdAt || "",
+      metadata: {
+        localOnly: true,
+        channelId: alert.channelId || "",
+        panelAssetId: alert.panelAssetId || "",
+        circuitNumber: alert.circuitNumber || ""
+      }
+    }));
+}
+
+function visibleNotifications() {
+  return [
+    ...serverNotifications,
+    ...localBreakerTripNotifications()
+  ].filter(notificationMatchesCurrentView);
+}
+
 function renderServerNotifications() {
-  const visible = serverNotifications.filter((notification) =>
-    normalizeNotificationStatus(notification.status) === "active" && notificationMatchesCurrentView(notification)
-  );
-  renderNotificationCenter(visible);
+  const visible = visibleNotifications();
+  renderNotificationCenter(visible.filter((notification) => normalizeNotificationStatus(notification.status) === "active"));
   if (!els.serverNotificationPanel) return;
   els.serverNotificationPanel.classList.add("hidden");
   els.serverNotificationPanel.innerHTML = "";
@@ -12278,17 +12308,17 @@ function notificationDetailText(notification = {}) {
 }
 
 function renderNotificationCenter(activeNotifications = null) {
-  const active = activeNotifications || serverNotifications.filter((notification) =>
+  const allNotifications = visibleNotifications();
+  const active = activeNotifications || allNotifications.filter((notification) =>
     normalizeNotificationStatus(notification.status) === "active" && notificationMatchesCurrentView(notification)
   );
-  const visible = serverNotifications.filter(notificationMatchesCurrentView);
-  const history = visible.filter((notification) => normalizeNotificationStatus(notification.status) !== "active");
+  const history = allNotifications.filter((notification) => normalizeNotificationStatus(notification.status) !== "active");
   const list = notificationCenterTab === "history" ? history : active;
   els.notificationCenterWrap?.classList.toggle("hidden", !currentUser);
   if (els.notificationCenterCount) els.notificationCenterCount.textContent = String(active.length);
   els.notificationCenterBtn?.classList.toggle("has-alerts", active.length > 0);
   if (!els.notificationCenterPanel) return;
-  if (!visible.length) {
+  if (!allNotifications.length) {
     els.notificationCenterPanel.innerHTML = `
       <div class="notification-center-empty">
         <strong>No active alerts</strong>
