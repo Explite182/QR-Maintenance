@@ -3,7 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="SiteWorks">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>SiteWorks</title>
+  <link rel="manifest" href="/manifest.webmanifest?v=20260814-pwa-01">
+  <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260814-pwa-01">
   <link rel="stylesheet" href="/styles.css?v=20260812-server-storage-69">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
@@ -1935,7 +1942,16 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/app.js?v=20260812-server-storage-69"></script>
+  <script src="/app.js?v=20260814-pwa-01"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js?v=20260814-pwa-01").catch((error) => {
+          console.warn("SiteWorks app install support was not started.", error);
+        });
+      });
+    }
+  </script>
   <script>
     (() => {
       const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
