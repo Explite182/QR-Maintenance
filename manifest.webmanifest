@@ -3,7 +3,7 @@
   "short_name": "SiteWorks",
   "description": "SiteWorks maintenance, maps, keys, tickets, and panel monitoring.",
   "id": "/",
-  "start_url": "/?source=pwa",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "browser"],
@@ -29,13 +29,13 @@
     {
       "name": "Panel Monitor",
       "short_name": "Panels",
-      "url": "/?source=pwa#panel-monitor",
+      "url": "/#panel-monitor",
       "description": "Open the SiteWorks panel monitor."
     },
     {
       "name": "Site Map",
       "short_name": "Map",
-      "url": "/?source=pwa#site-map",
+      "url": "/#site-map",
       "description": "Open the SiteWorks site map."
     }
   ]
