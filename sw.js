@@ -1,4 +1,4 @@
-const SITEWORKS_SW_VERSION = "20260815-pwa-04";
+const SITEWORKS_SW_VERSION = "20260815-pwa-05";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
@@ -6,10 +6,10 @@ const STATIC_ASSETS = [
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/app.js?v=20260815-pwa-04",
-  "/manifest.webmanifest?v=20260815-pwa-04",
-  "/icons/siteworks-icon-192.png?v=20260815-pwa-04",
-  "/icons/siteworks-icon-512.png?v=20260815-pwa-04"
+  "/app.js?v=20260815-pwa-05",
+  "/manifest.webmanifest?v=20260815-pwa-05",
+  "/icons/siteworks-icon-192.png?v=20260815-pwa-05",
+  "/icons/siteworks-icon-512.png?v=20260815-pwa-05"
 ];
 
 self.addEventListener("install", (event) => {

@@ -6,7 +6,8 @@
 
 async function loadStructuredDataFromServer(options = {}) {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return false;
-  if (structuredDataLoading || applyingSharedState || isPublicReportUrl() || !LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY) return false;
+  if (structuredDataLoading || applyingSharedState || isPublicReportUrl()) return false;
+  if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return false;
   structuredDataLoading = true;
   try {
     const forceReload = Boolean(options.forceReload);
@@ -1187,7 +1188,8 @@ async function setMonitoringDeviceKeyOnServerByUid(deviceUid, apiKey) {
 }
 
 async function syncMonitoringDeviceToServer(device, apiKey = "") {
-  if (!STRUCTURED_DATA_SYNC_ENABLED || !device?.id || !LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !device?.id || !hasAuthenticatedCloudSession()) return false;
+  if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return false;
   const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
   await upsertStructuredRows("monitoring_devices", [buildMonitoringDeviceRow(device, cloudLocationIds)]);
   if (apiKey) {
@@ -1202,14 +1204,16 @@ async function syncMonitoringDeviceToServer(device, apiKey = "") {
 }
 
 async function syncMonitoringChannelsToServer(channels = []) {
-  if (!STRUCTURED_DATA_SYNC_ENABLED || !channels.length || !LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY || !hasAuthenticatedCloudSession()) return false;
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !channels.length || !hasAuthenticatedCloudSession()) return false;
+  if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return false;
   const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
   await upsertStructuredRows("monitoring_channels", channels.map((channel) => buildMonitoringChannelRow(channel, cloudLocationIds)));
   return true;
 }
 
 async function syncSingleKeyToServer(key) {
-  if (!STRUCTURED_DATA_SYNC_ENABLED || !key?.id || !LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY) return;
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !key?.id) return;
+  if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return;
   const customerId = activeCloudCustomerId();
   if (customerId && key.customerId !== customerId) return;
   const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
@@ -5213,7 +5217,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260815-pwa-04";
+const SITEWORKS_APP_VERSION = "20260815-pwa-05";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
