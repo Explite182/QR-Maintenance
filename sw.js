@@ -1,18 +1,15 @@
-const SITEWORKS_SW_VERSION = "20260814-pwa-02";
+const SITEWORKS_SW_VERSION = "20260815-pwa-03";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/",
-  "/index.html",
-  "/404.html",
   "/styles.css?v=20260812-server-storage-69",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/app.js?v=20260814-pwa-02",
-  "/manifest.webmanifest?v=20260814-pwa-02",
-  "/icons/siteworks-icon-192.png?v=20260814-pwa-02",
-  "/icons/siteworks-icon-512.png?v=20260814-pwa-02"
+  "/app.js?v=20260815-pwa-03",
+  "/manifest.webmanifest?v=20260815-pwa-03",
+  "/icons/siteworks-icon-192.png?v=20260815-pwa-03",
+  "/icons/siteworks-icon-512.png?v=20260815-pwa-03"
 ];
 
 self.addEventListener("install", (event) => {
@@ -45,7 +42,7 @@ async function networkFirst(request) {
   } catch {
     const cached = await cache.match(request);
     if (cached) return cached;
-    if (request.mode === "navigate") return cache.match("/index.html");
+    if (request.mode === "navigate") return cache.match(request) || cache.match("/") || cache.match("/index.html");
     throw new Error("SiteWorks is offline and this file is not cached.");
   }
 }

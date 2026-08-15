@@ -5194,7 +5194,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260814-pwa-02";
+const SITEWORKS_APP_VERSION = "20260815-pwa-03";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -20009,7 +20009,9 @@ function siteworksServerFetch(path, options = {}) {
     ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
     ...(options.headers || {})
   };
-  return fetch(siteworksServerUrl(path), { ...options, headers });
+  const fetchOptions = { ...options, headers };
+  if (!fetchOptions.cache) fetchOptions.cache = "no-store";
+  return fetch(siteworksServerUrl(path), fetchOptions);
 }
 
 function activeCloudCustomerId() {
@@ -20305,8 +20307,8 @@ const siteworksApi = {
   },
   loadRows(table, order = "updated_at.asc") {
     if (siteworksServerEnabled()) {
-      return this.server(`/api/data/${encodeURIComponent(table)}?order=${encodeURIComponent(order)}`).then((response) => {
-        if (!response.ok) throw new Error("Server data load failed.");
+      return this.server(`/api/data/${encodeURIComponent(table)}?order=${encodeURIComponent(order)}`).then(async (response) => {
+        if (!response.ok) throw new Error(await response.text() || `Server data load failed for ${table}.`);
         return response.json();
       });
     }
@@ -20320,8 +20322,8 @@ const siteworksApi = {
   },
   peekRows(table, timestampColumn) {
     if (siteworksServerEnabled()) {
-      return this.server(`/api/data/${encodeURIComponent(table)}/peek?timestampColumn=${encodeURIComponent(timestampColumn)}`).then((response) => {
-        if (!response.ok) throw new Error("Server data check failed.");
+      return this.server(`/api/data/${encodeURIComponent(table)}/peek?timestampColumn=${encodeURIComponent(timestampColumn)}`).then(async (response) => {
+        if (!response.ok) throw new Error(await response.text() || `Server data check failed for ${table}.`);
         return response.json();
       });
     }
@@ -20851,9 +20853,14 @@ function applyForcedLogoutFromUrl() {
 
 async function bootstrapCloudData() {
   await loadSiteWorksProfiles({ renderAfter: false });
-  const loadedStructuredData = typeof loadStructuredDataFromServer === "function"
+  let loadedStructuredData = typeof loadStructuredDataFromServer === "function"
     ? await loadStructuredDataFromServer({ forceReload: true })
     : false;
+  if (!loadedStructuredData && currentUser && !state.customers.length && typeof loadStructuredDataFromServer === "function") {
+    setSyncBanner("loading", "Loading SiteWorks data", "Retrying server data load...", 1800);
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    loadedStructuredData = await loadStructuredDataFromServer({ forceReload: true });
+  }
   if (
     !loadedStructuredData &&
     typeof canUseSharedStateFallback === "function" &&
