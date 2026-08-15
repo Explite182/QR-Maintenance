@@ -878,6 +878,25 @@ function hasAuthenticatedCloudSession() {
   return true;
 }
 
+function requireServerSessionForApp(showMessage = true) {
+  if (!siteworksServerEnabled() || !currentUser || isPublicReportUrl() || isPublicKeyUrl()) return true;
+  if (hasAuthenticatedCloudSession()) return true;
+  currentUser = null;
+  currentRole = "Customer";
+  state.currentUserId = "";
+  clearAuthSession();
+  try {
+    persistLocalStateOnly(false);
+  } catch (error) {
+    console.warn("Expired server session state could not be saved.", error);
+  }
+  if (showMessage && els.loginError) {
+    els.loginError.textContent = "Please log in again. This installed SiteWorks app did not have a valid server session.";
+  }
+  renderAuth();
+  return false;
+}
+
 function buildSharedStatePayload(uploadedAt) {
   return {
     customers: state.customers || [],
@@ -5194,7 +5213,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260815-pwa-03";
+const SITEWORKS_APP_VERSION = "20260815-pwa-04";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -6119,6 +6138,12 @@ async function handleLoginSubmit(event = null) {
     }
 
     if (!user) {
+      if (siteworksServerEnabled()) {
+        setQrLoginTrace(lastAuthError || "Could not reach the SiteWorks server. Log in again when the connection is available.");
+        suppressStorageFullWarning = false;
+        if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = false;
+        return;
+      }
       const localUser = findUserForLogin(els.loginUsername.value, els.loginPassword.value);
       if (!localUser) {
         setQrLoginTrace(lastAuthError || "Login did not finish. Check the connection and try again.");
@@ -9427,6 +9452,7 @@ function renderMonitoringIfReady() {
 }
 
 function render() {
+  if (!requireServerSessionForApp()) return;
   renderAuth();
   if (isPublicKeyUrl()) {
     renderPublicKeyScan();
@@ -9940,6 +9966,7 @@ function restoreCurrentUserFromState() {
   currentUser = user || null;
   currentRole = currentUser?.role || "Customer";
   if (currentUser?.id) state.currentUserId = currentUser.id;
+  requireServerSessionForApp(false);
 }
 
 function renderUserSwitcher() {
@@ -20014,6 +20041,25 @@ function siteworksServerFetch(path, options = {}) {
   return fetch(siteworksServerUrl(path), fetchOptions);
 }
 
+async function requireOkServerResponse(response, fallbackMessage = "SiteWorks server request failed.") {
+  if (response.ok) return;
+  const errorText = await response.text();
+  if (response.status === 401 || isExpiredAuthText(errorText)) {
+    currentUser = null;
+    currentRole = "Customer";
+    state.currentUserId = "";
+    clearAuthSession();
+    lastAuthError = "Please log in again. The SiteWorks server session expired.";
+    try {
+      persistLocalStateOnly(false);
+    } catch (error) {
+      console.warn("Expired server session state could not be saved.", error);
+    }
+    renderAuth();
+  }
+  throw new Error(errorText || fallbackMessage);
+}
+
 function activeCloudCustomerId() {
   if (canSeeAllCustomers()) return "";
   return currentUser?.customerId || "";
@@ -20308,7 +20354,7 @@ const siteworksApi = {
   loadRows(table, order = "updated_at.asc") {
     if (siteworksServerEnabled()) {
       return this.server(`/api/data/${encodeURIComponent(table)}?order=${encodeURIComponent(order)}`).then(async (response) => {
-        if (!response.ok) throw new Error(await response.text() || `Server data load failed for ${table}.`);
+        await requireOkServerResponse(response, `Server data load failed for ${table}.`);
         return response.json();
       });
     }
@@ -20323,7 +20369,7 @@ const siteworksApi = {
   peekRows(table, timestampColumn) {
     if (siteworksServerEnabled()) {
       return this.server(`/api/data/${encodeURIComponent(table)}/peek?timestampColumn=${encodeURIComponent(timestampColumn)}`).then(async (response) => {
-        if (!response.ok) throw new Error(await response.text() || `Server data check failed for ${table}.`);
+        await requireOkServerResponse(response, `Server data check failed for ${table}.`);
         return response.json();
       });
     }
