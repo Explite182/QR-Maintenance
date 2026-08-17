@@ -10983,26 +10983,60 @@ body.site-map-fullscreen-active .app-shell.site-map-fullscreen .site-map-control
 }
 
 body.site-map-monitor-active .site-map-clean-toggle,
+body.site-map-monitor-active .site-map-fullscreen-toggle,
 body.site-map-monitor-active .site-map-toolbar,
 body.site-map-monitor-active .site-map-help,
 body.site-map-monitor-active .site-map-level-tabs,
 body.site-map-monitor-active .site-map-pin-list,
+body.site-map-monitor-active [data-site-map-zoom],
+body.site-map-monitor-active [data-site-map-zoom-label],
 body.site-map-monitor-active [data-site-map-level-add],
 body.site-map-monitor-active [data-site-map-clean] {
   display: none !important;
 }
 
 body.site-map-monitor-active .app-shell.site-map-monitor .site-map-canvas {
-  background: #f7fbfa !important;
+  background: #eef5f3 !important;
 }
 
 body.site-map-monitor-active .app-shell.site-map-monitor .site-map-pin {
   cursor: pointer;
+  width: clamp(32px, calc(38px * var(--site-map-zoom, 1)), 60px) !important;
+  height: clamp(32px, calc(38px * var(--site-map-zoom, 1)), 60px) !important;
+  min-height: clamp(32px, calc(38px * var(--site-map-zoom, 1)), 60px) !important;
+  border-width: 3px;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
+}
+
+body.site-map-monitor-active .app-shell.site-map-monitor .site-map-pin > span:first-child {
+  font-size: 0.82rem;
 }
 
 body.site-map-monitor-active .app-shell.site-map-monitor .site-map-controls {
-  gap: 6px !important;
-  padding: 6px !important;
+  top: max(10px, env(safe-area-inset-top)) !important;
+  right: max(10px, env(safe-area-inset-right)) !important;
+  left: max(10px, env(safe-area-inset-left)) !important;
+  width: auto !important;
+  max-width: none !important;
+  gap: 10px !important;
+  justify-content: space-between !important;
+  padding: 8px !important;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.92);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(10px);
+}
+
+body.site-map-monitor-active .app-shell.site-map-monitor .site-map-monitor-toggle {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+body.site-map-monitor-active .app-shell.site-map-monitor .site-map-viewport {
+  padding-top: max(64px, calc(env(safe-area-inset-top) + 56px)) !important;
 }
 
 .site-map-monitor-strip {
@@ -11010,6 +11044,8 @@ body.site-map-monitor-active .app-shell.site-map-monitor .site-map-controls {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  flex: 1;
+  justify-content: flex-end;
   padding-left: 4px;
 }
 
