@@ -1082,6 +1082,19 @@ textarea:disabled {
   box-shadow: inset 3px 0 0 #67d1be;
 }
 
+.sidebar-submenu-btn-placeholder,
+.sidebar-submenu-btn:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.sidebar-submenu-btn-placeholder:hover,
+.sidebar-submenu-btn:disabled:hover {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.11);
+  transform: none;
+}
+
 .sidebar-nav-btn span:first-child {
   flex: 1 1 auto;
 }
