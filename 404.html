@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="SiteWorks">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>SiteWorks</title>
-  <link rel="manifest" href="/manifest.webmanifest?v=20260817-server-health-02">
+  <link rel="manifest" href="/manifest.webmanifest?v=20260817-server-health-03">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260815-pwa-05">
-  <link rel="stylesheet" href="/styles.css?v=20260817-server-health-02">
+  <link rel="stylesheet" href="/styles.css?v=20260817-server-health-03">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -515,37 +515,8 @@
       </details>
 
       <details id="backupDrawer" class="sidebar-section setup-drawer">
-        <summary>Backups & QR</summary>
+        <summary>Server & QR</summary>
         <div class="backup-controls">
-          <span id="backupStatus">No backup yet</span>
-          <div id="backupLocationBlock" class="backup-location">
-            <strong>Backup file location</strong>
-            <form id="backupLocationForm" class="stack compact-form">
-              <label>
-                Folder path
-                <input id="backupLocation" value="C:\Users\expli\Documents\SiteWorks Backups\Data Backups" placeholder="C:\Users\expli\Documents\SiteWorks Backups\Data Backups">
-              </label>
-              <button type="submit" class="secondary">Save Backup Location</button>
-            </form>
-            <small>Place exported data files here. Manual export: siteworks-data-backup-YYYYMMDD-HHMMSS.json. Complete backup: siteworks-complete-backup-YYYYMMDD-HHMMSS.json.</small>
-          </div>
-          <form id="qrBaseUrlForm" class="stack compact-form">
-            <label>
-              QR scan URL
-                <input id="qrBaseUrl" placeholder="https://sitesworks.info/">
-            </label>
-            <button type="submit" class="secondary">Save QR URL</button>
-          </form>
-          <button id="exportDataBtn" class="secondary">Export Data</button>
-          <button id="exportCompleteBackupBtn" class="secondary">Export Complete Backup</button>
-          <button id="importDataBtn" class="secondary">Import Data</button>
-          <button id="restoreBackupBtn" class="secondary">Restore Latest</button>
-          <div id="syncHealthPanel" class="backup-location sync-health-panel">
-            <strong>Sync health</strong>
-            <small id="syncHealthSummary">Checking cloud sync...</small>
-            <div id="syncHealthGrid" class="sync-health-grid"></div>
-            <button id="refreshCloudNowBtn" type="button" class="secondary">Refresh Cloud Now</button>
-          </div>
           <details id="serverHealthDrawer" class="sidebar-sub-drawer server-health-drawer">
             <summary>
               <span>Server Health</span>
@@ -557,6 +528,42 @@
             </div>
             <div id="serverHealthGrid" class="sync-health-grid"></div>
           </details>
+          <div class="backup-location manual-export-panel">
+            <strong>Manual browser export</strong>
+            <small>Optional local export/import tools. Your main backup status is shown under Server Health.</small>
+            <span id="backupStatus">No manual export yet</span>
+            <div id="backupLocationBlock" class="backup-location">
+              <strong>Manual export file location</strong>
+              <small>Place exported data files here. Manual export: siteworks-data-backup-YYYYMMDD-HHMMSS.json. Complete export: siteworks-complete-backup-YYYYMMDD-HHMMSS.json.</small>
+              <form id="backupLocationForm" class="stack compact-form">
+                <label>
+                  Folder path
+                  <input id="backupLocation" value="C:\Users\expli\Documents\SiteWorks Backups\Data Backups" placeholder="C:\Users\expli\Documents\SiteWorks Backups\Data Backups">
+                </label>
+                <button type="submit" class="secondary">Save Export Location</button>
+              </form>
+            </div>
+            <button id="exportDataBtn" class="secondary">Export Data</button>
+            <button id="exportCompleteBackupBtn" class="secondary">Export Complete Data</button>
+            <button id="importDataBtn" class="secondary">Import Data</button>
+            <button id="restoreBackupBtn" class="secondary">Restore Latest Export</button>
+          </div>
+          <div class="backup-location qr-settings-panel">
+            <strong>QR settings</strong>
+            <form id="qrBaseUrlForm" class="stack compact-form">
+              <label>
+                QR scan URL
+                  <input id="qrBaseUrl" placeholder="https://sitesworks.info/">
+              </label>
+              <button type="submit" class="secondary">Save QR URL</button>
+            </form>
+          </div>
+          <div id="syncHealthPanel" class="backup-location sync-health-panel">
+            <strong>Sync health</strong>
+            <small id="syncHealthSummary">Checking cloud sync...</small>
+            <div id="syncHealthGrid" class="sync-health-grid"></div>
+            <button id="refreshCloudNowBtn" type="button" class="secondary">Refresh Cloud Now</button>
+          </div>
           <div id="cloudCleanupBlock" class="backup-location cloud-cleanup">
             <strong>Cloud cleanup</strong>
             <small id="cloudCleanupStatus">Scan for old browser-stored photos and PDFs, then move them to SiteWorks server storage.</small>
@@ -2019,11 +2026,11 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/app.js?v=20260817-server-health-02"></script>
+  <script src="/app.js?v=20260817-server-health-03"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js?v=20260817-server-health-02").catch((error) => {
+        navigator.serviceWorker.register("/sw.js?v=20260817-server-health-03").catch((error) => {
           console.warn("SiteWorks app install support was not started.", error);
         });
       });
