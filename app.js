@@ -2290,23 +2290,25 @@ function renderSiteMap() {
           <button type="button" class="secondary mini site-map-fullscreen-toggle${siteMapFullScreen ? " is-active" : ""}" data-site-map-fullscreen>${siteMapFullScreen ? "Close" : "Full screen"}</button>
         </div>
         <div class="site-map-viewport" data-site-map-viewport>
-          <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%;">
-            <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(activeLevel?.name || map?.name || "Site map")}">
-            ${renderSiteMapRouteOverlay(routePins)}
-            ${visiblePins.map((pin, index) => {
-              const asset = getRawAsset(pin.assetId);
-              const title = pin.label || asset?.name || `Pin ${index + 1}`;
-              const overlayInfo = getSiteMapPinOverlayInfo(pin, index, asset, routeIndexByPinKey);
-              const tooltip = renderSiteMapPinTooltip(pin, index, asset, title, overlayInfo);
-              const layer = getSiteMapPinLayer(pin, asset);
-              const layerClass = layer ? ` site-map-pin-${layer}` : "";
-              return `
-                <button type="button" class="site-map-pin${layerClass}${overlayInfo.className}" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" aria-label="${escapeAttribute(title)}">
-                  <span>${escapeHtml(overlayInfo.marker)}</span>
-                  ${tooltip}
-                </button>
-              `;
-            }).join("")}
+          <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%; --site-map-zoom: ${siteMapZoom};">
+            <div class="site-map-layer" data-site-map-layer>
+              <img class="site-map-image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(activeLevel?.name || map?.name || "Site map")}">
+              ${renderSiteMapRouteOverlay(routePins)}
+              ${visiblePins.map((pin, index) => {
+                const asset = getRawAsset(pin.assetId);
+                const title = pin.label || asset?.name || `Pin ${index + 1}`;
+                const overlayInfo = getSiteMapPinOverlayInfo(pin, index, asset, routeIndexByPinKey);
+                const tooltip = renderSiteMapPinTooltip(pin, index, asset, title, overlayInfo);
+                const layer = getSiteMapPinLayer(pin, asset);
+                const layerClass = layer ? ` site-map-pin-${layer}` : "";
+                return `
+                  <button type="button" class="site-map-pin${layerClass}${overlayInfo.className}" style="left: ${clampPercent(pin.x)}%; top: ${clampPercent(pin.y)}%;" data-open-site-map-pin="${escapeAttribute(pin.assetId)}" aria-label="${escapeAttribute(title)}">
+                    <span>${escapeHtml(overlayInfo.marker)}</span>
+                    ${tooltip}
+                  </button>
+                `;
+              }).join("")}
+            </div>
           </div>
         </div>
       `
@@ -2596,6 +2598,7 @@ function applySiteMapZoomAtPoint(nextZoom, viewport, clientX, clientY) {
   const beforeScrollHeight = viewport.scrollHeight;
   siteMapZoom = nextZoom;
   stage.style.width = `${Math.round(siteMapZoom * 100)}%`;
+  stage.style.setProperty("--site-map-zoom", String(siteMapZoom));
   const label = els.siteMapCanvas?.querySelector("[data-site-map-zoom-label]");
   if (label) label.textContent = `${Math.round(siteMapZoom * 100)}%`;
   requestAnimationFrame(() => {
@@ -5231,7 +5234,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-automation-panels-01";
+const SITEWORKS_APP_VERSION = "20260817-map-pin-anchor-01";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];

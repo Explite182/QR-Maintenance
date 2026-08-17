@@ -3385,6 +3385,13 @@ textarea {
   box-shadow: 0 12px 34px rgba(15, 23, 42, 0.1);
 }
 
+.site-map-layer {
+  position: relative;
+  display: block;
+  width: 100%;
+  line-height: 0;
+}
+
 .site-map-image {
   display: block;
   width: 100%;
@@ -3524,15 +3531,16 @@ body.site-map-fullscreen-active .app-header,
 .site-map-pin {
   position: absolute;
   z-index: 3;
-  width: 34px;
-  height: 34px;
-  min-height: 34px;
+  width: clamp(26px, calc(34px * var(--site-map-zoom, 1)), 52px);
+  height: clamp(26px, calc(34px * var(--site-map-zoom, 1)), 52px);
+  min-height: clamp(26px, calc(34px * var(--site-map-zoom, 1)), 52px);
   padding: 0;
-  border: 3px solid #ffffff;
+  border: clamp(2px, calc(3px * var(--site-map-zoom, 1)), 4px) solid #ffffff;
   border-radius: 999px;
   background: var(--accent);
   color: #ffffff;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  line-height: 1;
   transform: translate(-50%, -50%);
 }
 
