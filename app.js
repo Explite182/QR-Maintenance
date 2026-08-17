@@ -5239,7 +5239,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-server-health-03";
+const SITEWORKS_APP_VERSION = "20260817-server-health-04";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5666,6 +5666,7 @@ let syncHealth = {
 let serverNotifications = [];
 let serverNotificationsLoading = false;
 let lastNotificationLoadAt = "";
+let serverHealthNotification = null;
 let notificationCenterTab = "active";
 let notificationRules = [];
 let notificationRulesLoading = false;
@@ -6138,6 +6139,7 @@ window.setInterval(runMonitoringOfflineCheck, 60000);
 window.setInterval(syncMonitoringStatusFromApi, MONITORING_LIVE_SYNC_INTERVAL_MS);
 window.setInterval(loadServerNotifications, 30000);
 window.setInterval(loadNotificationRules, 5 * 60 * 1000);
+window.setInterval(loadServerHealth, 5 * 60 * 1000);
 window.setInterval(refreshSiteMapMonitorMode, 30000);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 initPasswordRecoveryFromUrl();
@@ -10402,8 +10404,8 @@ function renderRole() {
   if (!userManagementAllowed && els.currentUsersDrawer) els.currentUsersDrawer.open = false;
   els.notificationRulesDrawer?.classList.toggle("hidden", !userManagementAllowed);
   if (!userManagementAllowed && els.notificationRulesDrawer) els.notificationRulesDrawer.open = false;
-  els.serverHealthDrawer?.classList.toggle("hidden", !userManagementAllowed);
-  if (!userManagementAllowed && els.serverHealthDrawer) els.serverHealthDrawer.open = false;
+  els.serverHealthDrawer?.classList.toggle("hidden", !isAdmin);
+  if (!isAdmin && els.serverHealthDrawer) els.serverHealthDrawer.open = false;
   els.passwordPanel?.classList.toggle("hidden", !accountSettingsAllowed);
   els.accessRequestsBlock?.classList.toggle("hidden", !userManagementAllowed);
   els.accessRequestList?.classList.toggle("hidden", !userManagementAllowed);
@@ -12511,6 +12513,7 @@ function localBreakerTripNotifications() {
 function visibleNotifications() {
   return [
     ...serverNotifications,
+    ...(currentRole === "Admin" && serverHealthNotification ? [serverHealthNotification] : []),
     ...localBreakerTripNotifications()
   ].filter(notificationMatchesCurrentView);
 }
@@ -12561,6 +12564,7 @@ function renderSiteMapMonitorStatusStrip() {
 }
 
 function renderServerNotifications() {
+  if (currentRole !== "Admin") serverHealthNotification = null;
   const visible = visibleNotifications();
   renderNotificationCenter(visible.filter((notification) => normalizeNotificationStatus(notification.status) === "active"));
   if (!els.serverNotificationPanel) return;
@@ -12625,6 +12629,8 @@ function renderNotificationCenterItem(notification = {}) {
     ? notification.resolved_at || notification.resolvedAt || ""
     : notification.acknowledged_at || notification.acknowledgedAt || "";
   const isBreakerTrip = notification.type === "breaker-trip";
+  const isServerHealth = notification.type === "server-health";
+  const isSynthetic = Boolean(notificationMetadata(notification).synthetic);
   return `
     <article class="notification-center-item is-${escapeAttribute(status)} is-${escapeAttribute(severity)}">
       <div>
@@ -12634,9 +12640,10 @@ function renderNotificationCenterItem(notification = {}) {
       </div>
       <div class="notification-center-actions">
         ${isBreakerTrip ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Panel</button>` : ""}
+        ${isServerHealth ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Server</button>` : ""}
         ${!isBreakerTrip && ["esp-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
-        ${!isBreakerTrip && status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
-        ${!isBreakerTrip && status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
+        ${!isBreakerTrip && !isSynthetic && status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
+        ${!isBreakerTrip && !isSynthetic && status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
       </div>
     </article>
   `;
@@ -12771,6 +12778,48 @@ function serverHealthRow(label, value, ok = true) {
   `;
 }
 
+function latestBackupIsStale(payload = null) {
+  const latestCreatedAt = payload?.backups?.latest?.createdAt;
+  if (!latestCreatedAt) return true;
+  const latestTime = Date.parse(latestCreatedAt);
+  if (!Number.isFinite(latestTime)) return true;
+  return Date.now() - latestTime > 36 * 60 * 60 * 1000;
+}
+
+function serverHealthNotificationFromPayload(payload = null) {
+  if (currentRole !== "Admin" || !payload) return null;
+  const problems = [];
+  if (!payload.database?.ok) problems.push("Database check failed");
+  if (!payload.fileStorage?.ok) problems.push("File storage is not writable");
+  if (!payload.backups?.ok) problems.push("Backup folder or latest backup is not healthy");
+  if (payload.backups?.ok && latestBackupIsStale(payload)) problems.push("Latest backup is more than 36 hours old");
+  if (!problems.length) return null;
+  return {
+    id: "server-health",
+    type: "server-health",
+    severity: payload.database?.ok === false ? "critical" : "warning",
+    status: "active",
+    title: "Server health needs attention",
+    message: problems.join(" | "),
+    created_at: payload.checkedAt || new Date().toISOString(),
+    metadata: { synthetic: true }
+  };
+}
+
+function serverHealthNotificationFromError(error = null) {
+  if (currentRole !== "Admin") return null;
+  return {
+    id: "server-health",
+    type: "server-health",
+    severity: "critical",
+    status: "active",
+    title: "Server health check failed",
+    message: error?.message || "Could not check SiteWorks server health.",
+    created_at: new Date().toISOString(),
+    metadata: { synthetic: true }
+  };
+}
+
 function renderServerHealth(payload = null) {
   if (!els.serverHealthGrid) return;
   if (!payload) {
@@ -12787,24 +12836,34 @@ function renderServerHealth(payload = null) {
   const backupSize = backupFiles.reduce((sum, file) => sum + Number(file.bytes || 0), 0);
   const checkedAt = payload.checkedAt ? formatDateTime(payload.checkedAt) : "";
   const latestBackupAt = latestBackup?.createdAt ? formatDateTime(latestBackup.createdAt) : latestBackup?.name || "";
+  const staleBackup = backupsOk && latestBackupIsStale(payload);
+  const healthOk = Boolean(payload.ok) && !staleBackup;
 
-  if (els.serverHealthBadge) els.serverHealthBadge.textContent = payload.ok ? "OK" : "Issue";
+  serverHealthNotification = serverHealthNotificationFromPayload(payload);
+  renderServerNotifications();
+
+  if (els.serverHealthBadge) els.serverHealthBadge.textContent = healthOk ? "OK" : "Issue";
   if (els.serverHealthStatus) {
     els.serverHealthStatus.textContent = checkedAt ? `Checked ${checkedAt}` : "";
-    els.serverHealthStatus.classList.toggle("is-ok", Boolean(payload.ok));
-    els.serverHealthStatus.classList.toggle("is-error", !payload.ok);
+    els.serverHealthStatus.classList.toggle("is-ok", healthOk);
+    els.serverHealthStatus.classList.toggle("is-error", !healthOk);
   }
 
   els.serverHealthGrid.innerHTML = [
     serverHealthRow("API", `Online | uptime ${Math.round(Number(payload.uptimeSeconds || 0) / 60)} min`, true),
     serverHealthRow("Database", dbOk ? `${payload.database?.tableCount || 0} public tables` : payload.database?.error, dbOk),
     serverHealthRow("File storage", filesOk ? `Writable | ${payload.fileStorage?.path || ""}` : payload.fileStorage?.error || "Not writable", filesOk),
-    serverHealthRow("Latest backup", backupsOk ? `${latestBackupAt} | ${formatBytes(backupSize)}` : payload.backups?.error || "No verified backup", backupsOk),
+    serverHealthRow("Latest backup", backupsOk ? `${latestBackupAt} | ${formatBytes(backupSize)}` : payload.backups?.error || "No verified backup", backupsOk && !staleBackup),
     serverHealthRow("Backup folder", `${payload.backups?.count || 0} backups | ${payload.backups?.path || ""}`, backupsOk)
   ].join("");
 }
 
 async function loadServerHealth() {
+  if (currentRole !== "Admin") {
+    serverHealthNotification = null;
+    renderServerNotifications();
+    return;
+  }
   if (!currentUser || !siteworksServerEnabled() || !els.serverHealthGrid) return;
   if (els.serverHealthStatus) {
     els.serverHealthStatus.textContent = "Checking server...";
@@ -12822,6 +12881,8 @@ async function loadServerHealth() {
       els.serverHealthStatus.classList.add("is-error");
       els.serverHealthStatus.classList.remove("is-ok");
     }
+    serverHealthNotification = serverHealthNotificationFromError(error);
+    renderServerNotifications();
     els.serverHealthGrid.innerHTML = serverHealthRow("Status", error?.message || "Could not check server.", false);
   }
 }
@@ -12971,6 +13032,14 @@ function openServerNotification(id) {
     setMobileTabState("inventoryPanel");
     render();
     els.keysPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (notification.type === "server-health") {
+    render();
+    if (els.backupDrawer) els.backupDrawer.open = true;
+    if (els.serverHealthDrawer) els.serverHealthDrawer.open = true;
+    window.setTimeout(() => {
+      els.serverHealthDrawer?.scrollIntoView({ behavior: "smooth", block: "start" });
+      loadServerHealth();
+    }, 50);
   }
 }
 
