@@ -230,11 +230,11 @@
             </button>
             <div class="sidebar-submenu hidden" data-automation-submenu>
               <button type="button" class="sidebar-submenu-btn" data-open-automation-tab="panel-monitor">Panel Monitor</button>
-              <button type="button" class="sidebar-submenu-btn sidebar-submenu-btn-placeholder" disabled aria-disabled="true">HVAC</button>
-              <button type="button" class="sidebar-submenu-btn sidebar-submenu-btn-placeholder" disabled aria-disabled="true">Lighting</button>
-              <button type="button" class="sidebar-submenu-btn sidebar-submenu-btn-placeholder" disabled aria-disabled="true">Pumps</button>
-              <button type="button" class="sidebar-submenu-btn sidebar-submenu-btn-placeholder" disabled aria-disabled="true">Energy</button>
-              <button type="button" class="sidebar-submenu-btn sidebar-submenu-btn-placeholder" disabled aria-disabled="true">Generator</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-automation-tab="hvac">HVAC</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-automation-tab="lighting">Lighting</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-automation-tab="pumps">Pumps</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-automation-tab="energy">Energy</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-automation-tab="generator">Generator</button>
             </div>
           </div>
           <div class="sidebar-nav-group" data-sidebar-group="inventory">
@@ -1386,6 +1386,61 @@
               <div id="monitoringEventList" class="monitoring-list"></div>
             </details>
           </div>
+        </div>
+      </section>
+
+      <section id="automationHvacPanel" class="work-orders-panel automation-system-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="automationHvacPanel">
+          <h2>HVAC</h2>
+          <span>0</span>
+        </div>
+        <div class="automation-empty-state" data-panel-body>
+          <strong>No HVAC automation devices configured yet.</strong>
+          <p>Add rooftop units, thermostats, economizers, sensors, and controller points here later.</p>
+        </div>
+      </section>
+
+      <section id="automationLightingPanel" class="work-orders-panel automation-system-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="automationLightingPanel">
+          <h2>Lighting</h2>
+          <span>0</span>
+        </div>
+        <div class="automation-empty-state" data-panel-body>
+          <strong>No lighting automation devices configured yet.</strong>
+          <p>Add schedules, contactors, relays, occupancy sensors, and lighting zones here later.</p>
+        </div>
+      </section>
+
+      <section id="automationPumpsPanel" class="work-orders-panel automation-system-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="automationPumpsPanel">
+          <h2>Pumps</h2>
+          <span>0</span>
+        </div>
+        <div class="automation-empty-state" data-panel-body>
+          <strong>No pump automation devices configured yet.</strong>
+          <p>Add pump status, run feedback, alarms, pressure sensors, and lead/lag equipment here later.</p>
+        </div>
+      </section>
+
+      <section id="automationEnergyPanel" class="work-orders-panel automation-system-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="automationEnergyPanel">
+          <h2>Energy</h2>
+          <span>0</span>
+        </div>
+        <div class="automation-empty-state" data-panel-body>
+          <strong>No energy monitoring devices configured yet.</strong>
+          <p>Add meters, demand readings, voltage/current feeds, and consumption trends here later.</p>
+        </div>
+      </section>
+
+      <section id="automationGeneratorPanel" class="work-orders-panel automation-system-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="automationGeneratorPanel">
+          <h2>Generator</h2>
+          <span>0</span>
+        </div>
+        <div class="automation-empty-state" data-panel-body>
+          <strong>No generator automation devices configured yet.</strong>
+          <p>Add transfer switch status, generator running, fault alarms, fuel level, and exercise logs here later.</p>
         </div>
       </section>
 

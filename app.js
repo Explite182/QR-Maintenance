@@ -5231,7 +5231,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-open-alert-panel-01";
+const SITEWORKS_APP_VERSION = "20260817-automation-panels-01";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9694,7 +9694,7 @@ function closeSidebarTarget(targetId) {
   }
   setSidebarTargetButtonState(targetId, false);
   if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
-  if (targetId === "monitoringPanel") syncAutomationSidebarMenuState();
+  if (isAutomationTargetId(targetId)) syncAutomationSidebarMenuState();
   if (targetId === "pmCalendarPanel" || targetId === "templatesPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
   if (wasSiteMapOpen) restoreMobileDashboardAfterSiteMapClose();
@@ -9727,9 +9727,24 @@ function openSidebarTarget(targetId) {
   }
   setSidebarTargetButtonState(targetId, true);
   if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
-  if (targetId === "monitoringPanel") syncAutomationSidebarMenuState();
+  if (isAutomationTargetId(targetId)) syncAutomationSidebarMenuState();
   if (targetId === "pmCalendarPanel" || targetId === "templatesPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
+}
+
+function automationTargetIds() {
+  return [
+    "monitoringPanel",
+    "automationHvacPanel",
+    "automationLightingPanel",
+    "automationPumpsPanel",
+    "automationEnergyPanel",
+    "automationGeneratorPanel"
+  ];
+}
+
+function isAutomationTargetId(targetId = "") {
+  return automationTargetIds().includes(targetId);
 }
 
 function closeAllSidebarTargets() {
@@ -9739,7 +9754,7 @@ function closeAllSidebarTargets() {
   closeSidebarTarget("pmCalendarPanel");
   closeSidebarTarget("templatesPanel");
   closeSidebarTarget("siteMapPanel");
-  closeSidebarTarget("monitoringPanel");
+  automationTargetIds().forEach(closeSidebarTarget);
   closeSidebarTarget("inventoryPanel");
 }
 
@@ -9752,7 +9767,9 @@ function closeOtherSidebarTargets(activeTargetId) {
   if (activeTargetId !== "pmCalendarPanel") closeSidebarTarget("pmCalendarPanel");
   if (activeTargetId !== "templatesPanel") closeSidebarTarget("templatesPanel");
   if (activeTargetId !== "siteMapPanel") closeSidebarTarget("siteMapPanel");
-  if (activeTargetId !== "monitoringPanel") closeSidebarTarget("monitoringPanel");
+  automationTargetIds().forEach((targetId) => {
+    if (activeTargetId !== targetId) closeSidebarTarget(targetId);
+  });
   if (activeTargetId !== "inventoryPanel") closeSidebarTarget("inventoryPanel");
 }
 
@@ -9846,7 +9863,20 @@ function openPmSidebarTab(tab = "calendar") {
 }
 
 function isAutomationPanelOpen() {
-  return isPanelVisiblyOpen("monitoringPanel");
+  return automationTargetIds().some(isPanelVisiblyOpen);
+}
+
+function activeAutomationTab() {
+  const active = automationTargetIds().find(isPanelVisiblyOpen) || "monitoringPanel";
+  const tabs = {
+    monitoringPanel: "panel-monitor",
+    automationHvacPanel: "hvac",
+    automationLightingPanel: "lighting",
+    automationPumpsPanel: "pumps",
+    automationEnergyPanel: "energy",
+    automationGeneratorPanel: "generator"
+  };
+  return tabs[active] || "panel-monitor";
 }
 
 function setAutomationSidebarMenuOpen(isOpen) {
@@ -9859,8 +9889,9 @@ function setAutomationSidebarMenuOpen(isOpen) {
 }
 
 function syncAutomationSidebarMenuButtons() {
+  const tab = activeAutomationTab();
   document.querySelectorAll("[data-open-automation-tab]").forEach((button) => {
-    button.classList.toggle("is-active", isAutomationPanelOpen());
+    button.classList.toggle("is-active", button.dataset.openAutomationTab === tab && isAutomationPanelOpen());
   });
 }
 
@@ -9881,7 +9912,15 @@ function toggleAutomationSidebarMenu() {
 }
 
 function openAutomationSidebarTab(tab = "panel-monitor") {
-  const targetId = tab === "panel-monitor" ? "monitoringPanel" : "monitoringPanel";
+  const targetIds = {
+    "panel-monitor": "monitoringPanel",
+    hvac: "automationHvacPanel",
+    lighting: "automationLightingPanel",
+    pumps: "automationPumpsPanel",
+    energy: "automationEnergyPanel",
+    generator: "automationGeneratorPanel"
+  };
+  const targetId = targetIds[tab] || "monitoringPanel";
   closeOtherSidebarTargets(targetId);
   openPanel(targetId);
   setAutomationSidebarMenuOpen(true);

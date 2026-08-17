@@ -1095,6 +1095,31 @@ textarea:disabled {
   transform: none;
 }
 
+.automation-system-panel .section-title span {
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.automation-empty-state {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.automation-empty-state strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.automation-empty-state p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .sidebar-nav-btn span:first-child {
   flex: 1 1 auto;
 }
