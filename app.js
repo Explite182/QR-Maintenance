@@ -5239,7 +5239,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-map-monitor-status-01";
+const SITEWORKS_APP_VERSION = "20260817-server-health-01";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5813,6 +5813,11 @@ const els = {
   notificationRuleEscalation: document.getElementById("notificationRuleEscalation"),
   notificationRuleCount: document.getElementById("notificationRuleCount"),
   notificationRuleStatus: document.getElementById("notificationRuleStatus"),
+  serverHealthDrawer: document.getElementById("serverHealthDrawer"),
+  serverHealthBadge: document.getElementById("serverHealthBadge"),
+  serverHealthRefreshBtn: document.getElementById("serverHealthRefreshBtn"),
+  serverHealthStatus: document.getElementById("serverHealthStatus"),
+  serverHealthGrid: document.getElementById("serverHealthGrid"),
   logoutBtn: document.getElementById("logoutBtn"),
   backupStatus: document.getElementById("backupStatus"),
   backupLocationBlock: document.getElementById("backupLocationBlock"),
@@ -6126,6 +6131,7 @@ window.setTimeout(bootstrapCloudData, 0);
 window.setTimeout(initializeRealtimeSync, 1200);
 window.setTimeout(loadServerNotifications, 1800);
 window.setTimeout(loadNotificationRules, 2200);
+window.setTimeout(loadServerHealth, 2600);
 window.setInterval(syncPublicReportsFromServer, PUBLIC_REPORT_SYNC_INTERVAL_MS);
 window.setInterval(refreshCloudDataFromServer, CLOUD_REFRESH_INTERVAL_MS);
 window.setInterval(runMonitoringOfflineCheck, 60000);
@@ -9370,6 +9376,12 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  if (event.target.closest("#serverHealthRefreshBtn")) {
+    event.preventDefault();
+    await loadServerHealth();
+    return;
+  }
+
   const openNotification = event.target.closest("[data-notification-open]");
   if (openNotification) {
     event.preventDefault();
@@ -10390,6 +10402,8 @@ function renderRole() {
   if (!userManagementAllowed && els.currentUsersDrawer) els.currentUsersDrawer.open = false;
   els.notificationRulesDrawer?.classList.toggle("hidden", !userManagementAllowed);
   if (!userManagementAllowed && els.notificationRulesDrawer) els.notificationRulesDrawer.open = false;
+  els.serverHealthDrawer?.classList.toggle("hidden", !userManagementAllowed);
+  if (!userManagementAllowed && els.serverHealthDrawer) els.serverHealthDrawer.open = false;
   els.passwordPanel?.classList.toggle("hidden", !accountSettingsAllowed);
   els.accessRequestsBlock?.classList.toggle("hidden", !userManagementAllowed);
   els.accessRequestList?.classList.toggle("hidden", !userManagementAllowed);
@@ -12732,6 +12746,83 @@ async function handleNotificationRuleSubmit(event) {
     if (els.notificationRuleStatus) els.notificationRuleStatus.textContent = "Notification rule saved.";
   } catch (error) {
     if (els.notificationRuleStatus) els.notificationRuleStatus.textContent = error?.message || "Could not save rule.";
+  }
+}
+
+function formatBytes(value = 0) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size >= 10 || unitIndex === 0 ? Math.round(size) : size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function serverHealthRow(label, value, ok = true) {
+  return `
+    <div class="sync-health-row ${ok ? "is-ok" : "is-error"}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "Not available")}</strong>
+    </div>
+  `;
+}
+
+function renderServerHealth(payload = null) {
+  if (!els.serverHealthGrid) return;
+  if (!payload) {
+    els.serverHealthGrid.innerHTML = serverHealthRow("Status", "Not checked yet", false);
+    if (els.serverHealthBadge) els.serverHealthBadge.textContent = "Check";
+    return;
+  }
+
+  const latestBackup = payload.backups?.latest;
+  const backupFiles = Array.isArray(latestBackup?.files) ? latestBackup.files : [];
+  const dbOk = Boolean(payload.database?.ok);
+  const filesOk = Boolean(payload.fileStorage?.ok);
+  const backupsOk = Boolean(payload.backups?.ok);
+  const backupSize = backupFiles.reduce((sum, file) => sum + Number(file.bytes || 0), 0);
+  const checkedAt = payload.checkedAt ? formatDateTime(payload.checkedAt) : "";
+  const latestBackupAt = latestBackup?.createdAt ? formatDateTime(latestBackup.createdAt) : latestBackup?.name || "";
+
+  if (els.serverHealthBadge) els.serverHealthBadge.textContent = payload.ok ? "OK" : "Issue";
+  if (els.serverHealthStatus) {
+    els.serverHealthStatus.textContent = checkedAt ? `Checked ${checkedAt}` : "";
+    els.serverHealthStatus.classList.toggle("is-ok", Boolean(payload.ok));
+    els.serverHealthStatus.classList.toggle("is-error", !payload.ok);
+  }
+
+  els.serverHealthGrid.innerHTML = [
+    serverHealthRow("API", `Online | uptime ${Math.round(Number(payload.uptimeSeconds || 0) / 60)} min`, true),
+    serverHealthRow("Database", dbOk ? `${payload.database?.tableCount || 0} public tables` : payload.database?.error, dbOk),
+    serverHealthRow("File storage", filesOk ? `Writable | ${payload.fileStorage?.path || ""}` : payload.fileStorage?.error || "Not writable", filesOk),
+    serverHealthRow("Latest backup", backupsOk ? `${latestBackupAt} | ${formatBytes(backupSize)}` : payload.backups?.error || "No verified backup", backupsOk),
+    serverHealthRow("Backup folder", `${payload.backups?.count || 0} backups | ${payload.backups?.path || ""}`, backupsOk)
+  ].join("");
+}
+
+async function loadServerHealth() {
+  if (!currentUser || !siteworksServerEnabled() || !els.serverHealthGrid) return;
+  if (els.serverHealthStatus) {
+    els.serverHealthStatus.textContent = "Checking server...";
+    els.serverHealthStatus.classList.remove("is-ok", "is-error");
+  }
+  try {
+    const response = await siteworksApi.loadServerHealth();
+    if (!response.ok) throw new Error(await response.text());
+    const payload = await response.json().catch(() => null);
+    renderServerHealth(payload);
+  } catch (error) {
+    if (els.serverHealthBadge) els.serverHealthBadge.textContent = "Issue";
+    if (els.serverHealthStatus) {
+      els.serverHealthStatus.textContent = error?.message || "Could not check server.";
+      els.serverHealthStatus.classList.add("is-error");
+      els.serverHealthStatus.classList.remove("is-ok");
+    }
+    els.serverHealthGrid.innerHTML = serverHealthRow("Status", error?.message || "Could not check server.", false);
   }
 }
 
@@ -20487,6 +20578,10 @@ const siteworksApi = {
       method: "POST",
       body: JSON.stringify(rule)
     });
+  },
+  loadServerHealth() {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: false }), { status: 503 }));
+    return this.server("/api/admin/server-health");
   },
   lookupPublicKey(uid, keyId = "") {
     if (siteworksServerEnabled()) {

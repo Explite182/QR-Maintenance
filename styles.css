@@ -572,6 +572,31 @@ textarea:disabled {
   overflow-wrap: anywhere;
 }
 
+.sync-health-row.is-error {
+  border-color: #f0b3aa;
+  background: #fff7f5;
+}
+
+.sync-health-row.is-ok {
+  border-color: #b9ded4;
+  background: #f3fbf8;
+}
+
+.server-health-actions {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px;
+}
+
+.server-health-actions button {
+  min-height: 36px;
+  font-size: 12px;
+}
+
+.server-health-drawer .sync-health-grid {
+  padding: 0 10px 10px;
+}
+
 .cloud-cleanup.is-working {
   opacity: 0.82;
 }
