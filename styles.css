@@ -1194,10 +1194,10 @@ textarea:disabled {
 }
 
 .automation-tab-strip {
-  display: inline-grid;
-  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 6px;
-  width: min(100%, 560px);
+  width: min(100%, 700px);
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1326,6 +1326,112 @@ textarea:disabled {
 .lighting-list-row.is-warning {
   border-color: #fcd34d;
   background: #fffbeb;
+}
+
+.lighting-controller-wizard {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.lighting-controller-wizard > summary {
+  min-height: 46px;
+  padding: 12px 14px;
+  color: var(--ink);
+  font-weight: 900;
+  cursor: pointer;
+  list-style: none;
+}
+
+.lighting-controller-wizard > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lighting-controller-wizard[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.lighting-controller-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.lighting-controller-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.lighting-controller-form textarea,
+.lighting-controller-form input,
+.lighting-controller-form select {
+  width: 100%;
+}
+
+.lighting-controller-form textarea,
+.lighting-controller-help,
+.lighting-controller-form button,
+.lighting-controller-status {
+  grid-column: 1 / -1;
+}
+
+.lighting-controller-help {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+}
+
+.lighting-controller-help strong {
+  color: #7c4a03;
+}
+
+.lighting-controller-help span,
+.lighting-controller-status {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.lighting-controller-status {
+  min-height: 18px;
+  margin: 0;
+}
+
+.lighting-controller-list {
+  display: grid;
+  gap: 10px;
+}
+
+.lighting-controller-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(2, minmax(120px, auto));
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.lighting-controller-card div {
+  display: grid;
+  gap: 3px;
+}
+
+.lighting-controller-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.lighting-controller-card strong {
+  color: var(--ink);
+  font-weight: 900;
 }
 
 .sidebar-nav-btn span:first-child {

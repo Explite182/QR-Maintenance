@@ -5239,7 +5239,8 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-lighting-control-01";
+const SITEWORKS_APP_VERSION = "20260817-lighting-wizard-01";
+const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9367,13 +9368,20 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
+  if (form.matches("[data-lighting-controller-form]")) {
+    event.preventDefault();
+    saveLightingControllerFromForm(form);
+    return;
+  }
   if (form.id === "monitoringDeviceForm") {
     event.preventDefault();
     await handleMonitoringDeviceSubmit(form);
+    return;
   }
   if (form.id === "monitoringChannelForm") {
     event.preventDefault();
     await handleMonitoringChannelSubmit(form);
+    return;
   }
   if (form.id === "monitoringSimulatorForm") {
     event.preventDefault();
@@ -9995,11 +10003,12 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
   openPanel(targetId);
   setAutomationSidebarMenuOpen(true);
   setMobileTabState(targetId);
+  if (targetId === "automationLightingPanel") renderLightingControllers();
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function setLightingAutomationTab(tab = "zones") {
-  const selectedTab = ["zones", "schedules", "overrides", "history"].includes(tab) ? tab : "zones";
+  const selectedTab = ["zones", "controllers", "schedules", "overrides", "history"].includes(tab) ? tab : "zones";
   document.querySelectorAll("[data-lighting-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.lightingTab === selectedTab);
     button.setAttribute("aria-selected", String(button.dataset.lightingTab === selectedTab));
@@ -10007,6 +10016,72 @@ function setLightingAutomationTab(tab = "zones") {
   document.querySelectorAll("[data-lighting-panel]").forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.lightingPanel !== selectedTab);
   });
+  if (selectedTab === "controllers") renderLightingControllers();
+}
+
+function getLightingControllers() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LIGHTING_CONTROLLERS_STORAGE_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLightingControllers(controllers) {
+  try {
+    localStorage.setItem(LIGHTING_CONTROLLERS_STORAGE_KEY, JSON.stringify(controllers));
+  } catch (error) {
+    showStorageFullWarning?.();
+    console.warn("Lighting controller setup could not be saved locally.", error);
+  }
+}
+
+function renderLightingControllers() {
+  const list = document.querySelector("[data-lighting-controller-list]");
+  if (!list) return;
+  const controllers = getLightingControllers();
+  if (!controllers.length) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>No lighting controllers added yet</strong><span>Use the setup wizard to add an ESP32 controller.</span></div>`;
+    return;
+  }
+  list.innerHTML = controllers.map((controller) => `
+    <div class="lighting-controller-card">
+      <div>
+        <strong>${escapeHtml(controller.name)}</strong>
+        <span>${escapeHtml(controller.uid)} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.location || "No location assigned")}</span>
+      </div>
+      <div>
+        <span>Outputs</span>
+        <strong>${escapeHtml(controller.outputs)}</strong>
+      </div>
+      <div>
+        <span>Status</span>
+        <strong>Setup only</strong>
+      </div>
+    </div>
+  `).join("");
+}
+
+function saveLightingControllerFromForm(form) {
+  const formData = new FormData(form);
+  const controller = {
+    id: crypto.randomUUID?.() || `lighting-${Date.now()}`,
+    name: String(formData.get("name") || "").trim() || "Lighting Controller",
+    uid: String(formData.get("uid") || "").trim() || `ESP32-LIGHTING-${Date.now()}`,
+    type: String(formData.get("type") || "Relay controller").trim(),
+    location: String(formData.get("location") || "").trim(),
+    outputs: String(formData.get("outputs") || "4").trim(),
+    notes: String(formData.get("notes") || "").trim(),
+    createdAt: new Date().toISOString()
+  };
+  const controllers = getLightingControllers();
+  controllers.unshift(controller);
+  saveLightingControllers(controllers);
+  form.reset();
+  const status = document.querySelector("[data-lighting-controller-status]");
+  if (status) status.textContent = `Added ${controller.name}. Server sync is not connected yet.`;
+  renderLightingControllers();
 }
 
 function setInventoryTab(tab = "items") {
