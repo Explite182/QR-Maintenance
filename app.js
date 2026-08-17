@@ -5239,7 +5239,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-site-map-monitor-01";
+const SITEWORKS_APP_VERSION = "20260817-lighting-control-01";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8888,6 +8888,13 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const lightingTabButton = event.target.closest("[data-lighting-tab]");
+  if (lightingTabButton) {
+    event.preventDefault();
+    setLightingAutomationTab(lightingTabButton.dataset.lightingTab);
+    return;
+  }
+
   const inventoryMenuToggle = event.target.closest("[data-inventory-menu-toggle]");
   if (inventoryMenuToggle) {
     event.preventDefault();
@@ -9989,6 +9996,17 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
   setAutomationSidebarMenuOpen(true);
   setMobileTabState(targetId);
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function setLightingAutomationTab(tab = "zones") {
+  const selectedTab = ["zones", "schedules", "overrides", "history"].includes(tab) ? tab : "zones";
+  document.querySelectorAll("[data-lighting-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.lightingTab === selectedTab);
+    button.setAttribute("aria-selected", String(button.dataset.lightingTab === selectedTab));
+  });
+  document.querySelectorAll("[data-lighting-panel]").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.lightingPanel !== selectedTab);
+  });
 }
 
 function setInventoryTab(tab = "items") {

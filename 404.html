@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="SiteWorks">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>SiteWorks</title>
-  <link rel="manifest" href="/manifest.webmanifest?v=20260817-site-map-monitor-01">
+  <link rel="manifest" href="/manifest.webmanifest?v=20260817-lighting-control-01">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260815-pwa-05">
-  <link rel="stylesheet" href="/styles.css?v=20260817-site-map-monitor-01">
+  <link rel="stylesheet" href="/styles.css?v=20260817-lighting-control-01">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -1421,11 +1421,64 @@
       <section id="automationLightingPanel" class="work-orders-panel automation-system-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="automationLightingPanel">
           <h2>Lighting</h2>
-          <span>0</span>
+          <span>4</span>
         </div>
-        <div class="automation-empty-state" data-panel-body>
-          <strong>No lighting automation devices configured yet.</strong>
-          <p>Add schedules, contactors, relays, occupancy sensors, and lighting zones here later.</p>
+        <div class="lighting-control-panel" data-panel-body>
+          <div class="lighting-status-grid">
+            <div class="lighting-status-card is-offline"><span>Lighting network</span><strong>Offline</strong></div>
+            <div class="lighting-status-card is-on"><span>Zones on</span><strong>2</strong></div>
+            <div class="lighting-status-card"><span>Schedules active</span><strong>1</strong></div>
+            <div class="lighting-status-card is-warning"><span>Overrides</span><strong>1</strong></div>
+          </div>
+          <div class="automation-tab-strip" role="tablist" aria-label="Lighting controls">
+            <button type="button" class="is-active" data-lighting-tab="zones" role="tab" aria-selected="true">Zones</button>
+            <button type="button" data-lighting-tab="schedules" role="tab" aria-selected="false">Schedules</button>
+            <button type="button" data-lighting-tab="overrides" role="tab" aria-selected="false">Overrides</button>
+            <button type="button" data-lighting-tab="history" role="tab" aria-selected="false">History</button>
+          </div>
+          <div class="lighting-tab-panel" data-lighting-panel="zones">
+            <div class="lighting-zone-grid">
+              <details class="lighting-zone-card is-on">
+                <summary><span>Sales Floor</span><strong>On</strong></summary>
+                <div class="lighting-zone-details">
+                  <span>Mode <strong>Auto</strong></span><span>Source <strong>Schedule</strong></span><span>Last change <strong>7:00 a.m.</strong></span><span>Panel <strong>Panel C</strong></span>
+                  <div class="lighting-zone-actions"><button type="button" disabled>On</button><button type="button" disabled>Off</button><button type="button" disabled>Auto</button></div>
+                </div>
+              </details>
+              <details class="lighting-zone-card is-off">
+                <summary><span>Mechanical Room</span><strong>Off</strong></summary>
+                <div class="lighting-zone-details">
+                  <span>Mode <strong>Auto</strong></span><span>Source <strong>Schedule</strong></span><span>Last change <strong>6:00 p.m.</strong></span><span>Panel <strong>Panel C</strong></span>
+                  <div class="lighting-zone-actions"><button type="button" disabled>On</button><button type="button" disabled>Off</button><button type="button" disabled>Auto</button></div>
+                </div>
+              </details>
+              <details class="lighting-zone-card is-warning">
+                <summary><span>Exterior Signs</span><strong>Override</strong></summary>
+                <div class="lighting-zone-details">
+                  <span>Mode <strong>Manual On</strong></span><span>Source <strong>Mike</strong></span><span>Last change <strong>8:15 a.m.</strong></span><span>Panel <strong>Panel C</strong></span>
+                  <div class="lighting-zone-actions"><button type="button" disabled>On</button><button type="button" disabled>Off</button><button type="button" disabled>Auto</button></div>
+                </div>
+              </details>
+              <details class="lighting-zone-card is-on">
+                <summary><span>Parking Lot</span><strong>On</strong></summary>
+                <div class="lighting-zone-details">
+                  <span>Mode <strong>Auto</strong></span><span>Source <strong>Dusk schedule</strong></span><span>Last change <strong>8:42 p.m.</strong></span><span>Panel <strong>Exterior</strong></span>
+                  <div class="lighting-zone-actions"><button type="button" disabled>On</button><button type="button" disabled>Off</button><button type="button" disabled>Auto</button></div>
+                </div>
+              </details>
+            </div>
+          </div>
+          <div class="lighting-tab-panel hidden" data-lighting-panel="schedules">
+            <div class="lighting-list-row"><strong>Weekday interior</strong><span>Mon-Fri | 7:00 a.m. on | 6:00 p.m. off</span></div>
+            <div class="lighting-list-row"><strong>Exterior dusk</strong><span>Daily | dusk on | 11:30 p.m. off</span></div>
+          </div>
+          <div class="lighting-tab-panel hidden" data-lighting-panel="overrides">
+            <div class="lighting-list-row is-warning"><strong>Exterior Signs</strong><span>Manual On | started 8:15 a.m. | expires end of day</span></div>
+          </div>
+          <div class="lighting-tab-panel hidden" data-lighting-panel="history">
+            <div class="lighting-list-row"><strong>Sales Floor turned on</strong><span>Today 7:00 a.m. | Schedule</span></div>
+            <div class="lighting-list-row"><strong>Exterior Signs override enabled</strong><span>Today 8:15 a.m. | Mike</span></div>
+          </div>
         </div>
       </section>
 
@@ -2026,11 +2079,11 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/app.js?v=20260817-site-map-monitor-01"></script>
+  <script src="/app.js?v=20260817-lighting-control-01"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js?v=20260817-site-map-monitor-01").catch((error) => {
+        navigator.serviceWorker.register("/sw.js?v=20260817-lighting-control-01").catch((error) => {
           console.warn("SiteWorks app install support was not started.", error);
         });
       });
