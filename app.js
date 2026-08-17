@@ -2289,6 +2289,7 @@ function renderSiteMap() {
           <button type="button" class="secondary mini site-map-clean-toggle${siteMapCleanView ? " is-active" : ""}" data-site-map-clean>${siteMapCleanView ? "Full plan" : "Clean plan"}</button>
           <button type="button" class="secondary mini site-map-fullscreen-toggle${siteMapFullScreen ? " is-active" : ""}" data-site-map-fullscreen>${siteMapFullScreen ? "Close" : "Full screen"}</button>
           <button type="button" class="secondary mini site-map-monitor-toggle${siteMapMonitorMode ? " is-active" : ""}" data-site-map-monitor>${siteMapMonitorMode ? "Close monitor" : "Monitor mode"}</button>
+          ${siteMapMonitorMode ? renderSiteMapMonitorStatusStrip() : ""}
         </div>
         <div class="site-map-viewport" data-site-map-viewport>
           <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%; --site-map-zoom: ${siteMapZoom};">
@@ -5238,7 +5239,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-map-fullscreen-edit-01";
+const SITEWORKS_APP_VERSION = "20260817-map-monitor-status-01";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -12498,6 +12499,51 @@ function visibleNotifications() {
     ...serverNotifications,
     ...localBreakerTripNotifications()
   ].filter(notificationMatchesCurrentView);
+}
+
+function siteMapMonitorStatusSnapshot() {
+  ensureMonitoringCollections();
+  const activeAlerts = visibleNotifications().filter((notification) =>
+    normalizeNotificationStatus(notification.status) === "active"
+  ).length;
+  const devices = (state.monitoringDevices || [])
+    .map(normalizeMonitoringDevice)
+    .filter((device) => monitoringRecordMatchesCurrentView(device));
+  const onlineDevices = devices.filter(monitoringDeviceIsFresh).length;
+  const latestDeviceSeenAt = devices
+    .map((device) => Date.parse(device.lastSeenAt || device.last_seen_at || ""))
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a)[0] || 0;
+  const lastRefreshAt = lastNotificationLoadAt || (latestDeviceSeenAt ? new Date(latestDeviceSeenAt).toISOString() : "");
+  return {
+    activeAlerts,
+    deviceCount: devices.length,
+    onlineDevices,
+    lastRefreshAt
+  };
+}
+
+function renderSiteMapMonitorStatusStrip() {
+  const snapshot = siteMapMonitorStatusSnapshot();
+  const deviceStatus = snapshot.deviceCount
+    ? `${snapshot.onlineDevices}/${snapshot.deviceCount} online`
+    : "No ESP";
+  const statusClass = !snapshot.deviceCount
+    ? "is-muted"
+    : snapshot.onlineDevices === snapshot.deviceCount
+      ? "is-online"
+      : snapshot.onlineDevices > 0
+        ? "is-warning"
+        : "is-offline";
+  return `
+    <div class="site-map-monitor-strip" aria-label="Site Map monitor status">
+      <strong>MONITOR MODE</strong>
+      <span class="${escapeAttribute(statusClass)}">${escapeHtml(deviceStatus)}</span>
+      <span class="${snapshot.activeAlerts ? "is-warning" : "is-online"}">${snapshot.activeAlerts} active alerts</span>
+      <span>Refresh 30s</span>
+      <span>${snapshot.lastRefreshAt ? `Updated ${escapeHtml(formatDateTime(snapshot.lastRefreshAt))}` : "Waiting for refresh"}</span>
+    </div>
+  `;
 }
 
 function renderServerNotifications() {

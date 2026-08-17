@@ -10980,6 +10980,60 @@ body.site-map-monitor-active .app-shell.site-map-monitor .site-map-controls {
   padding: 6px !important;
 }
 
+.site-map-monitor-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-left: 4px;
+}
+
+.site-map-monitor-strip strong,
+.site-map-monitor-strip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(220, 230, 227, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.site-map-monitor-strip strong {
+  color: #ffffff;
+  background: #172126;
+  border-color: #172126;
+  letter-spacing: 0.02em;
+}
+
+.site-map-monitor-strip .is-online {
+  color: #047857;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.site-map-monitor-strip .is-warning {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.site-map-monitor-strip .is-offline {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.site-map-monitor-strip .is-muted {
+  color: var(--muted);
+  background: #f8fafc;
+}
+
 body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-map-fullscreen #siteMapPanel {
   padding: 12px !important;
   overflow: auto !important;
