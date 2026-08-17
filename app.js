@@ -2288,6 +2288,7 @@ function renderSiteMap() {
           <button type="button" class="secondary mini" data-site-map-zoom="reset">Reset</button>
           <button type="button" class="secondary mini site-map-clean-toggle${siteMapCleanView ? " is-active" : ""}" data-site-map-clean>${siteMapCleanView ? "Full plan" : "Clean plan"}</button>
           <button type="button" class="secondary mini site-map-fullscreen-toggle${siteMapFullScreen ? " is-active" : ""}" data-site-map-fullscreen>${siteMapFullScreen ? "Close" : "Full screen"}</button>
+          <button type="button" class="secondary mini site-map-monitor-toggle${siteMapMonitorMode ? " is-active" : ""}" data-site-map-monitor>${siteMapMonitorMode ? "Close monitor" : "Monitor mode"}</button>
         </div>
         <div class="site-map-viewport" data-site-map-viewport>
           <div class="site-map-stage" data-site-map-stage style="width: ${Math.round(siteMapZoom * 100)}%; --site-map-zoom: ${siteMapZoom};">
@@ -2420,6 +2421,7 @@ async function handleSiteMapImageChange() {
 }
 
 function startSiteMapPinPlacement() {
+  if (siteMapMonitorMode) return;
   if (!isSiteMapLocationSelected()) {
     updateSiteMapStatus("Choose a location before adding pins.");
     return;
@@ -2618,6 +2620,7 @@ function applySiteMapZoomAtPoint(nextZoom, viewport, clientX, clientY) {
 }
 
 async function addSiteMapPinFromEvent(event) {
+  if (siteMapMonitorMode) return;
   if (siteMapDragSuppressClick) {
     siteMapDragSuppressClick = false;
     return;
@@ -2718,6 +2721,7 @@ async function addSiteMapPinFromEvent(event) {
 }
 
 function deleteSiteMapPin(pinId) {
+  if (siteMapMonitorMode) return;
   const map = getCurrentSiteMap(false);
   const activeLevel = getActiveSiteMapLevel(map, false);
   if (!map || !activeLevel || (!Array.isArray(activeLevel.pins) && !Array.isArray(activeLevel.entities))) return;
@@ -5234,7 +5238,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-map-fullscreen-01";
+const SITEWORKS_APP_VERSION = "20260817-map-monitor-01";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -5603,6 +5607,7 @@ let siteMapOverlayMode = "normal";
 let selectedSiteMapOverlayAssetId = "";
 let siteMapCleanView = false;
 let siteMapFullScreen = false;
+let siteMapMonitorMode = false;
 let siteMapLevelId = "main";
 let siteMapViewportMemory = { left: 0, top: 0 };
 let siteMapDragState = null;
@@ -6126,6 +6131,7 @@ window.setInterval(runMonitoringOfflineCheck, 60000);
 window.setInterval(syncMonitoringStatusFromApi, MONITORING_LIVE_SYNC_INTERVAL_MS);
 window.setInterval(loadServerNotifications, 30000);
 window.setInterval(loadNotificationRules, 5 * 60 * 1000);
+window.setInterval(refreshSiteMapMonitorMode, 30000);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 initPasswordRecoveryFromUrl();
 
@@ -7466,6 +7472,7 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape" && siteMapFullScreen) {
     siteMapFullScreen = false;
+    siteMapMonitorMode = false;
     syncCalendarFocusState();
     renderSiteMapIfReady();
     return;
@@ -8974,9 +8981,29 @@ document.addEventListener("click", (event) => {
   if (siteMapFullScreenButton) {
     event.preventDefault();
     updateSiteMapViewportMemory();
-    siteMapFullScreen = !siteMapFullScreen;
+    if (siteMapFullScreen || siteMapMonitorMode) {
+      siteMapFullScreen = false;
+      siteMapMonitorMode = false;
+    } else {
+      siteMapFullScreen = true;
+    }
+    pendingSiteMapPin = null;
     syncCalendarFocusState();
     renderSiteMapIfReady();
+    return;
+  }
+
+  const siteMapMonitorButton = event.target.closest("[data-site-map-monitor]");
+  if (siteMapMonitorButton) {
+    event.preventDefault();
+    updateSiteMapViewportMemory();
+    const nextMonitorMode = !siteMapMonitorMode;
+    siteMapMonitorMode = nextMonitorMode;
+    siteMapFullScreen = nextMonitorMode;
+    pendingSiteMapPin = null;
+    syncCalendarFocusState();
+    renderSiteMapIfReady();
+    if (siteMapMonitorMode) refreshSiteMapMonitorMode();
     return;
   }
 
@@ -9482,6 +9509,16 @@ function renderSiteMapIfReady() {
   if (typeof renderSiteMap === "function") renderSiteMap();
 }
 
+async function refreshSiteMapMonitorMode() {
+  if (!siteMapMonitorMode || !isPanelVisiblyOpen("siteMapPanel")) return;
+  await Promise.allSettled([
+    refreshCloudDataFromServer(),
+    syncMonitoringStatusFromApi(),
+    loadServerNotifications()
+  ]);
+  renderSiteMapIfReady();
+}
+
 function renderMonitoringIfReady() {
   if (typeof renderMonitoring === "function") renderMonitoring();
 }
@@ -9779,10 +9816,18 @@ function closeOtherSidebarTargets(activeTargetId) {
 function syncCalendarFocusState() {
   const calendarOpen = isPanelVisiblyOpen("pmCalendarPanel");
   const siteMapOpen = isPanelVisiblyOpen("siteMapPanel");
+  if (!siteMapOpen) {
+    siteMapFullScreen = false;
+    siteMapMonitorMode = false;
+  }
+  const siteMapFullScreenActive = Boolean((siteMapFullScreen || siteMapMonitorMode) && siteMapOpen);
+  const siteMapMonitorActive = Boolean(siteMapMonitorMode && siteMapOpen);
   els.appShell?.classList.toggle("calendar-focus", calendarOpen);
   els.appShell?.classList.toggle("site-map-focus", siteMapOpen);
-  els.appShell?.classList.toggle("site-map-fullscreen", Boolean(siteMapFullScreen && siteMapOpen));
-  document.body?.classList.toggle("site-map-fullscreen-active", Boolean(siteMapFullScreen && siteMapOpen));
+  els.appShell?.classList.toggle("site-map-fullscreen", siteMapFullScreenActive);
+  els.appShell?.classList.toggle("site-map-monitor", siteMapMonitorActive);
+  document.body?.classList.toggle("site-map-fullscreen-active", siteMapFullScreenActive);
+  document.body?.classList.toggle("site-map-monitor-active", siteMapMonitorActive);
 }
 
 function restoreMobileDashboardAfterSiteMapClose() {

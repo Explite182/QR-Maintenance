@@ -10951,4 +10951,33 @@ body.site-map-fullscreen-active .app-shell.site-map-fullscreen .site-map-control
   max-width: calc(100vw - 16px) !important;
 }
 
+.site-map-monitor-toggle.is-active {
+  color: #ffffff;
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+body.site-map-monitor-active .site-map-clean-toggle,
+body.site-map-monitor-active .site-map-toolbar,
+body.site-map-monitor-active .site-map-help,
+body.site-map-monitor-active .site-map-level-tabs,
+body.site-map-monitor-active .site-map-pin-list,
+body.site-map-monitor-active [data-site-map-level-add],
+body.site-map-monitor-active [data-site-map-clean] {
+  display: none !important;
+}
+
+body.site-map-monitor-active .app-shell.site-map-monitor .site-map-canvas {
+  background: #f7fbfa !important;
+}
+
+body.site-map-monitor-active .app-shell.site-map-monitor .site-map-pin {
+  cursor: pointer;
+}
+
+body.site-map-monitor-active .app-shell.site-map-monitor .site-map-controls {
+  gap: 6px !important;
+  padding: 6px !important;
+}
+
 
