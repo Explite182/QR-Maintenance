@@ -5217,7 +5217,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260815-pwa-05";
+const SITEWORKS_APP_VERSION = "20260817-building-automation-01";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8841,6 +8841,20 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const automationMenuToggle = event.target.closest("[data-automation-menu-toggle]");
+  if (automationMenuToggle) {
+    event.preventDefault();
+    toggleAutomationSidebarMenu();
+    return;
+  }
+
+  const openAutomationTabButton = event.target.closest("[data-open-automation-tab]");
+  if (openAutomationTabButton) {
+    event.preventDefault();
+    openAutomationSidebarTab(openAutomationTabButton.dataset.openAutomationTab);
+    return;
+  }
+
   const inventoryMenuToggle = event.target.closest("[data-inventory-menu-toggle]");
   if (inventoryMenuToggle) {
     event.preventDefault();
@@ -9666,6 +9680,7 @@ function closeSidebarTarget(targetId) {
   }
   setSidebarTargetButtonState(targetId, false);
   if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
+  if (targetId === "monitoringPanel") syncAutomationSidebarMenuState();
   if (targetId === "pmCalendarPanel" || targetId === "templatesPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
   if (wasSiteMapOpen) restoreMobileDashboardAfterSiteMapClose();
@@ -9698,6 +9713,7 @@ function openSidebarTarget(targetId) {
   }
   setSidebarTargetButtonState(targetId, true);
   if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
+  if (targetId === "monitoringPanel") syncAutomationSidebarMenuState();
   if (targetId === "pmCalendarPanel" || targetId === "templatesPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
 }
@@ -9709,6 +9725,7 @@ function closeAllSidebarTargets() {
   closeSidebarTarget("pmCalendarPanel");
   closeSidebarTarget("templatesPanel");
   closeSidebarTarget("siteMapPanel");
+  closeSidebarTarget("monitoringPanel");
   closeSidebarTarget("inventoryPanel");
 }
 
@@ -9721,6 +9738,7 @@ function closeOtherSidebarTargets(activeTargetId) {
   if (activeTargetId !== "pmCalendarPanel") closeSidebarTarget("pmCalendarPanel");
   if (activeTargetId !== "templatesPanel") closeSidebarTarget("templatesPanel");
   if (activeTargetId !== "siteMapPanel") closeSidebarTarget("siteMapPanel");
+  if (activeTargetId !== "monitoringPanel") closeSidebarTarget("monitoringPanel");
   if (activeTargetId !== "inventoryPanel") closeSidebarTarget("inventoryPanel");
 }
 
@@ -9809,6 +9827,50 @@ function openPmSidebarTab(tab = "calendar") {
   closeOtherSidebarTargets(targetId);
   openPanel(targetId);
   setPmSidebarMenuOpen(true);
+  setMobileTabState(targetId);
+  document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function isAutomationPanelOpen() {
+  return isPanelVisiblyOpen("monitoringPanel");
+}
+
+function setAutomationSidebarMenuOpen(isOpen) {
+  const toggle = document.querySelector("[data-automation-menu-toggle]");
+  const submenu = document.querySelector("[data-automation-submenu]");
+  toggle?.classList.toggle("is-active", isOpen || isAutomationPanelOpen());
+  toggle?.setAttribute("aria-expanded", String(isOpen));
+  submenu?.classList.toggle("hidden", !isOpen);
+  syncAutomationSidebarMenuButtons();
+}
+
+function syncAutomationSidebarMenuButtons() {
+  document.querySelectorAll("[data-open-automation-tab]").forEach((button) => {
+    button.classList.toggle("is-active", isAutomationPanelOpen());
+  });
+}
+
+function syncAutomationSidebarMenuState() {
+  const isOpen = isAutomationPanelOpen();
+  const toggle = document.querySelector("[data-automation-menu-toggle]");
+  const submenu = document.querySelector("[data-automation-submenu]");
+  toggle?.classList.toggle("is-active", isOpen);
+  toggle?.setAttribute("aria-expanded", String(isOpen));
+  submenu?.classList.toggle("hidden", !isOpen);
+  syncAutomationSidebarMenuButtons();
+}
+
+function toggleAutomationSidebarMenu() {
+  const submenu = document.querySelector("[data-automation-submenu]");
+  const shouldOpen = submenu?.classList.contains("hidden");
+  setAutomationSidebarMenuOpen(Boolean(shouldOpen));
+}
+
+function openAutomationSidebarTab(tab = "panel-monitor") {
+  const targetId = tab === "panel-monitor" ? "monitoringPanel" : "monitoringPanel";
+  closeOtherSidebarTargets(targetId);
+  openPanel(targetId);
+  setAutomationSidebarMenuOpen(true);
   setMobileTabState(targetId);
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -10197,6 +10259,8 @@ function renderRole() {
   renderMobileInventoryActions();
   renderMobileCreateActions();
   syncPmSidebarMenuState();
+  syncAutomationSidebarMenuState();
+  syncInventorySidebarMenuState();
   els.adminToolsDrawer.classList.toggle("hidden", !hasAdminToolsAccess);
   if (!hasAdminToolsAccess) els.adminToolsDrawer.open = false;
   els.quickAddDrawer.classList.toggle("hidden", !canAddAssets);
@@ -12648,6 +12712,7 @@ function openServerNotification(id) {
     selectedMonitoringBreakerChannelId = metadata.channelId || "";
     closeOtherSidebarTargets("monitoringPanel");
     openPanel("monitoringPanel");
+    syncAutomationSidebarMenuState();
     setMobileTabState("monitoringPanel");
     render();
     const channel = selectedMonitoringBreakerChannelId ? getMonitoringChannel(selectedMonitoringBreakerChannelId) : null;
@@ -14439,6 +14504,7 @@ function openDashboardResult(type, id) {
     selectedMonitoringBreakerCircuit = alert.circuitNumber || "";
     closeOtherSidebarTargets("monitoringPanel");
     openPanel("monitoringPanel");
+    syncAutomationSidebarMenuState();
     setMobileTabState("monitoringPanel");
   } else if (type === "completed") {
     if (!openCompletedRecord(id, false)) return;

@@ -223,9 +223,15 @@
           <button type="button" class="sidebar-nav-btn" data-open-target="siteMapPanel" aria-expanded="false">
             <span>Site Map</span>
           </button>
-          <button type="button" class="sidebar-nav-btn" data-open-target="monitoringPanel" aria-expanded="false">
-            <span>Panel Monitor</span>
-          </button>
+          <div class="sidebar-nav-group" data-sidebar-group="automation">
+            <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-automation-menu-toggle aria-expanded="false">
+              <span>Building Automation</span>
+              <span class="sidebar-submenu-arrow" aria-hidden="true"></span>
+            </button>
+            <div class="sidebar-submenu hidden" data-automation-submenu>
+              <button type="button" class="sidebar-submenu-btn" data-open-automation-tab="panel-monitor">Panel Monitor</button>
+            </div>
+          </div>
           <div class="sidebar-nav-group" data-sidebar-group="inventory">
             <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-inventory-menu-toggle aria-expanded="false">
               <span>Inventory</span>
