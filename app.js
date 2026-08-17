@@ -5239,7 +5239,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-lighting-wizard-01";
+const SITEWORKS_APP_VERSION = "20260817-lighting-location-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
@@ -7986,6 +7986,7 @@ els.customerFilter.addEventListener("change", () => {
   clearSelectedAssetUrl();
   assetPage = 1;
   render();
+  renderLightingControllers();
 });
 
 els.newUserRole?.addEventListener("change", () => {
@@ -8008,6 +8009,7 @@ els.locationFilter.addEventListener("change", () => {
   clearSelectedAssetUrl();
   assetPage = 1;
   render();
+  renderLightingControllers();
 });
 
 els.serviceRequestCustomer?.addEventListener("change", () => {
@@ -10040,16 +10042,36 @@ function saveLightingControllers(controllers) {
 function renderLightingControllers() {
   const list = document.querySelector("[data-lighting-controller-list]");
   if (!list) return;
-  const controllers = getLightingControllers();
+  const scopeStatus = document.querySelector("[data-lighting-controller-scope]");
+  const canUseLocation = Boolean(selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && selectedLocationId && selectedLocationId !== ALL_LOCATIONS);
+  const currentCustomer = getCustomer(selectedCustomerId);
+  const currentLocation = canUseLocation ? getLocation(selectedLocationId) : null;
+  if (scopeStatus) {
+    scopeStatus.textContent = canUseLocation
+      ? `Adding to ${currentCustomer?.name || "selected customer"} | ${currentLocation?.name || "selected location"}`
+      : "Choose a specific customer and location before adding a controller.";
+  }
+  document.querySelectorAll("[data-lighting-controller-form] button[type='submit']").forEach((button) => {
+    button.disabled = !canUseLocation;
+  });
+  const controllers = getLightingControllers().filter((controller) => {
+    if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && controller.customerId !== selectedCustomerId) return false;
+    if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS && controller.locationId !== selectedLocationId) return false;
+    return selectedLocationId === ALL_LOCATIONS ? false : true;
+  });
+  if (!canUseLocation) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting ESP32 controllers are saved per location, not globally.</span></div>`;
+    return;
+  }
   if (!controllers.length) {
-    list.innerHTML = `<div class="lighting-list-row"><strong>No lighting controllers added yet</strong><span>Use the setup wizard to add an ESP32 controller.</span></div>`;
+    list.innerHTML = `<div class="lighting-list-row"><strong>No lighting controllers for this location</strong><span>Use the setup wizard to add an ESP32 controller for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
     return;
   }
   list.innerHTML = controllers.map((controller) => `
     <div class="lighting-controller-card">
       <div>
         <strong>${escapeHtml(controller.name)}</strong>
-        <span>${escapeHtml(controller.uid)} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.location || "No location assigned")}</span>
+        <span>${escapeHtml(controller.uid)} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.location || currentLocation?.name || "No location assigned")}</span>
       </div>
       <div>
         <span>Outputs</span>
@@ -10064,13 +10086,22 @@ function renderLightingControllers() {
 }
 
 function saveLightingControllerFromForm(form) {
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
+    const status = document.querySelector("[data-lighting-controller-status]");
+    if (status) status.textContent = "Choose a specific customer and location before adding a lighting controller.";
+    renderLightingControllers();
+    return;
+  }
   const formData = new FormData(form);
+  const currentLocation = getLocation(selectedLocationId);
   const controller = {
     id: crypto.randomUUID?.() || `lighting-${Date.now()}`,
+    customerId: selectedCustomerId,
+    locationId: selectedLocationId,
     name: String(formData.get("name") || "").trim() || "Lighting Controller",
     uid: String(formData.get("uid") || "").trim() || `ESP32-LIGHTING-${Date.now()}`,
     type: String(formData.get("type") || "Relay controller").trim(),
-    location: String(formData.get("location") || "").trim(),
+    location: String(formData.get("location") || "").trim() || currentLocation?.name || "",
     outputs: String(formData.get("outputs") || "4").trim(),
     notes: String(formData.get("notes") || "").trim(),
     createdAt: new Date().toISOString()

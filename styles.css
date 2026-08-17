@@ -1358,6 +1358,17 @@ textarea:disabled {
   padding: 14px;
 }
 
+.lighting-controller-scope {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef5f3;
+  color: var(--ink);
+  font-weight: 900;
+}
+
 .lighting-controller-form label {
   display: grid;
   gap: 6px;
