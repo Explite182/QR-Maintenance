@@ -5239,8 +5239,11 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-lighting-location-01";
+const SITEWORKS_APP_VERSION = "20260817-lighting-server-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
+let lightingControllersCache = [];
+let lightingControllersLoadedScope = "";
+let lightingControllersLoading = false;
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9372,7 +9375,7 @@ document.addEventListener("submit", async (event) => {
   if (!(form instanceof HTMLFormElement)) return;
   if (form.matches("[data-lighting-controller-form]")) {
     event.preventDefault();
-    saveLightingControllerFromForm(form);
+    await saveLightingControllerFromForm(form);
     return;
   }
   if (form.id === "monitoringDeviceForm") {
@@ -10039,6 +10042,38 @@ function saveLightingControllers(controllers) {
   }
 }
 
+function getLightingControllerScopeKey() {
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) return "";
+  return `${selectedCustomerId}|${selectedLocationId}`;
+}
+
+async function loadLightingControllersForCurrentScope({ force = false } = {}) {
+  const scopeKey = getLightingControllerScopeKey();
+  if (!scopeKey || lightingControllersLoading) return;
+  if (!force && lightingControllersLoadedScope === scopeKey) return;
+  lightingControllersLoading = true;
+  const status = document.querySelector("[data-lighting-controller-status]");
+  if (status) status.textContent = "Loading lighting controllers...";
+  try {
+    const response = await siteworksApi.loadLightingControllers(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`Lighting controller load failed: ${response.status}`);
+    const payload = await response.json();
+    lightingControllersCache = Array.isArray(payload.controllers) ? payload.controllers : [];
+    lightingControllersLoadedScope = scopeKey;
+    if (status) status.textContent = "";
+  } catch (error) {
+    console.warn("Lighting controllers could not be loaded from the server.", error);
+    lightingControllersCache = getLightingControllers().filter((controller) => (
+      controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId
+    ));
+    lightingControllersLoadedScope = scopeKey;
+    if (status) status.textContent = "Using local saved controllers until the server endpoint is available.";
+  } finally {
+    lightingControllersLoading = false;
+    renderLightingControllers();
+  }
+}
+
 function renderLightingControllers() {
   const list = document.querySelector("[data-lighting-controller-list]");
   if (!list) return;
@@ -10054,13 +10089,21 @@ function renderLightingControllers() {
   document.querySelectorAll("[data-lighting-controller-form] button[type='submit']").forEach((button) => {
     button.disabled = !canUseLocation;
   });
-  const controllers = getLightingControllers().filter((controller) => {
-    if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && controller.customerId !== selectedCustomerId) return false;
-    if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS && controller.locationId !== selectedLocationId) return false;
-    return selectedLocationId === ALL_LOCATIONS ? false : true;
-  });
   if (!canUseLocation) {
+    lightingControllersCache = [];
+    lightingControllersLoadedScope = "";
     list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting ESP32 controllers are saved per location, not globally.</span></div>`;
+    return;
+  }
+  const scopeKey = getLightingControllerScopeKey();
+  if (lightingControllersLoadedScope !== scopeKey && !lightingControllersLoading) {
+    loadLightingControllersForCurrentScope();
+  }
+  const controllers = lightingControllersLoadedScope === scopeKey
+    ? lightingControllersCache
+    : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId);
+  if (lightingControllersLoading && lightingControllersLoadedScope !== scopeKey) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>Loading controllers</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
     return;
   }
   if (!controllers.length) {
@@ -10085,9 +10128,9 @@ function renderLightingControllers() {
   `).join("");
 }
 
-function saveLightingControllerFromForm(form) {
+async function saveLightingControllerFromForm(form) {
+  const status = document.querySelector("[data-lighting-controller-status]");
   if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
-    const status = document.querySelector("[data-lighting-controller-status]");
     if (status) status.textContent = "Choose a specific customer and location before adding a lighting controller.";
     renderLightingControllers();
     return;
@@ -10106,12 +10149,32 @@ function saveLightingControllerFromForm(form) {
     notes: String(formData.get("notes") || "").trim(),
     createdAt: new Date().toISOString()
   };
-  const controllers = getLightingControllers();
-  controllers.unshift(controller);
-  saveLightingControllers(controllers);
+  if (status) status.textContent = `Saving ${controller.name}...`;
+  try {
+    const response = await siteworksApi.saveLightingController({
+      ...controller,
+      customer_id: controller.customerId,
+      location_id: controller.locationId,
+      device_uid: controller.uid,
+      controller_type: controller.type,
+      data: { location: controller.location }
+    });
+    if (!response.ok) throw new Error(`Lighting controller save failed: ${response.status}`);
+    const payload = await response.json();
+    const savedController = payload.controller || controller;
+    lightingControllersCache = [savedController, ...lightingControllersCache.filter((item) => item.id !== savedController.id)];
+    lightingControllersLoadedScope = getLightingControllerScopeKey();
+    if (status) status.textContent = `Added ${savedController.name} to SiteWorks server.`;
+  } catch (error) {
+    console.warn("Lighting controller could not be saved to the server.", error);
+    const controllers = getLightingControllers().filter((item) => item.id !== controller.id);
+    controllers.unshift(controller);
+    saveLightingControllers(controllers);
+    lightingControllersCache = [controller, ...lightingControllersCache.filter((item) => item.id !== controller.id)];
+    lightingControllersLoadedScope = getLightingControllerScopeKey();
+    if (status) status.textContent = `Saved ${controller.name} locally. Upload the server file to enable shared controller storage.`;
+  }
   form.reset();
-  const status = document.querySelector("[data-lighting-controller-status]");
-  if (status) status.textContent = `Added ${controller.name}. Server sync is not connected yet.`;
   renderLightingControllers();
 }
 
@@ -20770,6 +20833,21 @@ const siteworksApi = {
     return this.server("/api/notification-rules", {
       method: "POST",
       body: JSON.stringify(rule)
+    });
+  },
+  loadLightingControllers(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ controllers: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/lighting/controllers?${params.toString()}`);
+  },
+  saveLightingController(controller) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, controller }), { status: 200 }));
+    return this.server("/api/automation/lighting/controllers", {
+      method: "POST",
+      body: JSON.stringify(controller)
     });
   },
   loadServerHealth() {
