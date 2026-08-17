@@ -3063,7 +3063,21 @@ function monitoringRecordMatchesCurrentView(record, fallback = null) {
 
 function getMonitoringChannel(channelId) {
   ensureMonitoringCollections();
-  return state.monitoringChannels.find(channel => channel.id === channelId);
+  const id = String(channelId || "");
+  return state.monitoringChannels.find(channel => String(channel.id || "") === id);
+}
+
+function getMonitoringChannelFromNotificationMetadata(metadata = {}) {
+  const channel = getMonitoringChannel(metadata.channelId || metadata.sourceId || "");
+  if (channel) return channel;
+  const panelAssetId = String(metadata.panelAssetId || "");
+  const circuitNumber = String(metadata.circuitNumber || "");
+  if (!panelAssetId || !circuitNumber) return null;
+  ensureMonitoringCollections();
+  return state.monitoringChannels.find((item) =>
+    String(item.panelAssetId || item.panel_asset_id || "") === panelAssetId &&
+    String(item.circuitNumber || item.circuit_number || "") === circuitNumber
+  ) || null;
 }
 
 function visibleMonitoringDevices() {
@@ -5217,7 +5231,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-alert-fallback-01";
+const SITEWORKS_APP_VERSION = "20260817-open-alert-panel-01";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9325,8 +9339,6 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("click", async (event) => {
-  if (!event.target.closest("#notificationCenterWrap")) closeNotificationCenter();
-
   const openNotification = event.target.closest("[data-notification-open]");
   if (openNotification) {
     event.preventDefault();
@@ -9347,6 +9359,8 @@ document.addEventListener("click", async (event) => {
     resolveServerNotification(resolveNotification.dataset.notificationResolve);
     return;
   }
+
+  if (!event.target.closest("#notificationCenterWrap")) closeNotificationCenter();
 
   if (event.target.closest("[data-monitoring-close-breaker-detail]")) {
     event.preventDefault();
@@ -12708,15 +12722,15 @@ function openServerNotification(id) {
   closeNotificationCenter();
   const metadata = notificationMetadata(notification);
   if (notification.type === "breaker-trip" || notification.type === "esp-offline") {
-    selectedMonitoringPanelId = metadata.panelAssetId || selectedMonitoringPanelId;
-    selectedMonitoringBreakerCircuit = metadata.circuitNumber || "";
-    selectedMonitoringBreakerChannelId = metadata.channelId || "";
+    const channel = getMonitoringChannelFromNotificationMetadata(metadata);
+    selectedMonitoringPanelId = metadata.panelAssetId || channel?.panelAssetId || channel?.panel_asset_id || selectedMonitoringPanelId;
+    selectedMonitoringBreakerCircuit = metadata.circuitNumber || channel?.circuitNumber || channel?.circuit_number || "";
+    selectedMonitoringBreakerChannelId = metadata.channelId || channel?.id || "";
     closeOtherSidebarTargets("monitoringPanel");
     openPanel("monitoringPanel");
     syncAutomationSidebarMenuState();
     setMobileTabState("monitoringPanel");
     render();
-    const channel = selectedMonitoringBreakerChannelId ? getMonitoringChannel(selectedMonitoringBreakerChannelId) : null;
     if (channel) {
       window.setTimeout(() => {
         const selector = `[data-monitoring-breaker-circuit="${String(selectedMonitoringBreakerCircuit || channel.circuitNumber || "").replace(/"/g, '\\"')}"]`;
