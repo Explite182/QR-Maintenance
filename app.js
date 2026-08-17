@@ -5217,7 +5217,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260817-building-automation-02";
+const SITEWORKS_APP_VERSION = "20260817-alert-fallback-01";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -12336,17 +12336,18 @@ function localBreakerTripNotifications() {
     .forEach((alert) => {
       const channelId = String(alert.channelId || alert.channel_id || "");
       if (!channelId || hasServerNotificationForChannel(channelId)) return;
+      const status = normalizeNotificationStatus(alert.status || "active");
       const channel = getMonitoringChannel(channelId);
       const device = getMonitoringDevice(alert.deviceId || alert.device_id || channel?.deviceId || channel?.device_id || "");
       const panelAssetId = alert.panelAssetId || alert.panel_asset_id || channel?.panelAssetId || channel?.panel_asset_id || device?.panelAssetId || "";
       const panel = getAsset(panelAssetId);
       if (panel && !isCurrentViewAsset(panel)) return;
       if (!panel && !monitoringRecordMatchesCurrentView(alert, device || channel)) return;
-      seenChannels.add(channelId);
+      if (status === "active") seenChannels.add(channelId);
       localNotifications.push({
         id: `local-breaker-${alert.id || channelId}`,
         type: "breaker-trip",
-        status: normalizeNotificationStatus(alert.status || "active"),
+        status,
         severity: alert.severity || channel?.criticality || "warning",
         title: alert.title || "Breaker trip needs confirmation",
         message: alert.message || "",
