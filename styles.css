@@ -1323,6 +1323,30 @@ textarea:disabled {
   font-weight: 900;
 }
 
+.lighting-zone-edit-form {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.lighting-zone-edit-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.lighting-zone-edit-form input,
+.lighting-zone-edit-form select,
+.lighting-zone-edit-form textarea {
+  width: 100%;
+}
+
 .lighting-list-row.is-warning {
   border-color: #fcd34d;
   background: #fffbeb;
