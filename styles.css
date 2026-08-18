@@ -1420,9 +1420,27 @@ textarea:disabled {
 
 .lighting-controller-form textarea,
 .lighting-controller-help,
+.lighting-api-key-tools,
 .lighting-controller-form button,
 .lighting-controller-status {
   grid-column: 1 / -1;
+}
+
+.lighting-api-key-tools {
+  display: grid;
+  gap: 8px;
+}
+
+.lighting-api-key-tools button {
+  width: 100%;
+}
+
+.lighting-generated-key {
+  min-height: 18px;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
 }
 
 .lighting-controller-help {

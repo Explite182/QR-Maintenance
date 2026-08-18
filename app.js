@@ -3897,6 +3897,10 @@ function generateMonitoringApiKey() {
   return `swm_${Array.from(bytes).map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
+function generateLightingApiKey() {
+  return generateMonitoringApiKey().replace(/^swm_/, "swl_");
+}
+
 async function rotateMonitoringDeviceKey() {
   ensureMonitoringCollections();
   const elements = monitoringElements();
@@ -5239,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260818-lighting-controller-key-01";
+const SITEWORKS_APP_VERSION = "20260818-lighting-key-generator-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -8948,6 +8952,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const lightingControllerGenerateKeyButton = event.target.closest("[data-lighting-generate-key]");
+  if (lightingControllerGenerateKeyButton) {
+    event.preventDefault();
+    const form = lightingControllerGenerateKeyButton.closest("form");
+    const input = form?.querySelector("input[name='apiKey']");
+    const output = form?.querySelector("[data-lighting-generated-key]");
+    const newKey = generateLightingApiKey();
+    if (input) input.value = newKey;
+    if (output) output.textContent = `New API key, shown once: ${newKey}`;
+    return;
+  }
+
   const lightingControllerDeleteButton = event.target.closest("[data-lighting-controller-delete]");
   if (lightingControllerDeleteButton) {
     event.preventDefault();
@@ -10626,6 +10642,10 @@ function renderLightingControllers() {
           <label>API key
             <input name="apiKey" type="password" placeholder="Leave blank to keep existing key">
           </label>
+          <div class="lighting-api-key-tools">
+            <button type="button" data-lighting-generate-key>Generate API Key</button>
+            <span data-lighting-generated-key class="lighting-generated-key" aria-live="polite"></span>
+          </div>
           <label>Notes
             <textarea name="notes" rows="2">${escapeHtml(controller.notes || "")}</textarea>
           </label>
