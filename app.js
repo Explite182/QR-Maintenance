@@ -5239,7 +5239,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260818-lighting-command-queue-01";
+const SITEWORKS_APP_VERSION = "20260818-lighting-zone-controller-fix-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -10436,6 +10436,16 @@ function getLightingControllerOptionsHtml(selectedId = "") {
   )).join("")}`;
 }
 
+function getLightingControllerById(controllerId = "") {
+  const id = String(controllerId || "").trim();
+  if (!id) return null;
+  const { scopeKey } = getLightingScopeDetails();
+  const controllers = lightingControllersLoadedScope === scopeKey
+    ? lightingControllersCache
+    : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId);
+  return controllers.find((controller) => controller.id === id) || null;
+}
+
 function getLightingZoneOptionsHtml(selectedId = "") {
   const { scopeKey } = getLightingScopeDetails();
   const zones = lightingZonesLoadedScope === scopeKey
@@ -10532,7 +10542,7 @@ function renderLightingZones() {
         <summary><span>${escapeHtml(zone.name)}</span><strong>${escapeHtml(state)}</strong></summary>
         <div class="lighting-zone-details">
           <span>Mode <strong>${escapeHtml(zone.mode || "Auto")}</strong></span>
-          <span>Controller <strong>${escapeHtml(zone.controllerName || "Not assigned")}</strong></span>
+          <span>Controller <strong>${escapeHtml(zone.controllerName || getLightingControllerById(zone.controllerId)?.name || "Not assigned")}</strong></span>
           <span>Output <strong>${escapeHtml(zone.outputNumber || "Not assigned")}</strong></span>
           <span>Status <strong>${escapeHtml(zone.status || "Setup only")}</strong></span>
           <span>Notes <strong>${escapeHtml(zone.notes || "None")}</strong></span>
@@ -11147,7 +11157,13 @@ async function applyLightingZoneCommand(zoneId, desiredState) {
     if (!overrideResponse.ok) throw new Error(`Lighting override command failed: ${overrideResponse.status}`);
     const zonePayload = await zoneResponse.json();
     const overridePayload = await overrideResponse.json();
-    const savedZone = zonePayload.zone || updatedZone;
+    const savedZone = {
+      ...updatedZone,
+      ...(zonePayload.zone || {}),
+      controllerId: zonePayload.zone?.controllerId || updatedZone.controllerId,
+      controllerName: zonePayload.zone?.controllerName || updatedZone.controllerName || getLightingControllerById(updatedZone.controllerId)?.name || "",
+      outputNumber: zonePayload.zone?.outputNumber || updatedZone.outputNumber
+    };
     const savedOverride = overridePayload.override || override;
     let commandQueued = false;
     if (savedZone.controllerId && savedZone.outputNumber) {
@@ -11207,7 +11223,7 @@ async function saveLightingZoneFromForm(form, existingZoneId = "") {
   }
   const formData = new FormData(form);
   const controllerId = String(formData.get("controllerId") || "").trim();
-  const selectedController = lightingControllersCache.find((controller) => controller.id === controllerId);
+  const selectedController = getLightingControllerById(controllerId);
   const existingZone = existingZoneId
     ? lightingZonesCache.find((item) => item.id === existingZoneId) || getLightingZones().find((item) => item.id === existingZoneId)
     : null;
