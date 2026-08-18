@@ -5239,9 +5239,10 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260818-lighting-controller-edit-01";
+const SITEWORKS_APP_VERSION = "20260818-lighting-schedules-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
+const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
@@ -5250,6 +5251,9 @@ let lightingZonesCache = [];
 let lightingZonesLoadedScope = "";
 let lightingZonesLoading = false;
 let editingLightingZoneId = "";
+let lightingSchedulesCache = [];
+let lightingSchedulesLoadedScope = "";
+let lightingSchedulesLoading = false;
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8000,6 +8004,7 @@ els.customerFilter.addEventListener("change", () => {
   render();
   renderLightingControllers();
   renderLightingZones();
+  renderLightingSchedules();
 });
 
 els.newUserRole?.addEventListener("change", () => {
@@ -8026,6 +8031,7 @@ els.locationFilter.addEventListener("change", () => {
   render();
   renderLightingControllers();
   renderLightingZones();
+  renderLightingSchedules();
 });
 
 els.serviceRequestCustomer?.addEventListener("change", () => {
@@ -9458,6 +9464,11 @@ document.addEventListener("submit", async (event) => {
     await saveLightingZoneFromForm(form, form.dataset.lightingZoneEditForm || "");
     return;
   }
+  if (form.matches("[data-lighting-schedule-form]")) {
+    event.preventDefault();
+    await saveLightingScheduleFromForm(form);
+    return;
+  }
   if (form.id === "monitoringDeviceForm") {
     event.preventDefault();
     await handleMonitoringDeviceSubmit(form);
@@ -10091,6 +10102,7 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
   if (targetId === "automationLightingPanel") {
     renderLightingControllers();
     renderLightingZones();
+    renderLightingSchedules();
   }
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -10106,6 +10118,7 @@ function setLightingAutomationTab(tab = "zones") {
   });
   if (selectedTab === "controllers") renderLightingControllers();
   if (selectedTab === "zones") renderLightingZones();
+  if (selectedTab === "schedules") renderLightingSchedules();
 }
 
 function getLightingControllers() {
@@ -10141,6 +10154,24 @@ function saveLightingZones(zones) {
   } catch (error) {
     showStorageFullWarning?.();
     console.warn("Lighting zone setup could not be saved locally.", error);
+  }
+}
+
+function getLightingSchedules() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LIGHTING_SCHEDULES_STORAGE_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLightingSchedules(schedules) {
+  try {
+    localStorage.setItem(LIGHTING_SCHEDULES_STORAGE_KEY, JSON.stringify(schedules));
+  } catch (error) {
+    showStorageFullWarning?.();
+    console.warn("Lighting schedule setup could not be saved locally.", error);
   }
 }
 
@@ -10215,10 +10246,43 @@ async function loadLightingZonesForCurrentScope({ force = false } = {}) {
   }
 }
 
+async function loadLightingSchedulesForCurrentScope({ force = false } = {}) {
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation || lightingSchedulesLoading) return;
+  if (!force && lightingSchedulesLoadedScope === scopeKey) return;
+  lightingSchedulesLoading = true;
+  const status = document.querySelector("[data-lighting-schedule-status]");
+  if (status) status.textContent = "Loading lighting schedules...";
+  try {
+    const response = await siteworksApi.loadLightingSchedules(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`Lighting schedule load failed: ${response.status}`);
+    const payload = await response.json();
+    lightingSchedulesCache = Array.isArray(payload.schedules) ? payload.schedules : [];
+    lightingSchedulesLoadedScope = scopeKey;
+    if (status) status.textContent = "";
+  } catch (error) {
+    console.warn("Lighting schedules could not be loaded from the server.", error);
+    lightingSchedulesCache = getLightingSchedules().filter((schedule) => (
+      schedule.customerId === selectedCustomerId && schedule.locationId === selectedLocationId
+    ));
+    lightingSchedulesLoadedScope = scopeKey;
+    if (status) status.textContent = "Using local saved schedules until the server endpoint is available.";
+  } finally {
+    lightingSchedulesLoading = false;
+    renderLightingSchedules();
+  }
+}
+
 function renderLightingZoneControllerOptions() {
   const select = document.querySelector("[data-lighting-zone-controller]");
   if (!select) return;
   select.innerHTML = getLightingControllerOptionsHtml();
+}
+
+function renderLightingScheduleZoneOptions() {
+  const select = document.querySelector("[data-lighting-schedule-zone]");
+  if (!select) return;
+  select.innerHTML = getLightingZoneOptionsHtml(select.value || "");
 }
 
 function getLightingControllerOptionsHtml(selectedId = "") {
@@ -10228,6 +10292,16 @@ function getLightingControllerOptionsHtml(selectedId = "") {
     : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId);
   return `<option value="">No controller assigned yet</option>${controllers.map((controller) => (
     `<option value="${escapeHtml(controller.id)}"${controller.id === selectedId ? " selected" : ""}>${escapeHtml(controller.name)} (${escapeHtml(controller.outputs)} outputs)</option>`
+  )).join("")}`;
+}
+
+function getLightingZoneOptionsHtml(selectedId = "") {
+  const { scopeKey } = getLightingScopeDetails();
+  const zones = lightingZonesLoadedScope === scopeKey
+    ? lightingZonesCache
+    : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
+  return `<option value="">All zones</option>${zones.map((zone) => (
+    `<option value="${escapeHtml(zone.id)}"${zone.id === selectedId ? " selected" : ""}>${escapeHtml(zone.name)}</option>`
   )).join("")}`;
 }
 
@@ -10436,6 +10510,54 @@ function renderLightingControllers() {
   }).join("");
 }
 
+function renderLightingSchedules() {
+  const list = document.querySelector("[data-lighting-schedule-list]");
+  if (!list) return;
+  const scopeStatus = document.querySelector("[data-lighting-schedule-scope]");
+  const { canUseLocation, scopeKey, currentCustomer, currentLocation } = getLightingScopeDetails();
+  if (scopeStatus) {
+    scopeStatus.textContent = canUseLocation
+      ? `Adding to ${currentCustomer?.name || "selected customer"} | ${currentLocation?.name || "selected location"}`
+      : "Choose a specific customer and location before adding a schedule.";
+  }
+  document.querySelectorAll("[data-lighting-schedule-form] button[type='submit']").forEach((button) => {
+    button.disabled = !canUseLocation;
+  });
+  if (canUseLocation && lightingZonesLoadedScope !== scopeKey && !lightingZonesLoading) {
+    loadLightingZonesForCurrentScope();
+  }
+  renderLightingScheduleZoneOptions();
+  if (!canUseLocation) {
+    lightingSchedulesCache = [];
+    lightingSchedulesLoadedScope = "";
+    list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting schedules are saved per location, not globally.</span></div>`;
+    return;
+  }
+  if (lightingSchedulesLoadedScope !== scopeKey && !lightingSchedulesLoading) {
+    loadLightingSchedulesForCurrentScope();
+  }
+  const schedules = lightingSchedulesLoadedScope === scopeKey
+    ? lightingSchedulesCache
+    : getLightingSchedules().filter((schedule) => schedule.customerId === selectedCustomerId && schedule.locationId === selectedLocationId);
+  if (lightingSchedulesLoading && lightingSchedulesLoadedScope !== scopeKey) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>Loading schedules</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
+    return;
+  }
+  const activeCount = schedules.filter((schedule) => schedule.enabled !== false).length;
+  const schedulesActive = document.querySelector("[data-lighting-schedules-active]");
+  if (schedulesActive) schedulesActive.textContent = activeCount ? String(activeCount) : "Not active";
+  if (!schedules.length) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>No lighting schedules for this location</strong><span>Add a setup schedule like weekday interior, exterior dusk, or after-hours cleaning.</span></div>`;
+    return;
+  }
+  list.innerHTML = schedules.map((schedule) => `
+    <div class="lighting-list-row">
+      <strong>${escapeHtml(schedule.name || "Lighting schedule")}</strong>
+      <span>${escapeHtml(schedule.days || "No days")} | ${escapeHtml(schedule.onTime || "No on time")} on | ${escapeHtml(schedule.offTime || "No off time")} off | ${escapeHtml(schedule.zoneName || "All zones")} | ${schedule.enabled === false ? "Disabled" : "Enabled"}</span>
+    </div>
+  `).join("");
+}
+
 async function saveLightingControllerFromForm(form, existingControllerId = "") {
   const status = document.querySelector("[data-lighting-controller-status]");
   if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
@@ -10519,6 +10641,65 @@ async function deleteLightingController(controllerId) {
   }
   renderLightingControllers();
   renderLightingZones();
+}
+
+async function saveLightingScheduleFromForm(form) {
+  const status = document.querySelector("[data-lighting-schedule-status]");
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation) {
+    if (status) status.textContent = "Choose a specific customer and location before adding a lighting schedule.";
+    renderLightingSchedules();
+    return;
+  }
+  const formData = new FormData(form);
+  const zoneId = String(formData.get("zoneId") || "").trim();
+  const selectedZone = lightingZonesCache.find((zone) => zone.id === zoneId);
+  const schedule = {
+    id: crypto.randomUUID?.() || `lighting-schedule-${Date.now()}`,
+    customerId: selectedCustomerId,
+    locationId: selectedLocationId,
+    zoneId,
+    zoneName: selectedZone?.name || "All zones",
+    name: String(formData.get("name") || "").trim(),
+    days: String(formData.get("days") || "").trim(),
+    onTime: String(formData.get("onTime") || "").trim(),
+    offTime: String(formData.get("offTime") || "").trim(),
+    enabled: formData.get("enabled") !== "off",
+    notes: String(formData.get("notes") || "").trim(),
+    createdAt: new Date().toISOString()
+  };
+  if (!schedule.name) {
+    if (status) status.textContent = "Schedule name is required.";
+    return;
+  }
+  if (status) status.textContent = `Saving ${schedule.name}...`;
+  try {
+    const response = await siteworksApi.saveLightingSchedule({
+      ...schedule,
+      customer_id: schedule.customerId,
+      location_id: schedule.locationId,
+      zone_id: schedule.zoneId,
+      on_time: schedule.onTime,
+      off_time: schedule.offTime,
+      data: { zoneName: schedule.zoneName }
+    });
+    if (!response.ok) throw new Error(`Lighting schedule save failed: ${response.status}`);
+    const payload = await response.json();
+    const savedSchedule = payload.schedule || schedule;
+    lightingSchedulesCache = [savedSchedule, ...lightingSchedulesCache.filter((item) => item.id !== savedSchedule.id)];
+    lightingSchedulesLoadedScope = scopeKey;
+    if (status) status.textContent = `Added ${savedSchedule.name} to SiteWorks server.`;
+  } catch (error) {
+    console.warn("Lighting schedule could not be saved to the server.", error);
+    const schedules = getLightingSchedules().filter((item) => item.id !== schedule.id);
+    schedules.unshift(schedule);
+    saveLightingSchedules(schedules);
+    lightingSchedulesCache = [schedule, ...lightingSchedulesCache.filter((item) => item.id !== schedule.id)];
+    lightingSchedulesLoadedScope = scopeKey;
+    if (status) status.textContent = `Saved ${schedule.name} locally. Upload the server file to enable shared schedule storage.`;
+  }
+  form.reset();
+  renderLightingSchedules();
 }
 
 async function saveLightingZoneFromForm(form, existingZoneId = "") {
@@ -21303,6 +21484,21 @@ const siteworksApi = {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     return this.server(`/api/automation/lighting/zones/${encodeURIComponent(id)}`, {
       method: "DELETE"
+    });
+  },
+  loadLightingSchedules(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ schedules: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/lighting/schedules?${params.toString()}`);
+  },
+  saveLightingSchedule(schedule) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, schedule }), { status: 200 }));
+    return this.server("/api/automation/lighting/schedules", {
+      method: "POST",
+      body: JSON.stringify(schedule)
     });
   },
   loadServerHealth() {

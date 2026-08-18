@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="SiteWorks">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>SiteWorks</title>
-  <link rel="manifest" href="/manifest.webmanifest?v=20260818-lighting-controller-edit-01">
+  <link rel="manifest" href="/manifest.webmanifest?v=20260818-lighting-schedules-01">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260815-pwa-05">
-  <link rel="stylesheet" href="/styles.css?v=20260818-lighting-controller-edit-01">
+  <link rel="stylesheet" href="/styles.css?v=20260818-lighting-schedules-01">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -1427,7 +1427,7 @@
           <div class="lighting-status-grid">
             <div class="lighting-status-card is-offline"><span>Lighting network</span><strong>Setup only</strong></div>
             <div class="lighting-status-card is-on"><span>Zones on</span><strong data-lighting-zones-on>0</strong></div>
-            <div class="lighting-status-card"><span>Schedules active</span><strong>Not active</strong></div>
+            <div class="lighting-status-card"><span>Schedules active</span><strong data-lighting-schedules-active>Not active</strong></div>
             <div class="lighting-status-card is-warning"><span>Overrides</span><strong>None</strong></div>
           </div>
           <div class="automation-tab-strip" role="tablist" aria-label="Lighting controls">
@@ -1511,8 +1511,39 @@
             </div>
           </div>
           <div class="lighting-tab-panel hidden" data-lighting-panel="schedules">
-            <div class="lighting-list-row"><strong>Weekday interior</strong><span>Mon-Fri | 7:00 a.m. on | 6:00 p.m. off</span></div>
-            <div class="lighting-list-row"><strong>Exterior dusk</strong><span>Daily | dusk on | 11:30 p.m. off</span></div>
+            <details class="lighting-controller-wizard">
+              <summary>+ Add Lighting Schedule</summary>
+              <form data-lighting-schedule-form class="lighting-controller-form">
+                <p data-lighting-schedule-scope class="lighting-controller-scope">Choose a specific customer and location before adding a schedule.</p>
+                <label>Schedule name <input name="name" type="text" placeholder="Weekday interior"></label>
+                <label>Zone
+                  <select name="zoneId" data-lighting-schedule-zone>
+                    <option value="">All zones</option>
+                  </select>
+                </label>
+                <label>Days
+                  <select name="days">
+                    <option>Mon-Fri</option>
+                    <option>Daily</option>
+                    <option>Sat-Sun</option>
+                    <option>Custom</option>
+                  </select>
+                </label>
+                <label>On time <input name="onTime" type="time" value="07:00"></label>
+                <label>Off time <input name="offTime" type="time" value="18:00"></label>
+                <label>Enabled
+                  <select name="enabled">
+                    <option value="on">Enabled</option>
+                    <option value="off">Disabled</option>
+                  </select>
+                </label>
+                <label>Notes <textarea name="notes" rows="2" placeholder="Holiday exceptions, cleaning schedule, exterior sign notes"></textarea></label>
+                <div class="lighting-controller-help"><strong>Setup only</strong><span>This creates the schedule record. Live ESP32 relay execution comes later.</span></div>
+                <button type="submit">Add Schedule</button>
+                <p data-lighting-schedule-status class="lighting-controller-status"></p>
+              </form>
+            </details>
+            <div class="lighting-controller-list" data-lighting-schedule-list></div>
           </div>
           <div class="lighting-tab-panel hidden" data-lighting-panel="overrides">
             <div class="lighting-list-row is-warning"><strong>Exterior Signs</strong><span>Manual On | started 8:15 a.m. | expires end of day</span></div>
@@ -2121,11 +2152,11 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/app.js?v=20260818-lighting-controller-edit-01"></script>
+  <script src="/app.js?v=20260818-lighting-schedules-01"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-navigator.serviceWorker.register("/sw.js?v=20260818-lighting-controller-edit-01").catch((error) => {
+navigator.serviceWorker.register("/sw.js?v=20260818-lighting-schedules-01").catch((error) => {
           console.warn("SiteWorks app install support was not started.", error);
         });
       });
