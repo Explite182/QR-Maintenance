@@ -5239,7 +5239,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260818-lighting-zone-actions-01";
+const SITEWORKS_APP_VERSION = "20260818-lighting-command-queue-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -11149,11 +11149,36 @@ async function applyLightingZoneCommand(zoneId, desiredState) {
     const overridePayload = await overrideResponse.json();
     const savedZone = zonePayload.zone || updatedZone;
     const savedOverride = overridePayload.override || override;
+    let commandQueued = false;
+    if (savedZone.controllerId && savedZone.outputNumber) {
+      try {
+        const commandResponse = await siteworksApi.queueLightingCommand({
+          customer_id: savedZone.customerId,
+          location_id: savedZone.locationId,
+          controller_id: savedZone.controllerId,
+          zone_id: savedZone.id,
+          output_number: savedZone.outputNumber,
+          command_type: "set-output",
+          desired_state: cleanState,
+          data: {
+            zoneName: savedZone.name,
+            source: "zone-control"
+          }
+        });
+        commandQueued = commandResponse.ok;
+      } catch (commandError) {
+        console.warn("Lighting command could not be queued.", commandError);
+      }
+    }
     lightingZonesCache = [savedZone, ...lightingZonesCache.filter((item) => item.id !== savedZone.id)];
     lightingOverridesCache = [savedOverride, ...lightingOverridesCache.filter((item) => item.id !== savedOverride.id)];
     lightingZonesLoadedScope = scopeKey;
     lightingOverridesLoadedScope = scopeKey;
-    if (status) status.textContent = `${savedZone.name || "Lighting zone"} set to ${cleanState}.`;
+    if (status) {
+      status.textContent = commandQueued
+        ? `${savedZone.name || "Lighting zone"} set to ${cleanState}. Command queued for controller.`
+        : `${savedZone.name || "Lighting zone"} set to ${cleanState}. No controller command queued.`;
+    }
   } catch (error) {
     console.warn("Lighting zone command could not be saved to the server.", error);
     const zones = getLightingZones().filter((item) => item.id !== updatedZone.id);
@@ -21996,6 +22021,13 @@ const siteworksApi = {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     return this.server(`/api/automation/lighting/overrides/${encodeURIComponent(id)}`, {
       method: "DELETE"
+    });
+  },
+  queueLightingCommand(command) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, command }), { status: 200 }));
+    return this.server("/api/automation/lighting/commands", {
+      method: "POST",
+      body: JSON.stringify(command)
     });
   },
   loadServerHealth() {
