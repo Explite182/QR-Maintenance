@@ -5239,7 +5239,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260818-lighting-zone-controller-fix-01";
+const SITEWORKS_APP_VERSION = "20260818-lighting-controller-key-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -10623,6 +10623,9 @@ function renderLightingControllers() {
               ${[4, 8, 16, 32].map((count) => `<option value="${count}"${String(count) === String(controller.outputs) ? " selected" : ""}>${count}</option>`).join("")}
             </select>
           </label>
+          <label>API key
+            <input name="apiKey" type="password" placeholder="Leave blank to keep existing key">
+          </label>
           <label>Notes
             <textarea name="notes" rows="2">${escapeHtml(controller.notes || "")}</textarea>
           </label>
@@ -10651,6 +10654,10 @@ function renderLightingControllers() {
         <div>
           <span>Status</span>
           <strong>Setup only</strong>
+        </div>
+        <div>
+          <span>API key</span>
+          <strong>${controller.apiKeyLast4 ? `Ends ${escapeHtml(controller.apiKeyLast4)}` : "Not set"}</strong>
         </div>
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-controller-edit="${escapeHtml(controller.id)}">Edit</button>
@@ -10862,17 +10869,32 @@ async function saveLightingControllerFromForm(form, existingControllerId = "") {
     location: String(formData.get("location") || "").trim() || currentLocation?.name || "",
     outputs: String(formData.get("outputs") || "4").trim(),
     notes: String(formData.get("notes") || "").trim(),
+    apiKeyLast4: existingController?.apiKeyLast4 || "",
     createdAt: existingController?.createdAt || new Date().toISOString()
   };
+  const apiKey = String(formData.get("apiKey") || "").trim();
+  if (apiKey && apiKey.length < 16) {
+    if (status) status.textContent = "Lighting API key must be at least 16 characters.";
+    return;
+  }
+  const apiKeyHash = apiKey ? await hashMonitoringApiKey(apiKey) : "";
+  if (apiKey) controller.apiKeyLast4 = apiKey.slice(-4);
   if (status) status.textContent = `Saving ${controller.name}...`;
   try {
+    const data = { location: controller.location };
+    if (apiKeyHash) {
+      data.apiKeyHash = apiKeyHash;
+      data.apiKeyLast4 = controller.apiKeyLast4;
+    }
     const response = await siteworksApi.saveLightingController({
       ...controller,
       customer_id: controller.customerId,
       location_id: controller.locationId,
       device_uid: controller.uid,
       controller_type: controller.type,
-      data: { location: controller.location }
+      apiKeyHash,
+      apiKeyLast4: controller.apiKeyLast4,
+      data
     });
     if (!response.ok) throw new Error(`Lighting controller save failed: ${response.status}`);
     const payload = await response.json();
