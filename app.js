@@ -5239,12 +5239,13 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260818-lighting-zone-edit-01";
+const SITEWORKS_APP_VERSION = "20260818-lighting-controller-edit-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
+let editingLightingControllerId = "";
 let lightingZonesCache = [];
 let lightingZonesLoadedScope = "";
 let lightingZonesLoading = false;
@@ -7992,6 +7993,8 @@ els.customerFilter.addEventListener("change", () => {
   selectedContractorCustomerId = selectedCustomerId;
   selectedLocationId = defaultLocationSelection();
   selectedId = null;
+  editingLightingControllerId = "";
+  editingLightingZoneId = "";
   clearSelectedAssetUrl();
   assetPage = 1;
   render();
@@ -8016,6 +8019,7 @@ els.locationFilter.addEventListener("change", () => {
   siteMapLevelId = "main";
   siteMapViewportMemory = { left: 0, top: 0 };
   selectedId = null;
+  editingLightingControllerId = "";
   editingLightingZoneId = "";
   clearSelectedAssetUrl();
   assetPage = 1;
@@ -8910,6 +8914,32 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const lightingControllerEditButton = event.target.closest("[data-lighting-controller-edit]");
+  if (lightingControllerEditButton) {
+    event.preventDefault();
+    editingLightingControllerId = lightingControllerEditButton.dataset.lightingControllerEdit || "";
+    renderLightingControllers();
+    return;
+  }
+
+  const lightingControllerCancelButton = event.target.closest("[data-lighting-controller-cancel]");
+  if (lightingControllerCancelButton) {
+    event.preventDefault();
+    editingLightingControllerId = "";
+    renderLightingControllers();
+    return;
+  }
+
+  const lightingControllerDeleteButton = event.target.closest("[data-lighting-controller-delete]");
+  if (lightingControllerDeleteButton) {
+    event.preventDefault();
+    const controllerId = lightingControllerDeleteButton.dataset.lightingControllerDelete || "";
+    const controller = lightingControllersCache.find((item) => item.id === controllerId);
+    if (!controllerId || !window.confirm(`Delete ${controller?.name || "this lighting controller"}?`)) return;
+    deleteLightingController(controllerId);
+    return;
+  }
+
   const lightingZoneEditButton = event.target.closest("[data-lighting-zone-edit]");
   if (lightingZoneEditButton) {
     event.preventDefault();
@@ -9411,6 +9441,11 @@ document.addEventListener("submit", async (event) => {
   if (form.matches("[data-lighting-controller-form]")) {
     event.preventDefault();
     await saveLightingControllerFromForm(form);
+    return;
+  }
+  if (form.matches("[data-lighting-controller-edit-form]")) {
+    event.preventDefault();
+    await saveLightingControllerFromForm(form, form.dataset.lightingControllerEditForm || "");
     return;
   }
   if (form.matches("[data-lighting-zone-form]")) {
@@ -10176,6 +10211,7 @@ async function loadLightingZonesForCurrentScope({ force = false } = {}) {
   } finally {
     lightingZonesLoading = false;
     renderLightingZones();
+    renderLightingControllers();
   }
 }
 
@@ -10316,12 +10352,16 @@ function renderLightingControllers() {
   if (!canUseLocation) {
     lightingControllersCache = [];
     lightingControllersLoadedScope = "";
+    editingLightingControllerId = "";
     list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting ESP32 controllers are saved per location, not globally.</span></div>`;
     return;
   }
   const scopeKey = getLightingControllerScopeKey();
   if (lightingControllersLoadedScope !== scopeKey && !lightingControllersLoading) {
     loadLightingControllersForCurrentScope();
+  }
+  if (lightingZonesLoadedScope !== scopeKey && !lightingZonesLoading) {
+    loadLightingZonesForCurrentScope();
   }
   const controllers = lightingControllersLoadedScope === scopeKey
     ? lightingControllersCache
@@ -10334,25 +10374,69 @@ function renderLightingControllers() {
     list.innerHTML = `<div class="lighting-list-row"><strong>No lighting controllers for this location</strong><span>Use the setup wizard to add an ESP32 controller for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
     return;
   }
-  list.innerHTML = controllers.map((controller) => `
-    <div class="lighting-controller-card">
-      <div>
-        <strong>${escapeHtml(controller.name)}</strong>
-        <span>${escapeHtml(controller.uid)} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.location || currentLocation?.name || "No location assigned")}</span>
+  list.innerHTML = controllers.map((controller) => {
+    const isEditing = controller.id === editingLightingControllerId;
+    if (isEditing) {
+      return `
+        <form class="lighting-controller-card lighting-controller-edit-form" data-lighting-controller-edit-form="${escapeHtml(controller.id)}">
+          <label>Controller name
+            <input name="name" value="${escapeHtml(controller.name)}" required>
+          </label>
+          <label>Device UID
+            <input name="uid" value="${escapeHtml(controller.uid)}" required>
+          </label>
+          <label>Controller type
+            <select name="type">
+              ${["Relay controller", "Dimming controller", "Sensor controller"].map((type) => `<option value="${type}"${type === controller.type ? " selected" : ""}>${type}</option>`).join("")}
+            </select>
+          </label>
+          <label>Assigned area
+            <input name="location" value="${escapeHtml(controller.location || currentLocation?.name || "")}">
+          </label>
+          <label>Outputs
+            <select name="outputs">
+              ${[4, 8, 16, 32].map((count) => `<option value="${count}"${String(count) === String(controller.outputs) ? " selected" : ""}>${count}</option>`).join("")}
+            </select>
+          </label>
+          <label>Notes
+            <textarea name="notes" rows="2">${escapeHtml(controller.notes || "")}</textarea>
+          </label>
+          <div class="lighting-zone-actions">
+            <button type="submit">Save Controller</button>
+            <button type="button" data-lighting-controller-cancel>Cancel</button>
+          </div>
+        </form>
+      `;
+    }
+    const assignedZones = lightingZonesCache.filter((zone) => zone.controllerId === controller.id).length;
+    return `
+      <div class="lighting-controller-card">
+        <div>
+          <strong>${escapeHtml(controller.name)}</strong>
+          <span>${escapeHtml(controller.uid)} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.location || currentLocation?.name || "No location assigned")}</span>
+        </div>
+        <div>
+          <span>Outputs</span>
+          <strong>${escapeHtml(controller.outputs)}</strong>
+        </div>
+        <div>
+          <span>Zones</span>
+          <strong>${assignedZones}</strong>
+        </div>
+        <div>
+          <span>Status</span>
+          <strong>Setup only</strong>
+        </div>
+        <div class="lighting-zone-actions">
+          <button type="button" data-lighting-controller-edit="${escapeHtml(controller.id)}">Edit</button>
+          <button type="button" data-lighting-controller-delete="${escapeHtml(controller.id)}">Delete</button>
+        </div>
       </div>
-      <div>
-        <span>Outputs</span>
-        <strong>${escapeHtml(controller.outputs)}</strong>
-      </div>
-      <div>
-        <span>Status</span>
-        <strong>Setup only</strong>
-      </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
 
-async function saveLightingControllerFromForm(form) {
+async function saveLightingControllerFromForm(form, existingControllerId = "") {
   const status = document.querySelector("[data-lighting-controller-status]");
   if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
     if (status) status.textContent = "Choose a specific customer and location before adding a lighting controller.";
@@ -10361,8 +10445,11 @@ async function saveLightingControllerFromForm(form) {
   }
   const formData = new FormData(form);
   const currentLocation = getLocation(selectedLocationId);
+  const existingController = existingControllerId
+    ? lightingControllersCache.find((item) => item.id === existingControllerId) || getLightingControllers().find((item) => item.id === existingControllerId)
+    : null;
   const controller = {
-    id: crypto.randomUUID?.() || `lighting-${Date.now()}`,
+    id: existingControllerId || crypto.randomUUID?.() || `lighting-${Date.now()}`,
     customerId: selectedCustomerId,
     locationId: selectedLocationId,
     name: String(formData.get("name") || "").trim() || "Lighting Controller",
@@ -10371,7 +10458,7 @@ async function saveLightingControllerFromForm(form) {
     location: String(formData.get("location") || "").trim() || currentLocation?.name || "",
     outputs: String(formData.get("outputs") || "4").trim(),
     notes: String(formData.get("notes") || "").trim(),
-    createdAt: new Date().toISOString()
+    createdAt: existingController?.createdAt || new Date().toISOString()
   };
   if (status) status.textContent = `Saving ${controller.name}...`;
   try {
@@ -10388,7 +10475,8 @@ async function saveLightingControllerFromForm(form) {
     const savedController = payload.controller || controller;
     lightingControllersCache = [savedController, ...lightingControllersCache.filter((item) => item.id !== savedController.id)];
     lightingControllersLoadedScope = getLightingControllerScopeKey();
-    if (status) status.textContent = `Added ${savedController.name} to SiteWorks server.`;
+    editingLightingControllerId = "";
+    if (status) status.textContent = `Saved ${savedController.name} to SiteWorks server.`;
   } catch (error) {
     console.warn("Lighting controller could not be saved to the server.", error);
     const controllers = getLightingControllers().filter((item) => item.id !== controller.id);
@@ -10396,9 +10484,39 @@ async function saveLightingControllerFromForm(form) {
     saveLightingControllers(controllers);
     lightingControllersCache = [controller, ...lightingControllersCache.filter((item) => item.id !== controller.id)];
     lightingControllersLoadedScope = getLightingControllerScopeKey();
+    editingLightingControllerId = "";
     if (status) status.textContent = `Saved ${controller.name} locally. Upload the server file to enable shared controller storage.`;
   }
   form.reset();
+  renderLightingControllers();
+  renderLightingZones();
+}
+
+async function deleteLightingController(controllerId) {
+  const status = document.querySelector("[data-lighting-controller-status]");
+  if (!controllerId) return;
+  const assignedZones = lightingZonesCache.filter((zone) => zone.controllerId === controllerId).length;
+  if (assignedZones) {
+    if (status) status.textContent = `Remove or reassign ${assignedZones} lighting zone${assignedZones === 1 ? "" : "s"} before deleting this controller.`;
+    return;
+  }
+  if (status) status.textContent = "Deleting lighting controller...";
+  try {
+    const response = await siteworksApi.deleteLightingController(controllerId);
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Lighting controller delete failed: ${response.status}`);
+    }
+    lightingControllersCache = lightingControllersCache.filter((item) => item.id !== controllerId);
+    saveLightingControllers(getLightingControllers().filter((item) => item.id !== controllerId));
+    editingLightingControllerId = "";
+    if (status) status.textContent = "Lighting controller deleted.";
+  } catch (error) {
+    console.warn("Lighting controller could not be deleted from the server.", error);
+    if (status) status.textContent = error?.message?.includes("zone")
+      ? "Remove or reassign linked lighting zones before deleting this controller."
+      : "Controller delete failed. Check the server upload/restart, then try again.";
+  }
   renderLightingControllers();
   renderLightingZones();
 }
@@ -21158,6 +21276,12 @@ const siteworksApi = {
     return this.server("/api/automation/lighting/controllers", {
       method: "POST",
       body: JSON.stringify(controller)
+    });
+  },
+  deleteLightingController(id) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    return this.server(`/api/automation/lighting/controllers/${encodeURIComponent(id)}`, {
+      method: "DELETE"
     });
   },
   loadLightingZones(customerId, locationId) {
