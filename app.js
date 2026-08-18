@@ -5239,10 +5239,11 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260818-lighting-schedule-edit-01";
+const SITEWORKS_APP_VERSION = "20260818-lighting-overrides-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
+const LIGHTING_OVERRIDES_STORAGE_KEY = "siteworks_lighting_overrides_v1";
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
@@ -5255,6 +5256,9 @@ let lightingSchedulesCache = [];
 let lightingSchedulesLoadedScope = "";
 let lightingSchedulesLoading = false;
 let editingLightingScheduleId = "";
+let lightingOverridesCache = [];
+let lightingOverridesLoadedScope = "";
+let lightingOverridesLoading = false;
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8006,6 +8010,7 @@ els.customerFilter.addEventListener("change", () => {
   renderLightingControllers();
   renderLightingZones();
   renderLightingSchedules();
+  renderLightingOverrides();
 });
 
 els.newUserRole?.addEventListener("change", () => {
@@ -8033,6 +8038,7 @@ els.locationFilter.addEventListener("change", () => {
   renderLightingControllers();
   renderLightingZones();
   renderLightingSchedules();
+  renderLightingOverrides();
 });
 
 els.serviceRequestCustomer?.addEventListener("change", () => {
@@ -9501,6 +9507,11 @@ document.addEventListener("submit", async (event) => {
     await saveLightingScheduleFromForm(form, form.dataset.lightingScheduleEditForm || "");
     return;
   }
+  if (form.matches("[data-lighting-override-form]")) {
+    event.preventDefault();
+    await saveLightingOverrideFromForm(form);
+    return;
+  }
   if (form.id === "monitoringDeviceForm") {
     event.preventDefault();
     await handleMonitoringDeviceSubmit(form);
@@ -10135,6 +10146,7 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
     renderLightingControllers();
     renderLightingZones();
     renderLightingSchedules();
+    renderLightingOverrides();
   }
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -10151,6 +10163,7 @@ function setLightingAutomationTab(tab = "zones") {
   if (selectedTab === "controllers") renderLightingControllers();
   if (selectedTab === "zones") renderLightingZones();
   if (selectedTab === "schedules") renderLightingSchedules();
+  if (selectedTab === "overrides") renderLightingOverrides();
 }
 
 function getLightingControllers() {
@@ -10204,6 +10217,24 @@ function saveLightingSchedules(schedules) {
   } catch (error) {
     showStorageFullWarning?.();
     console.warn("Lighting schedule setup could not be saved locally.", error);
+  }
+}
+
+function getLightingOverrides() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LIGHTING_OVERRIDES_STORAGE_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLightingOverrides(overrides) {
+  try {
+    localStorage.setItem(LIGHTING_OVERRIDES_STORAGE_KEY, JSON.stringify(overrides));
+  } catch (error) {
+    showStorageFullWarning?.();
+    console.warn("Lighting override setup could not be saved locally.", error);
   }
 }
 
@@ -10305,6 +10336,33 @@ async function loadLightingSchedulesForCurrentScope({ force = false } = {}) {
   }
 }
 
+async function loadLightingOverridesForCurrentScope({ force = false } = {}) {
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation || lightingOverridesLoading) return;
+  if (!force && lightingOverridesLoadedScope === scopeKey) return;
+  lightingOverridesLoading = true;
+  const status = document.querySelector("[data-lighting-override-status]");
+  if (status) status.textContent = "Loading lighting overrides...";
+  try {
+    const response = await siteworksApi.loadLightingOverrides(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`Lighting override load failed: ${response.status}`);
+    const payload = await response.json();
+    lightingOverridesCache = Array.isArray(payload.overrides) ? payload.overrides : [];
+    lightingOverridesLoadedScope = scopeKey;
+    if (status) status.textContent = "";
+  } catch (error) {
+    console.warn("Lighting overrides could not be loaded from the server.", error);
+    lightingOverridesCache = getLightingOverrides().filter((override) => (
+      override.customerId === selectedCustomerId && override.locationId === selectedLocationId
+    ));
+    lightingOverridesLoadedScope = scopeKey;
+    if (status) status.textContent = "Using local saved overrides until the server endpoint is available.";
+  } finally {
+    lightingOverridesLoading = false;
+    renderLightingOverrides();
+  }
+}
+
 function renderLightingZoneControllerOptions() {
   const select = document.querySelector("[data-lighting-zone-controller]");
   if (!select) return;
@@ -10313,6 +10371,12 @@ function renderLightingZoneControllerOptions() {
 
 function renderLightingScheduleZoneOptions() {
   const select = document.querySelector("[data-lighting-schedule-zone]");
+  if (!select) return;
+  select.innerHTML = getLightingZoneOptionsHtml(select.value || "");
+}
+
+function renderLightingOverrideZoneOptions() {
+  const select = document.querySelector("[data-lighting-override-zone]");
   if (!select) return;
   select.innerHTML = getLightingZoneOptionsHtml(select.value || "");
 }
@@ -10633,6 +10697,54 @@ function renderLightingSchedules() {
   }).join("");
 }
 
+function renderLightingOverrides() {
+  const list = document.querySelector("[data-lighting-override-list]");
+  if (!list) return;
+  const scopeStatus = document.querySelector("[data-lighting-override-scope]");
+  const { canUseLocation, scopeKey, currentCustomer, currentLocation } = getLightingScopeDetails();
+  if (scopeStatus) {
+    scopeStatus.textContent = canUseLocation
+      ? `Adding to ${currentCustomer?.name || "selected customer"} | ${currentLocation?.name || "selected location"}`
+      : "Choose a specific customer and location before adding an override.";
+  }
+  document.querySelectorAll("[data-lighting-override-form] button[type='submit']").forEach((button) => {
+    button.disabled = !canUseLocation;
+  });
+  if (canUseLocation && lightingZonesLoadedScope !== scopeKey && !lightingZonesLoading) {
+    loadLightingZonesForCurrentScope();
+  }
+  renderLightingOverrideZoneOptions();
+  if (!canUseLocation) {
+    lightingOverridesCache = [];
+    lightingOverridesLoadedScope = "";
+    list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting overrides are saved per location, not globally.</span></div>`;
+    return;
+  }
+  if (lightingOverridesLoadedScope !== scopeKey && !lightingOverridesLoading) {
+    loadLightingOverridesForCurrentScope();
+  }
+  const overrides = lightingOverridesLoadedScope === scopeKey
+    ? lightingOverridesCache
+    : getLightingOverrides().filter((override) => override.customerId === selectedCustomerId && override.locationId === selectedLocationId);
+  if (lightingOverridesLoading && lightingOverridesLoadedScope !== scopeKey) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>Loading overrides</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
+    return;
+  }
+  const activeOverrides = overrides.filter((override) => override.enabled !== false);
+  const overrideCount = document.querySelector("[data-lighting-overrides-active]");
+  if (overrideCount) overrideCount.textContent = activeOverrides.length ? String(activeOverrides.length) : "None";
+  if (!overrides.length) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>No lighting overrides for this location</strong><span>Add a setup override like exterior signs on, cleaning lights on, or parking lot off.</span></div>`;
+    return;
+  }
+  list.innerHTML = overrides.map((override) => `
+    <div class="lighting-list-row is-warning">
+      <strong>${escapeHtml(override.name || "Lighting override")}</strong>
+      <span>${escapeHtml(override.zoneName || "All zones")} | ${escapeHtml(override.desiredState || "On")} | until ${escapeHtml(override.expiresAt || "manually cleared")} | ${override.enabled === false ? "Disabled" : "Active"}</span>
+    </div>
+  `).join("");
+}
+
 async function saveLightingControllerFromForm(form, existingControllerId = "") {
   const status = document.querySelector("[data-lighting-controller-status]");
   if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
@@ -10804,6 +10916,64 @@ async function deleteLightingSchedule(scheduleId) {
     if (status) status.textContent = "Schedule delete failed on the server. Removed from this browser for now.";
   }
   renderLightingSchedules();
+}
+
+async function saveLightingOverrideFromForm(form) {
+  const status = document.querySelector("[data-lighting-override-status]");
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation) {
+    if (status) status.textContent = "Choose a specific customer and location before adding a lighting override.";
+    renderLightingOverrides();
+    return;
+  }
+  const formData = new FormData(form);
+  const zoneId = String(formData.get("zoneId") || "").trim();
+  const selectedZone = lightingZonesCache.find((zone) => zone.id === zoneId);
+  const override = {
+    id: crypto.randomUUID?.() || `lighting-override-${Date.now()}`,
+    customerId: selectedCustomerId,
+    locationId: selectedLocationId,
+    zoneId,
+    zoneName: selectedZone?.name || "All zones",
+    name: String(formData.get("name") || "").trim(),
+    desiredState: String(formData.get("desiredState") || "On").trim(),
+    expiresAt: String(formData.get("expiresAt") || "").trim(),
+    enabled: formData.get("enabled") !== "off",
+    notes: String(formData.get("notes") || "").trim(),
+    createdAt: new Date().toISOString()
+  };
+  if (!override.name) {
+    if (status) status.textContent = "Override name is required.";
+    return;
+  }
+  if (status) status.textContent = `Saving ${override.name}...`;
+  try {
+    const response = await siteworksApi.saveLightingOverride({
+      ...override,
+      customer_id: override.customerId,
+      location_id: override.locationId,
+      zone_id: override.zoneId,
+      desired_state: override.desiredState,
+      expires_at: override.expiresAt,
+      data: { zoneName: override.zoneName }
+    });
+    if (!response.ok) throw new Error(`Lighting override save failed: ${response.status}`);
+    const payload = await response.json();
+    const savedOverride = payload.override || override;
+    lightingOverridesCache = [savedOverride, ...lightingOverridesCache.filter((item) => item.id !== savedOverride.id)];
+    lightingOverridesLoadedScope = scopeKey;
+    if (status) status.textContent = `Added ${savedOverride.name} to SiteWorks server.`;
+  } catch (error) {
+    console.warn("Lighting override could not be saved to the server.", error);
+    const overrides = getLightingOverrides().filter((item) => item.id !== override.id);
+    overrides.unshift(override);
+    saveLightingOverrides(overrides);
+    lightingOverridesCache = [override, ...lightingOverridesCache.filter((item) => item.id !== override.id)];
+    lightingOverridesLoadedScope = scopeKey;
+    if (status) status.textContent = `Saved ${override.name} locally. Upload the server file to enable shared override storage.`;
+  }
+  form.reset();
+  renderLightingOverrides();
 }
 
 async function saveLightingZoneFromForm(form, existingZoneId = "") {
@@ -21609,6 +21779,21 @@ const siteworksApi = {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     return this.server(`/api/automation/lighting/schedules/${encodeURIComponent(id)}`, {
       method: "DELETE"
+    });
+  },
+  loadLightingOverrides(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ overrides: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/lighting/overrides?${params.toString()}`);
+  },
+  saveLightingOverride(override) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, override }), { status: 200 }));
+    return this.server("/api/automation/lighting/overrides", {
+      method: "POST",
+      body: JSON.stringify(override)
     });
   },
   loadServerHealth() {
