@@ -5239,7 +5239,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260818-lighting-schedules-01";
+const SITEWORKS_APP_VERSION = "20260818-lighting-schedule-edit-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -5254,6 +5254,7 @@ let editingLightingZoneId = "";
 let lightingSchedulesCache = [];
 let lightingSchedulesLoadedScope = "";
 let lightingSchedulesLoading = false;
+let editingLightingScheduleId = "";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8972,6 +8973,32 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const lightingScheduleEditButton = event.target.closest("[data-lighting-schedule-edit]");
+  if (lightingScheduleEditButton) {
+    event.preventDefault();
+    editingLightingScheduleId = lightingScheduleEditButton.dataset.lightingScheduleEdit || "";
+    renderLightingSchedules();
+    return;
+  }
+
+  const lightingScheduleCancelButton = event.target.closest("[data-lighting-schedule-cancel]");
+  if (lightingScheduleCancelButton) {
+    event.preventDefault();
+    editingLightingScheduleId = "";
+    renderLightingSchedules();
+    return;
+  }
+
+  const lightingScheduleDeleteButton = event.target.closest("[data-lighting-schedule-delete]");
+  if (lightingScheduleDeleteButton) {
+    event.preventDefault();
+    const scheduleId = lightingScheduleDeleteButton.dataset.lightingScheduleDelete || "";
+    const schedule = lightingSchedulesCache.find((item) => item.id === scheduleId);
+    if (!scheduleId || !window.confirm(`Delete ${schedule?.name || "this lighting schedule"}?`)) return;
+    deleteLightingSchedule(scheduleId);
+    return;
+  }
+
   const inventoryMenuToggle = event.target.closest("[data-inventory-menu-toggle]");
   if (inventoryMenuToggle) {
     event.preventDefault();
@@ -9467,6 +9494,11 @@ document.addEventListener("submit", async (event) => {
   if (form.matches("[data-lighting-schedule-form]")) {
     event.preventDefault();
     await saveLightingScheduleFromForm(form);
+    return;
+  }
+  if (form.matches("[data-lighting-schedule-edit-form]")) {
+    event.preventDefault();
+    await saveLightingScheduleFromForm(form, form.dataset.lightingScheduleEditForm || "");
     return;
   }
   if (form.id === "monitoringDeviceForm") {
@@ -10550,12 +10582,55 @@ function renderLightingSchedules() {
     list.innerHTML = `<div class="lighting-list-row"><strong>No lighting schedules for this location</strong><span>Add a setup schedule like weekday interior, exterior dusk, or after-hours cleaning.</span></div>`;
     return;
   }
-  list.innerHTML = schedules.map((schedule) => `
-    <div class="lighting-list-row">
-      <strong>${escapeHtml(schedule.name || "Lighting schedule")}</strong>
-      <span>${escapeHtml(schedule.days || "No days")} | ${escapeHtml(schedule.onTime || "No on time")} on | ${escapeHtml(schedule.offTime || "No off time")} off | ${escapeHtml(schedule.zoneName || "All zones")} | ${schedule.enabled === false ? "Disabled" : "Enabled"}</span>
-    </div>
-  `).join("");
+  list.innerHTML = schedules.map((schedule) => {
+    const isEditing = schedule.id === editingLightingScheduleId;
+    if (isEditing) {
+      return `
+        <form class="lighting-controller-card lighting-controller-edit-form" data-lighting-schedule-edit-form="${escapeHtml(schedule.id)}">
+          <label>Schedule name
+            <input name="name" value="${escapeHtml(schedule.name || "")}" required>
+          </label>
+          <label>Zone
+            <select name="zoneId">${getLightingZoneOptionsHtml(schedule.zoneId || "")}</select>
+          </label>
+          <label>Days
+            <select name="days">
+              ${["Mon-Fri", "Daily", "Sat-Sun", "Custom"].map((days) => `<option value="${days}"${days === schedule.days ? " selected" : ""}>${days}</option>`).join("")}
+            </select>
+          </label>
+          <label>On time
+            <input name="onTime" type="time" value="${escapeHtml(schedule.onTime || "")}">
+          </label>
+          <label>Off time
+            <input name="offTime" type="time" value="${escapeHtml(schedule.offTime || "")}">
+          </label>
+          <label>Enabled
+            <select name="enabled">
+              <option value="on"${schedule.enabled === false ? "" : " selected"}>Enabled</option>
+              <option value="off"${schedule.enabled === false ? " selected" : ""}>Disabled</option>
+            </select>
+          </label>
+          <label>Notes
+            <textarea name="notes" rows="2">${escapeHtml(schedule.notes || "")}</textarea>
+          </label>
+          <div class="lighting-zone-actions">
+            <button type="submit">Save Schedule</button>
+            <button type="button" data-lighting-schedule-cancel>Cancel</button>
+          </div>
+        </form>
+      `;
+    }
+    return `
+      <div class="lighting-list-row">
+        <strong>${escapeHtml(schedule.name || "Lighting schedule")}</strong>
+        <span>${escapeHtml(schedule.days || "No days")} | ${escapeHtml(schedule.onTime || "No on time")} on | ${escapeHtml(schedule.offTime || "No off time")} off | ${escapeHtml(schedule.zoneName || "All zones")} | ${schedule.enabled === false ? "Disabled" : "Enabled"}</span>
+        <div class="lighting-zone-actions">
+          <button type="button" data-lighting-schedule-edit="${escapeHtml(schedule.id)}">Edit</button>
+          <button type="button" data-lighting-schedule-delete="${escapeHtml(schedule.id)}">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
 
 async function saveLightingControllerFromForm(form, existingControllerId = "") {
@@ -10643,7 +10718,7 @@ async function deleteLightingController(controllerId) {
   renderLightingZones();
 }
 
-async function saveLightingScheduleFromForm(form) {
+async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
   const status = document.querySelector("[data-lighting-schedule-status]");
   const { canUseLocation, scopeKey } = getLightingScopeDetails();
   if (!canUseLocation) {
@@ -10654,19 +10729,22 @@ async function saveLightingScheduleFromForm(form) {
   const formData = new FormData(form);
   const zoneId = String(formData.get("zoneId") || "").trim();
   const selectedZone = lightingZonesCache.find((zone) => zone.id === zoneId);
+  const existingSchedule = existingScheduleId
+    ? lightingSchedulesCache.find((item) => item.id === existingScheduleId) || getLightingSchedules().find((item) => item.id === existingScheduleId)
+    : null;
   const schedule = {
-    id: crypto.randomUUID?.() || `lighting-schedule-${Date.now()}`,
+    id: existingScheduleId || crypto.randomUUID?.() || `lighting-schedule-${Date.now()}`,
     customerId: selectedCustomerId,
     locationId: selectedLocationId,
     zoneId,
-    zoneName: selectedZone?.name || "All zones",
+    zoneName: selectedZone?.name || (zoneId ? existingSchedule?.zoneName : "All zones") || "All zones",
     name: String(formData.get("name") || "").trim(),
     days: String(formData.get("days") || "").trim(),
     onTime: String(formData.get("onTime") || "").trim(),
     offTime: String(formData.get("offTime") || "").trim(),
     enabled: formData.get("enabled") !== "off",
     notes: String(formData.get("notes") || "").trim(),
-    createdAt: new Date().toISOString()
+    createdAt: existingSchedule?.createdAt || new Date().toISOString()
   };
   if (!schedule.name) {
     if (status) status.textContent = "Schedule name is required.";
@@ -10688,7 +10766,8 @@ async function saveLightingScheduleFromForm(form) {
     const savedSchedule = payload.schedule || schedule;
     lightingSchedulesCache = [savedSchedule, ...lightingSchedulesCache.filter((item) => item.id !== savedSchedule.id)];
     lightingSchedulesLoadedScope = scopeKey;
-    if (status) status.textContent = `Added ${savedSchedule.name} to SiteWorks server.`;
+    editingLightingScheduleId = "";
+    if (status) status.textContent = `Saved ${savedSchedule.name} to SiteWorks server.`;
   } catch (error) {
     console.warn("Lighting schedule could not be saved to the server.", error);
     const schedules = getLightingSchedules().filter((item) => item.id !== schedule.id);
@@ -10696,9 +10775,34 @@ async function saveLightingScheduleFromForm(form) {
     saveLightingSchedules(schedules);
     lightingSchedulesCache = [schedule, ...lightingSchedulesCache.filter((item) => item.id !== schedule.id)];
     lightingSchedulesLoadedScope = scopeKey;
+    editingLightingScheduleId = "";
     if (status) status.textContent = `Saved ${schedule.name} locally. Upload the server file to enable shared schedule storage.`;
   }
   form.reset();
+  renderLightingSchedules();
+}
+
+async function deleteLightingSchedule(scheduleId) {
+  const status = document.querySelector("[data-lighting-schedule-status]");
+  if (!scheduleId) return;
+  if (status) status.textContent = "Deleting lighting schedule...";
+  try {
+    const response = await siteworksApi.deleteLightingSchedule(scheduleId);
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Lighting schedule delete failed: ${response.status}`);
+    }
+    lightingSchedulesCache = lightingSchedulesCache.filter((item) => item.id !== scheduleId);
+    saveLightingSchedules(getLightingSchedules().filter((item) => item.id !== scheduleId));
+    editingLightingScheduleId = "";
+    if (status) status.textContent = "Lighting schedule deleted.";
+  } catch (error) {
+    console.warn("Lighting schedule could not be deleted from the server.", error);
+    saveLightingSchedules(getLightingSchedules().filter((item) => item.id !== scheduleId));
+    lightingSchedulesCache = lightingSchedulesCache.filter((item) => item.id !== scheduleId);
+    editingLightingScheduleId = "";
+    if (status) status.textContent = "Schedule delete failed on the server. Removed from this browser for now.";
+  }
   renderLightingSchedules();
 }
 
@@ -21499,6 +21603,12 @@ const siteworksApi = {
     return this.server("/api/automation/lighting/schedules", {
       method: "POST",
       body: JSON.stringify(schedule)
+    });
+  },
+  deleteLightingSchedule(id) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    return this.server(`/api/automation/lighting/schedules/${encodeURIComponent(id)}`, {
+      method: "DELETE"
     });
   },
   loadServerHealth() {
