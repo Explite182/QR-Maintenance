@@ -5243,12 +5243,13 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-device-status-02";
+const SITEWORKS_APP_VERSION = "20260819-lighting-device-status-03";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
 const LIGHTING_OVERRIDES_STORAGE_KEY = "siteworks_lighting_overrides_v1";
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
+const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
@@ -10213,6 +10214,7 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
     renderLightingZones();
     renderLightingSchedules();
     renderLightingOverrides();
+    renderLightingHistory();
   }
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -10231,6 +10233,7 @@ function setLightingAutomationTab(tab = "zones") {
   if (selectedTab === "zones") renderLightingZones();
   if (selectedTab === "schedules") renderLightingSchedules();
   if (selectedTab === "overrides") renderLightingOverrides();
+  if (selectedTab === "history") renderLightingHistory();
 }
 
 function getLightingControllers() {
@@ -10375,6 +10378,13 @@ function getLatestLightingCommandForZone(zoneId) {
   return lightingCommandsCache.find((command) => command.zoneId === zoneId || command.zone_id === zoneId) || null;
 }
 
+function isLightingCommandStale(command = {}) {
+  const status = String(command.status || "pending").toLowerCase();
+  if (!["pending", "acknowledged"].includes(status)) return false;
+  const createdAt = Date.parse(command.createdAt || command.created_at || "");
+  return Number.isFinite(createdAt) && Date.now() - createdAt > LIGHTING_COMMAND_STALE_MS;
+}
+
 function getLightingCommandStatusHtml(zone) {
   const command = getLatestLightingCommandForZone(zone.id);
   if (!command) return `<span>Last command <strong>None queued</strong></span>`;
@@ -10389,7 +10399,53 @@ function getLightingCommandStatusHtml(zone) {
         ? "Failed"
         : "Queued";
   const timeText = updatedAt ? ` | ${formatDateTime(updatedAt)}` : "";
-  return `<span class="lighting-command-status is-${escapeHtml(status)}">Last command <strong>${escapeHtml(statusText)}${state ? ` ${escapeHtml(state)}` : ""}${escapeHtml(timeText)}</strong></span>`;
+  const staleText = isLightingCommandStale(command) ? " - waiting on controller" : "";
+  return `<span class="lighting-command-status is-${escapeHtml(status)}${isLightingCommandStale(command) ? " is-stale" : ""}">Last command <strong>${escapeHtml(statusText)}${state ? ` ${escapeHtml(state)}` : ""}${escapeHtml(staleText)}${escapeHtml(timeText)}</strong></span>`;
+}
+
+function getLightingCommandZoneName(command = {}) {
+  const zoneId = command.zoneId || command.zone_id || "";
+  const zone = lightingZonesCache.find((item) => item.id === zoneId);
+  return zone?.name || command.metadata?.zoneName || command.metadata?.zone_name || "Lighting zone";
+}
+
+function renderLightingHistory() {
+  const list = document.querySelector("[data-lighting-command-history]");
+  const count = document.querySelector("[data-lighting-history-count]");
+  if (!list && !count) return;
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation) {
+    if (count) count.textContent = "0";
+    if (list) list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting command history is saved per location.</span></div>`;
+    return;
+  }
+  if (lightingCommandsLoadedScope !== scopeKey && !lightingCommandsLoading) {
+    loadLightingCommandsForCurrentScope();
+  }
+  const commands = lightingCommandsLoadedScope === scopeKey ? lightingCommandsCache.slice(0, 25) : [];
+  if (count) count.textContent = commands.length ? String(commands.length) : "0";
+  if (!list) return;
+  if (lightingCommandsLoading && lightingCommandsLoadedScope !== scopeKey) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>Loading history</strong><span>Checking recent lighting commands.</span></div>`;
+    return;
+  }
+  if (!commands.length) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>No lighting command history yet</strong><span>Recent relay commands will show here.</span></div>`;
+    return;
+  }
+  list.innerHTML = commands.map((command) => {
+    const status = String(command.status || "pending");
+    const state = command.desiredState || command.desired_state || "";
+    const createdAt = command.createdAt || command.created_at || "";
+    const outputNumber = command.outputNumber || command.output_number || "";
+    const staleText = isLightingCommandStale(command) ? " | waiting on controller" : "";
+    return `
+      <div class="lighting-list-row lighting-command-history-row is-${escapeHtml(status)}${isLightingCommandStale(command) ? " is-stale" : ""}">
+        <strong>${escapeHtml(getLightingCommandZoneName(command))} ${state ? escapeHtml(state) : "command"}</strong>
+        <span>${escapeHtml(status)}${outputNumber ? ` | output ${escapeHtml(outputNumber)}` : ""}${staleText}${createdAt ? ` | ${escapeHtml(formatDateTime(createdAt))}` : ""}</span>
+      </div>
+    `;
+  }).join("");
 }
 
 async function loadLightingCommandsForCurrentScope({ force = false } = {}) {
@@ -10410,6 +10466,7 @@ async function loadLightingCommandsForCurrentScope({ force = false } = {}) {
   } finally {
     lightingCommandsLoading = false;
     renderLightingZones();
+    renderLightingHistory();
   }
 }
 

@@ -1429,7 +1429,7 @@
             <button type="button" class="lighting-status-card is-on is-active" data-lighting-tab="zones" role="tab" aria-selected="true"><span>Zones on</span><strong data-lighting-zones-on>0</strong></button>
             <button type="button" class="lighting-status-card" data-lighting-tab="schedules" role="tab" aria-selected="false"><span>Schedules active</span><strong data-lighting-schedules-active>Not active</strong></button>
             <button type="button" class="lighting-status-card is-warning" data-lighting-tab="overrides" role="tab" aria-selected="false"><span>Overrides</span><strong data-lighting-overrides-active>None</strong></button>
-            <button type="button" class="lighting-status-card" data-lighting-tab="history" role="tab" aria-selected="false"><span>History</span><strong>Recent</strong></button>
+            <button type="button" class="lighting-status-card" data-lighting-tab="history" role="tab" aria-selected="false"><span>History</span><strong data-lighting-history-count>Recent</strong></button>
           </div>
           <div class="lighting-tab-panel" data-lighting-panel="zones">
             <details class="lighting-controller-wizard">
@@ -1577,8 +1577,9 @@
             <div class="lighting-controller-list" data-lighting-override-list></div>
           </div>
           <div class="lighting-tab-panel hidden" data-lighting-panel="history">
-            <div class="lighting-list-row"><strong>Sales Floor turned on</strong><span>Today 7:00 a.m. | Schedule</span></div>
-            <div class="lighting-list-row"><strong>Exterior Signs override enabled</strong><span>Today 8:15 a.m. | Mike</span></div>
+            <div class="lighting-controller-list" data-lighting-command-history>
+              <div class="lighting-list-row"><strong>No lighting command history yet</strong><span>Recent relay commands will show here.</span></div>
+            </div>
           </div>
         </div>
       </section>

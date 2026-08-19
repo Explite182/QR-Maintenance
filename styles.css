@@ -1334,6 +1334,23 @@ textarea:disabled {
   color: #b91c1c;
 }
 
+.lighting-command-status.is-stale strong,
+.lighting-command-history-row.is-stale {
+  color: #92400e;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.lighting-command-history-row.is-completed {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+}
+
+.lighting-command-history-row.is-failed {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
 .lighting-zone-details strong,
 .lighting-list-row span {
   color: var(--ink);
