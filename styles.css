@@ -1303,6 +1303,12 @@ textarea:disabled {
   font-weight: 900;
 }
 
+.lighting-schedule-run-status {
+  margin: 0.55rem 0 0.7rem;
+  color: #4b5b63;
+  font-weight: 800;
+}
+
 .lighting-zone-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

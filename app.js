@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-clock-02";
+const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-run-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -10295,7 +10295,7 @@ function renderLightingScheduleClock() {
 }
 
 async function runLightingSchedulesNow() {
-  const status = document.querySelector("[data-lighting-schedule-status]");
+  const status = document.querySelector("[data-lighting-schedule-run-status]") || document.querySelector("[data-lighting-schedule-status]");
   if (status) status.textContent = "Running lighting schedule check now...";
   try {
     const response = await siteworksApi.runLightingSchedules();
@@ -10309,7 +10309,8 @@ async function runLightingSchedulesNow() {
     if (!response.ok) throw new Error(payload.error || text || `Schedule check failed: ${response.status}`);
     const checked = payload.localTime ? ` at ${payload.localTime}` : "";
     if (status) {
-      status.textContent = `Schedule check ran${checked}: ${payload.schedulesChecked || 0} schedule(s) checked, ${payload.commandsCreated || 0} command(s) created.`;
+      const skipped = Array.isArray(payload.skipped) ? payload.skipped.length : 0;
+      status.textContent = `Schedule check ran${checked}: ${payload.schedulesChecked || 0} checked, ${payload.commandsCreated || 0} command(s) created${skipped ? `, ${skipped} skipped` : ""}.`;
     }
     await Promise.all([
       loadLightingZonesForCurrentScope({ force: true }),
