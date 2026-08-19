@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-run-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-status-refresh-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -6173,6 +6173,7 @@ window.setInterval(loadNotificationRules, 5 * 60 * 1000);
 window.setInterval(loadServerHealth, 5 * 60 * 1000);
 window.setInterval(refreshSiteMapMonitorMode, 30000);
 window.setInterval(renderLightingScheduleClock, 1000);
+window.setInterval(refreshLightingLiveStatus, 30000);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 initPasswordRecoveryFromUrl();
 
@@ -10314,6 +10315,7 @@ async function runLightingSchedulesNow() {
     }
     await Promise.all([
       loadLightingZonesForCurrentScope({ force: true }),
+      loadLightingControllersForCurrentScope({ force: true }),
       loadLightingCommandsForCurrentScope({ force: true })
     ]);
     renderLightingZones();
@@ -10326,6 +10328,15 @@ async function runLightingSchedulesNow() {
 
 function startLightingScheduleClock() {
   renderLightingScheduleClock();
+}
+
+async function refreshLightingLiveStatus() {
+  const { canUseLocation } = getLightingScopeDetails();
+  if (!canUseLocation) return;
+  await Promise.all([
+    loadLightingControllersForCurrentScope({ force: true }),
+    loadLightingCommandsForCurrentScope({ force: true })
+  ]);
 }
 
 function getLightingControllers() {
@@ -10530,11 +10541,13 @@ function renderLightingHistory() {
     const state = command.desiredState || command.desired_state || "";
     const createdAt = command.createdAt || command.created_at || "";
     const outputNumber = command.outputNumber || command.output_number || "";
+    const source = String(command.metadata?.source || command.data?.source || "");
+    const sourceText = source === "schedule" ? " | schedule" : "";
     const staleText = isLightingCommandStale(command) ? " | waiting on controller" : "";
     return `
       <div class="lighting-list-row lighting-command-history-row is-${escapeHtml(status)}${isLightingCommandStale(command) ? " is-stale" : ""}">
         <strong>${escapeHtml(getLightingCommandZoneName(command))} ${state ? escapeHtml(state) : "command"}</strong>
-        <span>${escapeHtml(status)}${outputNumber ? ` | output ${escapeHtml(outputNumber)}` : ""}${staleText}${createdAt ? ` | ${escapeHtml(formatDateTime(createdAt))}` : ""}</span>
+        <span>${escapeHtml(status)}${sourceText}${outputNumber ? ` | output ${escapeHtml(outputNumber)}` : ""}${staleText}${createdAt ? ` | ${escapeHtml(formatDateTime(createdAt))}` : ""}</span>
       </div>
     `;
   }).join("");
