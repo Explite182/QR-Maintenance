@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-card-status-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-run-now-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -9044,6 +9044,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const lightingScheduleRunButton = event.target.closest("[data-lighting-schedule-run]");
+  if (lightingScheduleRunButton) {
+    event.preventDefault();
+    runLightingScheduleNow(
+      lightingScheduleRunButton.dataset.lightingScheduleRun || "",
+      lightingScheduleRunButton.dataset.lightingScheduleAction || ""
+    );
+    return;
+  }
+
   const lightingRunSchedulesButton = event.target.closest("[data-lighting-run-schedules]");
   if (lightingRunSchedulesButton) {
     event.preventDefault();
@@ -10326,6 +10336,42 @@ async function runLightingSchedulesNow() {
   }
 }
 
+async function runLightingScheduleNow(scheduleId = "", action = "") {
+  const status = document.querySelector("[data-lighting-schedule-run-status]") || document.querySelector("[data-lighting-schedule-status]");
+  const cleanAction = String(action || "").toLowerCase();
+  const schedule = lightingSchedulesCache.find((item) => item.id === scheduleId);
+  if (!scheduleId || !["on", "off"].includes(cleanAction)) {
+    if (status) status.textContent = "Choose a schedule action to run.";
+    return;
+  }
+  if (status) status.textContent = `Running ${schedule?.name || "schedule"} ${cleanAction.toUpperCase()} now...`;
+  try {
+    const response = await siteworksApi.runLightingScheduleNow(scheduleId, cleanAction);
+    const text = await response.text();
+    let payload = {};
+    try {
+      payload = text ? JSON.parse(text) : {};
+    } catch {
+      payload = {};
+    }
+    if (!response.ok) throw new Error(payload.error || text || `Schedule run failed: ${response.status}`);
+    const skipped = Array.isArray(payload.skipped) ? payload.skipped.length : 0;
+    const skippedText = skipped ? `, ${skipped} skipped` : "";
+    if (status) status.textContent = `${schedule?.name || "Schedule"} ${cleanAction.toUpperCase()} created ${payload.commandsCreated || 0} command(s)${skippedText}.`;
+    await Promise.all([
+      loadLightingZonesForCurrentScope({ force: true }),
+      loadLightingControllersForCurrentScope({ force: true }),
+      loadLightingCommandsForCurrentScope({ force: true })
+    ]);
+    renderLightingSchedules();
+    renderLightingZones();
+    renderLightingHistory();
+  } catch (error) {
+    console.warn("Lighting schedule run failed.", error);
+    if (status) status.textContent = `Schedule run failed: ${error.message || "server unavailable"}`;
+  }
+}
+
 function startLightingScheduleClock() {
   renderLightingScheduleClock();
 }
@@ -10526,7 +10572,10 @@ function getLatestLightingScheduleCommand(scheduleId = "") {
 function getLightingScheduleStatusHtml(schedule = {}) {
   const targetZones = getLightingScheduleTargetZones(schedule);
   const usableZones = targetZones.filter((zone) => zone.controllerId && zone.outputNumber);
-  const missingZones = targetZones.length - usableZones.length;
+  const missingZoneNames = targetZones
+    .filter((zone) => !zone.controllerId || !zone.outputNumber)
+    .map((zone) => zone.name || "Unnamed zone");
+  const missingZones = missingZoneNames.length;
   const latestCommand = getLatestLightingScheduleCommand(schedule.id);
   const nextText = `${schedule.onTime || "--:--"} on / ${schedule.offTime || "--:--"} off`;
   const latestTime = latestCommand?.completedAt || latestCommand?.completed_at || latestCommand?.acknowledgedAt || latestCommand?.acknowledged_at || latestCommand?.createdAt || latestCommand?.created_at || "";
@@ -10548,6 +10597,7 @@ function getLightingScheduleStatusHtml(schedule = {}) {
       <span>Next expected <strong>${escapeHtml(nextText)}</strong></span>
       <span>Last schedule command <strong>${escapeHtml(latestText)}</strong></span>
       <span>Target zones <strong>${escapeHtml(zoneText)}</strong></span>
+      ${missingZoneNames.length ? `<span>Skipped zones <strong>${escapeHtml(missingZoneNames.slice(0, 4).join(", "))}${missingZoneNames.length > 4 ? "..." : ""}</strong></span>` : ""}
     </div>
   `;
 }
@@ -11108,6 +11158,8 @@ function renderLightingSchedules() {
         <span>${escapeHtml(schedule.days || "No days")} | ${escapeHtml(schedule.onTime || "No on time")} on | ${escapeHtml(schedule.offTime || "No off time")} off | ${escapeHtml(schedule.zoneName || "All zones")} | ${schedule.enabled === false ? "Disabled" : "Enabled"}</span>
         ${getLightingScheduleStatusHtml(schedule)}
         <div class="lighting-zone-actions">
+          <button type="button" data-lighting-schedule-run="${escapeHtml(schedule.id)}" data-lighting-schedule-action="on">Run On now</button>
+          <button type="button" data-lighting-schedule-run="${escapeHtml(schedule.id)}" data-lighting-schedule-action="off">Run Off now</button>
           <button type="button" data-lighting-schedule-edit="${escapeHtml(schedule.id)}">Edit</button>
           <button type="button" data-lighting-schedule-delete="${escapeHtml(schedule.id)}">Delete</button>
         </div>
@@ -22414,6 +22466,13 @@ const siteworksApi = {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, schedulesChecked: 0, commandsCreated: 0 }), { status: 200 }));
     return this.server("/api/automation/lighting/schedules/run", {
       method: "POST"
+    });
+  },
+  runLightingScheduleNow(id, action) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, commandsCreated: 0, skipped: [] }), { status: 200 }));
+    return this.server(`/api/automation/lighting/schedules/${encodeURIComponent(id)}/run-now`, {
+      method: "POST",
+      body: JSON.stringify({ action })
     });
   },
   loadLightingOverrides(customerId, locationId) {
