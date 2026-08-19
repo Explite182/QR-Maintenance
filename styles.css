@@ -1474,9 +1474,9 @@ textarea:disabled {
 
 .lighting-controller-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(auto-fit, minmax(90px, auto));
-  gap: 10px;
-  align-items: center;
+  grid-template-columns: minmax(220px, 1.3fr) repeat(8, minmax(88px, 0.6fr)) auto;
+  gap: 12px;
+  align-items: start;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1496,6 +1496,18 @@ textarea:disabled {
 .lighting-controller-card div {
   display: grid;
   gap: 3px;
+}
+
+.lighting-controller-main,
+.lighting-controller-stat {
+  min-width: 0;
+}
+
+.lighting-controller-main strong,
+.lighting-controller-main span,
+.lighting-controller-stat strong,
+.lighting-controller-stat span {
+  overflow-wrap: anywhere;
 }
 
 .lighting-controller-card .lighting-zone-actions {
@@ -1529,6 +1541,27 @@ textarea:disabled {
 .lighting-controller-card strong {
   color: var(--ink);
   font-weight: 900;
+}
+
+@media (max-width: 1300px) {
+  .lighting-controller-card {
+    grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(110px, 1fr)) auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .lighting-controller-card {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .lighting-controller-main,
+  .lighting-controller-card .lighting-zone-actions {
+    grid-column: 1 / -1;
+  }
+
+  .lighting-controller-card .lighting-zone-actions {
+    justify-content: stretch;
+  }
 }
 
 .sidebar-nav-btn span:first-child {

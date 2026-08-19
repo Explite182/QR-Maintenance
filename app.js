@@ -10701,39 +10701,39 @@ function renderLightingControllers() {
     const firmwareVersion = controller.firmwareVersion || controller.firmware_version || "";
     return `
       <div class="lighting-controller-card ${statusClass}">
-        <div>
+        <div class="lighting-controller-main">
           <strong>${escapeHtml(controller.name)}</strong>
           <span>${escapeHtml(controller.uid)} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.location || currentLocation?.name || "No location assigned")}</span>
         </div>
-        <div>
+        <div class="lighting-controller-stat">
           <span>Outputs</span>
           <strong>${escapeHtml(controller.outputs)}</strong>
         </div>
-        <div>
+        <div class="lighting-controller-stat">
           <span>Zones</span>
           <strong>${assignedZones}</strong>
         </div>
-        <div>
+        <div class="lighting-controller-stat">
           <span>Status</span>
           <strong>${escapeHtml(statusLabel)}</strong>
         </div>
-        <div>
+        <div class="lighting-controller-stat">
           <span>IP</span>
           <strong>${escapeHtml(ipAddress || "Not reported")}</strong>
         </div>
-        <div>
+        <div class="lighting-controller-stat">
           <span>MAC</span>
           <strong>${escapeHtml(macAddress || "Not reported")}</strong>
         </div>
-        <div>
+        <div class="lighting-controller-stat">
           <span>Firmware</span>
           <strong>${escapeHtml(firmwareVersion || "Unknown")}</strong>
         </div>
-        <div>
+        <div class="lighting-controller-stat">
           <span>Last seen</span>
           <strong>${controller.lastSeenAt ? formatDateTime(controller.lastSeenAt) : "Never"}</strong>
         </div>
-        <div>
+        <div class="lighting-controller-stat">
           <span>API key</span>
           <strong>${controller.apiKeyLast4 ? `Ends ${escapeHtml(controller.apiKeyLast4)}` : "Not set"}</strong>
         </div>
