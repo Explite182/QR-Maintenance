@@ -1411,6 +1411,50 @@ textarea:disabled {
   background: #fef2f2;
 }
 
+.lighting-schedule-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.lighting-schedule-status-grid span {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.lighting-schedule-status-grid strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.lighting-schedule-status-grid.is-completed span {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+}
+
+.lighting-schedule-status-grid.is-warning span,
+.lighting-schedule-status-grid.is-pending span,
+.lighting-schedule-status-grid.is-acknowledged span {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.lighting-schedule-status-grid.is-failed span {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
 .lighting-zone-details strong,
 .lighting-list-row span {
   color: var(--ink);

@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-status-refresh-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-card-status-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -10512,6 +10512,46 @@ function getLightingCommandZoneName(command = {}) {
   return zone?.name || command.metadata?.zoneName || command.metadata?.zone_name || "Lighting zone";
 }
 
+function getLightingScheduleTargetZones(schedule = {}) {
+  const scheduleZoneId = schedule.zoneId || schedule.zone_id || "";
+  if (scheduleZoneId) return lightingZonesCache.filter((zone) => zone.id === scheduleZoneId);
+  return lightingZonesCache.filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
+}
+
+function getLatestLightingScheduleCommand(scheduleId = "") {
+  if (!scheduleId) return null;
+  return lightingCommandsCache.find((command) => String(command.metadata?.scheduleId || command.metadata?.schedule_id || "") === String(scheduleId)) || null;
+}
+
+function getLightingScheduleStatusHtml(schedule = {}) {
+  const targetZones = getLightingScheduleTargetZones(schedule);
+  const usableZones = targetZones.filter((zone) => zone.controllerId && zone.outputNumber);
+  const missingZones = targetZones.length - usableZones.length;
+  const latestCommand = getLatestLightingScheduleCommand(schedule.id);
+  const nextText = `${schedule.onTime || "--:--"} on / ${schedule.offTime || "--:--"} off`;
+  const latestTime = latestCommand?.completedAt || latestCommand?.completed_at || latestCommand?.acknowledgedAt || latestCommand?.acknowledged_at || latestCommand?.createdAt || latestCommand?.created_at || "";
+  const latestState = latestCommand?.desiredState || latestCommand?.desired_state || "";
+  const latestStatus = latestCommand?.status || "";
+  const latestText = latestCommand
+    ? `${latestStatus}${latestState ? ` ${latestState}` : ""}${latestTime ? ` | ${formatDateTime(latestTime)}` : ""}`
+    : "No schedule command yet";
+  const zoneText = !targetZones.length
+    ? "No target zones found"
+    : `${usableZones.length}/${targetZones.length} target zone${targetZones.length === 1 ? "" : "s"} ready${missingZones ? `, ${missingZones} missing controller/output` : ""}`;
+  const statusClass = latestCommand
+    ? `is-${escapeHtml(String(latestStatus || "pending").toLowerCase())}`
+    : missingZones || !targetZones.length
+      ? "is-warning"
+      : "";
+  return `
+    <div class="lighting-schedule-status-grid ${statusClass}">
+      <span>Next expected <strong>${escapeHtml(nextText)}</strong></span>
+      <span>Last schedule command <strong>${escapeHtml(latestText)}</strong></span>
+      <span>Target zones <strong>${escapeHtml(zoneText)}</strong></span>
+    </div>
+  `;
+}
+
 function renderLightingHistory() {
   const list = document.querySelector("[data-lighting-command-history]");
   const count = document.querySelector("[data-lighting-history-count]");
@@ -10997,6 +11037,9 @@ function renderLightingSchedules() {
   if (canUseLocation && lightingZonesLoadedScope !== scopeKey && !lightingZonesLoading) {
     loadLightingZonesForCurrentScope();
   }
+  if (canUseLocation && lightingCommandsLoadedScope !== scopeKey && !lightingCommandsLoading) {
+    loadLightingCommandsForCurrentScope();
+  }
   renderLightingScheduleZoneOptions();
   if (!canUseLocation) {
     lightingSchedulesCache = [];
@@ -11063,6 +11106,7 @@ function renderLightingSchedules() {
       <div class="lighting-list-row">
         <strong>${escapeHtml(schedule.name || "Lighting schedule")}</strong>
         <span>${escapeHtml(schedule.days || "No days")} | ${escapeHtml(schedule.onTime || "No on time")} on | ${escapeHtml(schedule.offTime || "No off time")} off | ${escapeHtml(schedule.zoneName || "All zones")} | ${schedule.enabled === false ? "Disabled" : "Enabled"}</span>
+        ${getLightingScheduleStatusHtml(schedule)}
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-schedule-edit="${escapeHtml(schedule.id)}">Edit</button>
           <button type="button" data-lighting-schedule-delete="${escapeHtml(schedule.id)}">Delete</button>
