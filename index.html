@@ -1523,7 +1523,10 @@
                 <span>Test next</span>
                 <strong data-lighting-schedule-clock-next>--:--</strong>
               </div>
-              <em data-lighting-schedule-clock-date>Waiting for clock</em>
+              <div class="lighting-schedule-clock-actions">
+                <em data-lighting-schedule-clock-date>Waiting for clock</em>
+                <button type="button" data-lighting-run-schedules>Run check now</button>
+              </div>
             </div>
             <details class="lighting-controller-wizard">
               <summary>+ Add Lighting Schedule</summary>
@@ -1552,7 +1555,7 @@
                   </select>
                 </label>
                 <label>Notes <textarea name="notes" rows="2" placeholder="Holiday exceptions, cleaning schedule, exterior sign notes"></textarea></label>
-                <div class="lighting-controller-help"><strong>Setup only</strong><span>This creates the schedule record. Live ESP32 relay execution comes later.</span></div>
+                <div class="lighting-controller-help"><strong>Schedule runner active</strong><span>The server checks enabled schedules once per minute using the Vancouver schedule clock.</span></div>
                 <button type="submit">Add Schedule</button>
                 <p data-lighting-schedule-status class="lighting-controller-status"></p>
               </form>

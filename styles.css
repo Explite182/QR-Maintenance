@@ -1285,6 +1285,24 @@ textarea:disabled {
   font-weight: 900;
 }
 
+.lighting-schedule-clock-actions {
+  justify-self: end;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lighting-schedule-clock-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 900;
+}
+
 .lighting-zone-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1655,7 +1673,8 @@ textarea:disabled {
     grid-template-columns: 1fr;
   }
 
-  .lighting-schedule-clock em {
+  .lighting-schedule-clock em,
+  .lighting-schedule-clock-actions {
     justify-self: start;
   }
 }

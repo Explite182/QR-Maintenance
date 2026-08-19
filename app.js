@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-clock-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-clock-02";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -6172,6 +6172,7 @@ window.setInterval(loadServerNotifications, 30000);
 window.setInterval(loadNotificationRules, 5 * 60 * 1000);
 window.setInterval(loadServerHealth, 5 * 60 * 1000);
 window.setInterval(refreshSiteMapMonitorMode, 30000);
+window.setInterval(renderLightingScheduleClock, 1000);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 initPasswordRecoveryFromUrl();
 
@@ -9042,6 +9043,13 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const lightingRunSchedulesButton = event.target.closest("[data-lighting-run-schedules]");
+  if (lightingRunSchedulesButton) {
+    event.preventDefault();
+    runLightingSchedulesNow();
+    return;
+  }
+
   const lightingOverrideEditButton = event.target.closest("[data-lighting-override-edit]");
   if (lightingOverrideEditButton) {
     event.preventDefault();
@@ -10238,7 +10246,8 @@ function setLightingAutomationTab(tab = "zones") {
 }
 
 function getLightingScheduleClockParts(date = new Date()) {
-  const parts = Object.fromEntries(
+  try {
+    const parts = {};
     new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Vancouver",
       weekday: "short",
@@ -10249,14 +10258,26 @@ function getLightingScheduleClockParts(date = new Date()) {
       minute: "2-digit",
       second: "2-digit",
       hour12: false
-    }).formatToParts(date).map((part) => [part.type, part.value])
-  );
-  const hour = parts.hour === "24" ? "00" : parts.hour;
-  return {
-    dateLabel: `${parts.weekday}, ${parts.month} ${parts.day}, ${parts.year}`,
-    timeLabel: `${hour}:${parts.minute}:${parts.second}`,
-    timeValue: `${hour}:${parts.minute}`
-  };
+    }).formatToParts(date).forEach((part) => {
+      parts[part.type] = part.value;
+    });
+    const hour = parts.hour === "24" ? "00" : parts.hour;
+    return {
+      dateLabel: `${parts.weekday || ""}, ${parts.month || ""} ${parts.day || ""}, ${parts.year || ""}`.replace(/\s+/g, " ").trim(),
+      timeLabel: `${hour}:${parts.minute}:${parts.second}`,
+      timeValue: `${hour}:${parts.minute}`
+    };
+  } catch (error) {
+    console.warn("Lighting schedule clock could not use Vancouver formatter.", error);
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+    const second = String(date.getSeconds()).padStart(2, "0");
+    return {
+      dateLabel: "Local browser time fallback",
+      timeLabel: `${hour}:${minute}:${second}`,
+      timeValue: `${hour}:${minute}`
+    };
+  }
 }
 
 function renderLightingScheduleClock() {
@@ -10273,13 +10294,37 @@ function renderLightingScheduleClock() {
   if (nextEl) nextEl.textContent = nextMinute.timeValue;
 }
 
-function startLightingScheduleClock() {
-  if (lightingScheduleClockTimer) {
-    renderLightingScheduleClock();
-    return;
+async function runLightingSchedulesNow() {
+  const status = document.querySelector("[data-lighting-schedule-status]");
+  if (status) status.textContent = "Running lighting schedule check now...";
+  try {
+    const response = await siteworksApi.runLightingSchedules();
+    const text = await response.text();
+    let payload = {};
+    try {
+      payload = text ? JSON.parse(text) : {};
+    } catch {
+      payload = {};
+    }
+    if (!response.ok) throw new Error(payload.error || text || `Schedule check failed: ${response.status}`);
+    const checked = payload.localTime ? ` at ${payload.localTime}` : "";
+    if (status) {
+      status.textContent = `Schedule check ran${checked}: ${payload.schedulesChecked || 0} schedule(s) checked, ${payload.commandsCreated || 0} command(s) created.`;
+    }
+    await Promise.all([
+      loadLightingZonesForCurrentScope({ force: true }),
+      loadLightingCommandsForCurrentScope({ force: true })
+    ]);
+    renderLightingZones();
+    renderLightingHistory();
+  } catch (error) {
+    console.warn("Lighting schedule check failed.", error);
+    if (status) status.textContent = `Schedule check failed: ${error.message || "server unavailable"}`;
   }
+}
+
+function startLightingScheduleClock() {
   renderLightingScheduleClock();
-  lightingScheduleClockTimer = window.setInterval(renderLightingScheduleClock, 1000);
 }
 
 function getLightingControllers() {
@@ -22305,6 +22350,12 @@ const siteworksApi = {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     return this.server(`/api/automation/lighting/schedules/${encodeURIComponent(id)}`, {
       method: "DELETE"
+    });
+  },
+  runLightingSchedules() {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, schedulesChecked: 0, commandsCreated: 0 }), { status: 200 }));
+    return this.server("/api/automation/lighting/schedules/run", {
+      method: "POST"
     });
   },
   loadLightingOverrides(customerId, locationId) {
