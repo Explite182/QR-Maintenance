@@ -1249,6 +1249,42 @@ textarea:disabled {
   gap: 10px;
 }
 
+.lighting-schedule-clock {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, max-content)) minmax(180px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  background: #ecfdf5;
+}
+
+.lighting-schedule-clock div {
+  display: grid;
+  gap: 3px;
+}
+
+.lighting-schedule-clock span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.lighting-schedule-clock strong {
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.1;
+}
+
+.lighting-schedule-clock em {
+  justify-self: end;
+  color: #0f766e;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .lighting-zone-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1613,6 +1649,14 @@ textarea:disabled {
 
   .lighting-controller-card .lighting-zone-actions {
     justify-content: stretch;
+  }
+
+  .lighting-schedule-clock {
+    grid-template-columns: 1fr;
+  }
+
+  .lighting-schedule-clock em {
+    justify-self: start;
   }
 }
 

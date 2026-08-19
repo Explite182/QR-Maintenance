@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-device-status-03";
+const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-clock-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -5265,6 +5265,7 @@ let lightingSchedulesCache = [];
 let lightingSchedulesLoadedScope = "";
 let lightingSchedulesLoading = false;
 let editingLightingScheduleId = "";
+let lightingScheduleClockTimer = null;
 let lightingOverridesCache = [];
 let lightingOverridesLoadedScope = "";
 let lightingOverridesLoading = false;
@@ -10236,6 +10237,51 @@ function setLightingAutomationTab(tab = "zones") {
   if (selectedTab === "history") renderLightingHistory();
 }
 
+function getLightingScheduleClockParts(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Vancouver",
+      weekday: "short",
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).formatToParts(date).map((part) => [part.type, part.value])
+  );
+  const hour = parts.hour === "24" ? "00" : parts.hour;
+  return {
+    dateLabel: `${parts.weekday}, ${parts.month} ${parts.day}, ${parts.year}`,
+    timeLabel: `${hour}:${parts.minute}:${parts.second}`,
+    timeValue: `${hour}:${parts.minute}`
+  };
+}
+
+function renderLightingScheduleClock() {
+  const clock = document.querySelector("[data-lighting-schedule-clock]");
+  if (!clock) return;
+  const now = new Date();
+  const current = getLightingScheduleClockParts(now);
+  const nextMinute = getLightingScheduleClockParts(new Date(now.getTime() + 60000));
+  const timeEl = clock.querySelector("[data-lighting-schedule-clock-time]");
+  const dateEl = clock.querySelector("[data-lighting-schedule-clock-date]");
+  const nextEl = clock.querySelector("[data-lighting-schedule-clock-next]");
+  if (timeEl) timeEl.textContent = current.timeLabel;
+  if (dateEl) dateEl.textContent = current.dateLabel;
+  if (nextEl) nextEl.textContent = nextMinute.timeValue;
+}
+
+function startLightingScheduleClock() {
+  if (lightingScheduleClockTimer) {
+    renderLightingScheduleClock();
+    return;
+  }
+  renderLightingScheduleClock();
+  lightingScheduleClockTimer = window.setInterval(renderLightingScheduleClock, 1000);
+}
+
 function getLightingControllers() {
   try {
     const saved = JSON.parse(localStorage.getItem(LIGHTING_CONTROLLERS_STORAGE_KEY) || "[]");
@@ -10876,6 +10922,7 @@ function renderLightingControllers() {
 }
 
 function renderLightingSchedules() {
+  startLightingScheduleClock();
   const list = document.querySelector("[data-lighting-schedule-list]");
   if (!list) return;
   const scopeStatus = document.querySelector("[data-lighting-schedule-scope]");
