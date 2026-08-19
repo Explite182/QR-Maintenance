@@ -1425,17 +1425,11 @@
         </div>
         <div class="lighting-control-panel" data-panel-body>
           <div class="lighting-status-grid">
-            <div class="lighting-status-card is-offline"><span>Lighting network</span><strong>Setup only</strong></div>
-            <div class="lighting-status-card is-on"><span>Zones on</span><strong data-lighting-zones-on>0</strong></div>
-            <div class="lighting-status-card"><span>Schedules active</span><strong data-lighting-schedules-active>Not active</strong></div>
-            <div class="lighting-status-card is-warning"><span>Overrides</span><strong data-lighting-overrides-active>None</strong></div>
-          </div>
-          <div class="automation-tab-strip" role="tablist" aria-label="Lighting controls">
-            <button type="button" class="is-active" data-lighting-tab="zones" role="tab" aria-selected="true">Zones</button>
-            <button type="button" data-lighting-tab="controllers" role="tab" aria-selected="false">Controllers</button>
-            <button type="button" data-lighting-tab="schedules" role="tab" aria-selected="false">Schedules</button>
-            <button type="button" data-lighting-tab="overrides" role="tab" aria-selected="false">Overrides</button>
-            <button type="button" data-lighting-tab="history" role="tab" aria-selected="false">History</button>
+            <button type="button" class="lighting-status-card is-offline" data-lighting-tab="controllers" role="tab" aria-selected="false"><span>Lighting network</span><strong>Setup only</strong></button>
+            <button type="button" class="lighting-status-card is-on is-active" data-lighting-tab="zones" role="tab" aria-selected="true"><span>Zones on</span><strong data-lighting-zones-on>0</strong></button>
+            <button type="button" class="lighting-status-card" data-lighting-tab="schedules" role="tab" aria-selected="false"><span>Schedules active</span><strong data-lighting-schedules-active>Not active</strong></button>
+            <button type="button" class="lighting-status-card is-warning" data-lighting-tab="overrides" role="tab" aria-selected="false"><span>Overrides</span><strong data-lighting-overrides-active>None</strong></button>
+            <button type="button" class="lighting-status-card" data-lighting-tab="history" role="tab" aria-selected="false"><span>History</span><strong>Recent</strong></button>
           </div>
           <div class="lighting-tab-panel" data-lighting-panel="zones">
             <details class="lighting-controller-wizard">

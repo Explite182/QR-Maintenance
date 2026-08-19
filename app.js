@@ -5696,6 +5696,7 @@ let notificationRules = [];
 let notificationRulesLoading = false;
 let editingAssetDetailField = "";
 let storageFullWarningShown = false;
+let storageFullRecoveryNoticeShown = false;
 let suppressStorageFullWarning = false;
 const signedMediaUrlCache = new Map();
 const signedMediaUrlPending = new Set();
@@ -10217,6 +10218,7 @@ function setLightingAutomationTab(tab = "zones") {
   document.querySelectorAll("[data-lighting-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.lightingTab === selectedTab);
     button.setAttribute("aria-selected", String(button.dataset.lightingTab === selectedTab));
+    button.setAttribute("aria-expanded", String(button.dataset.lightingTab === selectedTab));
   });
   document.querySelectorAll("[data-lighting-panel]").forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.lightingPanel !== selectedTab);
@@ -10237,11 +10239,9 @@ function getLightingControllers() {
 }
 
 function saveLightingControllers(controllers) {
-  try {
-    localStorage.setItem(LIGHTING_CONTROLLERS_STORAGE_KEY, JSON.stringify(controllers));
-  } catch (error) {
+  if (!setLocalStorageWithRecovery(LIGHTING_CONTROLLERS_STORAGE_KEY, JSON.stringify(controllers))) {
     showStorageFullWarning?.();
-    console.warn("Lighting controller setup could not be saved locally.", error);
+    console.warn("Lighting controller setup could not be saved locally.");
   }
 }
 
@@ -10255,11 +10255,9 @@ function getLightingZones() {
 }
 
 function saveLightingZones(zones) {
-  try {
-    localStorage.setItem(LIGHTING_ZONES_STORAGE_KEY, JSON.stringify(zones));
-  } catch (error) {
+  if (!setLocalStorageWithRecovery(LIGHTING_ZONES_STORAGE_KEY, JSON.stringify(zones))) {
     showStorageFullWarning?.();
-    console.warn("Lighting zone setup could not be saved locally.", error);
+    console.warn("Lighting zone setup could not be saved locally.");
   }
 }
 
@@ -10273,11 +10271,9 @@ function getLightingSchedules() {
 }
 
 function saveLightingSchedules(schedules) {
-  try {
-    localStorage.setItem(LIGHTING_SCHEDULES_STORAGE_KEY, JSON.stringify(schedules));
-  } catch (error) {
+  if (!setLocalStorageWithRecovery(LIGHTING_SCHEDULES_STORAGE_KEY, JSON.stringify(schedules))) {
     showStorageFullWarning?.();
-    console.warn("Lighting schedule setup could not be saved locally.", error);
+    console.warn("Lighting schedule setup could not be saved locally.");
   }
 }
 
@@ -10291,11 +10287,9 @@ function getLightingOverrides() {
 }
 
 function saveLightingOverrides(overrides) {
-  try {
-    localStorage.setItem(LIGHTING_OVERRIDES_STORAGE_KEY, JSON.stringify(overrides));
-  } catch (error) {
+  if (!setLocalStorageWithRecovery(LIGHTING_OVERRIDES_STORAGE_KEY, JSON.stringify(overrides))) {
     showStorageFullWarning?.();
-    console.warn("Lighting override setup could not be saved locally.", error);
+    console.warn("Lighting override setup could not be saved locally.");
   }
 }
 
@@ -23427,18 +23421,10 @@ function saveStateQuietly() {
 }
 
 function persistLocalStateOnly(showStorageWarning = true) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (error) {
-    try {
-      localStorage.removeItem(AUTO_BACKUP_KEY);
-      LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (retryError) {
-      if (showStorageWarning) showStorageFullWarning();
-      console.warn("Local browser storage is full; continuing without a local save.", retryError);
-      return false;
-    }
+  if (!setLocalStorageWithRecovery(STORAGE_KEY, JSON.stringify(state))) {
+    if (showStorageWarning) showStorageFullWarning();
+    console.warn("Local browser storage is full; continuing without a local save.");
+    return false;
   }
   try {
     createAutoBackup();
@@ -23446,6 +23432,38 @@ function persistLocalStateOnly(showStorageWarning = true) {
     console.warn("Auto backup skipped because browser storage is full.", error);
   }
   return true;
+}
+
+function setLocalStorageWithRecovery(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    recoverBrowserStorageForWrite();
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (retryError) {
+      console.warn(`Browser storage write failed for ${key}.`, retryError);
+      return false;
+    }
+  }
+}
+
+function recoverBrowserStorageForWrite() {
+  try {
+    localStorage.removeItem(AUTO_BACKUP_KEY);
+    LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
+    const removedCopies = removeCloudBackedLocalCopiesForStorageRecovery();
+    if (removedCopies && !storageFullRecoveryNoticeShown) {
+      storageFullRecoveryNoticeShown = true;
+      if (typeof setSyncBanner === "function") {
+        setSyncBanner("success", "Browser storage cleaned up", `Removed ${removedCopies} local file cop${removedCopies === 1 ? "y" : "ies"} already saved on the server.`, 6000);
+      }
+    }
+  } catch (error) {
+    console.warn("Browser storage cleanup failed.", error);
+  }
 }
 
 function showStorageFullWarning() {
@@ -23456,7 +23474,7 @@ function showStorageFullWarning() {
   if (storageFullWarningShown) return;
   storageFullWarningShown = true;
   const message = "Browser storage is full";
-  const detail = "SiteWorks will keep trying cloud save. Remove old local photos or PDFs soon.";
+  const detail = "SiteWorks tried automatic cleanup but the browser is still full. Remove old local photos or PDFs soon.";
   if (typeof setSyncBanner === "function") {
     setSyncBanner("stale", message, detail, 9000);
   } else {
@@ -23848,6 +23866,17 @@ function removeCloudBackedLocalCopies() {
   saveState();
   render();
   updateCloudCleanupStatus(`Removed local browser copies from ${items.length} cloud-backed file${items.length === 1 ? "" : "s"}.`);
+}
+
+function removeCloudBackedLocalCopiesForStorageRecovery() {
+  const items = collectCloudBackedLocalCopies();
+  items.forEach((item) => {
+    const file = item.get();
+    if (!file) return;
+    const { dataUrl, photoDataUrl, ...cleanFile } = file;
+    item.set(cleanFile);
+  });
+  return items.length;
 }
 
 function shouldMigrateLocalFile(file) {
