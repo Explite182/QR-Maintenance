@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-run-guard-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-controller-health-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -10499,16 +10499,21 @@ function getLightingScopeDetails() {
   };
 }
 
-function isLightingControllerRecentlyOnline(controller = {}) {
-  const lastSeenTime = Date.parse(controller.lastSeenAt || controller.last_seen_at || "");
-  return Number.isFinite(lastSeenTime) && Date.now() - lastSeenTime < LIGHTING_CONTROLLER_ONLINE_WINDOW_MS;
+function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
+  const lastSeenAt = controller.lastSeenAt || controller.last_seen_at || "";
+  const lastSeenTime = Date.parse(lastSeenAt);
+  if (!lastSeenAt || !Number.isFinite(lastSeenTime)) {
+    return { label: "Setup only", className: "is-setup", lastSeenAt: "", ageMs: null };
+  }
+  const ageMs = Math.max(0, nowMs - lastSeenTime);
+  if (ageMs <= LIGHTING_CONTROLLER_ONLINE_WINDOW_MS) {
+    return { label: "Online", className: "is-online", lastSeenAt, ageMs };
+  }
+  return { label: "Offline", className: "is-offline", lastSeenAt, ageMs };
 }
 
-function getLightingControllerStatusLabel(controller = {}) {
-  if (isLightingControllerRecentlyOnline(controller)) return "Online";
-  const status = String(controller.onlineStatus || controller.online_status || "").trim();
-  if (status && status.toLowerCase() !== "online") return status;
-  return controller.lastSeenAt || controller.last_seen_at ? "Offline" : "Setup only";
+function isLightingControllerRecentlyOnline(controller = {}) {
+  return getLightingControllerHealth(controller).label === "Online";
 }
 
 function getLightingNetworkSummary() {
@@ -10518,8 +10523,9 @@ function getLightingNetworkSummary() {
     ? lightingControllersCache
     : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId);
   if (!controllers.length) return { label: "No controllers", className: "is-offline" };
-  if (controllers.some(isLightingControllerRecentlyOnline)) return { label: "Online", className: "is-on" };
-  if (controllers.some((controller) => controller.lastSeenAt || controller.last_seen_at)) return { label: "Offline", className: "is-offline" };
+  const controllerHealth = controllers.map((controller) => getLightingControllerHealth(controller));
+  if (controllerHealth.some((health) => health.label === "Online")) return { label: "Online", className: "is-on" };
+  if (controllerHealth.some((health) => health.label === "Offline")) return { label: "Offline", className: "is-offline" };
   return { label: "Setup only", className: "is-setup" };
 }
 
@@ -11038,11 +11044,15 @@ function renderLightingControllers() {
       `;
     }
     const assignedZones = lightingZonesCache.filter((zone) => zone.controllerId === controller.id).length;
-    const statusLabel = getLightingControllerStatusLabel(controller);
-    const statusClass = statusLabel === "Online" ? "is-online" : statusLabel === "Offline" ? "is-offline" : "is-setup";
+    const controllerHealth = getLightingControllerHealth(controller);
+    const statusLabel = controllerHealth.label;
+    const statusClass = controllerHealth.className;
     const ipAddress = controller.ipAddress || controller.ip_address || controller.ip || "";
     const macAddress = controller.macAddress || controller.mac_address || controller.mac || "";
     const firmwareVersion = controller.firmwareVersion || controller.firmware_version || "";
+    const lastSeenText = controllerHealth.lastSeenAt
+      ? `${formatDateTime(controllerHealth.lastSeenAt)}${controllerHealth.label === "Offline" ? " (stale)" : ""}`
+      : "Never";
     return `
       <div class="lighting-controller-card ${statusClass}">
         <div class="lighting-controller-main">
@@ -11075,7 +11085,7 @@ function renderLightingControllers() {
         </div>
         <div class="lighting-controller-stat">
           <span>Last seen</span>
-          <strong>${controller.lastSeenAt ? formatDateTime(controller.lastSeenAt) : "Never"}</strong>
+          <strong>${escapeHtml(lastSeenText)}</strong>
         </div>
         <div class="lighting-controller-stat">
           <span>API key</span>
