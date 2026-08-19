@@ -5243,11 +5243,12 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-device-status-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-device-status-02";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
 const LIGHTING_OVERRIDES_STORAGE_KEY = "siteworks_lighting_overrides_v1";
+const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
@@ -5256,6 +5257,9 @@ let lightingZonesCache = [];
 let lightingZonesLoadedScope = "";
 let lightingZonesLoading = false;
 let editingLightingZoneId = "";
+let lightingCommandsCache = [];
+let lightingCommandsLoadedScope = "";
+let lightingCommandsLoading = false;
 let lightingSchedulesCache = [];
 let lightingSchedulesLoadedScope = "";
 let lightingSchedulesLoading = false;
@@ -10335,7 +10339,7 @@ function getLightingScopeDetails() {
 
 function isLightingControllerRecentlyOnline(controller = {}) {
   const lastSeenTime = Date.parse(controller.lastSeenAt || controller.last_seen_at || "");
-  return Number.isFinite(lastSeenTime) && Date.now() - lastSeenTime < 90 * 1000;
+  return Number.isFinite(lastSeenTime) && Date.now() - lastSeenTime < LIGHTING_CONTROLLER_ONLINE_WINDOW_MS;
 }
 
 function getLightingControllerStatusLabel(controller = {}) {
@@ -10343,6 +10347,70 @@ function getLightingControllerStatusLabel(controller = {}) {
   const status = String(controller.onlineStatus || controller.online_status || "").trim();
   if (status && status.toLowerCase() !== "online") return status;
   return controller.lastSeenAt || controller.last_seen_at ? "Offline" : "Setup only";
+}
+
+function getLightingNetworkSummary() {
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation) return { label: "Select location", className: "is-offline" };
+  const controllers = lightingControllersLoadedScope === scopeKey
+    ? lightingControllersCache
+    : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId);
+  if (!controllers.length) return { label: "No controllers", className: "is-offline" };
+  if (controllers.some(isLightingControllerRecentlyOnline)) return { label: "Online", className: "is-on" };
+  if (controllers.some((controller) => controller.lastSeenAt || controller.last_seen_at)) return { label: "Offline", className: "is-offline" };
+  return { label: "Setup only", className: "is-setup" };
+}
+
+function renderLightingNetworkSummary() {
+  const value = document.querySelector("[data-lighting-network-status]");
+  const card = document.querySelector("[data-lighting-network-card]");
+  if (!value || !card) return;
+  const summary = getLightingNetworkSummary();
+  value.textContent = summary.label;
+  card.classList.remove("is-on", "is-warning", "is-offline", "is-setup");
+  card.classList.add(summary.className);
+}
+
+function getLatestLightingCommandForZone(zoneId) {
+  return lightingCommandsCache.find((command) => command.zoneId === zoneId || command.zone_id === zoneId) || null;
+}
+
+function getLightingCommandStatusHtml(zone) {
+  const command = getLatestLightingCommandForZone(zone.id);
+  if (!command) return `<span>Last command <strong>None queued</strong></span>`;
+  const status = String(command.status || "pending");
+  const state = command.desiredState || command.desired_state || "";
+  const updatedAt = command.completedAt || command.completed_at || command.acknowledgedAt || command.acknowledged_at || command.updatedAt || command.updated_at || command.createdAt || command.created_at || "";
+  const statusText = status === "completed"
+    ? "Completed"
+    : status === "acknowledged"
+      ? "Sent to controller"
+      : status === "failed"
+        ? "Failed"
+        : "Queued";
+  const timeText = updatedAt ? ` | ${formatDateTime(updatedAt)}` : "";
+  return `<span class="lighting-command-status is-${escapeHtml(status)}">Last command <strong>${escapeHtml(statusText)}${state ? ` ${escapeHtml(state)}` : ""}${escapeHtml(timeText)}</strong></span>`;
+}
+
+async function loadLightingCommandsForCurrentScope({ force = false } = {}) {
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation || lightingCommandsLoading) return;
+  if (!force && lightingCommandsLoadedScope === scopeKey) return;
+  lightingCommandsLoading = true;
+  try {
+    const response = await siteworksApi.loadLightingCommands(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`Lighting command load failed: ${response.status}`);
+    const payload = await response.json();
+    lightingCommandsCache = Array.isArray(payload.commands) ? payload.commands : [];
+    lightingCommandsLoadedScope = scopeKey;
+  } catch (error) {
+    console.warn("Lighting command status could not be loaded from the server.", error);
+    lightingCommandsCache = [];
+    lightingCommandsLoadedScope = scopeKey;
+  } finally {
+    lightingCommandsLoading = false;
+    renderLightingZones();
+  }
 }
 
 async function loadLightingControllersForCurrentScope({ force = false } = {}) {
@@ -10368,6 +10436,7 @@ async function loadLightingControllersForCurrentScope({ force = false } = {}) {
     if (status) status.textContent = "Using local saved controllers until the server endpoint is available.";
   } finally {
     lightingControllersLoading = false;
+    renderLightingNetworkSummary();
     renderLightingControllers();
     renderLightingZones();
   }
@@ -10505,6 +10574,7 @@ function getLightingZoneOptionsHtml(selectedId = "") {
 
 function renderLightingZones() {
   const list = document.querySelector("[data-lighting-zone-list]");
+  renderLightingNetworkSummary();
   if (!list) return;
   const scopeStatus = document.querySelector("[data-lighting-zone-scope]");
   const { canUseLocation, scopeKey, currentCustomer, currentLocation } = getLightingScopeDetails();
@@ -10523,11 +10593,16 @@ function renderLightingZones() {
   if (!canUseLocation) {
     lightingZonesCache = [];
     lightingZonesLoadedScope = "";
+    lightingCommandsCache = [];
+    lightingCommandsLoadedScope = "";
     list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting zones are saved per location, not globally.</span></div>`;
     return;
   }
   if (lightingZonesLoadedScope !== scopeKey && !lightingZonesLoading) {
     loadLightingZonesForCurrentScope();
+  }
+  if (lightingCommandsLoadedScope !== scopeKey && !lightingCommandsLoading) {
+    loadLightingCommandsForCurrentScope();
   }
   const zones = lightingZonesLoadedScope === scopeKey
     ? lightingZonesCache
@@ -10592,6 +10667,7 @@ function renderLightingZones() {
           <span>Controller <strong>${escapeHtml(zone.controllerName || getLightingControllerById(zone.controllerId)?.name || "Not assigned")}</strong></span>
           <span>Output <strong>${escapeHtml(zone.outputNumber || "Not assigned")}</strong></span>
           <span>Status <strong>${escapeHtml(zone.status || "Setup only")}</strong></span>
+          ${getLightingCommandStatusHtml(zone)}
           <span>Notes <strong>${escapeHtml(zone.notes || "None")}</strong></span>
           <div class="lighting-zone-actions">
             <button type="button" class="lighting-action-on" data-lighting-zone-command="${escapeHtml(zone.id)}" data-lighting-zone-state="On">On</button>
@@ -10608,6 +10684,7 @@ function renderLightingZones() {
 
 function renderLightingControllers() {
   const list = document.querySelector("[data-lighting-controller-list]");
+  renderLightingNetworkSummary();
   if (!list) return;
   const scopeStatus = document.querySelector("[data-lighting-controller-scope]");
   const canUseLocation = Boolean(selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && selectedLocationId && selectedLocationId !== ALL_LOCATIONS);
@@ -10625,6 +10702,7 @@ function renderLightingControllers() {
     lightingControllersCache = [];
     lightingControllersLoadedScope = "";
     editingLightingControllerId = "";
+    renderLightingNetworkSummary();
     list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting ESP32 controllers are saved per location, not globally.</span></div>`;
     return;
   }
@@ -11277,6 +11355,18 @@ async function applyLightingZoneCommand(zoneId, desiredState) {
           }
         });
         commandQueued = commandResponse.ok;
+        if (commandResponse.ok) {
+          const commandPayload = await commandResponse.json();
+          if (commandPayload.command) {
+            lightingCommandsCache = [
+              commandPayload.command,
+              ...lightingCommandsCache.filter((item) => item.id !== commandPayload.command.id)
+            ];
+            lightingCommandsLoadedScope = scopeKey;
+          }
+          window.setTimeout(() => loadLightingCommandsForCurrentScope({ force: true }), 2500);
+          window.setTimeout(() => loadLightingCommandsForCurrentScope({ force: true }), 7000);
+        }
       } catch (commandError) {
         console.warn("Lighting command could not be queued.", commandError);
       }
@@ -22133,6 +22223,14 @@ const siteworksApi = {
     return this.server(`/api/automation/lighting/overrides/${encodeURIComponent(id)}`, {
       method: "DELETE"
     });
+  },
+  loadLightingCommands(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ commands: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/lighting/commands?${params.toString()}`);
   },
   queueLightingCommand(command) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, command }), { status: 200 }));

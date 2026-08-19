@@ -1206,6 +1206,11 @@ textarea:disabled {
   background: #fffbeb;
 }
 
+.lighting-status-card.is-setup {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
 .lighting-status-card.is-offline {
   border-color: #fecaca;
   background: #fef2f2;
@@ -1315,6 +1320,18 @@ textarea:disabled {
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.lighting-command-status strong {
+  color: #92400e;
+}
+
+.lighting-command-status.is-completed strong {
+  color: #047857;
+}
+
+.lighting-command-status.is-failed strong {
+  color: #b91c1c;
 }
 
 .lighting-zone-details strong,
