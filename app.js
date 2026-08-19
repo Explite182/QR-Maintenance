@@ -10299,6 +10299,31 @@ function saveLightingOverrides(overrides) {
   }
 }
 
+function getVisibleLightingOverrides(overrides = []) {
+  const latestZoneControlByZone = new Map();
+  const visible = [];
+  const sorted = [...overrides].sort((a, b) => {
+    const aTime = Date.parse(a.updatedAt || a.createdAt || "") || 0;
+    const bTime = Date.parse(b.updatedAt || b.createdAt || "") || 0;
+    return bTime - aTime;
+  });
+  sorted.forEach((override) => {
+    if (override?.enabled === false) {
+      visible.push(override);
+      return;
+    }
+    const isZoneControl = override.source === "zone-control" || override.data?.source === "zone-control";
+    if (!isZoneControl || !override.zoneId) {
+      visible.push(override);
+      return;
+    }
+    if (latestZoneControlByZone.has(override.zoneId)) return;
+    latestZoneControlByZone.set(override.zoneId, override.id);
+    visible.push(override);
+  });
+  return visible;
+}
+
 function getLightingControllerScopeKey() {
   if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) return "";
   return `${selectedCustomerId}|${selectedLocationId}`;
@@ -10841,18 +10866,19 @@ function renderLightingOverrides() {
   const overrides = lightingOverridesLoadedScope === scopeKey
     ? lightingOverridesCache
     : getLightingOverrides().filter((override) => override.customerId === selectedCustomerId && override.locationId === selectedLocationId);
+  const visibleOverrides = getVisibleLightingOverrides(overrides);
   if (lightingOverridesLoading && lightingOverridesLoadedScope !== scopeKey) {
     list.innerHTML = `<div class="lighting-list-row"><strong>Loading overrides</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
     return;
   }
-  const activeOverrides = overrides.filter((override) => override.enabled !== false);
+  const activeOverrides = visibleOverrides.filter((override) => override.enabled !== false);
   const overrideCount = document.querySelector("[data-lighting-overrides-active]");
   if (overrideCount) overrideCount.textContent = activeOverrides.length ? String(activeOverrides.length) : "None";
-  if (!overrides.length) {
+  if (!visibleOverrides.length) {
     list.innerHTML = `<div class="lighting-list-row"><strong>No lighting overrides for this location</strong><span>Add a setup override like exterior signs on, cleaning lights on, or parking lot off.</span></div>`;
     return;
   }
-  list.innerHTML = overrides.map((override) => {
+  list.innerHTML = visibleOverrides.map((override) => {
     const isEditing = override.id === editingLightingOverrideId;
     if (isEditing) {
       return `
