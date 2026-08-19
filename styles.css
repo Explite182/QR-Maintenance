@@ -1474,13 +1474,23 @@ textarea:disabled {
 
 .lighting-controller-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, minmax(100px, auto));
+  grid-template-columns: minmax(0, 1fr) repeat(auto-fit, minmax(90px, auto));
   gap: 10px;
   align-items: center;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #f8fafc;
+}
+
+.lighting-controller-card.is-online {
+  border-color: rgba(5, 150, 105, 0.45);
+  background: #edfdf7;
+}
+
+.lighting-controller-card.is-offline {
+  border-color: rgba(185, 28, 28, 0.35);
+  background: #fff5f5;
 }
 
 .lighting-controller-card div {

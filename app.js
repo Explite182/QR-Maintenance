@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260818-lighting-key-generator-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-device-status-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -10314,6 +10314,18 @@ function getLightingScopeDetails() {
   };
 }
 
+function isLightingControllerRecentlyOnline(controller = {}) {
+  const lastSeenTime = Date.parse(controller.lastSeenAt || controller.last_seen_at || "");
+  return Number.isFinite(lastSeenTime) && Date.now() - lastSeenTime < 90 * 1000;
+}
+
+function getLightingControllerStatusLabel(controller = {}) {
+  if (isLightingControllerRecentlyOnline(controller)) return "Online";
+  const status = String(controller.onlineStatus || controller.online_status || "").trim();
+  if (status && status.toLowerCase() !== "online") return status;
+  return controller.lastSeenAt || controller.last_seen_at ? "Offline" : "Setup only";
+}
+
 async function loadLightingControllersForCurrentScope({ force = false } = {}) {
   const scopeKey = getLightingControllerScopeKey();
   if (!scopeKey || lightingControllersLoading) return;
@@ -10657,8 +10669,13 @@ function renderLightingControllers() {
       `;
     }
     const assignedZones = lightingZonesCache.filter((zone) => zone.controllerId === controller.id).length;
+    const statusLabel = getLightingControllerStatusLabel(controller);
+    const statusClass = statusLabel === "Online" ? "is-online" : statusLabel === "Offline" ? "is-offline" : "is-setup";
+    const ipAddress = controller.ipAddress || controller.ip_address || controller.ip || "";
+    const macAddress = controller.macAddress || controller.mac_address || controller.mac || "";
+    const firmwareVersion = controller.firmwareVersion || controller.firmware_version || "";
     return `
-      <div class="lighting-controller-card">
+      <div class="lighting-controller-card ${statusClass}">
         <div>
           <strong>${escapeHtml(controller.name)}</strong>
           <span>${escapeHtml(controller.uid)} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.location || currentLocation?.name || "No location assigned")}</span>
@@ -10673,7 +10690,23 @@ function renderLightingControllers() {
         </div>
         <div>
           <span>Status</span>
-          <strong>Setup only</strong>
+          <strong>${escapeHtml(statusLabel)}</strong>
+        </div>
+        <div>
+          <span>IP</span>
+          <strong>${escapeHtml(ipAddress || "Not reported")}</strong>
+        </div>
+        <div>
+          <span>MAC</span>
+          <strong>${escapeHtml(macAddress || "Not reported")}</strong>
+        </div>
+        <div>
+          <span>Firmware</span>
+          <strong>${escapeHtml(firmwareVersion || "Unknown")}</strong>
+        </div>
+        <div>
+          <span>Last seen</span>
+          <strong>${controller.lastSeenAt ? formatDateTime(controller.lastSeenAt) : "Never"}</strong>
         </div>
         <div>
           <span>API key</span>
