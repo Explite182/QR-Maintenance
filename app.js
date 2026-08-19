@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-run-now-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-schedule-run-guard-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -5266,6 +5266,7 @@ let lightingSchedulesLoadedScope = "";
 let lightingSchedulesLoading = false;
 let editingLightingScheduleId = "";
 let lightingScheduleClockTimer = null;
+const lightingScheduleRunsInProgress = new Set();
 let lightingOverridesCache = [];
 let lightingOverridesLoadedScope = "";
 let lightingOverridesLoading = false;
@@ -10344,6 +10345,12 @@ async function runLightingScheduleNow(scheduleId = "", action = "") {
     if (status) status.textContent = "Choose a schedule action to run.";
     return;
   }
+  if (lightingScheduleRunsInProgress.has(scheduleId)) {
+    if (status) status.textContent = `${schedule?.name || "Schedule"} is already running.`;
+    return;
+  }
+  lightingScheduleRunsInProgress.add(scheduleId);
+  renderLightingSchedules();
   if (status) status.textContent = `Running ${schedule?.name || "schedule"} ${cleanAction.toUpperCase()} now...`;
   try {
     const response = await siteworksApi.runLightingScheduleNow(scheduleId, cleanAction);
@@ -10369,6 +10376,9 @@ async function runLightingScheduleNow(scheduleId = "", action = "") {
   } catch (error) {
     console.warn("Lighting schedule run failed.", error);
     if (status) status.textContent = `Schedule run failed: ${error.message || "server unavailable"}`;
+  } finally {
+    lightingScheduleRunsInProgress.delete(scheduleId);
+    renderLightingSchedules();
   }
 }
 
@@ -10581,8 +10591,14 @@ function getLightingScheduleStatusHtml(schedule = {}) {
   const latestTime = latestCommand?.completedAt || latestCommand?.completed_at || latestCommand?.acknowledgedAt || latestCommand?.acknowledged_at || latestCommand?.createdAt || latestCommand?.created_at || "";
   const latestState = latestCommand?.desiredState || latestCommand?.desired_state || "";
   const latestStatus = latestCommand?.status || "";
+  const latestSource = String(latestCommand?.metadata?.source || latestCommand?.data?.source || "");
+  const latestSourceText = latestSource === "schedule-manual-run"
+    ? "manual run"
+    : latestSource === "schedule"
+      ? "clock run"
+      : "";
   const latestText = latestCommand
-    ? `${latestStatus}${latestState ? ` ${latestState}` : ""}${latestTime ? ` | ${formatDateTime(latestTime)}` : ""}`
+    ? `${latestSourceText ? `${latestSourceText} | ` : ""}${latestStatus}${latestState ? ` ${latestState}` : ""}${latestTime ? ` | ${formatDateTime(latestTime)}` : ""}`
     : "No schedule command yet";
   const zoneText = !targetZones.length
     ? "No target zones found"
@@ -10632,7 +10648,11 @@ function renderLightingHistory() {
     const createdAt = command.createdAt || command.created_at || "";
     const outputNumber = command.outputNumber || command.output_number || "";
     const source = String(command.metadata?.source || command.data?.source || "");
-    const sourceText = source === "schedule" ? " | schedule" : "";
+    const sourceText = source === "schedule-manual-run"
+      ? " | manual schedule"
+      : source === "schedule"
+        ? " | schedule"
+        : "";
     const staleText = isLightingCommandStale(command) ? " | waiting on controller" : "";
     return `
       <div class="lighting-list-row lighting-command-history-row is-${escapeHtml(status)}${isLightingCommandStale(command) ? " is-stale" : ""}">
@@ -11116,6 +11136,7 @@ function renderLightingSchedules() {
   }
   list.innerHTML = schedules.map((schedule) => {
     const isEditing = schedule.id === editingLightingScheduleId;
+    const scheduleRunning = lightingScheduleRunsInProgress.has(schedule.id);
     if (isEditing) {
       return `
         <form class="lighting-controller-card lighting-controller-edit-form" data-lighting-schedule-edit-form="${escapeHtml(schedule.id)}">
@@ -11158,8 +11179,8 @@ function renderLightingSchedules() {
         <span>${escapeHtml(schedule.days || "No days")} | ${escapeHtml(schedule.onTime || "No on time")} on | ${escapeHtml(schedule.offTime || "No off time")} off | ${escapeHtml(schedule.zoneName || "All zones")} | ${schedule.enabled === false ? "Disabled" : "Enabled"}</span>
         ${getLightingScheduleStatusHtml(schedule)}
         <div class="lighting-zone-actions">
-          <button type="button" data-lighting-schedule-run="${escapeHtml(schedule.id)}" data-lighting-schedule-action="on">Run On now</button>
-          <button type="button" data-lighting-schedule-run="${escapeHtml(schedule.id)}" data-lighting-schedule-action="off">Run Off now</button>
+          <button type="button" data-lighting-schedule-run="${escapeHtml(schedule.id)}" data-lighting-schedule-action="on" ${scheduleRunning ? "disabled" : ""}>${scheduleRunning ? "Running..." : "Run On now"}</button>
+          <button type="button" data-lighting-schedule-run="${escapeHtml(schedule.id)}" data-lighting-schedule-action="off" ${scheduleRunning ? "disabled" : ""}>${scheduleRunning ? "Running..." : "Run Off now"}</button>
           <button type="button" data-lighting-schedule-edit="${escapeHtml(schedule.id)}">Edit</button>
           <button type="button" data-lighting-schedule-delete="${escapeHtml(schedule.id)}">Delete</button>
         </div>
