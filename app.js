@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-input-mapping-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-input-state-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -10433,7 +10433,8 @@ async function refreshLightingLiveStatus() {
   if (!canUseLocation) return;
   await Promise.all([
     loadLightingControllersForCurrentScope({ force: true }),
-    loadLightingCommandsForCurrentScope({ force: true })
+    loadLightingCommandsForCurrentScope({ force: true }),
+    loadLightingInputsForCurrentScope({ force: true })
   ]);
 }
 
@@ -11584,10 +11585,19 @@ function renderLightingInputs() {
         </form>
       `;
     }
+    const liveState = String(input.liveState || input.inputState || "").trim();
+    const rawValue = String(input.rawValue || "").trim();
+    const hasLiveState = Boolean(liveState || rawValue || input.stateLastSeenAt);
+    const liveStatus = hasLiveState ? (input.isActive ? "Active" : "Inactive") : "Waiting";
+    const liveText = hasLiveState
+      ? `${liveState || "State reported"}${rawValue ? ` (${rawValue})` : ""}${input.stateLastSeenAt ? ` | seen ${formatDateTime(input.stateLastSeenAt)}` : ""}`
+      : "No live state yet";
+    const liveClass = hasLiveState ? (input.isActive ? " is-warning" : " is-on") : "";
     return `
-      <div class="lighting-list-row">
+      <div class="lighting-list-row${liveClass}">
         <strong>${escapeHtml(input.label || `Input ${input.inputNumber || ""}`)}</strong>
         <span>Input ${escapeHtml(input.inputNumber || "1")} | ${escapeHtml(input.inputType || "Aux contact")} | active ${escapeHtml(input.activeState || "Closed")} | ${escapeHtml(input.controllerName || getLightingControllerById(input.controllerId)?.name || "No controller")} | ${escapeHtml(input.zoneName || "All zones")} | ${escapeHtml(input.action || "No action")} | ${input.enabled === false ? "Disabled" : "Enabled"}</span>
+        <span>Live ${escapeHtml(liveStatus)}: ${escapeHtml(liveText)}</span>
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-input-edit="${escapeHtml(input.id)}">Edit</button>
           <button type="button" data-lighting-input-delete="${escapeHtml(input.id)}">Delete</button>
