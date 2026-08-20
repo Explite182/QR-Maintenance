@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-controller-health-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-offline-alert-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
@@ -10704,6 +10704,7 @@ async function loadLightingControllersForCurrentScope({ force = false } = {}) {
     const payload = await response.json();
     lightingControllersCache = Array.isArray(payload.controllers) ? payload.controllers : [];
     lightingControllersLoadedScope = scopeKey;
+    loadServerNotifications();
     if (status) status.textContent = "";
   } catch (error) {
     console.warn("Lighting controllers could not be loaded from the server.", error);
@@ -14423,7 +14424,7 @@ function renderNotificationCenterItem(notification = {}) {
       <div class="notification-center-actions">
         ${isBreakerTrip ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Panel</button>` : ""}
         ${isServerHealth ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Server</button>` : ""}
-        ${!isBreakerTrip && ["esp-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
+        ${!isBreakerTrip && ["esp-offline", "lighting-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
       </div>
@@ -14459,11 +14460,11 @@ function normalizeNotificationChannels(value = null) {
 
 function selectedNotificationRuleType() {
   const type = String(els.notificationRuleType?.value || "breaker-trip").trim();
-  return ["breaker-trip", "esp-offline", "key-overdue"].includes(type) ? type : "breaker-trip";
+  return ["breaker-trip", "esp-offline", "lighting-offline", "key-overdue"].includes(type) ? type : "breaker-trip";
 }
 
 function notificationRuleForType(type = "breaker-trip") {
-  const eventType = ["breaker-trip", "esp-offline", "key-overdue"].includes(type) ? type : "breaker-trip";
+  const eventType = ["breaker-trip", "esp-offline", "lighting-offline", "key-overdue"].includes(type) ? type : "breaker-trip";
   return notificationRules.find((rule) => String(rule.event_type || rule.eventType || "") === eventType) || {
     id: "",
     event_type: eventType,
@@ -14806,6 +14807,15 @@ function openServerNotification(id) {
       }, 50);
     }
     document.getElementById("monitoringPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (notification.type === "lighting-offline") {
+    setLightingAutomationTab("controllers");
+    openAutomationSidebarTab("lighting");
+    window.setTimeout(() => {
+      const controllerId = metadata.controllerId || metadata.sourceId || "";
+      const selector = controllerId ? `[data-lighting-controller-edit="${String(controllerId).replace(/"/g, '\\"')}"]` : "";
+      const target = selector ? document.querySelector(selector) : document.getElementById("automationLightingPanel");
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
   } else if (notification.type === "key-overdue") {
     focusedKeyId = metadata.keyId || metadata.sourceId || "";
     setInventoryTab("keys");
