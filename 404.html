@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="SiteWorks">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>SiteWorks</title>
-  <link rel="manifest" href="/manifest.webmanifest?v=20260819-lighting-offline-alert-01">
+  <link rel="manifest" href="/manifest.webmanifest?v=20260819-lighting-input-mapping-01">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260815-pwa-05">
-  <link rel="stylesheet" href="/styles.css?v=20260819-lighting-offline-alert-01">
+  <link rel="stylesheet" href="/styles.css?v=20260819-lighting-input-mapping-01">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -1428,12 +1428,14 @@
           <div class="lighting-status-grid">
             <div class="lighting-status-card is-offline"><span>Lighting network</span><strong>Setup only</strong></div>
             <div class="lighting-status-card is-on"><span>Zones on</span><strong data-lighting-zones-on>0</strong></div>
+            <div class="lighting-status-card"><span>Inputs</span><strong data-lighting-inputs-count>0</strong></div>
             <div class="lighting-status-card"><span>Schedules active</span><strong data-lighting-schedules-active>Not active</strong></div>
             <div class="lighting-status-card is-warning"><span>Overrides</span><strong data-lighting-overrides-active>None</strong></div>
           </div>
           <div class="automation-tab-strip" role="tablist" aria-label="Lighting controls">
             <button type="button" class="is-active" data-lighting-tab="zones" role="tab" aria-selected="true">Zones</button>
             <button type="button" data-lighting-tab="controllers" role="tab" aria-selected="false">Controllers</button>
+            <button type="button" data-lighting-tab="inputs" role="tab" aria-selected="false">Inputs</button>
             <button type="button" data-lighting-tab="schedules" role="tab" aria-selected="false">Schedules</button>
             <button type="button" data-lighting-tab="overrides" role="tab" aria-selected="false">Overrides</button>
             <button type="button" data-lighting-tab="history" role="tab" aria-selected="false">History</button>
@@ -1514,6 +1516,67 @@
             </details>
             <div data-lighting-controller-list class="lighting-controller-list">
               <div class="lighting-list-row"><strong>No lighting controllers added yet</strong><span>Use the setup wizard to add an ESP32 controller.</span></div>
+            </div>
+          </div>
+          <div class="lighting-tab-panel hidden" data-lighting-panel="inputs">
+            <details class="lighting-controller-wizard">
+              <summary>+ Add Lighting Input</summary>
+              <form data-lighting-input-form class="lighting-controller-form">
+                <p data-lighting-input-scope class="lighting-controller-scope">Choose a specific customer and location before adding an input.</p>
+                <label>Input label <input name="label" type="text" placeholder="Photocell"></label>
+                <label>Controller
+                  <select name="controllerId" data-lighting-input-controller>
+                    <option value="">No controller assigned yet</option>
+                  </select>
+                </label>
+                <label>Input number <input name="inputNumber" type="number" min="1" max="64" value="1"></label>
+                <label>Type
+                  <select name="inputType">
+                    <option>Photocell</option>
+                    <option>External timeclock</option>
+                    <option>Aux contact</option>
+                    <option>Override switch</option>
+                  </select>
+                </label>
+                <label>Active state
+                  <select name="activeState">
+                    <option>Closed</option>
+                    <option>Open</option>
+                  </select>
+                </label>
+                <label>Assigned zone
+                  <select name="zoneId" data-lighting-input-zone>
+                    <option value="">All zones</option>
+                  </select>
+                </label>
+                <label>Action
+                  <select name="action">
+                    <option>No action</option>
+                    <option>Turn zone on</option>
+                    <option>Turn zone off</option>
+                    <option>Hold off when active</option>
+                    <option>Allow schedule when active</option>
+                    <option>Manual override on</option>
+                    <option>Manual override off</option>
+                  </select>
+                </label>
+                <label>Enabled
+                  <select name="enabled">
+                    <option value="on">Enabled</option>
+                    <option value="off">Disabled</option>
+                  </select>
+                </label>
+                <label>Notes <textarea name="notes" rows="2" placeholder="Wire label, panel terminal, or field notes"></textarea></label>
+                <div class="lighting-controller-help">
+                  <strong>Mapping only</strong>
+                  <span>This records what each ESP32 input means. Control rules come next.</span>
+                </div>
+                <button type="submit" class="primary">Add Input</button>
+                <p data-lighting-input-status class="lighting-controller-status" aria-live="polite"></p>
+              </form>
+            </details>
+            <div data-lighting-input-list class="lighting-controller-list">
+              <div class="lighting-list-row"><strong>No lighting inputs added yet</strong><span>Add mappings for photocells, external timeclocks, aux contacts, or override switches.</span></div>
             </div>
           </div>
           <div class="lighting-tab-panel hidden" data-lighting-panel="schedules">
@@ -2187,11 +2250,11 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/app.js?v=20260819-lighting-offline-alert-01"></script>
+  <script src="/app.js?v=20260819-lighting-input-mapping-01"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-navigator.serviceWorker.register("/sw.js?v=20260819-lighting-offline-alert-01").catch((error) => {
+navigator.serviceWorker.register("/sw.js?v=20260819-lighting-input-mapping-01").catch((error) => {
           console.warn("SiteWorks app install support was not started.", error);
         });
       });

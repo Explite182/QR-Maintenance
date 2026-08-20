@@ -5243,9 +5243,10 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-offline-alert-01";
+const SITEWORKS_APP_VERSION = "20260819-lighting-input-mapping-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
+const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
 const LIGHTING_OVERRIDES_STORAGE_KEY = "siteworks_lighting_overrides_v1";
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
@@ -5258,6 +5259,10 @@ let lightingZonesCache = [];
 let lightingZonesLoadedScope = "";
 let lightingZonesLoading = false;
 let editingLightingZoneId = "";
+let lightingInputsCache = [];
+let lightingInputsLoadedScope = "";
+let lightingInputsLoading = false;
+let editingLightingInputId = "";
 let lightingCommandsCache = [];
 let lightingCommandsLoadedScope = "";
 let lightingCommandsLoading = false;
@@ -9010,6 +9015,32 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const lightingInputEditButton = event.target.closest("[data-lighting-input-edit]");
+  if (lightingInputEditButton) {
+    event.preventDefault();
+    editingLightingInputId = lightingInputEditButton.dataset.lightingInputEdit || "";
+    renderLightingInputs();
+    return;
+  }
+
+  const lightingInputCancelButton = event.target.closest("[data-lighting-input-cancel]");
+  if (lightingInputCancelButton) {
+    event.preventDefault();
+    editingLightingInputId = "";
+    renderLightingInputs();
+    return;
+  }
+
+  const lightingInputDeleteButton = event.target.closest("[data-lighting-input-delete]");
+  if (lightingInputDeleteButton) {
+    event.preventDefault();
+    const inputId = lightingInputDeleteButton.dataset.lightingInputDelete || "";
+    const input = lightingInputsCache.find((item) => item.id === inputId);
+    if (!inputId || !window.confirm(`Delete ${input?.label || "this lighting input"}?`)) return;
+    deleteLightingInput(inputId);
+    return;
+  }
+
   const lightingZoneCommandButton = event.target.closest("[data-lighting-zone-command]");
   if (lightingZoneCommandButton) {
     event.preventDefault();
@@ -9578,6 +9609,16 @@ document.addEventListener("submit", async (event) => {
   if (form.matches("[data-lighting-zone-edit-form]")) {
     event.preventDefault();
     await saveLightingZoneFromForm(form, form.dataset.lightingZoneEditForm || "");
+    return;
+  }
+  if (form.matches("[data-lighting-input-form]")) {
+    event.preventDefault();
+    await saveLightingInputFromForm(form);
+    return;
+  }
+  if (form.matches("[data-lighting-input-edit-form]")) {
+    event.preventDefault();
+    await saveLightingInputFromForm(form, form.dataset.lightingInputEditForm || "");
     return;
   }
   if (form.matches("[data-lighting-schedule-form]")) {
@@ -10241,7 +10282,7 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
 }
 
 function setLightingAutomationTab(tab = "zones") {
-  const selectedTab = ["zones", "controllers", "schedules", "overrides", "history"].includes(tab) ? tab : "zones";
+  const selectedTab = ["zones", "controllers", "inputs", "schedules", "overrides", "history"].includes(tab) ? tab : "zones";
   document.querySelectorAll("[data-lighting-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.lightingTab === selectedTab);
     button.setAttribute("aria-selected", String(button.dataset.lightingTab === selectedTab));
@@ -10252,6 +10293,7 @@ function setLightingAutomationTab(tab = "zones") {
   });
   if (selectedTab === "controllers") renderLightingControllers();
   if (selectedTab === "zones") renderLightingZones();
+  if (selectedTab === "inputs") renderLightingInputs();
   if (selectedTab === "schedules") renderLightingSchedules();
   if (selectedTab === "overrides") renderLightingOverrides();
   if (selectedTab === "history") renderLightingHistory();
@@ -10424,6 +10466,22 @@ function saveLightingZones(zones) {
   if (!setLocalStorageWithRecovery(LIGHTING_ZONES_STORAGE_KEY, JSON.stringify(zones))) {
     showStorageFullWarning?.();
     console.warn("Lighting zone setup could not be saved locally.");
+  }
+}
+
+function getLightingInputs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LIGHTING_INPUTS_STORAGE_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLightingInputs(inputs) {
+  if (!setLocalStorageWithRecovery(LIGHTING_INPUTS_STORAGE_KEY, JSON.stringify(inputs))) {
+    showStorageFullWarning?.();
+    console.warn("Lighting input setup could not be saved locally.");
   }
 }
 
@@ -10746,6 +10804,34 @@ async function loadLightingZonesForCurrentScope({ force = false } = {}) {
     lightingZonesLoading = false;
     renderLightingZones();
     renderLightingControllers();
+    renderLightingInputs();
+  }
+}
+
+async function loadLightingInputsForCurrentScope({ force = false } = {}) {
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation || lightingInputsLoading) return;
+  if (!force && lightingInputsLoadedScope === scopeKey) return;
+  lightingInputsLoading = true;
+  const status = document.querySelector("[data-lighting-input-status]");
+  if (status) status.textContent = "Loading lighting inputs...";
+  try {
+    const response = await siteworksApi.loadLightingInputs(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`Lighting input load failed: ${response.status}`);
+    const payload = await response.json();
+    lightingInputsCache = Array.isArray(payload.inputs) ? payload.inputs : [];
+    lightingInputsLoadedScope = scopeKey;
+    if (status) status.textContent = "";
+  } catch (error) {
+    console.warn("Lighting inputs could not be loaded from the server.", error);
+    lightingInputsCache = getLightingInputs().filter((input) => (
+      input.customerId === selectedCustomerId && input.locationId === selectedLocationId
+    ));
+    lightingInputsLoadedScope = scopeKey;
+    if (status) status.textContent = "Using local saved inputs until the server endpoint is available.";
+  } finally {
+    lightingInputsLoading = false;
+    renderLightingInputs();
   }
 }
 
@@ -10819,6 +10905,18 @@ function renderLightingOverrideZoneOptions() {
   const select = document.querySelector("[data-lighting-override-zone]");
   if (!select) return;
   select.innerHTML = getLightingZoneOptionsHtml(select.value || "");
+}
+
+function renderLightingInputControllerOptions() {
+  document.querySelectorAll("[data-lighting-input-controller]").forEach((select) => {
+    select.innerHTML = getLightingControllerOptionsHtml(select.value || "");
+  });
+}
+
+function renderLightingInputZoneOptions() {
+  document.querySelectorAll("[data-lighting-input-zone]").forEach((select) => {
+    select.innerHTML = getLightingZoneOptionsHtml(select.value || "");
+  });
 }
 
 function getLightingControllerOptionsHtml(selectedId = "") {
@@ -10981,6 +11079,7 @@ function renderLightingControllers() {
     lightingControllersCache = [];
     lightingControllersLoadedScope = "";
     editingLightingControllerId = "";
+    editingLightingInputId = "";
     renderLightingNetworkSummary();
     list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting ESP32 controllers are saved per location, not globally.</span></div>`;
     return;
@@ -11358,6 +11457,7 @@ async function saveLightingControllerFromForm(form, existingControllerId = "") {
   form.reset();
   renderLightingControllers();
   renderLightingZones();
+  renderLightingInputs();
 }
 
 async function deleteLightingController(controllerId) {
@@ -11387,6 +11487,212 @@ async function deleteLightingController(controllerId) {
   }
   renderLightingControllers();
   renderLightingZones();
+  renderLightingInputs();
+}
+
+function renderLightingInputs() {
+  const list = document.querySelector("[data-lighting-input-list]");
+  const count = document.querySelector("[data-lighting-inputs-count]");
+  if (!list && !count) return;
+  const scopeStatus = document.querySelector("[data-lighting-input-scope]");
+  const { canUseLocation, scopeKey, currentCustomer, currentLocation } = getLightingScopeDetails();
+  if (scopeStatus) {
+    scopeStatus.textContent = canUseLocation
+      ? `Adding to ${currentCustomer?.name || "selected customer"} | ${currentLocation?.name || "selected location"}`
+      : "Choose a specific customer and location before adding an input.";
+  }
+  document.querySelectorAll("[data-lighting-input-form] button[type='submit']").forEach((button) => {
+    button.disabled = !canUseLocation;
+  });
+  if (canUseLocation && lightingControllersLoadedScope !== scopeKey && !lightingControllersLoading) {
+    loadLightingControllersForCurrentScope();
+  }
+  if (canUseLocation && lightingZonesLoadedScope !== scopeKey && !lightingZonesLoading) {
+    loadLightingZonesForCurrentScope();
+  }
+  renderLightingInputControllerOptions();
+  renderLightingInputZoneOptions();
+  if (!canUseLocation) {
+    lightingInputsCache = [];
+    lightingInputsLoadedScope = "";
+    editingLightingInputId = "";
+    if (count) count.textContent = "0";
+    if (list) list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting inputs are saved per location, not globally.</span></div>`;
+    return;
+  }
+  if (lightingInputsLoadedScope !== scopeKey && !lightingInputsLoading) {
+    loadLightingInputsForCurrentScope();
+  }
+  const inputs = lightingInputsLoadedScope === scopeKey
+    ? lightingInputsCache
+    : getLightingInputs().filter((input) => input.customerId === selectedCustomerId && input.locationId === selectedLocationId);
+  if (count) count.textContent = String(inputs.length || 0);
+  if (!list) return;
+  if (lightingInputsLoading && lightingInputsLoadedScope !== scopeKey) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>Loading inputs</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
+    return;
+  }
+  if (!inputs.length) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>No lighting inputs for this location</strong><span>Add mappings for photocells, external timeclocks, aux contacts, or override switches.</span></div>`;
+    return;
+  }
+  list.innerHTML = inputs.map((input) => {
+    const isEditing = input.id === editingLightingInputId;
+    if (isEditing) {
+      return `
+        <form class="lighting-controller-card lighting-controller-edit-form" data-lighting-input-edit-form="${escapeHtml(input.id)}">
+          <label>Input label
+            <input name="label" value="${escapeHtml(input.label || "")}" required>
+          </label>
+          <label>Controller
+            <select name="controllerId" data-lighting-input-controller>${getLightingControllerOptionsHtml(input.controllerId || "")}</select>
+          </label>
+          <label>Input
+            <input name="inputNumber" type="number" min="1" max="64" value="${escapeHtml(input.inputNumber || "1")}">
+          </label>
+          <label>Type
+            <select name="inputType">
+              ${["Photocell", "External timeclock", "Aux contact", "Override switch"].map((type) => `<option value="${type}"${type === input.inputType ? " selected" : ""}>${type}</option>`).join("")}
+            </select>
+          </label>
+          <label>Active state
+            <select name="activeState">
+              ${["Closed", "Open"].map((state) => `<option value="${state}"${state === input.activeState ? " selected" : ""}>${state}</option>`).join("")}
+            </select>
+          </label>
+          <label>Zone
+            <select name="zoneId" data-lighting-input-zone>${getLightingZoneOptionsHtml(input.zoneId || "")}</select>
+          </label>
+          <label>Action
+            <select name="action">
+              ${["No action", "Turn zone on", "Turn zone off", "Hold off when active", "Allow schedule when active", "Manual override on", "Manual override off"].map((action) => `<option value="${action}"${action === input.action ? " selected" : ""}>${action}</option>`).join("")}
+            </select>
+          </label>
+          <label>Enabled
+            <select name="enabled">
+              <option value="on"${input.enabled === false ? "" : " selected"}>Enabled</option>
+              <option value="off"${input.enabled === false ? " selected" : ""}>Disabled</option>
+            </select>
+          </label>
+          <label>Notes
+            <textarea name="notes" rows="2">${escapeHtml(input.notes || "")}</textarea>
+          </label>
+          <div class="lighting-zone-actions">
+            <button type="submit">Save Input</button>
+            <button type="button" data-lighting-input-cancel>Cancel</button>
+          </div>
+        </form>
+      `;
+    }
+    return `
+      <div class="lighting-list-row">
+        <strong>${escapeHtml(input.label || `Input ${input.inputNumber || ""}`)}</strong>
+        <span>Input ${escapeHtml(input.inputNumber || "1")} | ${escapeHtml(input.inputType || "Aux contact")} | active ${escapeHtml(input.activeState || "Closed")} | ${escapeHtml(input.controllerName || getLightingControllerById(input.controllerId)?.name || "No controller")} | ${escapeHtml(input.zoneName || "All zones")} | ${escapeHtml(input.action || "No action")} | ${input.enabled === false ? "Disabled" : "Enabled"}</span>
+        <div class="lighting-zone-actions">
+          <button type="button" data-lighting-input-edit="${escapeHtml(input.id)}">Edit</button>
+          <button type="button" data-lighting-input-delete="${escapeHtml(input.id)}">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function saveLightingInputFromForm(form, existingInputId = "") {
+  const status = document.querySelector("[data-lighting-input-status]");
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation) {
+    if (status) status.textContent = "Choose a specific customer and location before adding a lighting input.";
+    renderLightingInputs();
+    return;
+  }
+  const formData = new FormData(form);
+  const controllerId = String(formData.get("controllerId") || "").trim();
+  const zoneId = String(formData.get("zoneId") || "").trim();
+  const selectedController = lightingControllersCache.find((controller) => controller.id === controllerId);
+  const selectedZone = lightingZonesCache.find((zone) => zone.id === zoneId);
+  const existingInput = existingInputId
+    ? lightingInputsCache.find((item) => item.id === existingInputId) || getLightingInputs().find((item) => item.id === existingInputId)
+    : null;
+  const input = {
+    id: existingInputId || crypto.randomUUID?.() || `lighting-input-${Date.now()}`,
+    customerId: selectedCustomerId,
+    locationId: selectedLocationId,
+    controllerId,
+    controllerName: selectedController?.name || existingInput?.controllerName || "",
+    zoneId,
+    zoneName: selectedZone?.name || (zoneId ? existingInput?.zoneName : "All zones") || "All zones",
+    inputNumber: String(formData.get("inputNumber") || "1").trim(),
+    inputType: String(formData.get("inputType") || "Aux contact").trim(),
+    label: String(formData.get("label") || "").trim(),
+    activeState: String(formData.get("activeState") || "Closed").trim(),
+    action: String(formData.get("action") || "No action").trim(),
+    enabled: formData.get("enabled") !== "off",
+    notes: String(formData.get("notes") || "").trim(),
+    createdAt: existingInput?.createdAt || new Date().toISOString()
+  };
+  if (!input.label) {
+    if (status) status.textContent = "Input label is required.";
+    return;
+  }
+  if (status) status.textContent = `Saving ${input.label}...`;
+  try {
+    const response = await siteworksApi.saveLightingInput({
+      ...input,
+      customer_id: input.customerId,
+      location_id: input.locationId,
+      controller_id: input.controllerId,
+      zone_id: input.zoneId,
+      input_number: input.inputNumber,
+      input_type: input.inputType,
+      active_state: input.activeState,
+      data: {
+        controllerName: input.controllerName,
+        zoneName: input.zoneName
+      }
+    });
+    if (!response.ok) throw new Error(`Lighting input save failed: ${response.status}`);
+    const payload = await response.json();
+    const savedInput = payload.input || input;
+    lightingInputsCache = [savedInput, ...lightingInputsCache.filter((item) => item.id !== savedInput.id)];
+    lightingInputsLoadedScope = scopeKey;
+    editingLightingInputId = "";
+    if (status) status.textContent = `Saved ${savedInput.label} to SiteWorks server.`;
+  } catch (error) {
+    console.warn("Lighting input could not be saved to the server.", error);
+    const inputs = getLightingInputs().filter((item) => item.id !== input.id);
+    inputs.unshift(input);
+    saveLightingInputs(inputs);
+    lightingInputsCache = [input, ...lightingInputsCache.filter((item) => item.id !== input.id)];
+    lightingInputsLoadedScope = scopeKey;
+    editingLightingInputId = "";
+    if (status) status.textContent = `Saved ${input.label} locally. Upload the server file to enable shared input storage.`;
+  }
+  form.reset();
+  renderLightingInputs();
+}
+
+async function deleteLightingInput(inputId) {
+  const status = document.querySelector("[data-lighting-input-status]");
+  if (!inputId) return;
+  if (status) status.textContent = "Deleting lighting input...";
+  try {
+    const response = await siteworksApi.deleteLightingInput(inputId);
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Lighting input delete failed: ${response.status}`);
+    }
+    lightingInputsCache = lightingInputsCache.filter((item) => item.id !== inputId);
+    saveLightingInputs(getLightingInputs().filter((item) => item.id !== inputId));
+    editingLightingInputId = "";
+    if (status) status.textContent = "Lighting input deleted.";
+  } catch (error) {
+    console.warn("Lighting input could not be deleted from the server.", error);
+    saveLightingInputs(getLightingInputs().filter((item) => item.id !== inputId));
+    lightingInputsCache = lightingInputsCache.filter((item) => item.id !== inputId);
+    editingLightingInputId = "";
+    if (status) status.textContent = "Input delete failed on the server. Removed from this browser for now.";
+  }
+  renderLightingInputs();
 }
 
 async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
@@ -22479,6 +22785,27 @@ const siteworksApi = {
   deleteLightingZone(id) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     return this.server(`/api/automation/lighting/zones/${encodeURIComponent(id)}`, {
+      method: "DELETE"
+    });
+  },
+  loadLightingInputs(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ inputs: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/lighting/inputs?${params.toString()}`);
+  },
+  saveLightingInput(input) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, input }), { status: 200 }));
+    return this.server("/api/automation/lighting/inputs", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  deleteLightingInput(id) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    return this.server(`/api/automation/lighting/inputs/${encodeURIComponent(id)}`, {
       method: "DELETE"
     });
   },
