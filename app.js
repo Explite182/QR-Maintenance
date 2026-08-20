@@ -5243,7 +5243,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260819-lighting-input-state-01";
+const SITEWORKS_APP_VERSION = "20260820-lighting-input-release-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -5251,6 +5251,7 @@ const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
 const LIGHTING_OVERRIDES_STORAGE_KEY = "siteworks_lighting_overrides_v1";
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
+const LIGHTING_LIVE_REFRESH_INTERVAL_MS = 5000;
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
@@ -6179,7 +6180,7 @@ window.setInterval(loadNotificationRules, 5 * 60 * 1000);
 window.setInterval(loadServerHealth, 5 * 60 * 1000);
 window.setInterval(refreshSiteMapMonitorMode, 30000);
 window.setInterval(renderLightingScheduleClock, 1000);
-window.setInterval(refreshLightingLiveStatus, 30000);
+window.setInterval(refreshLightingLiveStatus, LIGHTING_LIVE_REFRESH_INTERVAL_MS);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 initPasswordRecoveryFromUrl();
 
@@ -10432,10 +10433,15 @@ async function refreshLightingLiveStatus() {
   const { canUseLocation } = getLightingScopeDetails();
   if (!canUseLocation) return;
   await Promise.all([
+    loadLightingZonesForCurrentScope({ force: true }),
     loadLightingControllersForCurrentScope({ force: true }),
     loadLightingCommandsForCurrentScope({ force: true }),
     loadLightingInputsForCurrentScope({ force: true })
   ]);
+  renderLightingNetworkSummary();
+  renderLightingZones();
+  renderLightingInputs();
+  renderLightingHistory();
 }
 
 function getLightingControllers() {
