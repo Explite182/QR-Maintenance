@@ -12850,19 +12850,6 @@ async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = 
     mode: "Manual",
     updatedAt: new Date().toISOString()
   };
-  const override = {
-    id: crypto.randomUUID?.() || `lighting-override-${Date.now()}`,
-    customerId: selectedCustomerId,
-    locationId: selectedLocationId,
-    zoneId: zone.id,
-    zoneName: zone.name || "Lighting zone",
-    name: `${zone.name || "Lighting zone"} manual ${cleanState}`,
-    desiredState: cleanState,
-    expiresAt: "",
-    enabled: true,
-    notes: "Created from zone control.",
-    createdAt: new Date().toISOString()
-  };
   if (status) status.textContent = `Setting ${zone.name || "lighting zone"} ${cleanState.toLowerCase()}...`;
   try {
     const zoneResponse = await siteworksApi.saveLightingZone({
@@ -12880,18 +12867,7 @@ async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = 
       }
     });
     if (!zoneResponse.ok) throw new Error(`Lighting zone command failed: ${zoneResponse.status}`);
-    const overrideResponse = await siteworksApi.saveLightingOverride({
-      ...override,
-      customer_id: override.customerId,
-      location_id: override.locationId,
-      zone_id: override.zoneId,
-      desired_state: override.desiredState,
-      expires_at: override.expiresAt,
-      data: { zoneName: override.zoneName, source: "zone-control" }
-    });
-    if (!overrideResponse.ok) throw new Error(`Lighting override command failed: ${overrideResponse.status}`);
     const zonePayload = await zoneResponse.json();
-    const overridePayload = await overrideResponse.json();
     const savedZone = {
       ...updatedZone,
       ...(zonePayload.zone || {}),
@@ -12899,7 +12875,6 @@ async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = 
       controllerName: zonePayload.zone?.controllerName || updatedZone.controllerName || getLightingControllerById(updatedZone.controllerId)?.name || "",
       outputNumber: zonePayload.zone?.outputNumber || updatedZone.outputNumber
     };
-    const savedOverride = overridePayload.override || override;
     let commandQueued = false;
     if (savedZone.controllerId && savedZone.outputNumber) {
       try {
@@ -12935,8 +12910,26 @@ async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = 
         console.warn("Lighting command could not be queued.", commandError);
       }
     }
+    const zoneControlOverrides = lightingOverridesCache.filter((item) => {
+      const itemZoneId = getLightingOverrideZoneId(item);
+      const isZoneControl = item.source === "zone-control" || item.data?.source === "zone-control";
+      return isZoneControl && itemZoneId === savedZone.id && getLightingOverrideIsActive(item);
+    });
+    zoneControlOverrides.forEach((item) => {
+      siteworksApi.clearLightingOverride(item.id).catch((clearError) => {
+        console.warn("Lighting zone-control override could not be cleared.", clearError);
+      });
+    });
     lightingZonesCache = [savedZone, ...lightingZonesCache.filter((item) => item.id !== savedZone.id)];
-    lightingOverridesCache = [savedOverride, ...lightingOverridesCache.filter((item) => item.id !== savedOverride.id)];
+    lightingOverridesCache = lightingOverridesCache.map((item) => {
+      if (!zoneControlOverrides.some((overrideItem) => overrideItem.id === item.id)) return item;
+      return {
+        ...item,
+        enabled: false,
+        clearedAt: new Date().toISOString(),
+        cleared_at: new Date().toISOString()
+      };
+    });
     lightingZonesLoadedScope = scopeKey;
     lightingOverridesLoadedScope = scopeKey;
     if (status) {
@@ -12949,13 +12942,8 @@ async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = 
     const zones = getLightingZones().filter((item) => item.id !== updatedZone.id);
     zones.unshift(updatedZone);
     saveLightingZones(zones);
-    const overrides = getLightingOverrides().filter((item) => item.id !== override.id);
-    overrides.unshift(override);
-    saveLightingOverrides(overrides);
     lightingZonesCache = [updatedZone, ...lightingZonesCache.filter((item) => item.id !== updatedZone.id)];
-    lightingOverridesCache = [override, ...lightingOverridesCache.filter((item) => item.id !== override.id)];
     lightingZonesLoadedScope = scopeKey;
-    lightingOverridesLoadedScope = scopeKey;
     if (status) status.textContent = `${updatedZone.name || "Lighting zone"} set locally. Server command did not save.`;
   }
   renderLightingHome();

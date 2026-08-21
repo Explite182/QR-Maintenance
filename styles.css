@@ -1420,43 +1420,100 @@ textarea:disabled {
 
 .lighting-industrial-controller {
   position: relative;
-  padding: 68px 22px 24px;
-  border: 1px solid #050807;
-  border-radius: 16px;
+  isolation: isolate;
+  min-height: clamp(720px, 78vh, 940px);
+  overflow: hidden;
+  padding: 82px 26px 28px;
+  border: 2px solid #020404;
+  border-radius: 18px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 18%, rgba(0, 0, 0, 0.32) 72%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0, rgba(255, 255, 255, 0.025) 1px, transparent 1px, transparent 5px),
-    #171d1d;
+    linear-gradient(135deg, rgba(255, 255, 255, 0.14), transparent 15%, rgba(0, 0, 0, 0.36) 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.22)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.028) 0, rgba(255, 255, 255, 0.028) 1px, transparent 1px, transparent 4px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.014) 0, rgba(255, 255, 255, 0.014) 1px, transparent 1px, transparent 7px),
+    #171d1c;
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.08),
-    inset 0 -10px 28px rgba(0, 0, 0, 0.45),
-    0 28px 60px rgba(15, 23, 42, 0.28);
+    inset 0 2px 0 rgba(255, 255, 255, 0.14),
+    inset 0 0 0 8px rgba(255, 255, 255, 0.015),
+    inset 0 -18px 42px rgba(0, 0, 0, 0.62),
+    0 34px 70px rgba(15, 23, 42, 0.34);
+}
+
+.lighting-industrial-controller::before {
+  content: "";
+  position: absolute;
+  inset: 24px;
+  z-index: -1;
+  border: 1px solid rgba(226, 232, 240, 0.08);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.72),
+    inset 0 0 36px rgba(0, 0, 0, 0.4);
+}
+
+.lighting-industrial-controller::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.45;
+  background:
+    linear-gradient(90deg, transparent 0 18%, rgba(255, 255, 255, 0.035) 18.2% 18.35%, transparent 18.6% 81%, rgba(0, 0, 0, 0.28) 81.2% 81.35%, transparent 81.6%),
+    radial-gradient(circle at 50% 0, rgba(255, 255, 255, 0.14), transparent 28%);
 }
 
 .lighting-controller-nameplate {
   position: absolute;
-  top: 16px;
+  top: 18px;
   left: 50%;
   display: grid;
-  min-width: 270px;
-  padding: 10px 24px;
-  border: 1px solid #313837;
-  border-radius: 8px;
+  min-width: 320px;
+  padding: 11px 34px 10px;
+  border: 1px solid #3f4744;
+  border-radius: 7px;
   color: #f8fafc;
   text-align: center;
   text-transform: uppercase;
   transform: translateX(-50%);
-  background: linear-gradient(180deg, #101515, #050707);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 16px rgba(0, 0, 0, 0.38);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 34%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0, rgba(255, 255, 255, 0.025) 1px, transparent 1px, transparent 4px),
+    #080b0b;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.42),
+    0 10px 22px rgba(0, 0, 0, 0.48);
+}
+
+.lighting-controller-nameplate::before,
+.lighting-controller-nameplate::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 36% 34%, #a8b0ac 0 16%, #1d2422 18% 64%, #030404 66% 100%);
+  transform: translateY(-50%);
+}
+
+.lighting-controller-nameplate::before {
+  left: 13px;
+}
+
+.lighting-controller-nameplate::after {
+  right: 13px;
 }
 
 .lighting-controller-nameplate strong {
-  font-size: 1.1rem;
+  color: #f4f7f6;
+  font-size: 1.08rem;
   letter-spacing: 0;
+  text-shadow: 0 1px 0 #000, 0 0 8px rgba(255, 255, 255, 0.08);
 }
 
 .lighting-controller-nameplate span {
-  color: #9fb4b1;
+  color: #b8c9c5;
   font-size: 0.72rem;
   font-weight: 900;
   letter-spacing: 0;
@@ -1464,37 +1521,67 @@ textarea:disabled {
 
 .lighting-case-screw {
   position: absolute;
-  width: 12px;
-  height: 12px;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
-  background: radial-gradient(circle at 38% 34%, #8f9995 0 18%, #222827 20% 58%, #030504 60% 100%);
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.24), 0 1px 3px rgba(0, 0, 0, 0.8);
+  background: radial-gradient(circle at 38% 34%, #b9c1bd 0 14%, #5f6965 16% 32%, #202827 34% 62%, #020303 64% 100%);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.3), 0 2px 5px rgba(0, 0, 0, 0.9);
 }
 
-.lighting-case-screw-tl { top: 18px; left: 18px; }
-.lighting-case-screw-tr { top: 18px; right: 18px; }
-.lighting-case-screw-bl { bottom: 18px; left: 18px; }
-.lighting-case-screw-br { bottom: 18px; right: 18px; }
+.lighting-case-screw::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 3px;
+  width: 8px;
+  height: 2px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.72);
+  transform: rotate(-18deg);
+}
+
+.lighting-case-screw-tl { top: 22px; left: 22px; }
+.lighting-case-screw-tr { top: 22px; right: 22px; }
+.lighting-case-screw-bl { bottom: 22px; left: 22px; }
+.lighting-case-screw-br { bottom: 22px; right: 22px; }
 
 .lighting-controller-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
-  gap: 18px;
+  position: relative;
+  z-index: 1;
+  grid-template-columns: minmax(0, 1fr) 200px;
+  gap: 22px;
   align-items: stretch;
 }
 
 .lighting-hmi-screen {
-  min-height: 620px;
+  position: relative;
+  min-height: 650px;
   overflow: hidden;
-  border: 8px solid #050808;
-  border-radius: 14px;
+  border: 12px solid #030606;
+  border-radius: 12px;
   background:
-    linear-gradient(180deg, rgba(12, 18, 20, 0.84), rgba(4, 10, 12, 0.96)),
+    radial-gradient(circle at 20% 0, rgba(65, 255, 224, 0.09), transparent 36%),
+    linear-gradient(180deg, rgba(12, 18, 20, 0.92), rgba(3, 8, 10, 0.98)),
     #081011;
   box-shadow:
-    inset 0 0 0 1px rgba(148, 163, 184, 0.18),
-    inset 0 0 36px rgba(0, 0, 0, 0.88),
-    0 12px 24px rgba(0, 0, 0, 0.34);
+    inset 0 0 0 1px rgba(148, 163, 184, 0.14),
+    inset 0 0 54px rgba(0, 0, 0, 0.92),
+    0 0 0 4px rgba(255, 255, 255, 0.035),
+    0 18px 32px rgba(0, 0, 0, 0.46);
+}
+
+.lighting-hmi-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.16), transparent 18%, transparent 68%, rgba(255, 255, 255, 0.035)),
+    radial-gradient(circle at 78% 7%, rgba(255, 255, 255, 0.09), transparent 20%);
+  mix-blend-mode: screen;
 }
 
 .lighting-hmi-header {
@@ -1502,10 +1589,13 @@ textarea:disabled {
   justify-content: space-between;
   gap: 16px;
   align-items: center;
-  padding: 18px 20px;
-  border-bottom: 1px solid rgba(45, 212, 191, 0.2);
+  min-height: 104px;
+  padding: 22px 24px;
+  border-bottom: 1px solid rgba(45, 212, 191, 0.18);
   color: #e5fffb;
-  background: linear-gradient(90deg, #071313, #0d2322);
+  background:
+    linear-gradient(90deg, rgba(3, 22, 21, 0.96), rgba(4, 37, 35, 0.86)),
+    repeating-linear-gradient(90deg, rgba(45, 212, 191, 0.045) 0, rgba(45, 212, 191, 0.045) 1px, transparent 1px, transparent 18px);
 }
 
 .lighting-hmi-header > div:first-child,
@@ -1529,11 +1619,12 @@ textarea:disabled {
 
 .lighting-hmi-system-state {
   min-width: 150px;
-  padding: 9px 12px;
-  border: 1px solid rgba(45, 212, 191, 0.22);
-  border-radius: 8px;
+  padding: 10px 13px;
+  border: 1px solid rgba(45, 212, 191, 0.42);
+  border-radius: 6px;
   text-align: right;
-  background: rgba(1, 12, 12, 0.72);
+  background: rgba(1, 12, 12, 0.84);
+  box-shadow: inset 0 0 20px rgba(20, 184, 166, 0.06);
 }
 
 .lighting-hmi-system-state strong.is-on { color: #34d399; }
@@ -1543,27 +1634,36 @@ textarea:disabled {
 
 .lighting-hmi-layout {
   display: grid;
-  grid-template-columns: 145px minmax(0, 1fr);
-  min-height: 548px;
+  grid-template-columns: 150px minmax(0, 1fr);
+  min-height: 546px;
 }
 
 .lighting-hmi-nav {
   display: grid;
   align-content: start;
-  gap: 8px;
-  padding: 14px;
-  border-right: 1px solid rgba(45, 212, 191, 0.16);
-  background: rgba(3, 13, 14, 0.78);
+  gap: 10px;
+  padding: 16px 14px;
+  border-right: 1px solid rgba(45, 212, 191, 0.14);
+  background:
+    linear-gradient(180deg, rgba(7, 18, 18, 0.98), rgba(1, 8, 9, 0.98)),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0, rgba(255, 255, 255, 0.03) 1px, transparent 1px, transparent 8px);
+  box-shadow: inset -10px 0 20px rgba(0, 0, 0, 0.32);
 }
 
 .lighting-hmi-nav button {
-  min-height: 42px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 7px;
-  color: #b7cbc8;
+  min-height: 46px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 6px;
+  color: #d7e7e4;
   font-weight: 900;
-  background: linear-gradient(180deg, #152323, #0b1415);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  text-transform: uppercase;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 42%),
+    linear-gradient(180deg, #152323, #081010);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.32),
+    0 2px 0 rgba(0, 0, 0, 0.58);
 }
 
 .lighting-hmi-nav button.is-active {
@@ -1575,7 +1675,7 @@ textarea:disabled {
 
 .lighting-hmi-content {
   overflow: auto;
-  padding: 16px;
+  padding: 18px;
   background:
     linear-gradient(rgba(45, 212, 191, 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(45, 212, 191, 0.035) 1px, transparent 1px),
@@ -1589,10 +1689,15 @@ textarea:disabled {
 }
 
 .lighting-hmi-content .lighting-status-card {
-  border-color: rgba(148, 163, 184, 0.18);
+  min-height: 78px;
+  border-color: rgba(94, 234, 212, 0.2);
+  border-radius: 6px;
   color: #e2e8f0;
-  background: rgba(7, 20, 22, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background:
+    linear-gradient(180deg, rgba(13, 35, 35, 0.96), rgba(4, 15, 16, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -8px 18px rgba(0, 0, 0, 0.3);
 }
 
 .lighting-hmi-content .lighting-status-card span {
@@ -1632,7 +1737,7 @@ textarea:disabled {
   min-height: 150px;
   padding: 16px;
   border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 10px;
+  border-radius: 6px;
   color: #e5f8f5;
   text-align: left;
   background: linear-gradient(180deg, #102222, #071112);
@@ -1708,16 +1813,21 @@ textarea:disabled {
 .lighting-hmi-screen .lighting-controller-card,
 .lighting-hmi-screen .lighting-list-row,
 .lighting-hmi-screen .lighting-schedule-clock {
-  border-color: rgba(148, 163, 184, 0.2);
-  color: #e2e8f0;
-  background: rgba(8, 19, 21, 0.88);
+  border-color: rgba(94, 234, 212, 0.22);
+  border-radius: 6px;
+  color: #0f172a;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(232, 240, 238, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 10px 22px rgba(0, 0, 0, 0.24);
 }
 
 .lighting-hmi-screen summary,
 .lighting-hmi-screen label,
 .lighting-hmi-screen .lighting-controller-status,
 .lighting-hmi-screen .lighting-schedule-run-status {
-  color: #d9f5f0;
+  color: #18302f;
 }
 
 .lighting-hmi-screen input,
@@ -1725,26 +1835,53 @@ textarea:disabled {
 .lighting-hmi-screen textarea {
   border-color: rgba(148, 163, 184, 0.28);
   color: #f8fafc;
-  background: #071112;
+  background: #091415;
 }
 
 .lighting-hmi-screen .lighting-zone-card summary span,
 .lighting-hmi-screen .lighting-list-row strong,
 .lighting-hmi-screen .lighting-zone-card summary strong {
-  color: #f8fafc;
+  color: #071112;
+}
+
+.lighting-hmi-screen .lighting-zone-card summary {
+  color: #071112;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.lighting-hmi-screen .lighting-zone-card.is-on summary {
+  background: #dcfce7;
+}
+
+.lighting-hmi-screen .lighting-zone-card.is-override-active summary {
+  background: #fff7ed;
+}
+
+.lighting-hmi-screen .lighting-zone-details > span {
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+.lighting-hmi-screen .lighting-zone-priority {
+  color: #0f172a;
+  background: #e0f2fe;
 }
 
 .lighting-physical-panel {
   display: grid;
   align-content: start;
-  gap: 18px;
-  padding: 18px 14px;
-  border: 1px solid #050807;
-  border-radius: 12px;
+  gap: 20px;
+  padding: 20px 14px;
+  border: 1px solid #020404;
+  border-radius: 10px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.2)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(0, 0, 0, 0.22)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.026) 0, rgba(255, 255, 255, 0.026) 1px, transparent 1px, transparent 5px),
     #202827;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -12px 20px rgba(0, 0, 0, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -18px 34px rgba(0, 0, 0, 0.38),
+    -8px 0 20px rgba(0, 0, 0, 0.24);
 }
 
 .lighting-physical-indicators {
@@ -1754,24 +1891,31 @@ textarea:disabled {
 
 .lighting-physical-led {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: 34px 1fr;
   gap: 10px;
   align-items: center;
-  min-height: 34px;
-  padding: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  border-radius: 8px;
-  color: #d1d5db;
+  min-height: 44px;
+  padding: 9px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 6px;
+  color: #e5e7eb;
   text-transform: uppercase;
-  background: rgba(0, 0, 0, 0.2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.08)),
+    rgba(0, 0, 0, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .lighting-physical-led i {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
-  background: #1f2937;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.82);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.2), transparent 18%),
+    #111827;
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.84),
+    0 0 0 3px rgba(0, 0, 0, 0.28);
 }
 
 .lighting-physical-led.is-lit.is-green i {
@@ -1796,13 +1940,15 @@ textarea:disabled {
 
 .lighting-key-switch {
   display: grid;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 10px;
+  gap: 12px;
+  padding: 16px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
   color: #f8fafc;
   text-transform: uppercase;
-  background: linear-gradient(180deg, #151a1a, #090c0c);
+  background:
+    linear-gradient(180deg, #141918, #080b0b);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .lighting-key-switch > span {
@@ -1825,13 +1971,26 @@ textarea:disabled {
 }
 
 .lighting-key-switch i {
-  width: 46px;
-  height: 46px;
-  border: 5px solid #4b5563;
+  position: relative;
+  width: 50px;
+  height: 50px;
+  border: 6px solid #4b5563;
   border-radius: 999px;
-  background: radial-gradient(circle, #cbd5e1 0 14%, #111827 16% 100%);
+  background:
+    radial-gradient(circle at 42% 36%, #d6dde3 0 10%, #66717e 12% 18%, #111827 20% 100%);
   transform: rotate(-28deg);
   box-shadow: inset 0 1px 6px rgba(255, 255, 255, 0.2), 0 8px 12px rgba(0, 0, 0, 0.38);
+}
+
+.lighting-key-switch i::after {
+  content: "";
+  position: absolute;
+  top: 22px;
+  left: 10px;
+  width: 28px;
+  height: 4px;
+  border-radius: 99px;
+  background: #050708;
 }
 
 .lighting-key-switch.is-on i {
@@ -1842,11 +2001,14 @@ textarea:disabled {
   display: grid;
   gap: 8px;
   margin-top: auto;
-  padding: 12px;
-  border: 1px solid #9a3412;
-  border-radius: 8px;
-  color: #fed7aa;
-  background: linear-gradient(180deg, #7c2d12, #3b1207);
+  padding: 13px;
+  border: 1px solid #b45309;
+  border-radius: 6px;
+  color: #ffedd5;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 36%),
+    linear-gradient(180deg, #8a340e, #431407);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
 .lighting-service-label strong {
