@@ -11797,7 +11797,7 @@ function renderLightingFirmware() {
   const scopeKey = getLightingControllerScopeKey();
   if (count) {
     const pendingAssignments = Array.isArray(lightingFirmwareCache.assignments)
-      ? lightingFirmwareCache.assignments.filter((item) => ["assigned", "pending", "downloading"].includes(String(item.status || "").toLowerCase())).length
+      ? lightingFirmwareCache.assignments.filter((item) => ["assigned", "pending", "downloading", "installing"].includes(String(item.status || "").toLowerCase())).length
       : 0;
     count.textContent = pendingAssignments ? String(pendingAssignments) : "Ready";
   }
