@@ -10999,7 +10999,27 @@ function getLightingInputActionState(input = {}) {
 }
 
 function getLightingInputTargetName(input = {}) {
-  return input.zoneName || input.zone_name || (input.zoneId || input.zone_id ? "Selected zone" : "All zones");
+  const zoneId = input.zoneId || input.zone_id || "";
+  if (!zoneId) return "All zones";
+  const zone = lightingZonesCache.find((item) => item.id === zoneId);
+  return input.zoneName || input.zone_name || zone?.name || "Selected zone";
+}
+
+function getLightingInputControllerName(input = {}) {
+  const controller = getLightingControllerById(input.controllerId || input.controller_id || "");
+  return input.controllerName || input.controller_name || controller?.name || "No controller";
+}
+
+function getLightingInputStateLastSeenAt(input = {}) {
+  return input.stateLastSeenAt || input.state_last_seen_at || "";
+}
+
+function getLightingInputActionDescription(input = {}) {
+  const action = input.action || "No action";
+  const actionState = getLightingInputActionState(input);
+  if (input.enabled === false) return `${action} | disabled`;
+  if (!actionState) return `${action} | waiting`;
+  return `${action} | applying ${actionState}`;
 }
 
 function getLightingZoneInputEffect(zone = {}) {
@@ -11829,14 +11849,16 @@ function renderLightingInputs() {
     const rawValue = String(input.rawValue || "").trim();
     const hasLiveState = getLightingInputHasLiveState(input);
     const isActive = getLightingInputIsActive(input);
+    const stateLastSeenAt = getLightingInputStateLastSeenAt(input);
     const liveStatus = hasLiveState ? (isActive ? "Active" : "Inactive") : "Waiting";
     const liveText = hasLiveState
-      ? `${liveState || "State reported"}${rawValue ? ` (${rawValue})` : ""}${input.stateLastSeenAt ? ` | seen ${formatDateTime(input.stateLastSeenAt)}` : ""}`
+      ? `${liveState || "State reported"}${rawValue ? ` (${rawValue})` : ""}${stateLastSeenAt ? ` | seen ${formatDateTime(stateLastSeenAt)}` : ""}`
       : "No live state yet";
     const targetName = getLightingInputTargetName(input);
+    const controllerName = getLightingInputControllerName(input);
     const inputNumber = input.inputNumber || input.input_number || "1";
     const actionState = getLightingInputActionState(input);
-    const liveClass = hasLiveState ? (isActive ? " is-input-active" : " is-input-inactive") : "";
+    const liveClass = input.enabled === false ? " is-input-disabled" : (hasLiveState ? (isActive ? " is-input-active" : " is-input-inactive") : "");
     const activeStateIsClosed = String(input.activeState || "Closed").toLowerCase() !== "open";
     const contactClosed = hasLiveState ? (activeStateIsClosed ? isActive : !isActive) : false;
     const contactState = hasLiveState ? (contactClosed ? "closed" : "open") : "waiting";
@@ -11844,9 +11866,8 @@ function renderLightingInputs() {
     const headline = hasLiveState
       ? `Input ${inputNumber} ${isActive ? "active" : "inactive"} -> ${targetName}`
       : `Input ${inputNumber} waiting -> ${targetName}`;
-    const actionText = actionState
-      ? `${input.action || "No action"} (${actionState})`
-      : input.action || "No action";
+    const actionText = getLightingInputActionDescription(input);
+    const statusClass = input.enabled === false ? "is-disabled" : (isActive ? "is-active" : (hasLiveState ? "is-inactive" : "is-waiting"));
     return `
       <div class="lighting-list-row${liveClass}">
         <div class="lighting-input-row-head">
@@ -11856,11 +11877,18 @@ function renderLightingInputs() {
             <span class="lighting-contact-terminal"></span>
           </div>
           <strong>${escapeHtml(headline)}</strong>
-          <span>${escapeHtml(contactText)}</span>
+          <span class="lighting-input-status-pill ${statusClass}">${escapeHtml(liveStatus)}</span>
         </div>
-        <span>${escapeHtml(input.label || `Input ${inputNumber}`)} | ${escapeHtml(input.inputType || "Aux contact")} | active state ${escapeHtml(input.activeState || "Closed")}</span>
-        <span>${escapeHtml(input.controllerName || getLightingControllerById(input.controllerId)?.name || "No controller")} | ${escapeHtml(actionText)} | ${input.enabled === false ? "Disabled" : "Enabled"}</span>
-        <span>Live ${escapeHtml(liveStatus)}: ${escapeHtml(liveText)}</span>
+        <div class="lighting-input-detail-grid">
+          <span>Label <strong>${escapeHtml(input.label || `Input ${inputNumber}`)}</strong></span>
+          <span>Controller <strong>${escapeHtml(controllerName)}</strong></span>
+          <span>Type <strong>${escapeHtml(input.inputType || "Aux contact")}</strong></span>
+          <span>Active when <strong>${escapeHtml(input.activeState || "Closed")}</strong></span>
+          <span>Target <strong>${escapeHtml(targetName)}</strong></span>
+          <span>Action <strong>${escapeHtml(actionText)}</strong></span>
+          <span>Contact <strong>${escapeHtml(contactText)}</strong></span>
+          <span>Live state <strong>${escapeHtml(liveText)}</strong></span>
+        </div>
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-input-edit="${escapeHtml(input.id)}">Edit</button>
           <button type="button" data-lighting-input-delete="${escapeHtml(input.id)}">Delete</button>
