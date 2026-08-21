@@ -1206,6 +1206,11 @@ textarea:disabled {
   background: #fffbeb;
 }
 
+.lighting-status-card.is-checking {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
 .lighting-status-card.is-setup {
   border-color: #cbd5e1;
   background: #f8fafc;
@@ -1778,6 +1783,11 @@ textarea:disabled {
 .lighting-controller-card.is-online {
   border-color: rgba(5, 150, 105, 0.45);
   background: #edfdf7;
+}
+
+.lighting-controller-card.is-checking {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: #fffbeb;
 }
 
 .lighting-controller-card.is-offline {
