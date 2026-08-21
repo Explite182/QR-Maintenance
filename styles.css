@@ -1145,6 +1145,151 @@ textarea:disabled {
   font-weight: 700;
 }
 
+.pump-automation-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.pump-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.pump-status-tile {
+  display: grid;
+  gap: 6px;
+  min-height: 74px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.pump-status-tile span,
+.pump-equipment-facts b {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pump-status-tile strong {
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.pump-status-tile.is-running {
+  border-color: rgba(16, 185, 129, 0.32);
+  background: rgba(236, 253, 245, 0.88);
+}
+
+.pump-status-tile.is-warning {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(255, 251, 235, 0.9);
+}
+
+.pump-status-tile.is-muted {
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.pump-scope-strip {
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(236, 253, 245, 0.64);
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.pump-equipment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pump-equipment-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(340px, 2fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+.pump-equipment-card.is-running {
+  border-color: rgba(16, 185, 129, 0.34);
+}
+
+.pump-equipment-card.is-warning {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(255, 251, 235, 0.92);
+}
+
+.pump-equipment-main {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.pump-equipment-main strong {
+  display: block;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.pump-equipment-main span:not(.pump-indicator) {
+  display: block;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.pump-indicator {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #64748b;
+  box-shadow: 0 0 0 4px rgba(100, 116, 139, 0.12);
+}
+
+.pump-equipment-card.is-running .pump-indicator {
+  background: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.16);
+}
+
+.pump-equipment-card.is-warning .pump-indicator {
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18);
+}
+
+.pump-equipment-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.pump-equipment-facts span {
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.78);
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.pump-equipment-card .secondary {
+  white-space: nowrap;
+}
+
 .lighting-control-panel {
   display: grid;
   gap: 14px;

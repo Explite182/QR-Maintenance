@@ -8974,6 +8974,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const openPumpAssetButton = event.target.closest("[data-open-pump-asset]");
+  if (openPumpAssetButton) {
+    event.preventDefault();
+    selectedId = openPumpAssetButton.dataset.openPumpAsset || "";
+    if (selectedId) location.hash = `asset/${selectedId}`;
+    render();
+    getSelectedAsset()?.id && els.assetPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
   const lightingTabButton = event.target.closest("[data-lighting-tab]");
   if (lightingTabButton) {
     event.preventDefault();
@@ -9901,6 +9911,7 @@ function render() {
   renderLocationOptions();
   renderAssetLocationOptions();
   renderDashboard();
+  renderAutomationPumps();
   renderSiteMapIfReady();
   renderMonitoringIfReady();
   renderPmCalendar();
@@ -10331,6 +10342,7 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
     renderLightingFirmware();
     renderLightingHistory();
   }
+  if (targetId === "automationPumpsPanel") renderAutomationPumps();
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -15439,6 +15451,137 @@ function renderEditAssetLocationOptions(selectedLocationId = "") {
     els.editAssetLocation.value = selectedLocationId;
   }
   els.editAssetLocation.disabled = locations.length === 0 || !canEditEquipment();
+}
+
+function pumpSearchText(asset = {}) {
+  return [
+    asset.name,
+    asset.type,
+    asset.category,
+    asset.template,
+    asset.equipmentId,
+    asset.manufacturer,
+    asset.model,
+    asset.notes,
+    asset.parts
+  ].join(" ").toLowerCase();
+}
+
+function isPumpAsset(asset = {}) {
+  const text = pumpSearchText(asset);
+  return [
+    "pump",
+    "booster",
+    "sump",
+    "circulation",
+    "circulator",
+    "recirc",
+    "condensate",
+    "lift station",
+    "sewage",
+    "storm",
+    "irrigation",
+    "water pressure"
+  ].some((term) => text.includes(term));
+}
+
+function pumpAssetStatus(asset = {}) {
+  const text = [
+    asset.status,
+    asset.condition,
+    asset.healthStatus,
+    asset.onlineStatus
+  ].join(" ").toLowerCase();
+  const openIssues = openWorkOrdersForAsset(asset.id);
+  if (openIssues.some((issue) => issue.priority === "High" || isFailedPmIssue(issue))) {
+    return { label: "Needs attention", className: "is-warning" };
+  }
+  if (text.includes("fault") || text.includes("alarm") || text.includes("offline")) {
+    return { label: "Needs attention", className: "is-warning" };
+  }
+  if (text.includes("run") || text.includes("on") || text.includes("online")) {
+    return { label: "Running", className: "is-running" };
+  }
+  return { label: "Listed", className: "is-listed" };
+}
+
+function pumpAssetsForCurrentView() {
+  return filteredAssets().filter(isPumpAsset);
+}
+
+function renderPumpAutomationSummary(pumps = []) {
+  const summary = document.getElementById("pumpAutomationSummary");
+  if (!summary) return;
+  const statuses = pumps.map(pumpAssetStatus);
+  const runningCount = statuses.filter((status) => status.className === "is-running").length;
+  const warningCount = statuses.filter((status) => status.className === "is-warning").length;
+  summary.innerHTML = `
+    <div class="pump-status-tile">
+      <span>Pump systems</span>
+      <strong>${pumps.length}</strong>
+    </div>
+    <div class="pump-status-tile is-running">
+      <span>Running</span>
+      <strong>${runningCount}</strong>
+    </div>
+    <div class="pump-status-tile ${warningCount ? "is-warning" : "is-muted"}">
+      <span>Needs attention</span>
+      <strong>${warningCount}</strong>
+    </div>
+    <div class="pump-status-tile is-muted">
+      <span>Automation</span>
+      <strong>Setup only</strong>
+    </div>
+  `;
+}
+
+function renderAutomationPumps() {
+  const count = document.getElementById("automationPumpsCount");
+  const scope = document.getElementById("pumpAutomationScope");
+  const list = document.getElementById("pumpAutomationList");
+  if (!count || !scope || !list) return;
+
+  const currentCustomer = getCustomer(selectedCustomerId);
+  const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
+  const pumps = pumpAssetsForCurrentView();
+  count.textContent = pumps.length;
+  scope.textContent = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
+  renderPumpAutomationSummary(pumps);
+
+  if (!pumps.length) {
+    list.innerHTML = `
+      <div class="automation-empty-state">
+        <strong>No pump equipment found in this view.</strong>
+        <p>Add equipment with pump, booster, sump, circulation, condensate, irrigation, or lift station in the name/type and it will show here.</p>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = pumps.map((asset) => {
+    const status = pumpAssetStatus(asset);
+    const locationRecord = getLocation(asset.locationId);
+    const due = getDueInfo(asset);
+    const openIssueCount = openWorkOrdersForAsset(asset.id).length;
+    return `
+      <article class="pump-equipment-card ${status.className}">
+        <div class="pump-equipment-main">
+          <span class="pump-indicator" aria-hidden="true"></span>
+          <div>
+            <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
+            <span>${escapeHtml(asset.type || "Pump system")} | ${escapeHtml(locationRecord?.name || "No location")}</span>
+          </div>
+        </div>
+        <div class="pump-equipment-facts">
+          <span><b>Status</b>${escapeHtml(status.label)}</span>
+          <span><b>Equipment ID</b>${escapeHtml(getAssetEquipmentId(asset))}</span>
+          <span><b>Next PM</b>${escapeHtml(formatDate(due.nextDate))}</span>
+          <span><b>Open tickets</b>${openIssueCount}</span>
+        </div>
+        <button type="button" class="secondary" data-open-pump-asset="${escapeAttribute(asset.id)}">Open equipment</button>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderDashboard() {

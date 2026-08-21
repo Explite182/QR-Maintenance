@@ -1794,11 +1794,34 @@
       <section id="automationPumpsPanel" class="work-orders-panel automation-system-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="automationPumpsPanel">
           <h2>Pumps</h2>
-          <span>0</span>
+          <span id="automationPumpsCount">0</span>
         </div>
-        <div class="automation-empty-state" data-panel-body>
-          <strong>No pump automation devices configured yet.</strong>
-          <p>Add pump status, run feedback, alarms, pressure sensors, and lead/lag equipment here later.</p>
+        <div class="pump-automation-panel" data-panel-body>
+          <div class="pump-overview-grid" id="pumpAutomationSummary">
+            <div class="pump-status-tile">
+              <span>Pump systems</span>
+              <strong>0</strong>
+            </div>
+            <div class="pump-status-tile is-running">
+              <span>Running</span>
+              <strong>0</strong>
+            </div>
+            <div class="pump-status-tile is-warning">
+              <span>Needs attention</span>
+              <strong>0</strong>
+            </div>
+            <div class="pump-status-tile is-muted">
+              <span>Automation</span>
+              <strong>Setup only</strong>
+            </div>
+          </div>
+          <div class="pump-scope-strip" id="pumpAutomationScope">No customer selected.</div>
+          <div class="pump-equipment-list" id="pumpAutomationList">
+            <div class="automation-empty-state">
+              <strong>No pump automation devices configured yet.</strong>
+              <p>Add pump status, run feedback, alarms, pressure sensors, and lead/lag equipment here later.</p>
+            </div>
+          </div>
         </div>
       </section>
 
