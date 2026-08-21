@@ -5249,6 +5249,7 @@ const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
 const LIGHTING_OVERRIDES_STORAGE_KEY = "siteworks_lighting_overrides_v1";
+const PUMP_CONTROLLERS_STORAGE_KEY = "siteworks_pump_controllers_v1";
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
@@ -5283,6 +5284,7 @@ let editingLightingOverrideId = "";
 let lightingFirmwareCache = { firmware: [], assignments: [] };
 let lightingFirmwareLoadedScope = "";
 let lightingFirmwareLoading = false;
+let editingPumpControllerId = "";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8984,6 +8986,37 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const addPumpControllerButton = event.target.closest("[data-add-pump-controller]");
+  if (addPumpControllerButton) {
+    event.preventDefault();
+    editingPumpControllerId = "__new__";
+    renderAutomationPumps();
+    return;
+  }
+
+  const editPumpControllerButton = event.target.closest("[data-pump-controller-edit]");
+  if (editPumpControllerButton) {
+    event.preventDefault();
+    editingPumpControllerId = editPumpControllerButton.dataset.pumpControllerEdit || "";
+    renderAutomationPumps();
+    return;
+  }
+
+  const cancelPumpControllerButton = event.target.closest("[data-pump-controller-cancel]");
+  if (cancelPumpControllerButton) {
+    event.preventDefault();
+    editingPumpControllerId = "";
+    renderAutomationPumps();
+    return;
+  }
+
+  const deletePumpControllerButton = event.target.closest("[data-pump-controller-delete]");
+  if (deletePumpControllerButton) {
+    event.preventDefault();
+    deletePumpController(deletePumpControllerButton.dataset.pumpControllerDelete || "");
+    return;
+  }
+
   const lightingTabButton = event.target.closest("[data-lighting-tab]");
   if (lightingTabButton) {
     event.preventDefault();
@@ -9642,6 +9675,11 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
+  if (form.matches("[data-pump-controller-form]")) {
+    event.preventDefault();
+    savePumpControllerFromForm(form);
+    return;
+  }
   if (form.matches("[data-lighting-controller-form]")) {
     event.preventDefault();
     await saveLightingControllerFromForm(form);
@@ -10528,6 +10566,22 @@ function saveLightingControllers(controllers) {
   if (!setLocalStorageWithRecovery(LIGHTING_CONTROLLERS_STORAGE_KEY, JSON.stringify(controllers))) {
     showStorageFullWarning?.();
     console.warn("Lighting controller setup could not be saved locally.");
+  }
+}
+
+function getPumpControllers() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PUMP_CONTROLLERS_STORAGE_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePumpControllers(controllers) {
+  if (!setLocalStorageWithRecovery(PUMP_CONTROLLERS_STORAGE_KEY, JSON.stringify(controllers))) {
+    showStorageFullWarning?.();
+    console.warn("Pump controller setup could not be saved locally.");
   }
 }
 
@@ -15509,7 +15563,173 @@ function pumpAssetsForCurrentView() {
   return filteredAssets().filter(isPumpAsset);
 }
 
-function renderPumpAutomationSummary(pumps = []) {
+function normalizePumpController(controller = {}) {
+  const now = new Date().toISOString();
+  return {
+    id: controller.id || crypto.randomUUID?.() || `pump-controller-${Date.now()}`,
+    customerId: controller.customerId || controller.customer_id || "",
+    locationId: controller.locationId || controller.location_id || "",
+    name: controller.name || "Pump Controller",
+    uid: controller.uid || controller.deviceUid || controller.device_uid || "",
+    type: controller.type || controller.controllerType || controller.controller_type || "Pump controller",
+    area: controller.area || controller.location || "",
+    pumpCount: String(controller.pumpCount || controller.pump_count || "1"),
+    mode: controller.mode || "Setup only",
+    notes: controller.notes || "",
+    status: controller.status || "Setup only",
+    createdAt: controller.createdAt || controller.created_at || now,
+    updatedAt: controller.updatedAt || controller.updated_at || now
+  };
+}
+
+function pumpControllersForCurrentView() {
+  const controllers = getPumpControllers().map(normalizePumpController);
+  return controllers.filter((controller) => {
+    if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && controller.customerId !== selectedCustomerId) return false;
+    if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS && controller.locationId !== selectedLocationId) return false;
+    return true;
+  });
+}
+
+function pumpControllerStatus(controller = {}) {
+  const status = String(controller.status || controller.mode || "Setup only").toLowerCase();
+  if (status.includes("online") || status.includes("run")) return { label: "Online", className: "is-running" };
+  if (status.includes("alarm") || status.includes("fault") || status.includes("offline")) return { label: "Needs attention", className: "is-warning" };
+  return { label: "Setup only", className: "is-listed" };
+}
+
+function renderPumpControllerForm(controller = null) {
+  const currentLocation = getLocation(selectedLocationId);
+  const formId = controller?.id || "";
+  return `
+    <form class="pump-controller-form" data-pump-controller-form="${escapeAttribute(formId)}">
+      <label>Controller name
+        <input name="name" value="${escapeAttribute(controller?.name || "Pump Controller 1")}" required>
+      </label>
+      <label>Device UID
+        <input name="uid" value="${escapeAttribute(controller?.uid || "ESP32-PUMP-001")}" required>
+      </label>
+      <label>Controller type
+        <select name="type">
+          ${["Pump controller", "Duplex pump controller", "Booster pump panel", "Lift station controller"].map((type) =>
+            `<option value="${escapeAttribute(type)}" ${type === (controller?.type || "Pump controller") ? "selected" : ""}>${escapeHtml(type)}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Assigned area
+        <input name="area" value="${escapeAttribute(controller?.area || currentLocation?.name || "")}">
+      </label>
+      <label>Pumps
+        <select name="pumpCount">
+          ${[1, 2, 3, 4, 5, 6].map((count) =>
+            `<option value="${count}" ${String(count) === String(controller?.pumpCount || "1") ? "selected" : ""}>${count}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Mode
+        <select name="mode">
+          ${["Setup only", "Monitoring ready", "Control ready"].map((mode) =>
+            `<option value="${escapeAttribute(mode)}" ${mode === (controller?.mode || "Setup only") ? "selected" : ""}>${escapeHtml(mode)}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Notes
+        <textarea name="notes" placeholder="Panel, relay, VFD, floats, or install notes">${escapeHtml(controller?.notes || "")}</textarea>
+      </label>
+      <div class="pump-controller-actions">
+        <button type="submit">Save Controller</button>
+        <button type="button" class="secondary" data-pump-controller-cancel>Cancel</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderPumpControllerSetup(controllers = [], currentLocation = null) {
+  if (!currentLocation) {
+    return `
+      <section class="pump-controller-setup">
+        <strong>Select one location to add pump controls.</strong>
+        <span>Pump controllers are location based.</span>
+      </section>
+    `;
+  }
+  const editingController = editingPumpControllerId && editingPumpControllerId !== "__new__"
+    ? controllers.find((controller) => controller.id === editingPumpControllerId)
+    : null;
+  const formHtml = editingPumpControllerId
+    ? renderPumpControllerForm(editingController)
+    : `<button type="button" class="pump-controller-add" data-add-pump-controller>+ Add Pump Controller</button>`;
+  const controllerRows = controllers.length ? controllers.map((controller) => {
+    const status = pumpControllerStatus(controller);
+    return `
+      <article class="pump-controller-card ${status.className}">
+        <div>
+          <strong>${escapeHtml(controller.name)}</strong>
+          <span>${escapeHtml(controller.uid || "No UID")} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.area || currentLocation.name || "No area")}</span>
+        </div>
+        <span><b>Pumps</b>${escapeHtml(controller.pumpCount || "1")}</span>
+        <span><b>Status</b>${escapeHtml(status.label)}</span>
+        <span><b>Mode</b>${escapeHtml(controller.mode || "Setup only")}</span>
+        <div class="pump-controller-actions">
+          <button type="button" class="secondary" data-pump-controller-edit="${escapeAttribute(controller.id)}">Edit</button>
+          <button type="button" class="secondary" data-pump-controller-delete="${escapeAttribute(controller.id)}">Delete</button>
+        </div>
+      </article>
+    `;
+  }).join("") : `
+    <div class="pump-controller-empty">
+      <strong>No pump controllers for this location yet.</strong>
+      <span>Add one to prepare this location for pump monitoring or control.</span>
+    </div>
+  `;
+  return `
+    <section class="pump-controller-setup">
+      ${formHtml}
+      <div class="pump-controller-list">${controllerRows}</div>
+    </section>
+  `;
+}
+
+function savePumpControllerFromForm(form) {
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
+    renderAutomationPumps();
+    return;
+  }
+  const formData = new FormData(form);
+  const existingControllerId = form.dataset.pumpControllerForm || "";
+  const existing = getPumpControllers().find((controller) => controller.id === existingControllerId);
+  const controller = normalizePumpController({
+    ...existing,
+    id: existingControllerId || crypto.randomUUID?.() || `pump-controller-${Date.now()}`,
+    customerId: selectedCustomerId,
+    locationId: selectedLocationId,
+    name: String(formData.get("name") || "").trim() || "Pump Controller",
+    uid: String(formData.get("uid") || "").trim() || `ESP32-PUMP-${Date.now()}`,
+    type: String(formData.get("type") || "Pump controller").trim(),
+    area: String(formData.get("area") || "").trim(),
+    pumpCount: String(formData.get("pumpCount") || "1").trim(),
+    mode: String(formData.get("mode") || "Setup only").trim(),
+    notes: String(formData.get("notes") || "").trim(),
+    status: String(formData.get("mode") || "Setup only").trim(),
+    updatedAt: new Date().toISOString()
+  });
+  const controllers = getPumpControllers().filter((item) => item.id !== controller.id);
+  controllers.unshift(controller);
+  savePumpControllers(controllers);
+  editingPumpControllerId = "";
+  renderAutomationPumps();
+}
+
+function deletePumpController(controllerId = "") {
+  if (!controllerId) return;
+  const controller = getPumpControllers().find((item) => item.id === controllerId);
+  if (!window.confirm(`Delete ${controller?.name || "this pump controller"}?`)) return;
+  savePumpControllers(getPumpControllers().filter((item) => item.id !== controllerId));
+  if (editingPumpControllerId === controllerId) editingPumpControllerId = "";
+  renderAutomationPumps();
+}
+
+function renderPumpAutomationSummary(pumps = [], controllers = []) {
   const summary = document.getElementById("pumpAutomationSummary");
   if (!summary) return;
   const statuses = pumps.map(pumpAssetStatus);
@@ -15530,12 +15750,12 @@ function renderPumpAutomationSummary(pumps = []) {
     </div>
     <div class="pump-status-tile is-muted">
       <span>Automation</span>
-      <strong>Setup only</strong>
+      <strong>${controllers.length ? `${controllers.length} controller${controllers.length === 1 ? "" : "s"}` : "Setup only"}</strong>
     </div>
   `;
 }
 
-function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocation = null) {
+function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocation = null, controllers = []) {
   const statuses = pumps.map(pumpAssetStatus);
   const runningCount = statuses.filter((status) => status.className === "is-running").length;
   const warningCount = statuses.filter((status) => status.className === "is-warning").length;
@@ -15544,6 +15764,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const leadPump = pumps[0] || null;
   const leadStatus = leadPump ? pumpAssetStatus(leadPump) : { label: "Standby", className: "is-listed" };
   const alarmOn = warningCount > 0;
+  const controllerStatuses = controllers.map(pumpControllerStatus);
+  const controllerOnlineCount = controllerStatuses.filter((status) => status.className === "is-running").length;
+  const controllerSetup = renderPumpControllerSetup(controllers, currentLocation);
   const pumpTiles = pumps.map((asset, index) => {
     const status = pumpAssetStatus(asset);
     const due = getDueInfo(asset);
@@ -15602,8 +15825,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <strong>${pumps.length}</strong>
             </div>
             <div>
-              <span>Running</span>
-              <strong>${runningCount}</strong>
+              <span>Controllers</span>
+              <strong>${controllers.length}</strong>
             </div>
             <div>
               <span>Lead pump</span>
@@ -15634,11 +15857,12 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               </div>
             `}
           </section>
+          ${controllerSetup}
         </main>
       </div>
       <aside class="pump-hmi-side">
-        <div class="pump-hmi-led ${pumps.length ? "is-on" : ""}"><i></i><span>POWER</span></div>
-        <div class="pump-hmi-led ${runningCount ? "is-on" : ""}"><i></i><span>RUN</span></div>
+        <div class="pump-hmi-led ${controllers.length ? "is-on" : ""}"><i></i><span>POWER</span></div>
+        <div class="pump-hmi-led ${runningCount || controllerOnlineCount ? "is-on" : ""}"><i></i><span>RUN</span></div>
         <div class="pump-hmi-led ${alarmOn ? "is-alarm" : ""}"><i></i><span>ALARM</span></div>
         <div class="pump-hmi-switch">
           <span>HAND</span>
@@ -15663,12 +15887,13 @@ function renderAutomationPumps() {
   const currentCustomer = getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
   const pumps = pumpAssetsForCurrentView();
+  const pumpControllers = pumpControllersForCurrentView();
   count.textContent = pumps.length;
   scope.textContent = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
-  renderPumpAutomationSummary(pumps);
+  renderPumpAutomationSummary(pumps, pumpControllers);
 
   if (currentLocation) {
-    list.innerHTML = renderPumpLocationHmi(pumps, currentCustomer, currentLocation);
+    list.innerHTML = renderPumpLocationHmi(pumps, currentCustomer, currentLocation, pumpControllers);
     return;
   }
 
