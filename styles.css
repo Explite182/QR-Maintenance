@@ -1362,6 +1362,21 @@ textarea:disabled {
   background: #facc15;
 }
 
+.lighting-zone-card.is-input-active {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.lighting-zone-card.is-input-active summary {
+  background: #fffbeb;
+}
+
+.lighting-zone-card.is-input-active summary strong {
+  min-width: 110px;
+  color: #7c4a03;
+  background: #facc15;
+}
+
 .lighting-zone-details {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -1518,6 +1533,25 @@ textarea:disabled {
 .lighting-list-row.is-warning {
   border-color: #fcd34d;
   background: #fffbeb;
+}
+
+.lighting-list-row.is-input-active {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.lighting-list-row.is-input-inactive {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+}
+
+.lighting-zone-details > span.lighting-input-effect {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.lighting-zone-details > span.lighting-input-effect strong {
+  color: #7c4a03;
 }
 
 .lighting-controller-wizard {

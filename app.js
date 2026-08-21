@@ -10956,6 +10956,54 @@ function getLightingZoneOptionsHtml(selectedId = "") {
   )).join("")}`;
 }
 
+function getLightingInputIsActive(input = {}) {
+  const value = input.isActive ?? input.is_active;
+  if (value === true) return true;
+  if (value === false) return false;
+  return String(value || "").toLowerCase() === "true";
+}
+
+function getLightingInputHasLiveState(input = {}) {
+  return Boolean(
+    String(input.liveState || input.inputState || "").trim()
+    || String(input.rawValue || "").trim()
+    || input.stateLastSeenAt
+    || input.state_last_seen_at
+  );
+}
+
+function getLightingInputActionState(input = {}) {
+  if (input.enabled === false || !getLightingInputIsActive(input)) return "";
+  const action = String(input.action || "").toLowerCase();
+  if (!action || action === "no action") return "";
+  if (action.includes("off")) return "Off";
+  if (action.includes("on")) return "On";
+  return "";
+}
+
+function getLightingInputTargetName(input = {}) {
+  return input.zoneName || input.zone_name || (input.zoneId || input.zone_id ? "Selected zone" : "All zones");
+}
+
+function getLightingZoneInputEffect(zone = {}) {
+  const { scopeKey } = getLightingScopeDetails();
+  if (lightingInputsLoadedScope !== scopeKey) return null;
+  const effects = lightingInputsCache.filter((input) => {
+    const actionState = getLightingInputActionState(input);
+    if (!actionState) return false;
+    const targetZoneId = input.zoneId || input.zone_id || "";
+    return !targetZoneId || targetZoneId === zone.id;
+  });
+  if (!effects.length) return null;
+  const offEffect = effects.find((input) => getLightingInputActionState(input) === "Off");
+  const input = offEffect || effects[0];
+  return {
+    input,
+    state: getLightingInputActionState(input),
+    text: `Input ${input.inputNumber || input.input_number || "?"} active -> ${input.action || "No action"}`
+  };
+}
+
 function renderLightingZones() {
   const list = document.querySelector("[data-lighting-zone-list]");
   renderLightingNetworkSummary();
@@ -10988,6 +11036,9 @@ function renderLightingZones() {
   if (lightingCommandsLoadedScope !== scopeKey && !lightingCommandsLoading) {
     loadLightingCommandsForCurrentScope();
   }
+  if (lightingInputsLoadedScope !== scopeKey && !lightingInputsLoading) {
+    loadLightingInputsForCurrentScope();
+  }
   const zones = lightingZonesLoadedScope === scopeKey
     ? lightingZonesCache
     : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
@@ -10995,7 +11046,11 @@ function renderLightingZones() {
     list.innerHTML = `<div class="lighting-list-row"><strong>Loading zones</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
     return;
   }
-  const zonesOn = zones.filter((zone) => String(zone.desiredState || "").toLowerCase() === "on").length;
+  const zonesOn = zones.filter((zone) => {
+    const inputEffect = getLightingZoneInputEffect(zone);
+    const effectiveState = inputEffect?.state || zone.desiredState || "";
+    return String(effectiveState).toLowerCase() === "on";
+  }).length;
   const zonesOnValue = document.querySelector("[data-lighting-zones-on]");
   if (zonesOnValue) zonesOnValue.textContent = String(zonesOn);
   const lightingCount = document.querySelector("[data-lighting-count]");
@@ -11006,12 +11061,14 @@ function renderLightingZones() {
   }
   list.innerHTML = zones.map((zone) => {
     const state = String(zone.desiredState || "Off");
-    const stateClass = state.toLowerCase() === "on" ? "is-on" : "";
+    const inputEffect = getLightingZoneInputEffect(zone);
+    const displayedState = inputEffect ? `${inputEffect.state} by input` : state;
+    const stateClass = `${String(inputEffect?.state || state).toLowerCase() === "on" ? "is-on" : ""}${inputEffect ? " is-input-active" : ""}`.trim();
     const isEditing = zone.id === editingLightingZoneId;
     if (isEditing) {
       return `
         <details class="lighting-zone-card ${stateClass}" open>
-          <summary><span>${escapeHtml(zone.name)}</span><strong>${escapeHtml(state)}</strong></summary>
+          <summary><span>${escapeHtml(zone.name)}</span><strong>${escapeHtml(displayedState)}</strong></summary>
           <form class="lighting-zone-edit-form" data-lighting-zone-edit-form="${escapeHtml(zone.id)}">
             <label>Zone name
               <input name="name" value="${escapeHtml(zone.name)}" required>
@@ -11045,12 +11102,13 @@ function renderLightingZones() {
     }
     return `
       <details class="lighting-zone-card ${stateClass}">
-        <summary><span>${escapeHtml(zone.name)}</span><strong>${escapeHtml(state)}</strong></summary>
+        <summary><span>${escapeHtml(zone.name)}</span><strong>${escapeHtml(displayedState)}</strong></summary>
         <div class="lighting-zone-details">
           <span>Mode <strong>${escapeHtml(zone.mode || "Auto")}</strong></span>
           <span>Controller <strong>${escapeHtml(zone.controllerName || getLightingControllerById(zone.controllerId)?.name || "Not assigned")}</strong></span>
           <span>Output <strong>${escapeHtml(zone.outputNumber || "Not assigned")}</strong></span>
           <span>Status <strong>${escapeHtml(zone.status || "Setup only")}</strong></span>
+          ${inputEffect ? `<span class="lighting-input-effect">Input control <strong>${escapeHtml(inputEffect.text)}</strong></span>` : ""}
           ${getLightingCommandStatusHtml(zone)}
           <span>Notes <strong>${escapeHtml(zone.notes || "None")}</strong></span>
           <div class="lighting-zone-actions">
@@ -11593,16 +11651,27 @@ function renderLightingInputs() {
     }
     const liveState = String(input.liveState || input.inputState || "").trim();
     const rawValue = String(input.rawValue || "").trim();
-    const hasLiveState = Boolean(liveState || rawValue || input.stateLastSeenAt);
-    const liveStatus = hasLiveState ? (input.isActive ? "Active" : "Inactive") : "Waiting";
+    const hasLiveState = getLightingInputHasLiveState(input);
+    const isActive = getLightingInputIsActive(input);
+    const liveStatus = hasLiveState ? (isActive ? "Active" : "Inactive") : "Waiting";
     const liveText = hasLiveState
       ? `${liveState || "State reported"}${rawValue ? ` (${rawValue})` : ""}${input.stateLastSeenAt ? ` | seen ${formatDateTime(input.stateLastSeenAt)}` : ""}`
       : "No live state yet";
-    const liveClass = hasLiveState ? (input.isActive ? " is-warning" : " is-on") : "";
+    const targetName = getLightingInputTargetName(input);
+    const inputNumber = input.inputNumber || input.input_number || "1";
+    const actionState = getLightingInputActionState(input);
+    const liveClass = hasLiveState ? (isActive ? " is-input-active" : " is-input-inactive") : "";
+    const headline = hasLiveState
+      ? `Input ${inputNumber} ${isActive ? "active" : "inactive"} -> ${targetName}`
+      : `Input ${inputNumber} waiting -> ${targetName}`;
+    const actionText = actionState
+      ? `${input.action || "No action"} (${actionState})`
+      : input.action || "No action";
     return `
       <div class="lighting-list-row${liveClass}">
-        <strong>${escapeHtml(input.label || `Input ${input.inputNumber || ""}`)}</strong>
-        <span>Input ${escapeHtml(input.inputNumber || "1")} | ${escapeHtml(input.inputType || "Aux contact")} | active ${escapeHtml(input.activeState || "Closed")} | ${escapeHtml(input.controllerName || getLightingControllerById(input.controllerId)?.name || "No controller")} | ${escapeHtml(input.zoneName || "All zones")} | ${escapeHtml(input.action || "No action")} | ${input.enabled === false ? "Disabled" : "Enabled"}</span>
+        <strong>${escapeHtml(headline)}</strong>
+        <span>${escapeHtml(input.label || `Input ${inputNumber}`)} | ${escapeHtml(input.inputType || "Aux contact")} | active state ${escapeHtml(input.activeState || "Closed")}</span>
+        <span>${escapeHtml(input.controllerName || getLightingControllerById(input.controllerId)?.name || "No controller")} | ${escapeHtml(actionText)} | ${input.enabled === false ? "Disabled" : "Enabled"}</span>
         <span>Live ${escapeHtml(liveStatus)}: ${escapeHtml(liveText)}</span>
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-input-edit="${escapeHtml(input.id)}">Edit</button>
