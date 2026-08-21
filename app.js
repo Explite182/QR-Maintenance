@@ -12179,6 +12179,8 @@ function renderLightingInputs() {
     if (list) list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting inputs are saved per location, not globally.</span></div>`;
     return;
   }
+  const activeInputEditForm = list?.querySelector("[data-lighting-input-edit-form]");
+  if (editingLightingInputId && activeInputEditForm) return;
   if (lightingInputsLoadedScope !== scopeKey && !lightingInputsLoading) {
     loadLightingInputsForCurrentScope();
   }
