@@ -11883,9 +11883,16 @@ function renderLightingFirmwareStatusBadge(status) {
   return `<span class="lighting-firmware-status ${getLightingFirmwareStatusClass(status)}">${escapeHtml(getLightingFirmwareStatusLabel(status))}</span>`;
 }
 
+function inferLightingFirmwareVersionFromFileName(fileName = "") {
+  const cleanName = String(fileName || "").replace(/\.bin$/i, "");
+  const match = cleanName.match(/(\d+\.\d+\.\d+(?:[-._a-z0-9]+)?)/i);
+  return match ? match[1].replace(/_/g, "-") : "";
+}
+
 async function saveLightingFirmwareFromForm(form) {
   const status = document.querySelector("[data-lighting-firmware-status]");
   const formData = new FormData(form);
+  const firmwareFile = formData.get("firmwareFile");
   const firmware = {
     id: crypto.randomUUID?.() || `firmware-${Date.now()}`,
     version: String(formData.get("version") || "").trim(),
@@ -11897,12 +11904,27 @@ async function saveLightingFirmwareFromForm(form) {
     releaseNotes: String(formData.get("releaseNotes") || "").trim(),
     status: String(formData.get("status") || "available").trim()
   };
-  if (!firmware.version) {
-    if (status) status.textContent = "Firmware version is required.";
-    return;
-  }
-  if (status) status.textContent = `Registering firmware ${firmware.version}...`;
   try {
+    if (firmwareFile && firmwareFile.size > 0) {
+      if (status) status.textContent = `Uploading ${firmwareFile.name}...`;
+      const uploadPayload = await siteworksApi.uploadLightingFirmware(firmwareFile);
+      const uploadedFile = uploadPayload.file || uploadPayload;
+      firmware.fileName = uploadedFile.name || firmwareFile.name || firmware.fileName;
+      firmware.fileUrl = uploadedFile.url || uploadedFile.publicUrl || uploadedFile.public_url || firmware.fileUrl;
+      firmware.sha256 = uploadedFile.sha256 || firmware.sha256;
+      firmware.sizeBytes = Number(uploadedFile.size || firmwareFile.size || firmware.sizeBytes) || 0;
+      if (!firmware.version) firmware.version = inferLightingFirmwareVersionFromFileName(firmware.fileName);
+      if (form.elements.fileName) form.elements.fileName.value = firmware.fileName;
+      if (form.elements.fileUrl) form.elements.fileUrl.value = firmware.fileUrl;
+      if (form.elements.sha256) form.elements.sha256.value = firmware.sha256;
+      if (form.elements.sizeBytes) form.elements.sizeBytes.value = String(firmware.sizeBytes || "");
+      if (form.elements.version && !form.elements.version.value) form.elements.version.value = firmware.version;
+    }
+    if (!firmware.version) {
+      if (status) status.textContent = "Firmware version is required.";
+      return;
+    }
+    if (status) status.textContent = `Registering firmware ${firmware.version}...`;
     const response = await siteworksApi.saveLightingFirmware(firmware);
     if (!response.ok) throw new Error(`Lighting firmware save failed: ${response.status}`);
     const payload = await response.json();
@@ -23417,6 +23439,18 @@ const siteworksApi = {
     return this.server("/api/automation/lighting/firmware", {
       method: "POST",
       body: JSON.stringify(firmware)
+    });
+  },
+  uploadLightingFirmware(file) {
+    if (!siteworksServerEnabled()) return Promise.reject(new Error("SiteWorks server is required for firmware uploads."));
+    const formData = new FormData();
+    formData.append("file", file);
+    return this.server("/api/automation/lighting/firmware/upload", {
+      method: "POST",
+      body: formData
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
     });
   },
   assignLightingFirmware(assignment) {

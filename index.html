@@ -1663,6 +1663,7 @@
             <details class="lighting-controller-wizard">
               <summary>+ Register ESP32 Firmware</summary>
               <form data-lighting-firmware-form class="lighting-controller-form">
+                <label>Firmware .bin file <input name="firmwareFile" type="file" accept=".bin,application/octet-stream"></label>
                 <label>Version <input name="version" type="text" placeholder="0.9.0-lighting"></label>
                 <label>Device family <input name="deviceFamily" type="text" value="waveshare-esp32-s3-poe-8di-8ro"></label>
                 <label>File name <input name="fileName" type="text" placeholder="siteworks-lighting-0.9.0.bin"></label>
@@ -1676,7 +1677,7 @@
                   </select>
                 </label>
                 <label>Release notes <textarea name="releaseNotes" rows="3" placeholder="What changed in this firmware"></textarea></label>
-                <div class="lighting-controller-help"><strong>Registry only</strong><span>This records the firmware version. ESP32 OTA install comes next.</span></div>
+                <div class="lighting-controller-help"><strong>Upload + registry</strong><span>Choose a compiled .bin file, then SiteWorks stores it and registers it for OTA assignment.</span></div>
                 <button type="submit">Register Firmware</button>
                 <p data-lighting-firmware-status class="lighting-controller-status"></p>
               </form>
