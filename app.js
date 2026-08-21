@@ -5257,6 +5257,7 @@ let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
 let editingLightingControllerId = "";
+const openLightingControllerDiagnostics = new Set();
 let lightingZonesCache = [];
 let lightingZonesLoadedScope = "";
 let lightingZonesLoading = false;
@@ -8039,6 +8040,18 @@ els.customerFilter.addEventListener("change", () => {
   renderLightingSchedules();
   renderLightingOverrides();
 });
+
+document.addEventListener("toggle", (event) => {
+  const diagnostics = event.target.closest?.("[data-lighting-controller-diagnostics]");
+  if (!diagnostics) return;
+  const controllerId = diagnostics.dataset.lightingControllerDiagnostics || "";
+  if (!controllerId) return;
+  if (diagnostics.open) {
+    openLightingControllerDiagnostics.add(controllerId);
+  } else {
+    openLightingControllerDiagnostics.delete(controllerId);
+  }
+}, true);
 
 els.newUserRole?.addEventListener("change", () => {
   renderNewUserLocationOptions();
@@ -11419,6 +11432,8 @@ function formatLightingDiagnosticTime(value) {
 
 function renderLightingControllerDiagnostics(controller = {}) {
   const diagnostics = controller.diagnostics && typeof controller.diagnostics === "object" ? controller.diagnostics : {};
+  const controllerId = controller.id || "";
+  const isOpen = controllerId && openLightingControllerDiagnostics.has(controllerId);
   const config = diagnostics.lastConfigSync || {};
   const input = diagnostics.lastInputSync || {};
   const command = diagnostics.lastCommandAck || diagnostics.lastCommandPoll || {};
@@ -11436,7 +11451,7 @@ function renderLightingControllerDiagnostics(controller = {}) {
   const uptime = Number(network.uptimeMs || controller.uptimeMs || 0);
   const uptimeText = uptime ? formatLightingControllerSeenAge(uptime) : "Not reported";
   return `
-    <details class="lighting-controller-diagnostics">
+    <details class="lighting-controller-diagnostics" data-lighting-controller-diagnostics="${escapeHtml(controllerId)}"${isOpen ? " open" : ""}>
       <summary>Diagnostics</summary>
       <div>
         <span>Config sync <strong>${escapeHtml(config.checkedAt ? `${formatLightingDiagnosticTime(config.checkedAt)} | ${config.rules || 0} rule(s)` : "Not reported yet")}</strong></span>
