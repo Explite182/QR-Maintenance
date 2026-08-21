@@ -1555,6 +1555,11 @@ textarea:disabled {
   background: #fffbeb;
 }
 
+.lighting-list-row.is-override-history {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
 .lighting-list-row.is-input-active {
   border-color: #fcd34d;
   background: #fffbeb;
@@ -1642,6 +1647,35 @@ textarea:disabled {
   font-size: 0.86rem;
   line-height: 1.2;
   text-transform: none;
+}
+
+.lighting-override-section {
+  display: grid;
+  gap: 8px;
+}
+
+.lighting-override-section h4 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef5f3;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.lighting-override-section h4 span {
+  min-width: 28px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #dff5ed;
+  color: var(--brand);
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .lighting-contact-visual {

@@ -9111,6 +9111,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const lightingOverrideClearButton = event.target.closest("[data-lighting-override-clear]");
+  if (lightingOverrideClearButton) {
+    event.preventDefault();
+    const overrideId = lightingOverrideClearButton.dataset.lightingOverrideClear || "";
+    const override = lightingOverridesCache.find((item) => item.id === overrideId);
+    if (!overrideId || !window.confirm(`Clear ${override?.name || "this lighting override"}?`)) return;
+    clearLightingOverride(overrideId);
+    return;
+  }
+
   const lightingOverrideDeleteButton = event.target.closest("[data-lighting-override-delete]");
   if (lightingOverrideDeleteButton) {
     event.preventDefault();
@@ -11594,14 +11604,15 @@ function renderLightingOverrides() {
     list.innerHTML = `<div class="lighting-list-row"><strong>Loading overrides</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
     return;
   }
-  const activeOverrides = visibleOverrides.filter((override) => override.enabled !== false);
+  const activeOverrides = visibleOverrides.filter((override) => getLightingOverrideIsActive(override));
+  const historyOverrides = visibleOverrides.filter((override) => !getLightingOverrideIsActive(override));
   const overrideCount = document.querySelector("[data-lighting-overrides-active]");
   if (overrideCount) overrideCount.textContent = activeOverrides.length ? String(activeOverrides.length) : "None";
   if (!visibleOverrides.length) {
     list.innerHTML = `<div class="lighting-list-row"><strong>No lighting overrides for this location</strong><span>Add a setup override like exterior signs on, cleaning lights on, or parking lot off.</span></div>`;
     return;
   }
-  list.innerHTML = visibleOverrides.map((override) => {
+  const renderOverrideCard = (override, mode = "active") => {
     const isEditing = override.id === editingLightingOverrideId;
     if (isEditing) {
       return `
@@ -11636,17 +11647,49 @@ function renderLightingOverrides() {
         </form>
       `;
     }
+    const isActive = mode === "active";
+    const state = getLightingOverrideDesiredState(override) || "On";
+    const zoneName = override.zoneName || override.zone_name || getLightingInputTargetName(override);
+    const expiresAt = override.expiresAt || override.expires_at || "";
+    const expiresLabel = expiresAt ? formatDateTime(expiresAt) : "manually cleared";
+    const sourceLabel = override.source === "zone-control" || override.data?.source === "zone-control"
+      ? "manual zone control"
+      : "manual override";
     return `
-      <div class="lighting-list-row is-warning">
+      <div class="lighting-list-row ${isActive ? "is-warning" : "is-override-history"}">
         <strong>${escapeHtml(override.name || "Lighting override")}</strong>
-        <span>${escapeHtml(override.zoneName || "All zones")} | ${escapeHtml(override.desiredState || "On")} | until ${escapeHtml(override.expiresAt || "manually cleared")} | ${override.enabled === false ? "Disabled" : "Active"}</span>
+        <div class="lighting-input-detail-grid">
+          <span>Target <strong>${escapeHtml(zoneName || "All zones")}</strong></span>
+          <span>State <strong>${escapeHtml(state)}</strong></span>
+          <span>Expires <strong>${escapeHtml(expiresLabel)}</strong></span>
+          <span>Status <strong>${isActive ? "Active now" : "History"}</strong></span>
+          <span>Source <strong>${escapeHtml(sourceLabel)}</strong></span>
+          <span>Notes <strong>${escapeHtml(override.notes || "None")}</strong></span>
+        </div>
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-override-edit="${escapeHtml(override.id)}">Edit</button>
-          <button type="button" data-lighting-override-delete="${escapeHtml(override.id)}">Delete</button>
+          ${isActive ? `<button type="button" data-lighting-override-clear="${escapeHtml(override.id)}">Clear Override</button>` : ""}
+          <button type="button" data-lighting-override-delete="${escapeHtml(override.id)}">${isActive ? "Delete" : "Delete History"}</button>
         </div>
       </div>
     `;
-  }).join("");
+  };
+  const activeHtml = activeOverrides.length
+    ? activeOverrides.map((override) => renderOverrideCard(override, "active")).join("")
+    : `<div class="lighting-list-row"><strong>No active overrides</strong><span>Schedules and inputs are currently in control.</span></div>`;
+  const historyHtml = historyOverrides.length
+    ? historyOverrides.map((override) => renderOverrideCard(override, "history")).join("")
+    : `<div class="lighting-list-row"><strong>No override history</strong><span>Cleared or expired overrides will appear here.</span></div>`;
+  list.innerHTML = `
+    <section class="lighting-override-section">
+      <h4>Active Overrides <span>${activeOverrides.length}</span></h4>
+      ${activeHtml}
+    </section>
+    <section class="lighting-override-section">
+      <h4>History <span>${historyOverrides.length}</span></h4>
+      ${historyHtml}
+    </section>
+  `;
 }
 
 async function saveLightingControllerFromForm(form, existingControllerId = "") {
@@ -12169,6 +12212,40 @@ async function deleteLightingOverride(overrideId) {
     if (status) status.textContent = "Override delete failed on the server. Removed from this browser for now.";
   }
   renderLightingOverrides();
+}
+
+async function clearLightingOverride(overrideId) {
+  const status = document.querySelector("[data-lighting-override-status]");
+  const { scopeKey } = getLightingScopeDetails();
+  const existingOverride = lightingOverridesCache.find((item) => item.id === overrideId)
+    || getLightingOverrides().find((item) => item.id === overrideId);
+  if (!existingOverride) return;
+  const clearedOverride = {
+    ...existingOverride,
+    enabled: false,
+    updatedAt: new Date().toISOString()
+  };
+  if (status) status.textContent = `Clearing ${clearedOverride.name || "lighting override"}...`;
+  try {
+    const response = await siteworksApi.saveLightingOverride(clearedOverride);
+    if (!response.ok) throw new Error(`Lighting override clear failed: ${response.status}`);
+    const payload = await response.json();
+    const savedOverride = payload.override || clearedOverride;
+    lightingOverridesCache = [savedOverride, ...lightingOverridesCache.filter((item) => item.id !== savedOverride.id)];
+    lightingOverridesLoadedScope = scopeKey;
+    if (status) status.textContent = "Lighting override cleared.";
+  } catch (error) {
+    console.warn("Lighting override could not be cleared on the server.", error);
+    const overrides = getLightingOverrides().filter((item) => item.id !== clearedOverride.id);
+    overrides.unshift(clearedOverride);
+    saveLightingOverrides(overrides);
+    lightingOverridesCache = [clearedOverride, ...lightingOverridesCache.filter((item) => item.id !== clearedOverride.id)];
+    lightingOverridesLoadedScope = scopeKey;
+    if (status) status.textContent = "Override cleared in this browser. Server clear did not save.";
+  }
+  renderLightingOverrides();
+  renderLightingZones();
+  renderLightingControllers();
 }
 
 async function applyLightingZoneCommand(zoneId, desiredState) {
