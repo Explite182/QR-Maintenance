@@ -11829,9 +11829,18 @@ function renderLightingFirmware() {
   const firmware = Array.isArray(lightingFirmwareCache.firmware) ? lightingFirmwareCache.firmware : [];
   assignmentList.innerHTML = assignments.length
     ? assignments.map((assignment) => `
-      <div class="lighting-list-row">
-        <strong>${escapeHtml(assignment.controllerName || "Lighting controller")} -> ${escapeHtml(assignment.version || "Firmware")}</strong>
-        <span>${escapeHtml(assignment.deviceUid || "No UID")} | ${escapeHtml(assignment.status || "assigned")} | assigned ${assignment.assignedAt ? escapeHtml(formatDateTime(assignment.assignedAt)) : "not reported"}</span>
+      <div class="lighting-list-row lighting-firmware-assignment ${getLightingFirmwareStatusClass(assignment.status)}">
+        <div class="lighting-firmware-row-header">
+          <strong>${escapeHtml(assignment.controllerName || "Lighting controller")}</strong>
+          ${renderLightingFirmwareStatusBadge(assignment.status)}
+        </div>
+        <span>${escapeHtml(assignment.deviceUid || "No UID")} | ${escapeHtml(assignment.version || "Firmware")} ${assignment.reportedVersion ? `| running ${escapeHtml(assignment.reportedVersion)}` : ""}</span>
+        <div class="lighting-firmware-details">
+          <span>Assigned <strong>${assignment.assignedAt ? escapeHtml(formatDateTime(assignment.assignedAt)) : "Not reported"}</strong></span>
+          <span>Started <strong>${assignment.startedAt ? escapeHtml(formatDateTime(assignment.startedAt)) : "Not started"}</strong></span>
+          <span>${String(assignment.status || "").toLowerCase() === "failed" ? "Failed" : "Completed"} <strong>${assignment.completedAt || assignment.failedAt ? escapeHtml(formatDateTime(assignment.completedAt || assignment.failedAt)) : "Not reported"}</strong></span>
+        </div>
+        ${assignment.error ? `<span class="lighting-firmware-error">${escapeHtml(assignment.error)}</span>` : ""}
       </div>
     `).join("")
     : `<div class="lighting-list-row"><strong>No firmware assigned yet</strong><span>Assign a registered firmware version to a controller when you are ready to test OTA.</span></div>`;
@@ -11844,6 +11853,34 @@ function renderLightingFirmware() {
       </div>
     `).join("")
     : `<div class="lighting-list-row"><strong>No firmware registered yet</strong><span>Register a firmware version before assigning OTA updates.</span></div>`;
+}
+
+function normalizeLightingFirmwareStatus(status) {
+  const value = String(status || "pending").trim().toLowerCase();
+  if (["assigned", "pending", "queued"].includes(value)) return "pending";
+  if (value === "downloading") return "downloading";
+  if (value === "installing") return "installing";
+  if (["completed", "installed", "current"].includes(value)) return "completed";
+  if (value === "failed") return "failed";
+  return "pending";
+}
+
+function getLightingFirmwareStatusLabel(status) {
+  const normalized = normalizeLightingFirmwareStatus(status);
+  if (normalized === "pending") return "Pending";
+  if (normalized === "downloading") return "Downloading";
+  if (normalized === "installing") return "Installing";
+  if (normalized === "completed") return "Completed";
+  if (normalized === "failed") return "Failed";
+  return "Pending";
+}
+
+function getLightingFirmwareStatusClass(status) {
+  return `is-firmware-${normalizeLightingFirmwareStatus(status)}`;
+}
+
+function renderLightingFirmwareStatusBadge(status) {
+  return `<span class="lighting-firmware-status ${getLightingFirmwareStatusClass(status)}">${escapeHtml(getLightingFirmwareStatusLabel(status))}</span>`;
 }
 
 async function saveLightingFirmwareFromForm(form) {

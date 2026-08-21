@@ -1497,6 +1497,94 @@ textarea:disabled {
   font-weight: 900;
 }
 
+.lighting-firmware-assignment {
+  gap: 8px;
+}
+
+.lighting-firmware-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lighting-firmware-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-width: 92px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.lighting-firmware-status.is-firmware-pending,
+.lighting-firmware-assignment.is-firmware-pending {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.lighting-firmware-status.is-firmware-downloading,
+.lighting-firmware-status.is-firmware-installing,
+.lighting-firmware-assignment.is-firmware-downloading,
+.lighting-firmware-assignment.is-firmware-installing {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.lighting-firmware-status.is-firmware-completed,
+.lighting-firmware-assignment.is-firmware-completed {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.lighting-firmware-status.is-firmware-failed,
+.lighting-firmware-assignment.is-firmware-failed {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.lighting-firmware-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 6px;
+}
+
+.lighting-firmware-details span {
+  display: grid;
+  gap: 2px;
+  padding: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.lighting-firmware-details strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+  text-transform: none;
+}
+
+.lighting-firmware-error {
+  padding: 7px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
 .lighting-zone-actions {
   display: flex;
   grid-column: 1 / -1;
