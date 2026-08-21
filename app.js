@@ -5262,6 +5262,7 @@ let lightingZonesCache = [];
 let lightingZonesLoadedScope = "";
 let lightingZonesLoading = false;
 let editingLightingZoneId = "";
+const openLightingZoneDetails = new Set();
 let lightingInputsCache = [];
 let lightingInputsLoadedScope = "";
 let lightingInputsLoading = false;
@@ -8042,6 +8043,17 @@ els.customerFilter.addEventListener("change", () => {
 });
 
 document.addEventListener("toggle", (event) => {
+  const zoneDetails = event.target.closest?.("[data-lighting-zone-details]");
+  if (zoneDetails) {
+    const zoneId = zoneDetails.dataset.lightingZoneDetails || "";
+    if (!zoneId) return;
+    if (zoneDetails.open) {
+      openLightingZoneDetails.add(zoneId);
+    } else {
+      openLightingZoneDetails.delete(zoneId);
+    }
+    return;
+  }
   const diagnostics = event.target.closest?.("[data-lighting-controller-diagnostics]");
   if (!diagnostics) return;
   const controllerId = diagnostics.dataset.lightingControllerDiagnostics || "";
@@ -11308,6 +11320,7 @@ function renderLightingZones() {
       : `${priorityDecision.state} by ${priorityDecision.source.toLowerCase()}`;
     const stateClass = `${String(priorityDecision.state || state).toLowerCase() === "on" ? "is-on" : ""} ${priorityDecision.className || ""}`.trim();
     const isEditing = zone.id === editingLightingZoneId;
+    const isOpen = zone.id && openLightingZoneDetails.has(zone.id);
     if (isEditing) {
       return `
         <details class="lighting-zone-card ${stateClass}" open>
@@ -11344,7 +11357,7 @@ function renderLightingZones() {
       `;
     }
     return `
-      <details class="lighting-zone-card ${stateClass}">
+      <details class="lighting-zone-card ${stateClass}" data-lighting-zone-details="${escapeHtml(zone.id)}"${isOpen ? " open" : ""}>
         <summary><span>${escapeHtml(zone.name)}</span><strong>${escapeHtml(displayedState)}</strong></summary>
         <div class="lighting-zone-details">
           <span>Mode <strong>${escapeHtml(zone.mode || "Auto")}</strong></span>
@@ -11430,10 +11443,15 @@ function formatLightingDiagnosticTime(value) {
   return formatDateTime(date.toISOString());
 }
 
-function renderLightingControllerDiagnostics(controller = {}) {
+function renderLightingControllerDiagnostics(controller = {}, controllerHealth = null, modeLabel = "") {
   const diagnostics = controller.diagnostics && typeof controller.diagnostics === "object" ? controller.diagnostics : {};
   const controllerId = controller.id || "";
   const isOpen = controllerId && openLightingControllerDiagnostics.has(controllerId);
+  const health = controllerHealth || getLightingControllerHealth(controller);
+  const mode = modeLabel || getLightingControllerModeLabel(controller);
+  const zones = lightingZonesCache.filter((zone) => zone.controllerId === controller.id).length;
+  const inputs = lightingInputsCache.filter((input) => input.controllerId === controller.id).length;
+  const detailSummary = `${health.label} | ${zones} zone${zones === 1 ? "" : "s"} | ${inputs} input${inputs === 1 ? "" : "s"}`;
   const config = diagnostics.lastConfigSync || {};
   const input = diagnostics.lastInputSync || {};
   const command = diagnostics.lastCommandAck || diagnostics.lastCommandPoll || {};
@@ -11452,8 +11470,16 @@ function renderLightingControllerDiagnostics(controller = {}) {
   const uptimeText = uptime ? formatLightingControllerSeenAge(uptime) : "Not reported";
   return `
     <details class="lighting-controller-diagnostics" data-lighting-controller-diagnostics="${escapeHtml(controllerId)}"${isOpen ? " open" : ""}>
-      <summary>Diagnostics</summary>
+      <summary>
+        <span>Controller details</span>
+        <strong>${escapeHtml(detailSummary)}</strong>
+      </summary>
       <div>
+        <span>Connection <strong>${escapeHtml(health.detail)} ${health.lastSeenAt ? `Last seen ${health.relativeText}.` : ""}</strong></span>
+        <span>Mode <strong>${escapeHtml(mode)}</strong></span>
+        ${renderLightingControllerOutputSummary(controller)}
+        ${renderLightingControllerInputSummary(controller)}
+        ${renderLightingControllerActiveControlSummary(controller)}
         <span>Config sync <strong>${escapeHtml(config.checkedAt ? `${formatLightingDiagnosticTime(config.checkedAt)} | ${config.rules || 0} rule(s)` : "Not reported yet")}</strong></span>
         <span>Input report <strong>${escapeHtml(input.checkedAt ? `${formatLightingDiagnosticTime(input.checkedAt)} | ${input.activeCount || 0}/${input.inputCount || 0} active${activeInputs}` : "Not reported yet")}</strong></span>
         <span>Last command <strong>${escapeHtml(command.checkedAt ? `${commandText} | ${formatLightingDiagnosticTime(command.checkedAt)}` : "Not reported yet")}</strong></span>
@@ -11606,14 +11632,7 @@ function renderLightingControllers() {
           <span>API key</span>
           <strong>${controller.apiKeyLast4 ? `Ends ${escapeHtml(controller.apiKeyLast4)}` : "Not set"}</strong>
         </div>
-        <div class="lighting-controller-summary">
-          <span>Connection <strong>${escapeHtml(controllerHealth.detail)} ${controllerHealth.lastSeenAt ? `Last seen ${controllerHealth.relativeText}.` : ""}</strong></span>
-          <span>Mode <strong>${escapeHtml(modeLabel)}</strong></span>
-          ${renderLightingControllerOutputSummary(controller)}
-          ${renderLightingControllerInputSummary(controller)}
-          ${renderLightingControllerActiveControlSummary(controller)}
-        </div>
-        ${renderLightingControllerDiagnostics(controller)}
+        ${renderLightingControllerDiagnostics(controller, controllerHealth, modeLabel)}
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-controller-edit="${escapeHtml(controller.id)}">Edit</button>
           <button type="button" data-lighting-controller-delete="${escapeHtml(controller.id)}">Delete</button>

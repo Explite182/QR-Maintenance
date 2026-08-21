@@ -2075,9 +2075,26 @@ textarea:disabled {
 }
 
 .lighting-controller-diagnostics summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   cursor: pointer;
   color: var(--ink);
   font-weight: 900;
+}
+
+.lighting-controller-diagnostics summary span {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.lighting-controller-diagnostics summary strong {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-align: right;
 }
 
 .lighting-controller-diagnostics > div {
@@ -2087,7 +2104,7 @@ textarea:disabled {
   margin-top: 8px;
 }
 
-.lighting-controller-diagnostics span {
+.lighting-controller-diagnostics > div > span {
   display: grid;
   gap: 3px;
   min-width: 0;
@@ -2097,7 +2114,7 @@ textarea:disabled {
   background: rgba(248, 250, 252, 0.85);
 }
 
-.lighting-controller-diagnostics strong {
+.lighting-controller-diagnostics > div > span strong {
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
