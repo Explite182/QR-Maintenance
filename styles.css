@@ -2066,6 +2066,42 @@ textarea:disabled {
   line-height: 1.25;
 }
 
+.lighting-controller-diagnostics {
+  grid-column: 1 / -2;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.lighting-controller-diagnostics summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.lighting-controller-diagnostics > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.lighting-controller-diagnostics span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.lighting-controller-diagnostics strong {
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .lighting-controller-edit-form {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
@@ -2108,6 +2144,7 @@ textarea:disabled {
 
   .lighting-controller-main,
   .lighting-controller-summary,
+  .lighting-controller-diagnostics,
   .lighting-controller-card .lighting-zone-actions {
     grid-column: 1 / -1;
   }

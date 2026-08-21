@@ -11410,6 +11410,45 @@ function renderLightingControllerActiveControlSummary(controller = {}) {
   return `<span>Active controls <strong>${activeOverrides} override(s) | ${activeInputs} input(s) | ${activeSchedules} schedule(s)</strong></span>`;
 }
 
+function formatLightingDiagnosticTime(value) {
+  if (!value) return "Not reported yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return formatDateTime(date.toISOString());
+}
+
+function renderLightingControllerDiagnostics(controller = {}) {
+  const diagnostics = controller.diagnostics && typeof controller.diagnostics === "object" ? controller.diagnostics : {};
+  const config = diagnostics.lastConfigSync || {};
+  const input = diagnostics.lastInputSync || {};
+  const command = diagnostics.lastCommandAck || diagnostics.lastCommandPoll || {};
+  const firmware = diagnostics.lastFirmwareStatus || diagnostics.lastFirmwareCheck || {};
+  const network = diagnostics.lastNetwork || {};
+  const commandText = diagnostics.lastCommandAck
+    ? `O${command.outputNumber || "?"} ${command.desiredState || "command"} ${command.status || ""}`.trim()
+    : "Poll checked";
+  const firmwareText = diagnostics.lastFirmwareStatus
+    ? `${firmware.status || "status"} ${firmware.reportedVersion ? `| ${firmware.reportedVersion}` : ""}`.trim()
+    : `${firmware.updateAvailable ? "Update available" : "No update"}${firmware.currentVersion ? ` | ${firmware.currentVersion}` : ""}`;
+  const activeInputs = Array.isArray(input.activeInputs) && input.activeInputs.length
+    ? ` | DI${input.activeInputs.join(", DI")}`
+    : "";
+  const uptime = Number(network.uptimeMs || controller.uptimeMs || 0);
+  const uptimeText = uptime ? formatLightingControllerSeenAge(uptime) : "Not reported";
+  return `
+    <details class="lighting-controller-diagnostics">
+      <summary>Diagnostics</summary>
+      <div>
+        <span>Config sync <strong>${escapeHtml(config.checkedAt ? `${formatLightingDiagnosticTime(config.checkedAt)} | ${config.rules || 0} rule(s)` : "Not reported yet")}</strong></span>
+        <span>Input report <strong>${escapeHtml(input.checkedAt ? `${formatLightingDiagnosticTime(input.checkedAt)} | ${input.activeCount || 0}/${input.inputCount || 0} active${activeInputs}` : "Not reported yet")}</strong></span>
+        <span>Last command <strong>${escapeHtml(command.checkedAt ? `${commandText} | ${formatLightingDiagnosticTime(command.checkedAt)}` : "Not reported yet")}</strong></span>
+        <span>Firmware check <strong>${escapeHtml(firmware.checkedAt ? `${firmwareText} | ${formatLightingDiagnosticTime(firmware.checkedAt)}` : "Not reported yet")}</strong></span>
+        <span>Network <strong>${escapeHtml(`${controller.networkType || network.type || "network"} | uptime ${uptimeText}`)}</strong></span>
+      </div>
+    </details>
+  `;
+}
+
 function renderLightingControllers() {
   const list = document.querySelector("[data-lighting-controller-list]");
   renderLightingNetworkSummary();
@@ -11559,6 +11598,7 @@ function renderLightingControllers() {
           ${renderLightingControllerInputSummary(controller)}
           ${renderLightingControllerActiveControlSummary(controller)}
         </div>
+        ${renderLightingControllerDiagnostics(controller)}
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-controller-edit="${escapeHtml(controller.id)}">Edit</button>
           <button type="button" data-lighting-controller-delete="${escapeHtml(controller.id)}">Delete</button>
