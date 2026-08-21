@@ -11661,6 +11661,10 @@ function renderLightingInputs() {
     const inputNumber = input.inputNumber || input.input_number || "1";
     const actionState = getLightingInputActionState(input);
     const liveClass = hasLiveState ? (isActive ? " is-input-active" : " is-input-inactive") : "";
+    const activeStateIsClosed = String(input.activeState || "Closed").toLowerCase() !== "open";
+    const contactClosed = hasLiveState ? (activeStateIsClosed ? isActive : !isActive) : false;
+    const contactState = hasLiveState ? (contactClosed ? "closed" : "open") : "waiting";
+    const contactText = hasLiveState ? `Contact ${contactState}` : "Waiting for input";
     const headline = hasLiveState
       ? `Input ${inputNumber} ${isActive ? "active" : "inactive"} -> ${targetName}`
       : `Input ${inputNumber} waiting -> ${targetName}`;
@@ -11669,7 +11673,15 @@ function renderLightingInputs() {
       : input.action || "No action";
     return `
       <div class="lighting-list-row${liveClass}">
-        <strong>${escapeHtml(headline)}</strong>
+        <div class="lighting-input-row-head">
+          <div class="lighting-contact-visual is-${escapeHtml(contactState)}" aria-hidden="true">
+            <span class="lighting-contact-terminal"></span>
+            <span class="lighting-contact-blade"></span>
+            <span class="lighting-contact-terminal"></span>
+          </div>
+          <strong>${escapeHtml(headline)}</strong>
+          <span>${escapeHtml(contactText)}</span>
+        </div>
         <span>${escapeHtml(input.label || `Input ${inputNumber}`)} | ${escapeHtml(input.inputType || "Aux contact")} | active state ${escapeHtml(input.activeState || "Closed")}</span>
         <span>${escapeHtml(input.controllerName || getLightingControllerById(input.controllerId)?.name || "No controller")} | ${escapeHtml(actionText)} | ${input.enabled === false ? "Disabled" : "Enabled"}</span>
         <span>Live ${escapeHtml(liveStatus)}: ${escapeHtml(liveText)}</span>

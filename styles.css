@@ -1545,6 +1545,74 @@ textarea:disabled {
   background: #ecfdf5;
 }
 
+.lighting-input-row-head {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.lighting-input-row-head > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.lighting-contact-visual {
+  position: relative;
+  width: 54px;
+  height: 28px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #eef5f3);
+}
+
+.lighting-contact-terminal {
+  position: absolute;
+  top: 11px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #111827;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.1);
+}
+
+.lighting-contact-terminal:first-child {
+  left: 8px;
+}
+
+.lighting-contact-terminal:last-child {
+  right: 8px;
+}
+
+.lighting-contact-blade {
+  position: absolute;
+  left: 16px;
+  top: 13px;
+  width: 24px;
+  height: 4px;
+  border-radius: 999px;
+  background: #94a3b8;
+  transform-origin: left center;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.lighting-contact-visual.is-closed .lighting-contact-blade {
+  background: #059669;
+  transform: rotate(0deg);
+}
+
+.lighting-contact-visual.is-open .lighting-contact-blade {
+  background: #ca8a04;
+  transform: rotate(-28deg);
+}
+
+.lighting-contact-visual.is-waiting .lighting-contact-blade {
+  background: #64748b;
+  transform: rotate(-16deg);
+}
+
 .lighting-zone-details > span.lighting-input-effect {
   border-color: #fcd34d;
   background: #fffbeb;
