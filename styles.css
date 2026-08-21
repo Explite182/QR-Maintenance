@@ -1148,21 +1148,31 @@ textarea:disabled {
 .lighting-control-panel {
   display: grid;
   gap: 14px;
+  padding: 6px;
+  border: 1px solid rgba(15, 118, 110, 0.12);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(236, 253, 245, 0.58), rgba(248, 250, 252, 0.92) 150px),
+    #ffffff;
 }
 
 .lighting-status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 8px;
 }
 
 .lighting-status-card {
+  position: relative;
   display: grid;
-  gap: 5px;
+  grid-template-rows: auto 1fr;
+  gap: 7px;
   width: 100%;
-  padding: 14px;
+  min-height: 78px;
+  padding: 13px 14px 12px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-left-width: 5px;
+  border-radius: 8px;
   background: #f8fafc;
   font: inherit;
   text-align: left;
@@ -1180,44 +1190,47 @@ textarea:disabled {
 
 .lighting-status-card.is-active {
   border-color: #0f766e;
-  box-shadow: inset 0 -3px 0 #0f766e, 0 8px 18px rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  box-shadow: inset 0 -3px 0 #0f766e, 0 10px 22px rgba(15, 23, 42, 0.10);
 }
 
 .lighting-status-card span {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 900;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
 .lighting-status-card strong {
   color: var(--ink);
-  font-size: 1.35rem;
+  align-self: end;
+  font-size: 1.18rem;
   line-height: 1;
 }
 
 .lighting-status-card.is-on {
-  border-color: #a7f3d0;
+  border-color: #10b981;
   background: #ecfdf5;
 }
 
 .lighting-status-card.is-warning {
-  border-color: #fcd34d;
+  border-color: #f59e0b;
   background: #fffbeb;
 }
 
 .lighting-status-card.is-checking {
-  border-color: #fcd34d;
+  border-color: #f59e0b;
   background: #fffbeb;
 }
 
 .lighting-status-card.is-setup {
-  border-color: #cbd5e1;
+  border-color: #64748b;
   background: #f8fafc;
 }
 
 .lighting-status-card.is-offline {
-  border-color: #fecaca;
+  border-color: #ef4444;
   background: #fef2f2;
 }
 
