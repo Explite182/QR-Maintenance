@@ -15535,6 +15535,125 @@ function renderPumpAutomationSummary(pumps = []) {
   `;
 }
 
+function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocation = null) {
+  const statuses = pumps.map(pumpAssetStatus);
+  const runningCount = statuses.filter((status) => status.className === "is-running").length;
+  const warningCount = statuses.filter((status) => status.className === "is-warning").length;
+  const locationName = currentLocation?.name || "Selected location";
+  const customerName = currentCustomer?.name || "SiteWorks";
+  const leadPump = pumps[0] || null;
+  const leadStatus = leadPump ? pumpAssetStatus(leadPump) : { label: "Standby", className: "is-listed" };
+  const alarmOn = warningCount > 0;
+  const pumpTiles = pumps.map((asset, index) => {
+    const status = pumpAssetStatus(asset);
+    const due = getDueInfo(asset);
+    const openIssueCount = openWorkOrdersForAsset(asset.id).length;
+    const label = asset.name || `Pump ${index + 1}`;
+    const equipmentId = getAssetEquipmentId(asset);
+    return `
+      <button type="button" class="pump-hmi-pump ${status.className}" data-open-pump-asset="${escapeAttribute(asset.id)}">
+        <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
+        <span>
+          <strong>${escapeHtml(label)}</strong>
+          <small>${escapeHtml(asset.type || "Pump")} | ${escapeHtml(equipmentId)}</small>
+        </span>
+        <em>${escapeHtml(status.label)}</em>
+        <span class="pump-hmi-mini">
+          <b>PM</b>${escapeHtml(formatDate(due.nextDate))}
+        </span>
+        <span class="pump-hmi-mini">
+          <b>Tickets</b>${openIssueCount}
+        </span>
+      </button>
+    `;
+  }).join("");
+
+  return `
+    <div class="pump-hmi-controller">
+      <span class="pump-hmi-screw is-top-left" aria-hidden="true"></span>
+      <span class="pump-hmi-screw is-top-right" aria-hidden="true"></span>
+      <span class="pump-hmi-screw is-bottom-left" aria-hidden="true"></span>
+      <span class="pump-hmi-screw is-bottom-right" aria-hidden="true"></span>
+      <div class="pump-hmi-nameplate">
+        <strong>PUMP CONTROL CENTER</strong>
+        <span>SITEWORKS BAS HMI</span>
+      </div>
+      <div class="pump-hmi-display">
+        <aside class="pump-hmi-nav" aria-label="Pump HMI sections">
+          <span class="is-active">Overview</span>
+          <span>Pumps</span>
+          <span>Alarms</span>
+          <span>Lead/Lag</span>
+          <span>Service</span>
+        </aside>
+        <main class="pump-hmi-screen">
+          <header class="pump-hmi-header">
+            <div>
+              <span>${escapeHtml(customerName)}</span>
+              <strong>${escapeHtml(locationName)}</strong>
+            </div>
+            <div class="pump-hmi-status-pill ${alarmOn ? "is-warning" : "is-running"}">
+              ${alarmOn ? "Attention" : "Normal"}
+            </div>
+          </header>
+          <section class="pump-hmi-metrics" aria-label="Pump station status">
+            <div>
+              <span>Total pumps</span>
+              <strong>${pumps.length}</strong>
+            </div>
+            <div>
+              <span>Running</span>
+              <strong>${runningCount}</strong>
+            </div>
+            <div>
+              <span>Lead pump</span>
+              <strong>${escapeHtml(leadPump?.name || "Not assigned")}</strong>
+            </div>
+            <div class="${alarmOn ? "is-warning" : ""}">
+              <span>Alarms</span>
+              <strong>${warningCount}</strong>
+            </div>
+          </section>
+          <section class="pump-hmi-mimic" aria-label="Pump mimic diagram">
+            <div class="pump-pipe is-supply"></div>
+            <div class="pump-tank">
+              <span>System</span>
+              <strong>${escapeHtml(leadStatus.label)}</strong>
+            </div>
+            <div class="pump-pipe is-discharge"></div>
+            <div class="pump-gauge">
+              <span>Pressure</span>
+              <strong>Not wired</strong>
+            </div>
+          </section>
+          <section class="pump-hmi-pumps" aria-label="Pump equipment">
+            ${pumpTiles || `
+              <div class="pump-hmi-empty">
+                <strong>No pump equipment at this location.</strong>
+                <span>Add pump equipment or select all locations for the overview.</span>
+              </div>
+            `}
+          </section>
+        </main>
+      </div>
+      <aside class="pump-hmi-side">
+        <div class="pump-hmi-led ${pumps.length ? "is-on" : ""}"><i></i><span>POWER</span></div>
+        <div class="pump-hmi-led ${runningCount ? "is-on" : ""}"><i></i><span>RUN</span></div>
+        <div class="pump-hmi-led ${alarmOn ? "is-alarm" : ""}"><i></i><span>ALARM</span></div>
+        <div class="pump-hmi-switch">
+          <span>HAND</span>
+          <b></b>
+          <span>AUTO</span>
+        </div>
+        <div class="pump-hmi-warning">
+          <strong>SERVICE NOTICE</strong>
+          <span>Verify pump status before switching equipment.</span>
+        </div>
+      </aside>
+    </div>
+  `;
+}
+
 function renderAutomationPumps() {
   const count = document.getElementById("automationPumpsCount");
   const scope = document.getElementById("pumpAutomationScope");
@@ -15547,6 +15666,11 @@ function renderAutomationPumps() {
   count.textContent = pumps.length;
   scope.textContent = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
   renderPumpAutomationSummary(pumps);
+
+  if (currentLocation) {
+    list.innerHTML = renderPumpLocationHmi(pumps, currentCustomer, currentLocation);
+    return;
+  }
 
   if (!pumps.length) {
     list.innerHTML = `

@@ -1290,6 +1290,427 @@ textarea:disabled {
   white-space: nowrap;
 }
 
+.pump-hmi-controller {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 172px;
+  gap: 18px;
+  min-height: 620px;
+  padding: 54px 22px 22px;
+  border: 1px solid #020617;
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035), transparent 22%, rgba(255, 255, 255, 0.025) 55%, transparent),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, #1f2a2c, #0c1214);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -18px 28px rgba(0, 0, 0, 0.46),
+    0 24px 42px rgba(15, 23, 42, 0.26);
+  overflow: hidden;
+}
+
+.pump-hmi-nameplate {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  display: grid;
+  gap: 2px;
+  min-width: 250px;
+  padding: 10px 22px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #111827, #020617);
+  color: #f8fafc;
+  text-align: center;
+  transform: translateX(-50%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.34);
+}
+
+.pump-hmi-nameplate strong {
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
+
+.pump-hmi-nameplate span,
+.pump-hmi-header span,
+.pump-hmi-metrics span,
+.pump-hmi-mini b,
+.pump-hmi-side span {
+  color: #9fb5b4;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pump-hmi-screw {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 35%, #94a3b8, #334155 45%, #020617 70%);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.22);
+}
+
+.pump-hmi-screw.is-top-left { top: 18px; left: 18px; }
+.pump-hmi-screw.is-top-right { top: 18px; right: 18px; }
+.pump-hmi-screw.is-bottom-left { bottom: 18px; left: 18px; }
+.pump-hmi-screw.is-bottom-right { bottom: 18px; right: 18px; }
+
+.pump-hmi-display {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  min-width: 0;
+  border: 8px solid #02090a;
+  border-radius: 12px;
+  background: #031313;
+  box-shadow:
+    inset 0 0 0 1px rgba(45, 212, 191, 0.12),
+    inset 0 0 38px rgba(0, 0, 0, 0.62);
+  overflow: hidden;
+}
+
+.pump-hmi-nav {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 18px 12px;
+  border-right: 1px solid rgba(45, 212, 191, 0.16);
+  background:
+    linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(2, 6, 23, 0.4)),
+    #03100f;
+}
+
+.pump-hmi-nav span {
+  padding: 12px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.82);
+  color: #c7f9f1;
+  font-weight: 900;
+  text-align: center;
+}
+
+.pump-hmi-nav span.is-active {
+  border-color: rgba(45, 212, 191, 0.54);
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.58), rgba(15, 118, 110, 0.72));
+  color: #ffffff;
+}
+
+.pump-hmi-screen {
+  display: grid;
+  grid-template-rows: auto auto 142px 1fr;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px;
+  background:
+    linear-gradient(rgba(45, 212, 191, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 212, 191, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 28% 0%, rgba(20, 184, 166, 0.14), transparent 35%),
+    #031312;
+  background-size: 22px 22px, 22px 22px, auto, auto;
+  color: #f8fafc;
+}
+
+.pump-hmi-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(45, 212, 191, 0.18);
+}
+
+.pump-hmi-header strong {
+  display: block;
+  color: #f8fafc;
+  font-size: 22px;
+}
+
+.pump-hmi-status-pill {
+  min-width: 118px;
+  padding: 10px 14px;
+  border: 1px solid rgba(16, 185, 129, 0.38);
+  border-radius: 8px;
+  background: rgba(6, 78, 59, 0.42);
+  color: #5eead4;
+  font-size: 20px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.pump-hmi-status-pill.is-warning {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(120, 53, 15, 0.42);
+  color: #fbbf24;
+}
+
+.pump-hmi-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pump-hmi-metrics div,
+.pump-hmi-mini {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  min-width: 0;
+}
+
+.pump-hmi-metrics strong {
+  color: #f8fafc;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.pump-hmi-metrics .is-warning strong {
+  color: #fbbf24;
+}
+
+.pump-hmi-mimic {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 150px 1fr 135px;
+  gap: 14px;
+  align-items: center;
+  min-height: 126px;
+  padding: 14px;
+  border: 1px solid rgba(45, 212, 191, 0.14);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.28);
+  overflow: hidden;
+}
+
+.pump-pipe {
+  height: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(226, 232, 240, 0.38), rgba(51, 65, 85, 0.52)),
+    #64748b;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.38);
+}
+
+.pump-tank,
+.pump-gauge {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  min-height: 92px;
+  border: 2px solid rgba(148, 163, 184, 0.44);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(8, 47, 73, 0.38));
+  text-align: center;
+}
+
+.pump-tank {
+  border-radius: 18px 18px 28px 28px;
+}
+
+.pump-gauge {
+  border-radius: 50%;
+}
+
+.pump-tank strong,
+.pump-gauge strong {
+  color: #5eead4;
+  font-size: 13px;
+}
+
+.pump-hmi-pumps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+
+.pump-hmi-pump {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 9px 10px;
+  align-items: center;
+  min-height: 116px;
+  padding: 13px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.86), rgba(2, 6, 23, 0.8));
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pump-hmi-pump:hover {
+  border-color: rgba(94, 234, 212, 0.58);
+}
+
+.pump-hmi-pump-lamp {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #64748b;
+  box-shadow: 0 0 0 4px rgba(100, 116, 139, 0.18), inset 0 2px 3px rgba(255, 255, 255, 0.28);
+}
+
+.pump-hmi-pump.is-running .pump-hmi-pump-lamp {
+  background: #22c55e;
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.72);
+}
+
+.pump-hmi-pump.is-warning .pump-hmi-pump-lamp {
+  background: #f59e0b;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.75);
+}
+
+.pump-hmi-pump strong {
+  display: block;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pump-hmi-pump small,
+.pump-hmi-pump em {
+  color: #9fb5b4;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.pump-hmi-pump em {
+  justify-self: end;
+  color: #e2e8f0;
+}
+
+.pump-hmi-pump .pump-hmi-mini {
+  grid-column: span 1;
+  min-height: 46px;
+  padding: 8px;
+}
+
+.pump-hmi-empty {
+  display: grid;
+  gap: 5px;
+  padding: 18px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  color: #cbd5e1;
+}
+
+.pump-hmi-side {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 18px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(51, 65, 85, 0.52), rgba(15, 23, 42, 0.74));
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.38);
+}
+
+.pump-hmi-led {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.pump-hmi-led i {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #111827;
+  box-shadow: inset 0 2px 5px rgba(148, 163, 184, 0.18);
+}
+
+.pump-hmi-led.is-on i {
+  background: #22c55e;
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.72), inset 0 2px 5px rgba(255, 255, 255, 0.28);
+}
+
+.pump-hmi-led.is-alarm i {
+  background: #ef4444;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.72), inset 0 2px 5px rgba(255, 255, 255, 0.24);
+}
+
+.pump-hmi-switch {
+  display: grid;
+  grid-template-columns: 1fr 46px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 16px 12px;
+  border-radius: 8px;
+  background: #05090a;
+  text-align: center;
+}
+
+.pump-hmi-switch b {
+  width: 44px;
+  height: 44px;
+  border: 8px solid #334155;
+  border-radius: 50%;
+  background: radial-gradient(circle, #cbd5e1 0 4px, #1e293b 5px 100%);
+  box-shadow: inset 0 0 0 2px #020617;
+}
+
+.pump-hmi-warning {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid rgba(251, 146, 60, 0.45);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #9a3412, #431407);
+  color: #ffedd5;
+}
+
+.pump-hmi-warning strong {
+  color: #ffffff;
+}
+
+@media (max-width: 1100px) {
+  .pump-hmi-controller {
+    grid-template-columns: 1fr;
+  }
+
+  .pump-hmi-side {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .pump-hmi-switch,
+  .pump-hmi-warning {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 780px) {
+  .pump-hmi-display {
+    grid-template-columns: 1fr;
+  }
+
+  .pump-hmi-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pump-hmi-screen,
+  .pump-hmi-metrics,
+  .pump-hmi-mimic,
+  .pump-hmi-side {
+    grid-template-columns: 1fr;
+  }
+}
+
 .lighting-control-panel {
   display: grid;
   gap: 14px;
