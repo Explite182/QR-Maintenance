@@ -5284,6 +5284,9 @@ let editingLightingOverrideId = "";
 let lightingFirmwareCache = { firmware: [], assignments: [] };
 let lightingFirmwareLoadedScope = "";
 let lightingFirmwareLoading = false;
+let pumpControllersCache = [];
+let pumpControllersLoadedScope = "";
+let pumpControllersLoading = false;
 let editingPumpControllerId = "";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
@@ -9677,7 +9680,7 @@ document.addEventListener("submit", async (event) => {
   if (!(form instanceof HTMLFormElement)) return;
   if (form.matches("[data-pump-controller-form]")) {
     event.preventDefault();
-    savePumpControllerFromForm(form);
+    await savePumpControllerFromForm(form);
     return;
   }
   if (form.matches("[data-lighting-controller-form]")) {
@@ -15563,6 +15566,11 @@ function pumpAssetsForCurrentView() {
   return filteredAssets().filter(isPumpAsset);
 }
 
+function getPumpControllerScopeKey() {
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) return "";
+  return `${selectedCustomerId}|${selectedLocationId}`;
+}
+
 function normalizePumpController(controller = {}) {
   const now = new Date().toISOString();
   return {
@@ -15577,13 +15585,46 @@ function normalizePumpController(controller = {}) {
     mode: controller.mode || "Setup only",
     notes: controller.notes || "",
     status: controller.status || "Setup only",
+    onlineStatus: controller.onlineStatus || controller.online_status || "setup",
+    firmwareVersion: controller.firmwareVersion || controller.firmware_version || "",
+    lastSeenAt: controller.lastSeenAt || controller.last_seen_at || "",
     createdAt: controller.createdAt || controller.created_at || now,
     updatedAt: controller.updatedAt || controller.updated_at || now
   };
 }
 
+async function loadPumpControllersForCurrentScope({ force = false } = {}) {
+  const scopeKey = getPumpControllerScopeKey();
+  if (!scopeKey || pumpControllersLoading) return;
+  if (!force && pumpControllersLoadedScope === scopeKey) return;
+  pumpControllersLoading = true;
+  try {
+    const response = await siteworksApi.loadPumpControllers(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`Pump controller load failed: ${response.status}`);
+    const payload = await response.json();
+    pumpControllersCache = Array.isArray(payload.controllers) ? payload.controllers.map(normalizePumpController) : [];
+    pumpControllersLoadedScope = scopeKey;
+    const localControllers = getPumpControllers().filter((controller) => (
+      controller.customerId !== selectedCustomerId || controller.locationId !== selectedLocationId
+    ));
+    savePumpControllers([...pumpControllersCache, ...localControllers]);
+  } catch (error) {
+    console.warn("Pump controllers could not be loaded from the server.", error);
+    pumpControllersCache = getPumpControllers().filter((controller) => (
+      controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId
+    )).map(normalizePumpController);
+    pumpControllersLoadedScope = scopeKey;
+  } finally {
+    pumpControllersLoading = false;
+    renderAutomationPumps();
+  }
+}
+
 function pumpControllersForCurrentView() {
-  const controllers = getPumpControllers().map(normalizePumpController);
+  const scopeKey = getPumpControllerScopeKey();
+  const controllers = scopeKey && pumpControllersLoadedScope === scopeKey
+    ? pumpControllersCache.map(normalizePumpController)
+    : getPumpControllers().map(normalizePumpController);
   return controllers.filter((controller) => {
     if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && controller.customerId !== selectedCustomerId) return false;
     if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS && controller.locationId !== selectedLocationId) return false;
@@ -15690,7 +15731,7 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
   `;
 }
 
-function savePumpControllerFromForm(form) {
+async function savePumpControllerFromForm(form) {
   if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
     renderAutomationPumps();
     return;
@@ -15713,18 +15754,46 @@ function savePumpControllerFromForm(form) {
     status: String(formData.get("mode") || "Setup only").trim(),
     updatedAt: new Date().toISOString()
   });
-  const controllers = getPumpControllers().filter((item) => item.id !== controller.id);
-  controllers.unshift(controller);
-  savePumpControllers(controllers);
+  const saveLocalPumpController = (savedController) => {
+    const normalizedController = normalizePumpController(savedController);
+    const controllers = getPumpControllers().filter((item) => item.id !== normalizedController.id);
+    controllers.unshift(normalizedController);
+    savePumpControllers(controllers);
+    pumpControllersCache = [normalizedController, ...pumpControllersCache.filter((item) => item.id !== normalizedController.id)];
+    pumpControllersLoadedScope = getPumpControllerScopeKey();
+  };
+  try {
+    const response = await siteworksApi.savePumpController({
+      ...controller,
+      customer_id: controller.customerId,
+      location_id: controller.locationId,
+      device_uid: controller.uid,
+      controller_type: controller.type,
+      pump_count: controller.pumpCount
+    });
+    if (!response.ok) throw new Error(`Pump controller save failed: ${response.status}`);
+    const payload = await response.json();
+    saveLocalPumpController(payload.controller || controller);
+  } catch (error) {
+    console.warn("Pump controller could not be saved to the server.", error);
+    saveLocalPumpController(controller);
+  }
   editingPumpControllerId = "";
   renderAutomationPumps();
 }
 
-function deletePumpController(controllerId = "") {
+async function deletePumpController(controllerId = "") {
   if (!controllerId) return;
   const controller = getPumpControllers().find((item) => item.id === controllerId);
   if (!window.confirm(`Delete ${controller?.name || "this pump controller"}?`)) return;
+  try {
+    const response = await siteworksApi.deletePumpController(controllerId);
+    if (!response.ok) throw new Error(`Pump controller delete failed: ${response.status}`);
+  } catch (error) {
+    console.warn("Pump controller could not be deleted from the server.", error);
+  }
   savePumpControllers(getPumpControllers().filter((item) => item.id !== controllerId));
+  pumpControllersCache = pumpControllersCache.filter((item) => item.id !== controllerId);
   if (editingPumpControllerId === controllerId) editingPumpControllerId = "";
   renderAutomationPumps();
 }
@@ -15887,6 +15956,10 @@ function renderAutomationPumps() {
   const currentCustomer = getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
   const pumps = pumpAssetsForCurrentView();
+  const pumpScopeKey = getPumpControllerScopeKey();
+  if (pumpScopeKey && pumpControllersLoadedScope !== pumpScopeKey && !pumpControllersLoading) {
+    loadPumpControllersForCurrentScope();
+  }
   const pumpControllers = pumpControllersForCurrentView();
   count.textContent = pumps.length;
   scope.textContent = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
@@ -24219,6 +24292,27 @@ const siteworksApi = {
   deleteLightingController(id) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     return this.server(`/api/automation/lighting/controllers/${encodeURIComponent(id)}`, {
+      method: "DELETE"
+    });
+  },
+  loadPumpControllers(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ controllers: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/pumps/controllers?${params.toString()}`);
+  },
+  savePumpController(controller) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, controller }), { status: 200 }));
+    return this.server("/api/automation/pumps/controllers", {
+      method: "POST",
+      body: JSON.stringify(controller)
+    });
+  },
+  deletePumpController(id) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    return this.server(`/api/automation/pumps/controllers/${encodeURIComponent(id)}`, {
       method: "DELETE"
     });
   },
