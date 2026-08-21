@@ -10579,17 +10579,45 @@ function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
   const lastSeenAt = controller.lastSeenAt || controller.last_seen_at || "";
   const lastSeenTime = Date.parse(lastSeenAt);
   if (!lastSeenAt || !Number.isFinite(lastSeenTime)) {
-    return { label: "Setup only", className: "is-setup", lastSeenAt: "", ageMs: null, relativeText: "Never seen" };
+    return {
+      label: "Setup only",
+      className: "is-setup",
+      lastSeenAt: "",
+      ageMs: null,
+      relativeText: "Never seen",
+      detail: "Waiting for the ESP32 to report in."
+    };
   }
   const ageMs = Math.max(0, nowMs - lastSeenTime);
   const relativeText = formatLightingControllerSeenAge(ageMs);
   if (ageMs <= LIGHTING_CONTROLLER_ONLINE_WINDOW_MS) {
-    return { label: "Online", className: "is-online", lastSeenAt, ageMs, relativeText };
+    return {
+      label: "Online",
+      className: "is-online",
+      lastSeenAt,
+      ageMs,
+      relativeText,
+      detail: "Heartbeat is fresh."
+    };
   }
   if (ageMs <= LIGHTING_CONTROLLER_CHECKING_WINDOW_MS) {
-    return { label: "Checking", className: "is-checking", lastSeenAt, ageMs, relativeText };
+    return {
+      label: "Checking",
+      className: "is-checking",
+      lastSeenAt,
+      ageMs,
+      relativeText,
+      detail: "Recently seen; waiting for the next heartbeat."
+    };
   }
-  return { label: "Offline", className: "is-offline", lastSeenAt, ageMs, relativeText };
+  return {
+    label: "Offline",
+    className: "is-offline",
+    lastSeenAt,
+    ageMs,
+    relativeText,
+    detail: "No recent heartbeat."
+  };
 }
 
 function formatLightingControllerSeenAge(ageMs) {
@@ -10615,10 +10643,14 @@ function getLightingNetworkSummary() {
     : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId);
   if (!controllers.length) return { label: "No controllers", className: "is-offline" };
   const controllerHealth = controllers.map((controller) => getLightingControllerHealth(controller));
-  if (controllerHealth.some((health) => health.label === "Online")) return { label: "Online", className: "is-on" };
-  if (controllerHealth.some((health) => health.label === "Checking")) return { label: "Checking", className: "is-checking" };
-  if (controllerHealth.some((health) => health.label === "Offline")) return { label: "Offline", className: "is-offline" };
-  return { label: "Setup only", className: "is-setup" };
+  const total = controllerHealth.length;
+  const onlineCount = controllerHealth.filter((health) => health.label === "Online").length;
+  const checkingCount = controllerHealth.filter((health) => health.label === "Checking").length;
+  const offlineCount = controllerHealth.filter((health) => health.label === "Offline").length;
+  if (onlineCount) return { label: `Online ${onlineCount}/${total}`, className: "is-on" };
+  if (checkingCount) return { label: `Checking ${checkingCount}/${total}`, className: "is-checking" };
+  if (offlineCount) return { label: `Offline ${offlineCount}/${total}`, className: "is-offline" };
+  return { label: `Setup only ${total}`, className: "is-setup" };
 }
 
 function renderLightingNetworkSummary() {
@@ -11434,7 +11466,7 @@ function renderLightingControllers() {
         </div>
         <div class="lighting-controller-stat">
           <span>Status</span>
-          <strong>${escapeHtml(statusLabel)}</strong>
+          <strong class="lighting-controller-status-pill ${statusClass}">${escapeHtml(statusLabel)}</strong>
         </div>
         <div class="lighting-controller-stat">
           <span>IP</span>
@@ -11457,6 +11489,7 @@ function renderLightingControllers() {
           <strong>${controller.apiKeyLast4 ? `Ends ${escapeHtml(controller.apiKeyLast4)}` : "Not set"}</strong>
         </div>
         <div class="lighting-controller-summary">
+          <span>Connection <strong>${escapeHtml(controllerHealth.detail)} ${controllerHealth.lastSeenAt ? `Last seen ${controllerHealth.relativeText}.` : ""}</strong></span>
           <span>Mode <strong>${escapeHtml(modeLabel)}</strong></span>
           ${renderLightingControllerOutputSummary(controller)}
           ${renderLightingControllerInputSummary(controller)}
