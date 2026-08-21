@@ -10746,6 +10746,38 @@ function getLightingScheduleTargetZones(schedule = {}) {
   return lightingZonesCache.filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
 }
 
+function getLightingScheduleTriggerMode(schedule = {}, key = "on") {
+  const data = schedule.data && typeof schedule.data === "object" ? schedule.data : {};
+  return String(schedule[`${key}Mode`] || schedule[`${key}_mode`] || data[`${key}Mode`] || data[`${key}_mode`] || "fixed").trim() || "fixed";
+}
+
+function getLightingScheduleTriggerOffset(schedule = {}, key = "on") {
+  const data = schedule.data && typeof schedule.data === "object" ? schedule.data : {};
+  return Number(schedule[`${key}OffsetMinutes`] ?? schedule[`${key}_offset_minutes`] ?? data[`${key}OffsetMinutes`] ?? data[`${key}_offset_minutes`] ?? 0) || 0;
+}
+
+function getLightingScheduleTriggerLabel(schedule = {}, key = "on") {
+  const mode = getLightingScheduleTriggerMode(schedule, key).toLowerCase();
+  const offset = getLightingScheduleTriggerOffset(schedule, key);
+  const fixedTime = schedule[`${key}Time`] || schedule[`${key}_time`] || "";
+  const suffix = key === "on" ? "on" : "off";
+  if (mode === "sunrise" || mode === "sunset") {
+    const base = mode === "sunrise" ? "Sunrise" : "Sunset";
+    const offsetText = offset > 0 ? ` +${offset} min` : offset < 0 ? ` ${offset} min` : "";
+    const fallbackText = fixedTime ? ` (${fixedTime} fallback)` : "";
+    return `${base}${offsetText} ${suffix}${fallbackText}`;
+  }
+  return `${fixedTime || "No time"} ${suffix}`;
+}
+
+function getLightingScheduleModeOptions(selectedMode = "fixed") {
+  return [
+    ["fixed", "Fixed time"],
+    ["sunrise", "Sunrise"],
+    ["sunset", "Sunset"]
+  ].map(([value, label]) => `<option value="${value}"${value === selectedMode ? " selected" : ""}>${label}</option>`).join("");
+}
+
 function getLatestLightingScheduleCommand(scheduleId = "") {
   if (!scheduleId) return null;
   return lightingCommandsCache.find((command) => String(command.metadata?.scheduleId || command.metadata?.schedule_id || "") === String(scheduleId)) || null;
@@ -10759,7 +10791,7 @@ function getLightingScheduleStatusHtml(schedule = {}) {
     .map((zone) => zone.name || "Unnamed zone");
   const missingZones = missingZoneNames.length;
   const latestCommand = getLatestLightingScheduleCommand(schedule.id);
-  const nextText = `${schedule.onTime || "--:--"} on / ${schedule.offTime || "--:--"} off`;
+  const nextText = `${getLightingScheduleTriggerLabel(schedule, "on")} / ${getLightingScheduleTriggerLabel(schedule, "off")}`;
   const latestTime = latestCommand?.completedAt || latestCommand?.completed_at || latestCommand?.acknowledgedAt || latestCommand?.acknowledged_at || latestCommand?.createdAt || latestCommand?.created_at || "";
   const latestState = latestCommand?.desiredState || latestCommand?.desired_state || "";
   const latestStatus = latestCommand?.status || "";
@@ -11689,6 +11721,8 @@ function renderLightingSchedules() {
   list.innerHTML = schedules.map((schedule) => {
     const isEditing = schedule.id === editingLightingScheduleId;
     const scheduleRunning = lightingScheduleRunsInProgress.has(schedule.id);
+    const onMode = getLightingScheduleTriggerMode(schedule, "on").toLowerCase();
+    const offMode = getLightingScheduleTriggerMode(schedule, "off").toLowerCase();
     if (isEditing) {
       return `
         <form class="lighting-controller-card lighting-controller-edit-form" data-lighting-schedule-edit-form="${escapeHtml(schedule.id)}">
@@ -11703,11 +11737,23 @@ function renderLightingSchedules() {
               ${["Mon-Fri", "Daily", "Sat-Sun", "Custom"].map((days) => `<option value="${days}"${days === schedule.days ? " selected" : ""}>${days}</option>`).join("")}
             </select>
           </label>
-          <label>On time
+          <label>On type
+            <select name="onMode">${getLightingScheduleModeOptions(onMode)}</select>
+          </label>
+          <label>On time / fallback
             <input name="onTime" type="time" value="${escapeHtml(schedule.onTime || "")}">
           </label>
-          <label>Off time
+          <label>On offset min
+            <input name="onOffsetMinutes" type="number" min="-240" max="240" step="5" value="${escapeHtml(String(getLightingScheduleTriggerOffset(schedule, "on")))}">
+          </label>
+          <label>Off type
+            <select name="offMode">${getLightingScheduleModeOptions(offMode)}</select>
+          </label>
+          <label>Off time / fallback
             <input name="offTime" type="time" value="${escapeHtml(schedule.offTime || "")}">
+          </label>
+          <label>Off offset min
+            <input name="offOffsetMinutes" type="number" min="-240" max="240" step="5" value="${escapeHtml(String(getLightingScheduleTriggerOffset(schedule, "off")))}">
           </label>
           <label>Enabled
             <select name="enabled">
@@ -11728,7 +11774,7 @@ function renderLightingSchedules() {
     return `
       <div class="lighting-list-row">
         <strong>${escapeHtml(schedule.name || "Lighting schedule")}</strong>
-        <span>${escapeHtml(schedule.days || "No days")} | ${escapeHtml(schedule.onTime || "No on time")} on | ${escapeHtml(schedule.offTime || "No off time")} off | ${escapeHtml(schedule.zoneName || "All zones")} | ${schedule.enabled === false ? "Disabled" : "Enabled"}</span>
+        <span>${escapeHtml(schedule.days || "No days")} | ${escapeHtml(getLightingScheduleTriggerLabel(schedule, "on"))} | ${escapeHtml(getLightingScheduleTriggerLabel(schedule, "off"))} | ${escapeHtml(schedule.zoneName || "All zones")} | ${schedule.enabled === false ? "Disabled" : "Enabled"}</span>
         ${getLightingScheduleStatusHtml(schedule)}
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-schedule-run="${escapeHtml(schedule.id)}" data-lighting-schedule-action="on" ${scheduleRunning ? "disabled" : ""}>${scheduleRunning ? "Running..." : "Run On now"}</button>
@@ -12420,6 +12466,10 @@ async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
     days: String(formData.get("days") || "").trim(),
     onTime: String(formData.get("onTime") || "").trim(),
     offTime: String(formData.get("offTime") || "").trim(),
+    onMode: String(formData.get("onMode") || "fixed").trim(),
+    offMode: String(formData.get("offMode") || "fixed").trim(),
+    onOffsetMinutes: Number(formData.get("onOffsetMinutes") || 0) || 0,
+    offOffsetMinutes: Number(formData.get("offOffsetMinutes") || 0) || 0,
     enabled: formData.get("enabled") !== "off",
     notes: String(formData.get("notes") || "").trim(),
     createdAt: existingSchedule?.createdAt || new Date().toISOString()
@@ -12437,7 +12487,17 @@ async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
       zone_id: schedule.zoneId,
       on_time: schedule.onTime,
       off_time: schedule.offTime,
-      data: { zoneName: schedule.zoneName }
+      onMode: schedule.onMode,
+      offMode: schedule.offMode,
+      onOffsetMinutes: schedule.onOffsetMinutes,
+      offOffsetMinutes: schedule.offOffsetMinutes,
+      data: {
+        zoneName: schedule.zoneName,
+        onMode: schedule.onMode,
+        offMode: schedule.offMode,
+        onOffsetMinutes: schedule.onOffsetMinutes,
+        offOffsetMinutes: schedule.offOffsetMinutes
+      }
     });
     if (!response.ok) throw new Error(`Lighting schedule save failed: ${response.status}`);
     const payload = await response.json();

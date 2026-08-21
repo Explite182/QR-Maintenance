@@ -1611,8 +1611,24 @@
                     <option>Custom</option>
                   </select>
                 </label>
-                <label>On time <input name="onTime" type="time" value="07:00"></label>
-                <label>Off time <input name="offTime" type="time" value="18:00"></label>
+                <label>On type
+                  <select name="onMode">
+                    <option value="fixed">Fixed time</option>
+                    <option value="sunrise">Sunrise</option>
+                    <option value="sunset">Sunset</option>
+                  </select>
+                </label>
+                <label>On time / fallback <input name="onTime" type="time" value="07:00"></label>
+                <label>On offset min <input name="onOffsetMinutes" type="number" min="-240" max="240" step="5" value="0"></label>
+                <label>Off type
+                  <select name="offMode">
+                    <option value="fixed">Fixed time</option>
+                    <option value="sunrise">Sunrise</option>
+                    <option value="sunset">Sunset</option>
+                  </select>
+                </label>
+                <label>Off time / fallback <input name="offTime" type="time" value="18:00"></label>
+                <label>Off offset min <input name="offOffsetMinutes" type="number" min="-240" max="240" step="5" value="0"></label>
                 <label>Enabled
                   <select name="enabled">
                     <option value="on">Enabled</option>
