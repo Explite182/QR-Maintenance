@@ -1377,6 +1377,21 @@ textarea:disabled {
   background: #facc15;
 }
 
+.lighting-zone-card.is-override-active {
+  border-color: #f59e0b;
+  background: #fff7ed;
+}
+
+.lighting-zone-card.is-override-active summary {
+  background: #fff7ed;
+}
+
+.lighting-zone-card.is-override-active summary strong {
+  min-width: 150px;
+  color: #7c2d12;
+  background: #fdba74;
+}
+
 .lighting-zone-details {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -1620,6 +1635,25 @@ textarea:disabled {
 
 .lighting-zone-details > span.lighting-input-effect strong {
   color: #7c4a03;
+}
+
+.lighting-zone-details > span.lighting-priority-effect {
+  grid-column: 1 / -1;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.lighting-zone-details > span.lighting-priority-effect strong {
+  color: #1d4ed8;
+}
+
+.lighting-zone-details > span.lighting-override-effect {
+  border-color: #fdba74;
+  background: #fff7ed;
+}
+
+.lighting-zone-details > span.lighting-override-effect strong {
+  color: #7c2d12;
 }
 
 .lighting-controller-wizard {

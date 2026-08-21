@@ -11004,6 +11004,86 @@ function getLightingZoneInputEffect(zone = {}) {
   };
 }
 
+function getLightingOverrideZoneId(override = {}) {
+  return override.zoneId || override.zone_id || "";
+}
+
+function getLightingOverrideDesiredState(override = {}) {
+  return override.desiredState || override.desired_state || "";
+}
+
+function getLightingOverrideIsActive(override = {}) {
+  if (override.enabled === false) return false;
+  const expiresAt = override.expiresAt || override.expires_at || "";
+  if (!expiresAt) return true;
+  const expiresTime = Date.parse(expiresAt);
+  return !Number.isFinite(expiresTime) || expiresTime > Date.now();
+}
+
+function getLightingZoneOverrideEffect(zone = {}) {
+  const { scopeKey } = getLightingScopeDetails();
+  if (lightingOverridesLoadedScope !== scopeKey) return null;
+  const visibleOverrides = getVisibleLightingOverrides(lightingOverridesCache);
+  const effects = visibleOverrides.filter((override) => {
+    if (!getLightingOverrideIsActive(override)) return false;
+    const state = getLightingOverrideDesiredState(override);
+    if (!["On", "Off"].includes(state)) return false;
+    const targetZoneId = getLightingOverrideZoneId(override);
+    return !targetZoneId || targetZoneId === zone.id;
+  });
+  if (!effects.length) return null;
+  const zoneSpecific = effects.find((override) => getLightingOverrideZoneId(override) === zone.id);
+  const override = zoneSpecific || effects[0];
+  return {
+    override,
+    state: getLightingOverrideDesiredState(override),
+    text: `${override.name || "Manual override"} -> ${getLightingOverrideDesiredState(override)}`
+  };
+}
+
+function getLightingZonePriorityDecision(zone = {}) {
+  const overrideEffect = getLightingZoneOverrideEffect(zone);
+  if (overrideEffect) {
+    return {
+      state: overrideEffect.state,
+      source: "Manual override",
+      className: "is-override-active",
+      details: [
+        "Priority 1",
+        overrideEffect.text,
+        "Clear the override to return to input/schedule control."
+      ],
+      overrideEffect
+    };
+  }
+  const inputEffect = getLightingZoneInputEffect(zone);
+  if (inputEffect) {
+    return {
+      state: inputEffect.state,
+      source: "Input control",
+      className: "is-input-active",
+      details: [
+        "Priority 2",
+        inputEffect.text,
+        "Manual overrides can still take control."
+      ],
+      inputEffect
+    };
+  }
+  return {
+    state: String(zone.desiredState || "Off"),
+    source: String(zone.mode || "Auto") === "Schedule" ? "Schedule/default" : "Zone setting",
+    className: "",
+    details: [
+      "Priority 3",
+      `${zone.mode || "Auto"} mode -> ${zone.desiredState || "Off"}`,
+      "No active override or input is controlling this zone."
+    ],
+    inputEffect: null,
+    overrideEffect: null
+  };
+}
+
 function renderLightingZones() {
   const list = document.querySelector("[data-lighting-zone-list]");
   renderLightingNetworkSummary();
@@ -11039,6 +11119,9 @@ function renderLightingZones() {
   if (lightingInputsLoadedScope !== scopeKey && !lightingInputsLoading) {
     loadLightingInputsForCurrentScope();
   }
+  if (lightingOverridesLoadedScope !== scopeKey && !lightingOverridesLoading) {
+    loadLightingOverridesForCurrentScope();
+  }
   const zones = lightingZonesLoadedScope === scopeKey
     ? lightingZonesCache
     : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
@@ -11047,8 +11130,8 @@ function renderLightingZones() {
     return;
   }
   const zonesOn = zones.filter((zone) => {
-    const inputEffect = getLightingZoneInputEffect(zone);
-    const effectiveState = inputEffect?.state || zone.desiredState || "";
+    const priorityDecision = getLightingZonePriorityDecision(zone);
+    const effectiveState = priorityDecision.state || zone.desiredState || "";
     return String(effectiveState).toLowerCase() === "on";
   }).length;
   const zonesOnValue = document.querySelector("[data-lighting-zones-on]");
@@ -11061,9 +11144,13 @@ function renderLightingZones() {
   }
   list.innerHTML = zones.map((zone) => {
     const state = String(zone.desiredState || "Off");
-    const inputEffect = getLightingZoneInputEffect(zone);
-    const displayedState = inputEffect ? `${inputEffect.state} by input` : state;
-    const stateClass = `${String(inputEffect?.state || state).toLowerCase() === "on" ? "is-on" : ""}${inputEffect ? " is-input-active" : ""}`.trim();
+    const priorityDecision = getLightingZonePriorityDecision(zone);
+    const inputEffect = priorityDecision.inputEffect;
+    const overrideEffect = priorityDecision.overrideEffect;
+    const displayedState = priorityDecision.source === "Zone setting" || priorityDecision.source === "Schedule/default"
+      ? priorityDecision.state
+      : `${priorityDecision.state} by ${priorityDecision.source.toLowerCase()}`;
+    const stateClass = `${String(priorityDecision.state || state).toLowerCase() === "on" ? "is-on" : ""} ${priorityDecision.className || ""}`.trim();
     const isEditing = zone.id === editingLightingZoneId;
     if (isEditing) {
       return `
@@ -11108,6 +11195,8 @@ function renderLightingZones() {
           <span>Controller <strong>${escapeHtml(zone.controllerName || getLightingControllerById(zone.controllerId)?.name || "Not assigned")}</strong></span>
           <span>Output <strong>${escapeHtml(zone.outputNumber || "Not assigned")}</strong></span>
           <span>Status <strong>${escapeHtml(zone.status || "Setup only")}</strong></span>
+          <span class="lighting-priority-effect">Active rule <strong>${escapeHtml(priorityDecision.source)}: ${escapeHtml(priorityDecision.details.join(" | "))}</strong></span>
+          ${overrideEffect ? `<span class="lighting-override-effect">Override <strong>${escapeHtml(overrideEffect.text)}</strong></span>` : ""}
           ${inputEffect ? `<span class="lighting-input-effect">Input control <strong>${escapeHtml(inputEffect.text)}</strong></span>` : ""}
           ${getLightingCommandStatusHtml(zone)}
           <span>Notes <strong>${escapeHtml(zone.notes || "None")}</strong></span>
