@@ -9076,7 +9076,8 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     const zoneId = lightingZoneCommandButton.dataset.lightingZoneCommand || "";
     const desiredState = lightingZoneCommandButton.dataset.lightingZoneState || "";
-    applyLightingZoneCommand(zoneId, desiredState);
+    const brightnessLevel = lightingZoneCommandButton.dataset.lightingZoneBrightness || "";
+    applyLightingZoneCommand(zoneId, desiredState, brightnessLevel);
     return;
   }
 
@@ -11126,6 +11127,32 @@ function getLightingControllerById(controllerId = "") {
   return controllers.find((controller) => controller.id === id) || null;
 }
 
+function clampLightingBrightness(value, fallback = 100) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(number)));
+}
+
+function getLightingZoneBrightness(zone = {}) {
+  const data = zone.data && typeof zone.data === "object" ? zone.data : {};
+  return clampLightingBrightness(
+    zone.brightnessLevel ?? zone.brightness_level ?? data.brightnessLevel ?? data.brightness_level,
+    100
+  );
+}
+
+function isLightingControllerDimming(controllerId = "") {
+  const controller = getLightingControllerById(controllerId);
+  const type = `${controller?.type || controller?.controller_type || ""}`.toLowerCase();
+  return type.includes("dimming") || type.includes("0-10") || type.includes("0–10");
+}
+
+function getLightingZoneBrightnessLabel(zone = {}) {
+  return isLightingControllerDimming(zone.controllerId || zone.controller_id)
+    ? `${getLightingZoneBrightness(zone)}%`
+    : "Relay only";
+}
+
 function getLightingZoneOptionsHtml(selectedId = "") {
   const { scopeKey } = getLightingScopeDetails();
   const zones = lightingZonesLoadedScope === scopeKey
@@ -11344,6 +11371,8 @@ function renderLightingZones() {
   }
   list.innerHTML = zones.map((zone) => {
     const state = String(zone.desiredState || "Off");
+    const brightnessLevel = getLightingZoneBrightness(zone);
+    const isDimmingZone = isLightingControllerDimming(zone.controllerId);
     const priorityDecision = getLightingZonePriorityDecision(zone);
     const inputEffect = priorityDecision.inputEffect;
     const overrideEffect = priorityDecision.overrideEffect;
@@ -11377,6 +11406,9 @@ function renderLightingZones() {
                 ${["Off", "On", "Auto"].map((desiredState) => `<option value="${desiredState}"${desiredState === state ? " selected" : ""}>${desiredState}</option>`).join("")}
               </select>
             </label>
+            <label>Brightness %
+              <input name="brightnessLevel" type="number" min="0" max="100" step="5" value="${escapeHtml(brightnessLevel)}">
+            </label>
             <label>Notes
               <textarea name="notes" rows="2">${escapeHtml(zone.notes || "")}</textarea>
             </label>
@@ -11395,12 +11427,20 @@ function renderLightingZones() {
           <span>Mode <strong>${escapeHtml(zone.mode || "Auto")}</strong></span>
           <span>Controller <strong>${escapeHtml(zone.controllerName || getLightingControllerById(zone.controllerId)?.name || "Not assigned")}</strong></span>
           <span>Output <strong>${escapeHtml(zone.outputNumber || "Not assigned")}</strong></span>
+          <span>Brightness <strong>${escapeHtml(getLightingZoneBrightnessLabel(zone))}</strong></span>
           <span>Status <strong>${escapeHtml(zone.status || "Setup only")}</strong></span>
           <span class="lighting-priority-effect">Active rule <strong>${escapeHtml(priorityDecision.source)}: ${escapeHtml(priorityDecision.details.join(" | "))}</strong></span>
           ${overrideEffect ? `<span class="lighting-override-effect">Override <strong>${escapeHtml(overrideEffect.text)}</strong></span>` : ""}
           ${inputEffect ? `<span class="lighting-input-effect">Input control <strong>${escapeHtml(inputEffect.text)}</strong></span>` : ""}
           ${getLightingCommandStatusHtml(zone)}
           <span>Notes <strong>${escapeHtml(zone.notes || "None")}</strong></span>
+          ${isDimmingZone ? `
+            <div class="lighting-zone-dimmer" aria-label="Dimming controls for ${escapeHtml(zone.name)}">
+              ${[25, 50, 75, 100].map((level) => (
+                `<button type="button" data-lighting-zone-command="${escapeHtml(zone.id)}" data-lighting-zone-state="On" data-lighting-zone-brightness="${level}">${level}%</button>`
+              )).join("")}
+            </div>
+          ` : ""}
           <div class="lighting-zone-actions">
             <button type="button" class="lighting-action-on" data-lighting-zone-command="${escapeHtml(zone.id)}" data-lighting-zone-state="On">On</button>
             <button type="button" class="lighting-action-off" data-lighting-zone-command="${escapeHtml(zone.id)}" data-lighting-zone-state="Off">Off</button>
@@ -12665,7 +12705,7 @@ async function clearLightingOverride(overrideId) {
   renderLightingControllers();
 }
 
-async function applyLightingZoneCommand(zoneId, desiredState) {
+async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = "") {
   const status = document.querySelector("[data-lighting-zone-status]");
   const { canUseLocation, scopeKey } = getLightingScopeDetails();
   if (!canUseLocation) {
@@ -12680,9 +12720,21 @@ async function applyLightingZoneCommand(zoneId, desiredState) {
     if (status) status.textContent = "Lighting zone was not found.";
     return;
   }
+  const currentBrightnessLevel = getLightingZoneBrightness(zone);
+  const commandBrightnessLevel = cleanState === "Off"
+    ? 0
+    : brightnessValue !== ""
+      ? clampLightingBrightness(brightnessValue, currentBrightnessLevel)
+      : currentBrightnessLevel;
+  const brightnessLevel = cleanState === "On" ? commandBrightnessLevel : currentBrightnessLevel;
   const updatedZone = {
     ...zone,
     desiredState: cleanState,
+    brightnessLevel,
+    data: {
+      ...(zone.data && typeof zone.data === "object" ? zone.data : {}),
+      brightnessLevel
+    },
     mode: "Manual",
     updatedAt: new Date().toISOString()
   };
@@ -12707,7 +12759,13 @@ async function applyLightingZoneCommand(zoneId, desiredState) {
       location_id: updatedZone.locationId,
       controller_id: updatedZone.controllerId,
       output_number: updatedZone.outputNumber,
-      desired_state: updatedZone.desiredState
+      desired_state: updatedZone.desiredState,
+      brightnessLevel,
+      data: {
+        ...(updatedZone.data || {}),
+        controllerName: updatedZone.controllerName,
+        brightnessLevel
+      }
     });
     if (!zoneResponse.ok) throw new Error(`Lighting zone command failed: ${zoneResponse.status}`);
     const overrideResponse = await siteworksApi.saveLightingOverride({
@@ -12741,9 +12799,11 @@ async function applyLightingZoneCommand(zoneId, desiredState) {
           output_number: savedZone.outputNumber,
           command_type: "set-output",
           desired_state: cleanState,
+          brightnessLevel: commandBrightnessLevel,
           data: {
             zoneName: savedZone.name,
-            source: "zone-control"
+            source: "zone-control",
+            brightnessLevel: commandBrightnessLevel
           }
         });
         commandQueued = commandResponse.ok;
@@ -12814,9 +12874,15 @@ async function saveLightingZoneFromForm(form, existingZoneId = "") {
     outputNumber: String(formData.get("outputNumber") || "").trim(),
     mode: String(formData.get("mode") || "Auto").trim(),
     desiredState: String(formData.get("desiredState") || "Off").trim(),
+    brightnessLevel: clampLightingBrightness(formData.get("brightnessLevel"), getLightingZoneBrightness(existingZone || {})),
     status: existingZone?.status || "Setup only",
     notes: String(formData.get("notes") || "").trim(),
     createdAt: existingZone?.createdAt || new Date().toISOString()
+  };
+  zone.data = {
+    ...(existingZone?.data && typeof existingZone.data === "object" ? existingZone.data : {}),
+    controllerName: zone.controllerName,
+    brightnessLevel: zone.brightnessLevel
   };
   if (!zone.name) {
     if (status) status.textContent = "Zone name is required.";
@@ -12831,7 +12897,8 @@ async function saveLightingZoneFromForm(form, existingZoneId = "") {
       controller_id: zone.controllerId,
       output_number: zone.outputNumber,
       desired_state: zone.desiredState,
-      data: { controllerName: zone.controllerName }
+      brightnessLevel: zone.brightnessLevel,
+      data: zone.data
     });
     if (!response.ok) throw new Error(`Lighting zone save failed: ${response.status}`);
     const payload = await response.json();

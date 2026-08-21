@@ -1459,6 +1459,9 @@
                     <option>On</option>
                   </select>
                 </label>
+                <label>Brightness %
+                  <input name="brightnessLevel" type="number" min="0" max="100" step="5" value="100">
+                </label>
                 <label>Notes <textarea name="notes" rows="3" placeholder="Area, circuit, contactor, or schedule notes"></textarea></label>
                 <div class="lighting-controller-help">
                   <strong>Setup only</strong>
@@ -1482,6 +1485,7 @@
                 <label>Controller type
                   <select name="type">
                     <option>Relay controller</option>
+                    <option>Dimming controller</option>
                     <option>Input monitor</option>
                     <option>Schedule controller</option>
                   </select>

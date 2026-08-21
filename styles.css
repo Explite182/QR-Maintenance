@@ -1627,6 +1627,28 @@ textarea:disabled {
   color: #111827;
 }
 
+.lighting-zone-dimmer {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  background: #f0f9ff;
+}
+
+.lighting-zone-dimmer button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #7dd3fc;
+  border-radius: 8px;
+  background: #e0f2fe;
+  color: #075985;
+  font-weight: 900;
+}
+
 .lighting-zone-edit-form {
   display: grid;
   grid-column: 1 / -1;
