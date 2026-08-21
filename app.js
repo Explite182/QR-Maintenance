@@ -11213,6 +11213,60 @@ function renderLightingZones() {
   }).join("");
 }
 
+function getLightingControllerModeLabel(controller = {}) {
+  const typeText = `${controller.type || controller.controller_type || ""} ${controller.notes || ""}`.toLowerCase();
+  if (typeText.includes("breaker")) return "Combined breaker + lighting";
+  if (typeText.includes("sensor")) return "Sensor / input controller";
+  if (typeText.includes("dimming")) return "Lighting dimming";
+  return "Lighting relay";
+}
+
+function renderLightingControllerOutputSummary(controller = {}) {
+  const zones = lightingZonesCache
+    .filter((zone) => zone.controllerId === controller.id)
+    .sort((a, b) => Number(a.outputNumber || 0) - Number(b.outputNumber || 0));
+  if (!zones.length) {
+    return `<span>Outputs <strong>No zones mapped yet</strong></span>`;
+  }
+  return `<span>Outputs <strong>${zones.map((zone) => (
+    `O${escapeHtml(zone.outputNumber || "?")}: ${escapeHtml(zone.name || "Zone")}`
+  )).join(" | ")}</strong></span>`;
+}
+
+function renderLightingControllerInputSummary(controller = {}) {
+  const inputs = lightingInputsCache
+    .filter((input) => input.controllerId === controller.id)
+    .sort((a, b) => Number(a.inputNumber || 0) - Number(b.inputNumber || 0));
+  if (!inputs.length) {
+    return `<span>Inputs <strong>No inputs mapped yet</strong></span>`;
+  }
+  return `<span>Inputs <strong>${inputs.map((input) => {
+    const state = getLightingInputHasLiveState(input)
+      ? (getLightingInputIsActive(input) ? "active" : "inactive")
+      : "waiting";
+    return `DI${escapeHtml(input.inputNumber || "?")}: ${escapeHtml(input.label || input.inputType || "Input")} (${escapeHtml(state)} -> ${escapeHtml(input.action || "No action")})`;
+  }).join(" | ")}</strong></span>`;
+}
+
+function renderLightingControllerActiveControlSummary(controller = {}) {
+  const controllerZoneIds = new Set(lightingZonesCache.filter((zone) => zone.controllerId === controller.id).map((zone) => zone.id));
+  const activeInputs = lightingInputsCache.filter((input) => (
+    input.controllerId === controller.id
+    && getLightingInputActionState(input)
+  )).length;
+  const activeOverrides = getVisibleLightingOverrides(lightingOverridesCache).filter((override) => {
+    if (!getLightingOverrideIsActive(override)) return false;
+    const zoneId = getLightingOverrideZoneId(override);
+    return !zoneId || controllerZoneIds.has(zoneId);
+  }).length;
+  const activeSchedules = lightingSchedulesCache.filter((schedule) => {
+    if (schedule.enabled === false) return false;
+    const zoneId = schedule.zoneId || schedule.zone_id || "";
+    return !zoneId || controllerZoneIds.has(zoneId);
+  }).length;
+  return `<span>Active controls <strong>${activeOverrides} override(s) | ${activeInputs} input(s) | ${activeSchedules} schedule(s)</strong></span>`;
+}
+
 function renderLightingControllers() {
   const list = document.querySelector("[data-lighting-controller-list]");
   renderLightingNetworkSummary();
@@ -11244,6 +11298,15 @@ function renderLightingControllers() {
   }
   if (lightingZonesLoadedScope !== scopeKey && !lightingZonesLoading) {
     loadLightingZonesForCurrentScope();
+  }
+  if (lightingInputsLoadedScope !== scopeKey && !lightingInputsLoading) {
+    loadLightingInputsForCurrentScope();
+  }
+  if (lightingSchedulesLoadedScope !== scopeKey && !lightingSchedulesLoading) {
+    loadLightingSchedulesForCurrentScope();
+  }
+  if (lightingOverridesLoadedScope !== scopeKey && !lightingOverridesLoading) {
+    loadLightingOverridesForCurrentScope();
   }
   const controllers = lightingControllersLoadedScope === scopeKey
     ? lightingControllersCache
@@ -11304,6 +11367,7 @@ function renderLightingControllers() {
     const ipAddress = controller.ipAddress || controller.ip_address || controller.ip || "";
     const macAddress = controller.macAddress || controller.mac_address || controller.mac || "";
     const firmwareVersion = controller.firmwareVersion || controller.firmware_version || "";
+    const modeLabel = getLightingControllerModeLabel(controller);
     const lastSeenText = controllerHealth.lastSeenAt
       ? `${formatDateTime(controllerHealth.lastSeenAt)}${controllerHealth.label === "Offline" ? " (stale)" : ""}`
       : "Never";
@@ -11344,6 +11408,12 @@ function renderLightingControllers() {
         <div class="lighting-controller-stat">
           <span>API key</span>
           <strong>${controller.apiKeyLast4 ? `Ends ${escapeHtml(controller.apiKeyLast4)}` : "Not set"}</strong>
+        </div>
+        <div class="lighting-controller-summary">
+          <span>Mode <strong>${escapeHtml(modeLabel)}</strong></span>
+          ${renderLightingControllerOutputSummary(controller)}
+          ${renderLightingControllerInputSummary(controller)}
+          ${renderLightingControllerActiveControlSummary(controller)}
         </div>
         <div class="lighting-zone-actions">
           <button type="button" data-lighting-controller-edit="${escapeHtml(controller.id)}">Edit</button>

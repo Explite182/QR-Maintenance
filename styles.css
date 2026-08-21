@@ -1806,6 +1806,29 @@ textarea:disabled {
   justify-content: flex-end;
 }
 
+.lighting-controller-summary {
+  grid-column: 1 / -2;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.lighting-controller-summary > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.lighting-controller-summary > span strong {
+  line-height: 1.25;
+}
+
 .lighting-controller-edit-form {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
@@ -1847,6 +1870,7 @@ textarea:disabled {
   }
 
   .lighting-controller-main,
+  .lighting-controller-summary,
   .lighting-controller-card .lighting-zone-actions {
     grid-column: 1 / -1;
   }
