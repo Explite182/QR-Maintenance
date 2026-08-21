@@ -1425,6 +1425,40 @@
           <span data-lighting-count>0</span>
         </div>
         <div class="lighting-control-panel" data-panel-body>
+          <div class="lighting-industrial-controller">
+            <span class="lighting-case-screw lighting-case-screw-tl"></span>
+            <span class="lighting-case-screw lighting-case-screw-tr"></span>
+            <span class="lighting-case-screw lighting-case-screw-bl"></span>
+            <span class="lighting-case-screw lighting-case-screw-br"></span>
+            <div class="lighting-controller-nameplate">
+              <strong>LIGHTING CONTROLLER</strong>
+              <span>SiteWorks BAS HMI</span>
+            </div>
+            <div class="lighting-controller-body">
+              <div class="lighting-hmi-screen">
+                <div class="lighting-hmi-header">
+                  <div>
+                    <span class="lighting-hmi-kicker">SiteWorks Lighting</span>
+                    <strong data-lighting-hmi-title>Controller HMI</strong>
+                  </div>
+                  <div class="lighting-hmi-system-state">
+                    <span>System status</span>
+                    <strong data-lighting-hmi-status>Checking</strong>
+                  </div>
+                </div>
+                <div class="lighting-hmi-layout">
+                  <nav class="lighting-hmi-nav" aria-label="Lighting HMI views">
+                    <button type="button" class="is-active" data-lighting-tab="home" role="tab" aria-selected="true">Home</button>
+                    <button type="button" data-lighting-tab="zones" role="tab" aria-selected="false">Zones</button>
+                    <button type="button" data-lighting-tab="schedules" role="tab" aria-selected="false">Schedules</button>
+                    <button type="button" data-lighting-tab="inputs" role="tab" aria-selected="false">Inputs</button>
+                    <button type="button" data-lighting-tab="overrides" role="tab" aria-selected="false">Alarms</button>
+                    <button type="button" data-lighting-tab="firmware" role="tab" aria-selected="false">Settings</button>
+                    <button type="button" data-lighting-tab="controllers" role="tab" aria-selected="false">System</button>
+                    <button type="button" data-lighting-tab="history" role="tab" aria-selected="false">History</button>
+                  </nav>
+                  <div class="lighting-hmi-content">
+          <div class="lighting-tab-panel" data-lighting-panel="home">
           <div class="lighting-status-grid">
             <button type="button" class="lighting-status-card is-offline" data-lighting-tab="controllers" data-lighting-network-card role="tab" aria-selected="false"><span>Lighting network</span><strong data-lighting-network-status>Setup only</strong></button>
             <button type="button" class="lighting-status-card is-on is-active" data-lighting-tab="zones" role="tab" aria-selected="true"><span>Zones on</span><strong data-lighting-zones-on>0</strong></button>
@@ -1434,7 +1468,11 @@
             <button type="button" class="lighting-status-card" data-lighting-tab="firmware" role="tab" aria-selected="false"><span>Firmware</span><strong data-lighting-firmware-count>Ready</strong></button>
             <button type="button" class="lighting-status-card" data-lighting-tab="history" role="tab" aria-selected="false"><span>History</span><strong data-lighting-history-count>Recent</strong></button>
           </div>
-          <div class="lighting-tab-panel" data-lighting-panel="zones">
+            <div class="lighting-hmi-zone-grid" data-lighting-hmi-zone-list>
+              <div class="lighting-list-row"><strong>No lighting zones selected</strong><span>Choose a customer and location to view lighting controls.</span></div>
+            </div>
+          </div>
+          <div class="lighting-tab-panel hidden" data-lighting-panel="zones">
             <details class="lighting-controller-wizard">
               <summary>+ Add Lighting Zone</summary>
               <form data-lighting-zone-form class="lighting-controller-form">
@@ -1727,6 +1765,27 @@
           <div class="lighting-tab-panel hidden" data-lighting-panel="history">
             <div class="lighting-controller-list" data-lighting-command-history>
               <div class="lighting-list-row"><strong>No lighting command history yet</strong><span>Recent relay commands will show here.</span></div>
+            </div>
+          </div>
+                  </div>
+                </div>
+              </div>
+              <aside class="lighting-physical-panel" aria-label="Physical controller indicators">
+                <div class="lighting-physical-indicators">
+                  <span class="lighting-physical-led is-green" data-lighting-led="power"><i></i><strong>Power</strong></span>
+                  <span class="lighting-physical-led is-green" data-lighting-led="status"><i></i><strong>Status</strong></span>
+                  <span class="lighting-physical-led is-red" data-lighting-led="alarm"><i></i><strong>Alarm</strong></span>
+                  <span class="lighting-physical-led is-amber" data-lighting-led="override"><i></i><strong>Override</strong></span>
+                </div>
+                <div class="lighting-key-switch" data-lighting-key-switch>
+                  <span>Override</span>
+                  <div><b>OFF</b><i></i><b>ON</b></div>
+                </div>
+                <div class="lighting-service-label">
+                  <strong>Service Notice</strong>
+                  <span>Authorized personnel only. Use SiteWorks HMI for normal operation.</span>
+                </div>
+              </aside>
             </div>
           </div>
         </div>

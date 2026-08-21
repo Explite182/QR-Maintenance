@@ -1410,6 +1410,494 @@ textarea:disabled {
   background: #fdba74;
 }
 
+/* Industrial lighting controller HMI */
+.lighting-control-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.lighting-industrial-controller {
+  position: relative;
+  padding: 68px 22px 24px;
+  border: 1px solid #050807;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 18%, rgba(0, 0, 0, 0.32) 72%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0, rgba(255, 255, 255, 0.025) 1px, transparent 1px, transparent 5px),
+    #171d1d;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -10px 28px rgba(0, 0, 0, 0.45),
+    0 28px 60px rgba(15, 23, 42, 0.28);
+}
+
+.lighting-controller-nameplate {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  display: grid;
+  min-width: 270px;
+  padding: 10px 24px;
+  border: 1px solid #313837;
+  border-radius: 8px;
+  color: #f8fafc;
+  text-align: center;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #101515, #050707);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 16px rgba(0, 0, 0, 0.38);
+}
+
+.lighting-controller-nameplate strong {
+  font-size: 1.1rem;
+  letter-spacing: 0;
+}
+
+.lighting-controller-nameplate span {
+  color: #9fb4b1;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.lighting-case-screw {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 38% 34%, #8f9995 0 18%, #222827 20% 58%, #030504 60% 100%);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.24), 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.lighting-case-screw-tl { top: 18px; left: 18px; }
+.lighting-case-screw-tr { top: 18px; right: 18px; }
+.lighting-case-screw-bl { bottom: 18px; left: 18px; }
+.lighting-case-screw-br { bottom: 18px; right: 18px; }
+
+.lighting-controller-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.lighting-hmi-screen {
+  min-height: 620px;
+  overflow: hidden;
+  border: 8px solid #050808;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(12, 18, 20, 0.84), rgba(4, 10, 12, 0.96)),
+    #081011;
+  box-shadow:
+    inset 0 0 0 1px rgba(148, 163, 184, 0.18),
+    inset 0 0 36px rgba(0, 0, 0, 0.88),
+    0 12px 24px rgba(0, 0, 0, 0.34);
+}
+
+.lighting-hmi-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(45, 212, 191, 0.2);
+  color: #e5fffb;
+  background: linear-gradient(90deg, #071313, #0d2322);
+}
+
+.lighting-hmi-header > div:first-child,
+.lighting-hmi-system-state {
+  display: grid;
+  gap: 2px;
+}
+
+.lighting-hmi-kicker,
+.lighting-hmi-system-state span {
+  color: #7dd3c7;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.lighting-hmi-header strong {
+  color: #f8fafc;
+  font-size: 1.25rem;
+}
+
+.lighting-hmi-system-state {
+  min-width: 150px;
+  padding: 9px 12px;
+  border: 1px solid rgba(45, 212, 191, 0.22);
+  border-radius: 8px;
+  text-align: right;
+  background: rgba(1, 12, 12, 0.72);
+}
+
+.lighting-hmi-system-state strong.is-on { color: #34d399; }
+.lighting-hmi-system-state strong.is-checking { color: #facc15; }
+.lighting-hmi-system-state strong.is-offline { color: #f87171; }
+.lighting-hmi-system-state strong.is-setup { color: #93c5fd; }
+
+.lighting-hmi-layout {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr);
+  min-height: 548px;
+}
+
+.lighting-hmi-nav {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+  border-right: 1px solid rgba(45, 212, 191, 0.16);
+  background: rgba(3, 13, 14, 0.78);
+}
+
+.lighting-hmi-nav button {
+  min-height: 42px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 7px;
+  color: #b7cbc8;
+  font-weight: 900;
+  background: linear-gradient(180deg, #152323, #0b1415);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.lighting-hmi-nav button.is-active {
+  border-color: rgba(20, 184, 166, 0.7);
+  color: #ecfeff;
+  background: linear-gradient(180deg, #0f766e, #064e47);
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.lighting-hmi-content {
+  overflow: auto;
+  padding: 16px;
+  background:
+    linear-gradient(rgba(45, 212, 191, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 212, 191, 0.035) 1px, transparent 1px),
+    #071112;
+  background-size: 22px 22px;
+}
+
+.lighting-hmi-content .lighting-status-grid {
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  margin-bottom: 16px;
+}
+
+.lighting-hmi-content .lighting-status-card {
+  border-color: rgba(148, 163, 184, 0.18);
+  color: #e2e8f0;
+  background: rgba(7, 20, 22, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.lighting-hmi-content .lighting-status-card span {
+  color: #8aa4a0;
+}
+
+.lighting-hmi-content .lighting-status-card strong {
+  color: #f8fafc;
+}
+
+.lighting-hmi-content .lighting-status-card.is-on {
+  border-color: rgba(52, 211, 153, 0.42);
+  background: rgba(6, 78, 59, 0.42);
+}
+
+.lighting-hmi-content .lighting-status-card.is-warning,
+.lighting-hmi-content .lighting-status-card.is-checking {
+  border-color: rgba(250, 204, 21, 0.5);
+  background: rgba(113, 63, 18, 0.34);
+}
+
+.lighting-hmi-content .lighting-status-card.is-offline {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(127, 29, 29, 0.34);
+}
+
+.lighting-hmi-zone-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.lighting-hmi-zone-tile {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  min-height: 150px;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  color: #e5f8f5;
+  text-align: left;
+  background: linear-gradient(180deg, #102222, #071112);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 18px rgba(0, 0, 0, 0.22);
+}
+
+.lighting-hmi-zone-tile strong {
+  color: #f8fafc;
+  font-size: 1rem;
+}
+
+.lighting-hmi-zone-tile b {
+  width: fit-content;
+  min-width: 58px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #dbeafe;
+  text-align: center;
+  background: #0f172a;
+}
+
+.lighting-hmi-zone-tile span,
+.lighting-hmi-zone-tile em,
+.lighting-hmi-zone-tile small {
+  color: #a8c7c3;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.lighting-hmi-zone-tile.is-on {
+  border-color: rgba(52, 211, 153, 0.62);
+  background: linear-gradient(180deg, rgba(6, 78, 59, 0.88), rgba(5, 46, 39, 0.95));
+}
+
+.lighting-hmi-zone-tile.is-on b {
+  color: #052e1f;
+  background: #34d399;
+}
+
+.lighting-hmi-zone-tile.is-override,
+.lighting-hmi-zone-tile.is-input {
+  border-color: rgba(250, 204, 21, 0.72);
+}
+
+.lighting-hmi-lamp {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #334155;
+  box-shadow: inset 0 0 0 3px rgba(15, 23, 42, 0.35);
+}
+
+.lighting-hmi-zone-tile.is-on .lighting-hmi-lamp {
+  background: #34d399;
+  box-shadow: 0 0 18px rgba(52, 211, 153, 0.8);
+}
+
+.lighting-hmi-empty {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.lighting-hmi-screen .lighting-controller-wizard,
+.lighting-hmi-screen .lighting-zone-card,
+.lighting-hmi-screen .lighting-controller-card,
+.lighting-hmi-screen .lighting-list-row,
+.lighting-hmi-screen .lighting-schedule-clock {
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #e2e8f0;
+  background: rgba(8, 19, 21, 0.88);
+}
+
+.lighting-hmi-screen summary,
+.lighting-hmi-screen label,
+.lighting-hmi-screen .lighting-controller-status,
+.lighting-hmi-screen .lighting-schedule-run-status {
+  color: #d9f5f0;
+}
+
+.lighting-hmi-screen input,
+.lighting-hmi-screen select,
+.lighting-hmi-screen textarea {
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #f8fafc;
+  background: #071112;
+}
+
+.lighting-hmi-screen .lighting-zone-card summary span,
+.lighting-hmi-screen .lighting-list-row strong,
+.lighting-hmi-screen .lighting-zone-card summary strong {
+  color: #f8fafc;
+}
+
+.lighting-physical-panel {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 18px 14px;
+  border: 1px solid #050807;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.2)),
+    #202827;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -12px 20px rgba(0, 0, 0, 0.28);
+}
+
+.lighting-physical-indicators {
+  display: grid;
+  gap: 12px;
+}
+
+.lighting-physical-led {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  align-items: center;
+  min-height: 34px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 8px;
+  color: #d1d5db;
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.lighting-physical-led i {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #1f2937;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.82);
+}
+
+.lighting-physical-led.is-lit.is-green i {
+  background: #22c55e;
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.8), inset 0 1px 4px rgba(255, 255, 255, 0.45);
+}
+
+.lighting-physical-led.is-lit.is-red i {
+  background: #ef4444;
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.8), inset 0 1px 4px rgba(255, 255, 255, 0.45);
+}
+
+.lighting-physical-led.is-lit.is-amber i {
+  background: #f59e0b;
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.82), inset 0 1px 4px rgba(255, 255, 255, 0.45);
+}
+
+.lighting-physical-led strong {
+  font-size: 0.73rem;
+  letter-spacing: 0;
+}
+
+.lighting-key-switch {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  color: #f8fafc;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #151a1a, #090c0c);
+}
+
+.lighting-key-switch > span {
+  color: #a7b7b4;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.lighting-key-switch div {
+  display: grid;
+  grid-template-columns: 1fr 46px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.lighting-key-switch b {
+  color: #9ca3af;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.lighting-key-switch i {
+  width: 46px;
+  height: 46px;
+  border: 5px solid #4b5563;
+  border-radius: 999px;
+  background: radial-gradient(circle, #cbd5e1 0 14%, #111827 16% 100%);
+  transform: rotate(-28deg);
+  box-shadow: inset 0 1px 6px rgba(255, 255, 255, 0.2), 0 8px 12px rgba(0, 0, 0, 0.38);
+}
+
+.lighting-key-switch.is-on i {
+  transform: rotate(28deg);
+}
+
+.lighting-service-label {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+  padding: 12px;
+  border: 1px solid #9a3412;
+  border-radius: 8px;
+  color: #fed7aa;
+  background: linear-gradient(180deg, #7c2d12, #3b1207);
+}
+
+.lighting-service-label strong {
+  color: #fff7ed;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1100px) {
+  .lighting-controller-body {
+    grid-template-columns: 1fr;
+  }
+
+  .lighting-physical-panel {
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 220px) minmax(180px, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .lighting-industrial-controller {
+    padding: 62px 10px 14px;
+    border-radius: 12px;
+  }
+
+  .lighting-controller-nameplate {
+    min-width: 220px;
+  }
+
+  .lighting-hmi-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .lighting-hmi-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-right: 0;
+    border-bottom: 1px solid rgba(45, 212, 191, 0.16);
+  }
+
+  .lighting-hmi-nav button {
+    min-height: 36px;
+    font-size: 0.78rem;
+  }
+
+  .lighting-hmi-content .lighting-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lighting-physical-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
 .lighting-zone-details {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));

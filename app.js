@@ -10323,6 +10323,7 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
   setAutomationSidebarMenuOpen(true);
   setMobileTabState(targetId);
   if (targetId === "automationLightingPanel") {
+    renderLightingHome();
     renderLightingControllers();
     renderLightingZones();
     renderLightingSchedules();
@@ -10333,8 +10334,8 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function setLightingAutomationTab(tab = "zones") {
-  const selectedTab = ["zones", "controllers", "inputs", "schedules", "overrides", "firmware", "history"].includes(tab) ? tab : "zones";
+function setLightingAutomationTab(tab = "home") {
+  const selectedTab = ["home", "zones", "controllers", "inputs", "schedules", "overrides", "firmware", "history"].includes(tab) ? tab : "home";
   document.querySelectorAll("[data-lighting-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.lightingTab === selectedTab);
     button.setAttribute("aria-selected", String(button.dataset.lightingTab === selectedTab));
@@ -10343,6 +10344,7 @@ function setLightingAutomationTab(tab = "zones") {
   document.querySelectorAll("[data-lighting-panel]").forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.lightingPanel !== selectedTab);
   });
+  if (selectedTab === "home") renderLightingHome();
   if (selectedTab === "controllers") renderLightingControllers();
   if (selectedTab === "zones") renderLightingZones();
   if (selectedTab === "inputs") renderLightingInputs();
@@ -10424,6 +10426,7 @@ async function runLightingSchedulesNow() {
       loadLightingControllersForCurrentScope({ force: true }),
       loadLightingCommandsForCurrentScope({ force: true })
     ]);
+    renderLightingHome();
     renderLightingZones();
     renderLightingHistory();
   } catch (error) {
@@ -10465,6 +10468,7 @@ async function runLightingScheduleNow(scheduleId = "", action = "") {
       loadLightingControllersForCurrentScope({ force: true }),
       loadLightingCommandsForCurrentScope({ force: true })
     ]);
+    renderLightingHome();
     renderLightingSchedules();
     renderLightingZones();
     renderLightingHistory();
@@ -10492,6 +10496,7 @@ async function refreshLightingLiveStatus() {
     loadLightingFirmwareForCurrentScope({ force: true })
   ]);
   renderLightingNetworkSummary();
+  renderLightingHome();
   renderLightingZones();
   renderLightingInputs();
   renderLightingFirmware();
@@ -10699,11 +10704,118 @@ function getLightingNetworkSummary() {
 function renderLightingNetworkSummary() {
   const value = document.querySelector("[data-lighting-network-status]");
   const card = document.querySelector("[data-lighting-network-card]");
-  if (!value || !card) return;
   const summary = getLightingNetworkSummary();
-  value.textContent = summary.label;
-  card.classList.remove("is-on", "is-warning", "is-checking", "is-offline", "is-setup");
-  card.classList.add(summary.className);
+  if (value) value.textContent = summary.label;
+  if (card) {
+    card.classList.remove("is-on", "is-warning", "is-checking", "is-offline", "is-setup");
+    card.classList.add(summary.className);
+  }
+  renderLightingPhysicalStatus(summary);
+}
+
+function setLightingLedState(name, isActive) {
+  document.querySelectorAll(`[data-lighting-led="${name}"]`).forEach((led) => {
+    led.classList.toggle("is-lit", Boolean(isActive));
+  });
+}
+
+function renderLightingPhysicalStatus(summary = getLightingNetworkSummary()) {
+  const { currentCustomer, currentLocation } = getLightingScopeDetails();
+  const hmiTitle = document.querySelector("[data-lighting-hmi-title]");
+  const hmiStatus = document.querySelector("[data-lighting-hmi-status]");
+  if (hmiTitle) {
+    const locationName = currentLocation?.name || currentCustomer?.name || "No location selected";
+    hmiTitle.textContent = locationName;
+  }
+  if (hmiStatus) {
+    hmiStatus.textContent = summary.label;
+    hmiStatus.className = summary.className || "";
+  }
+  const hasPower = summary.label !== "Select location" && summary.label !== "No controllers";
+  const isOnline = summary.className === "is-on" || summary.className === "is-checking" || summary.className === "is-setup";
+  const hasAlarm = summary.className === "is-offline";
+  const hasOverride = getVisibleLightingOverrides(lightingOverridesCache).some((override) => getLightingOverrideIsActive(override));
+  setLightingLedState("power", hasPower);
+  setLightingLedState("status", isOnline);
+  setLightingLedState("alarm", hasAlarm);
+  setLightingLedState("override", hasOverride);
+  document.querySelectorAll("[data-lighting-key-switch]").forEach((switchEl) => {
+    switchEl.classList.toggle("is-on", hasOverride);
+  });
+}
+
+function renderLightingHome() {
+  const list = document.querySelector("[data-lighting-hmi-zone-list]");
+  renderLightingNetworkSummary();
+  if (!list) return;
+  const { canUseLocation, scopeKey, currentLocation } = getLightingScopeDetails();
+  if (!canUseLocation) {
+    list.innerHTML = `<div class="lighting-hmi-empty"><strong>Select a location</strong><span>The lighting HMI is location based.</span></div>`;
+    return;
+  }
+  if (lightingControllersLoadedScope !== scopeKey && !lightingControllersLoading) {
+    loadLightingControllersForCurrentScope();
+  }
+  if (lightingZonesLoadedScope !== scopeKey && !lightingZonesLoading) {
+    loadLightingZonesForCurrentScope();
+  }
+  if (lightingCommandsLoadedScope !== scopeKey && !lightingCommandsLoading) {
+    loadLightingCommandsForCurrentScope();
+  }
+  if (lightingSchedulesLoadedScope !== scopeKey && !lightingSchedulesLoading) {
+    loadLightingSchedulesForCurrentScope();
+  }
+  if (lightingInputsLoadedScope !== scopeKey && !lightingInputsLoading) {
+    loadLightingInputsForCurrentScope();
+  }
+  if (lightingOverridesLoadedScope !== scopeKey && !lightingOverridesLoading) {
+    loadLightingOverridesForCurrentScope();
+  }
+  const zones = lightingZonesLoadedScope === scopeKey
+    ? lightingZonesCache
+    : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
+  if (lightingZonesLoading && lightingZonesLoadedScope !== scopeKey) {
+    list.innerHTML = `<div class="lighting-hmi-empty"><strong>Loading lighting HMI</strong><span>Checking ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
+    return;
+  }
+  if (!zones.length) {
+    list.innerHTML = `<div class="lighting-hmi-empty"><strong>No zones configured</strong><span>Add zones before this controller can show live HMI controls.</span></div>`;
+    return;
+  }
+  const visibleOverrides = getVisibleLightingOverrides(lightingOverridesCache).filter((override) => getLightingOverrideIsActive(override));
+  list.innerHTML = zones.map((zone) => {
+    const priorityDecision = getLightingZonePriorityDecision(zone);
+    const effectiveState = priorityDecision.state || zone.desiredState || "Off";
+    const isOn = String(effectiveState).toLowerCase() === "on";
+    const hasOverride = Boolean(priorityDecision.overrideEffect);
+    const hasInput = Boolean(priorityDecision.inputEffect);
+    const brightness = getLightingZoneBrightnessLabel(zone);
+    const schedule = lightingSchedulesCache.find((item) => {
+      const zoneId = item.zoneId || item.zone_id || "";
+      return item.enabled !== false && (!zoneId || zoneId === zone.id);
+    });
+    const latestCommand = getLatestLightingCommandForZone(zone.id);
+    const commandStatus = latestCommand?.status ? String(latestCommand.status) : "ready";
+    const tileClass = [
+      "lighting-hmi-zone-tile",
+      isOn ? "is-on" : "is-off",
+      hasOverride ? "is-override" : "",
+      hasInput ? "is-input" : ""
+    ].filter(Boolean).join(" ");
+    return `
+      <button type="button" class="${tileClass}" data-lighting-zone-command="${escapeHtml(zone.id)}" data-lighting-zone-state="${isOn ? "Off" : "On"}">
+        <span class="lighting-hmi-lamp"></span>
+        <strong>${escapeHtml(zone.name || "Lighting zone")}</strong>
+        <b>${escapeHtml(isOn ? "ON" : "OFF")}</b>
+        <span>${escapeHtml(brightness)}</span>
+        <em>${schedule ? "Schedule active" : "Manual ready"}</em>
+        <small>${hasOverride ? "Override" : hasInput ? "Input control" : commandStatus}</small>
+      </button>
+    `;
+  }).join("");
+  const overridesValue = document.querySelector("[data-lighting-overrides-active]");
+  if (overridesValue) overridesValue.textContent = visibleOverrides.length ? String(visibleOverrides.length) : "None";
+  renderLightingPhysicalStatus();
 }
 
 function getLatestLightingCommandForZone(zoneId) {
@@ -12846,6 +12958,7 @@ async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = 
     lightingOverridesLoadedScope = scopeKey;
     if (status) status.textContent = `${updatedZone.name || "Lighting zone"} set locally. Server command did not save.`;
   }
+  renderLightingHome();
   renderLightingZones();
   renderLightingOverrides();
 }
