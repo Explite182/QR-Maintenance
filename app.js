@@ -5278,6 +5278,9 @@ let lightingOverridesCache = [];
 let lightingOverridesLoadedScope = "";
 let lightingOverridesLoading = false;
 let editingLightingOverrideId = "";
+let lightingFirmwareCache = { firmware: [], assignments: [] };
+let lightingFirmwareLoadedScope = "";
+let lightingFirmwareLoading = false;
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -9653,6 +9656,16 @@ document.addEventListener("submit", async (event) => {
     await saveLightingOverrideFromForm(form, form.dataset.lightingOverrideEditForm || "");
     return;
   }
+  if (form.matches("[data-lighting-firmware-form]")) {
+    event.preventDefault();
+    await saveLightingFirmwareFromForm(form);
+    return;
+  }
+  if (form.matches("[data-lighting-firmware-assignment-form]")) {
+    event.preventDefault();
+    await assignLightingFirmwareFromForm(form);
+    return;
+  }
   if (form.id === "monitoringDeviceForm") {
     event.preventDefault();
     await handleMonitoringDeviceSubmit(form);
@@ -10288,13 +10301,14 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
     renderLightingZones();
     renderLightingSchedules();
     renderLightingOverrides();
+    renderLightingFirmware();
     renderLightingHistory();
   }
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function setLightingAutomationTab(tab = "zones") {
-  const selectedTab = ["zones", "controllers", "inputs", "schedules", "overrides", "history"].includes(tab) ? tab : "zones";
+  const selectedTab = ["zones", "controllers", "inputs", "schedules", "overrides", "firmware", "history"].includes(tab) ? tab : "zones";
   document.querySelectorAll("[data-lighting-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.lightingTab === selectedTab);
     button.setAttribute("aria-selected", String(button.dataset.lightingTab === selectedTab));
@@ -10308,6 +10322,7 @@ function setLightingAutomationTab(tab = "zones") {
   if (selectedTab === "inputs") renderLightingInputs();
   if (selectedTab === "schedules") renderLightingSchedules();
   if (selectedTab === "overrides") renderLightingOverrides();
+  if (selectedTab === "firmware") renderLightingFirmware();
   if (selectedTab === "history") renderLightingHistory();
 }
 
@@ -10447,11 +10462,13 @@ async function refreshLightingLiveStatus() {
     loadLightingZonesForCurrentScope({ force: true }),
     loadLightingControllersForCurrentScope({ force: true }),
     loadLightingCommandsForCurrentScope({ force: true }),
-    loadLightingInputsForCurrentScope({ force: true })
+    loadLightingInputsForCurrentScope({ force: true }),
+    loadLightingFirmwareForCurrentScope({ force: true })
   ]);
   renderLightingNetworkSummary();
   renderLightingZones();
   renderLightingInputs();
+  renderLightingFirmware();
   renderLightingHistory();
 }
 
@@ -10842,6 +10859,7 @@ async function loadLightingControllersForCurrentScope({ force = false } = {}) {
     renderLightingNetworkSummary();
     renderLightingControllers();
     renderLightingZones();
+    renderLightingFirmware();
   }
 }
 
@@ -10955,6 +10973,34 @@ async function loadLightingOverridesForCurrentScope({ force = false } = {}) {
   }
 }
 
+async function loadLightingFirmwareForCurrentScope({ force = false } = {}) {
+  const { canUseLocation, scopeKey } = getLightingScopeDetails();
+  if (!canUseLocation || lightingFirmwareLoading) return;
+  if (!force && lightingFirmwareLoadedScope === scopeKey) return;
+  lightingFirmwareLoading = true;
+  const status = document.querySelector("[data-lighting-firmware-status]");
+  if (status) status.textContent = "Loading firmware registry...";
+  try {
+    const response = await siteworksApi.loadLightingFirmware(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`Lighting firmware load failed: ${response.status}`);
+    const payload = await response.json();
+    lightingFirmwareCache = {
+      firmware: Array.isArray(payload.firmware) ? payload.firmware : [],
+      assignments: Array.isArray(payload.assignments) ? payload.assignments : []
+    };
+    lightingFirmwareLoadedScope = scopeKey;
+    if (status) status.textContent = "";
+  } catch (error) {
+    console.warn("Lighting firmware could not be loaded from the server.", error);
+    lightingFirmwareCache = { firmware: [], assignments: [] };
+    lightingFirmwareLoadedScope = scopeKey;
+    if (status) status.textContent = "Firmware registry is not available yet.";
+  } finally {
+    lightingFirmwareLoading = false;
+    renderLightingFirmware();
+  }
+}
+
 function renderLightingZoneControllerOptions() {
   const select = document.querySelector("[data-lighting-zone-controller]");
   if (!select) return;
@@ -10982,6 +11028,24 @@ function renderLightingInputControllerOptions() {
 function renderLightingInputZoneOptions() {
   document.querySelectorAll("[data-lighting-input-zone]").forEach((select) => {
     select.innerHTML = getLightingZoneOptionsHtml(select.value || "");
+  });
+}
+
+function renderLightingFirmwareOptions() {
+  document.querySelectorAll("[data-lighting-firmware-controller]").forEach((select) => {
+    const selectedId = select.value || "";
+    const options = lightingControllersCache.map((controller) => (
+      `<option value="${escapeHtml(controller.id)}"${controller.id === selectedId ? " selected" : ""}>${escapeHtml(controller.name)} | ${escapeHtml(controller.uid || "No UID")}</option>`
+    )).join("");
+    select.innerHTML = `<option value="">Choose controller</option>${options}`;
+  });
+  document.querySelectorAll("[data-lighting-firmware-version]").forEach((select) => {
+    const selectedId = select.value || "";
+    const firmware = Array.isArray(lightingFirmwareCache.firmware) ? lightingFirmwareCache.firmware : [];
+    const options = firmware.map((item) => (
+      `<option value="${escapeHtml(item.id)}"${item.id === selectedId ? " selected" : ""}>${escapeHtml(item.version)}${item.status && item.status !== "available" ? ` | ${escapeHtml(item.status)}` : ""}</option>`
+    )).join("");
+    select.innerHTML = `<option value="">Choose firmware</option>${options}`;
   });
 }
 
@@ -11725,6 +11789,130 @@ function renderLightingOverrides() {
   `;
 }
 
+function renderLightingFirmware() {
+  const assignmentList = document.querySelector("[data-lighting-firmware-assignment-list]");
+  const versionList = document.querySelector("[data-lighting-firmware-version-list]");
+  const count = document.querySelector("[data-lighting-firmware-count]");
+  const canUseLocation = Boolean(selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && selectedLocationId && selectedLocationId !== ALL_LOCATIONS);
+  const scopeKey = getLightingControllerScopeKey();
+  if (count) {
+    const pendingAssignments = Array.isArray(lightingFirmwareCache.assignments)
+      ? lightingFirmwareCache.assignments.filter((item) => ["assigned", "pending", "downloading"].includes(String(item.status || "").toLowerCase())).length
+      : 0;
+    count.textContent = pendingAssignments ? String(pendingAssignments) : "Ready";
+  }
+  document.querySelectorAll("[data-lighting-firmware-assignment-form] button[type='submit']").forEach((button) => {
+    button.disabled = !canUseLocation || !lightingControllersCache.length || !lightingFirmwareCache.firmware.length;
+  });
+  if (!assignmentList || !versionList) return;
+  if (!canUseLocation) {
+    lightingFirmwareCache = { firmware: [], assignments: [] };
+    lightingFirmwareLoadedScope = "";
+    renderLightingFirmwareOptions();
+    assignmentList.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Firmware assignments are saved per lighting controller location.</span></div>`;
+    versionList.innerHTML = "";
+    return;
+  }
+  if (lightingControllersLoadedScope !== scopeKey && !lightingControllersLoading) {
+    loadLightingControllersForCurrentScope();
+  }
+  if (lightingFirmwareLoadedScope !== scopeKey && !lightingFirmwareLoading) {
+    loadLightingFirmwareForCurrentScope();
+  }
+  renderLightingFirmwareOptions();
+  if (lightingFirmwareLoading && lightingFirmwareLoadedScope !== scopeKey) {
+    assignmentList.innerHTML = `<div class="lighting-list-row"><strong>Loading firmware</strong><span>Checking SiteWorks server for firmware assignments.</span></div>`;
+    versionList.innerHTML = "";
+    return;
+  }
+  const assignments = Array.isArray(lightingFirmwareCache.assignments) ? lightingFirmwareCache.assignments : [];
+  const firmware = Array.isArray(lightingFirmwareCache.firmware) ? lightingFirmwareCache.firmware : [];
+  assignmentList.innerHTML = assignments.length
+    ? assignments.map((assignment) => `
+      <div class="lighting-list-row">
+        <strong>${escapeHtml(assignment.controllerName || "Lighting controller")} -> ${escapeHtml(assignment.version || "Firmware")}</strong>
+        <span>${escapeHtml(assignment.deviceUid || "No UID")} | ${escapeHtml(assignment.status || "assigned")} | assigned ${assignment.assignedAt ? escapeHtml(formatDateTime(assignment.assignedAt)) : "not reported"}</span>
+      </div>
+    `).join("")
+    : `<div class="lighting-list-row"><strong>No firmware assigned yet</strong><span>Assign a registered firmware version to a controller when you are ready to test OTA.</span></div>`;
+  versionList.innerHTML = firmware.length
+    ? firmware.map((item) => `
+      <div class="lighting-list-row">
+        <strong>${escapeHtml(item.version || "Firmware version")}</strong>
+        <span>${escapeHtml(item.deviceFamily || "ESP32")} | ${escapeHtml(item.status || "available")} | ${escapeHtml(item.fileName || "No file registered yet")}</span>
+        ${item.releaseNotes ? `<span>${escapeHtml(item.releaseNotes)}</span>` : ""}
+      </div>
+    `).join("")
+    : `<div class="lighting-list-row"><strong>No firmware registered yet</strong><span>Register a firmware version before assigning OTA updates.</span></div>`;
+}
+
+async function saveLightingFirmwareFromForm(form) {
+  const status = document.querySelector("[data-lighting-firmware-status]");
+  const formData = new FormData(form);
+  const firmware = {
+    id: crypto.randomUUID?.() || `firmware-${Date.now()}`,
+    version: String(formData.get("version") || "").trim(),
+    deviceFamily: String(formData.get("deviceFamily") || "waveshare-esp32-s3-poe-8di-8ro").trim(),
+    fileName: String(formData.get("fileName") || "").trim(),
+    fileUrl: String(formData.get("fileUrl") || "").trim(),
+    sha256: String(formData.get("sha256") || "").trim(),
+    sizeBytes: Number(formData.get("sizeBytes") || 0) || 0,
+    releaseNotes: String(formData.get("releaseNotes") || "").trim(),
+    status: String(formData.get("status") || "available").trim()
+  };
+  if (!firmware.version) {
+    if (status) status.textContent = "Firmware version is required.";
+    return;
+  }
+  if (status) status.textContent = `Registering firmware ${firmware.version}...`;
+  try {
+    const response = await siteworksApi.saveLightingFirmware(firmware);
+    if (!response.ok) throw new Error(`Lighting firmware save failed: ${response.status}`);
+    const payload = await response.json();
+    const savedFirmware = payload.firmware || firmware;
+    lightingFirmwareCache.firmware = [savedFirmware, ...lightingFirmwareCache.firmware.filter((item) => item.id !== savedFirmware.id)];
+    lightingFirmwareLoadedScope = getLightingControllerScopeKey();
+    form.reset();
+    if (status) status.textContent = `Registered firmware ${savedFirmware.version}.`;
+  } catch (error) {
+    console.warn("Lighting firmware could not be saved.", error);
+    if (status) status.textContent = "Firmware could not be registered on the SiteWorks server.";
+  }
+  renderLightingFirmware();
+}
+
+async function assignLightingFirmwareFromForm(form) {
+  const status = document.querySelector("[data-lighting-firmware-assignment-status]");
+  const formData = new FormData(form);
+  const controllerId = String(formData.get("controllerId") || "").trim();
+  const firmwareId = String(formData.get("firmwareId") || "").trim();
+  const notes = String(formData.get("notes") || "").trim();
+  if (!controllerId || !firmwareId) {
+    if (status) status.textContent = "Choose a controller and firmware version.";
+    return;
+  }
+  if (status) status.textContent = "Assigning firmware...";
+  try {
+    const response = await siteworksApi.assignLightingFirmware({
+      controllerId,
+      firmwareId,
+      metadata: { notes }
+    });
+    if (!response.ok) throw new Error(`Lighting firmware assignment failed: ${response.status}`);
+    const payload = await response.json();
+    if (payload.assignment) {
+      lightingFirmwareCache.assignments = [payload.assignment, ...lightingFirmwareCache.assignments.filter((item) => item.id !== payload.assignment.id)];
+    }
+    lightingFirmwareLoadedScope = getLightingControllerScopeKey();
+    form.reset();
+    if (status) status.textContent = "Firmware assigned to controller.";
+  } catch (error) {
+    console.warn("Lighting firmware could not be assigned.", error);
+    if (status) status.textContent = "Firmware assignment failed.";
+  }
+  renderLightingFirmware();
+}
+
 async function saveLightingControllerFromForm(form, existingControllerId = "") {
   const status = document.querySelector("[data-lighting-controller-status]");
   if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
@@ -11795,6 +11983,7 @@ async function saveLightingControllerFromForm(form, existingControllerId = "") {
   renderLightingControllers();
   renderLightingZones();
   renderLightingInputs();
+  renderLightingFirmware();
 }
 
 async function deleteLightingController(controllerId) {
@@ -23176,6 +23365,28 @@ const siteworksApi = {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     return this.server(`/api/automation/lighting/controllers/${encodeURIComponent(id)}`, {
       method: "DELETE"
+    });
+  },
+  loadLightingFirmware(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ firmware: [], assignments: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/lighting/firmware?${params.toString()}`);
+  },
+  saveLightingFirmware(firmware) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, firmware }), { status: 200 }));
+    return this.server("/api/automation/lighting/firmware", {
+      method: "POST",
+      body: JSON.stringify(firmware)
+    });
+  },
+  assignLightingFirmware(assignment) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, assignment }), { status: 200 }));
+    return this.server("/api/automation/lighting/firmware/assign", {
+      method: "POST",
+      body: JSON.stringify(assignment)
     });
   },
   loadLightingZones(customerId, locationId) {

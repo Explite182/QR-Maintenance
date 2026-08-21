@@ -1431,6 +1431,7 @@
             <button type="button" class="lighting-status-card" data-lighting-tab="inputs" role="tab" aria-selected="false"><span>Inputs</span><strong data-lighting-inputs-count>0</strong></button>
             <button type="button" class="lighting-status-card" data-lighting-tab="schedules" role="tab" aria-selected="false"><span>Schedules active</span><strong data-lighting-schedules-active>Not active</strong></button>
             <button type="button" class="lighting-status-card is-warning" data-lighting-tab="overrides" role="tab" aria-selected="false"><span>Overrides</span><strong data-lighting-overrides-active>None</strong></button>
+            <button type="button" class="lighting-status-card" data-lighting-tab="firmware" role="tab" aria-selected="false"><span>Firmware</span><strong data-lighting-firmware-count>Ready</strong></button>
             <button type="button" class="lighting-status-card" data-lighting-tab="history" role="tab" aria-selected="false"><span>History</span><strong data-lighting-history-count>Recent</strong></button>
           </div>
           <div class="lighting-tab-panel" data-lighting-panel="zones">
@@ -1657,6 +1658,50 @@
               </form>
             </details>
             <div class="lighting-controller-list" data-lighting-override-list></div>
+          </div>
+          <div class="lighting-tab-panel hidden" data-lighting-panel="firmware">
+            <details class="lighting-controller-wizard">
+              <summary>+ Register ESP32 Firmware</summary>
+              <form data-lighting-firmware-form class="lighting-controller-form">
+                <label>Version <input name="version" type="text" placeholder="0.9.0-lighting"></label>
+                <label>Device family <input name="deviceFamily" type="text" value="waveshare-esp32-s3-poe-8di-8ro"></label>
+                <label>File name <input name="fileName" type="text" placeholder="siteworks-lighting-0.9.0.bin"></label>
+                <label>Firmware URL <input name="fileUrl" type="url" placeholder="https://api.sitesworks.info/firmware/siteworks-lighting-0.9.0.bin"></label>
+                <label>SHA-256 <input name="sha256" type="text" placeholder="Optional checksum"></label>
+                <label>Size bytes <input name="sizeBytes" type="number" min="0" placeholder="0"></label>
+                <label>Status
+                  <select name="status">
+                    <option>available</option>
+                    <option>draft</option>
+                  </select>
+                </label>
+                <label>Release notes <textarea name="releaseNotes" rows="3" placeholder="What changed in this firmware"></textarea></label>
+                <div class="lighting-controller-help"><strong>Registry only</strong><span>This records the firmware version. ESP32 OTA install comes next.</span></div>
+                <button type="submit">Register Firmware</button>
+                <p data-lighting-firmware-status class="lighting-controller-status"></p>
+              </form>
+            </details>
+            <details class="lighting-controller-wizard">
+              <summary>+ Assign Firmware to Controller</summary>
+              <form data-lighting-firmware-assignment-form class="lighting-controller-form">
+                <label>Controller
+                  <select name="controllerId" data-lighting-firmware-controller>
+                    <option value="">No controller selected</option>
+                  </select>
+                </label>
+                <label>Firmware version
+                  <select name="firmwareId" data-lighting-firmware-version>
+                    <option value="">No firmware registered</option>
+                  </select>
+                </label>
+                <label>Notes <textarea name="notes" rows="2" placeholder="Reason for assigning this version"></textarea></label>
+                <div class="lighting-controller-help"><strong>Assignment only</strong><span>This marks which version should go to the controller later.</span></div>
+                <button type="submit">Assign Firmware</button>
+                <p data-lighting-firmware-assignment-status class="lighting-controller-status"></p>
+              </form>
+            </details>
+            <div class="lighting-controller-list" data-lighting-firmware-assignment-list></div>
+            <div class="lighting-controller-list" data-lighting-firmware-version-list></div>
           </div>
           <div class="lighting-tab-panel hidden" data-lighting-panel="history">
             <div class="lighting-controller-list" data-lighting-command-history>
