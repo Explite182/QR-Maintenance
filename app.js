@@ -3901,6 +3901,10 @@ function generateLightingApiKey() {
   return generateMonitoringApiKey().replace(/^swm_/, "swl_");
 }
 
+function generatePumpApiKey() {
+  return generateMonitoringApiKey().replace(/^swm_/, "swp_");
+}
+
 async function rotateMonitoringDeviceKey() {
   ensureMonitoringCollections();
   const elements = monitoringElements();
@@ -9131,6 +9135,18 @@ document.addEventListener("click", (event) => {
   if (deletePumpControllerButton) {
     event.preventDefault();
     deletePumpController(deletePumpControllerButton.dataset.pumpControllerDelete || "");
+    return;
+  }
+
+  const pumpControllerGenerateKeyButton = event.target.closest("[data-pump-generate-key]");
+  if (pumpControllerGenerateKeyButton) {
+    event.preventDefault();
+    const form = pumpControllerGenerateKeyButton.closest("form");
+    const input = form?.querySelector("input[name='apiKey']");
+    const output = form?.querySelector("[data-pump-generated-key]");
+    const newKey = generatePumpApiKey();
+    if (input) input.value = newKey;
+    if (output) output.textContent = `New API key, shown once: ${newKey}`;
     return;
   }
 
@@ -15917,10 +15933,16 @@ function normalizePumpController(controller = {}) {
     pumpIds: normalizePumpControllerPumpIds(controller),
     mode: controller.mode || "Setup only",
     notes: controller.notes || "",
+    data: controller.data && typeof controller.data === "object" ? controller.data : {},
     status: controller.status || "Setup only",
     onlineStatus: controller.onlineStatus || controller.online_status || "setup",
     firmwareVersion: controller.firmwareVersion || controller.firmware_version || "",
     lastSeenAt: controller.lastSeenAt || controller.last_seen_at || "",
+    ipAddress: controller.ipAddress || controller.ip_address || controller.data?.ipAddress || controller.data?.lastNetwork?.ip || "",
+    macAddress: controller.macAddress || controller.mac_address || controller.data?.macAddress || controller.data?.lastNetwork?.mac || "",
+    networkType: controller.networkType || controller.network_type || controller.data?.networkType || controller.data?.lastNetwork?.type || "",
+    uptimeMs: controller.uptimeMs || controller.uptime_ms || controller.data?.uptimeMs || controller.data?.lastNetwork?.uptimeMs || "",
+    apiKeyLast4: controller.apiKeyLast4 || controller.api_key_last4 || controller.data?.apiKeyLast4 || controller.data?.api_key_last4 || "",
     createdAt: controller.createdAt || controller.created_at || now,
     updatedAt: controller.updatedAt || controller.updated_at || now
   };
@@ -15966,7 +15988,7 @@ function pumpControllersForCurrentView() {
 }
 
 function pumpControllerStatus(controller = {}) {
-  const status = String(controller.status || controller.mode || "Setup only").toLowerCase();
+  const status = String(controller.onlineStatus || controller.online_status || controller.status || controller.mode || "Setup only").toLowerCase();
   if (status.includes("simulation") || String(controller.type || "").toLowerCase().includes("simulation")) return { label: "Simulation", className: "is-simulation" };
   if (status.includes("online") || status.includes("run")) return { label: "Online", className: "is-running" };
   if (status.includes("alarm") || status.includes("fault") || status.includes("offline")) return { label: "Needs attention", className: "is-warning" };
@@ -16061,6 +16083,13 @@ function renderPumpControllerForm(controller = null) {
       <label>Notes
         <textarea name="notes" placeholder="Panel, relay, VFD, floats, or install notes">${escapeHtml(controller?.notes || "")}</textarea>
       </label>
+      <label>API key
+        <input name="apiKey" type="password" placeholder="${controller?.apiKeyLast4 ? `Leave blank to keep key ending ${escapeAttribute(controller.apiKeyLast4)}` : "Generate or paste pump controller key"}">
+      </label>
+      <div class="pump-controller-key-row">
+        <button type="button" class="secondary" data-pump-generate-key>Generate Pump API Key</button>
+        <span data-pump-generated-key>${controller?.apiKeyLast4 ? `Current key ends ${escapeHtml(controller.apiKeyLast4)}` : "Shown once after generation."}</span>
+      </div>
       <div class="pump-controller-io-preview">
         <strong>Planned I/O map</strong>
         <span>Each pump gets run command, run status, fault, and HOA feedback. System points include high level, low level, and proof input.</span>
@@ -16112,6 +16141,10 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
         <span><b>I/O</b>${plannedPointCount} planned</span>
         <span><b>Status</b>${escapeHtml(status.label)}</span>
         <span><b>Mode</b>${escapeHtml(controller.mode || "Setup only")}</span>
+        <span><b>IP</b>${escapeHtml(controller.ipAddress || "Not seen")}</span>
+        <span><b>Firmware</b>${escapeHtml(controller.firmwareVersion || "Not reported")}</span>
+        <span><b>Last seen</b>${escapeHtml(formatDateTime(controller.lastSeenAt) || "Never")}</span>
+        <span><b>API key</b>${controller.apiKeyLast4 ? `Ends ${escapeHtml(controller.apiKeyLast4)}` : "Not set"}</span>
         <span class="pump-controller-assigned"><b>Assigned</b>${escapeHtml(assignedPumpLabel)}</span>
         <div class="pump-controller-actions">
           <button type="button" class="secondary" data-pump-controller-edit="${escapeAttribute(controller.id)}">Edit</button>
@@ -16142,6 +16175,13 @@ async function savePumpControllerFromForm(form) {
   const existingControllerId = form.dataset.pumpControllerForm || "";
   const existing = getPumpControllers().find((controller) => controller.id === existingControllerId);
   const pumpIds = formData.getAll("pumpIds").map((id) => String(id || "").trim()).filter(Boolean);
+  const apiKey = String(formData.get("apiKey") || "").trim();
+  if (apiKey && apiKey.length < 16) {
+    const keyStatus = form.querySelector("[data-pump-generated-key]");
+    if (keyStatus) keyStatus.textContent = "Pump API key must be at least 16 characters.";
+    return;
+  }
+  const apiKeyHash = apiKey ? await hashMonitoringApiKey(apiKey) : "";
   const controller = normalizePumpController({
     ...existing,
     id: existingControllerId || crypto.randomUUID?.() || `pump-controller-${Date.now()}`,
@@ -16157,6 +16197,7 @@ async function savePumpControllerFromForm(form) {
     notes: String(formData.get("notes") || "").trim(),
     status: String(formData.get("mode") || "Setup only").trim() === "Simulation" ? "Simulation online" : String(formData.get("mode") || "Setup only").trim(),
     onlineStatus: String(formData.get("mode") || "Setup only").trim() === "Simulation" ? "online" : existing?.onlineStatus,
+    apiKeyLast4: apiKey ? apiKey.slice(-4) : existing?.apiKeyLast4,
     updatedAt: new Date().toISOString()
   });
   const saveLocalPumpController = (savedController) => {
@@ -16178,7 +16219,8 @@ async function savePumpControllerFromForm(form) {
       pump_ids: controller.pumpIds,
       data: {
         ...(controller.data || {}),
-        pumpIds: controller.pumpIds
+        pumpIds: controller.pumpIds,
+        ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: controller.apiKeyLast4 } : {})
       }
     });
     if (!response.ok) throw new Error(`Pump controller save failed: ${response.status}`);
