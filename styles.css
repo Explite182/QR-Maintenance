@@ -5982,12 +5982,29 @@ textarea:disabled {
   width: 100%;
 }
 
+.lighting-generated-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 180px);
+  gap: 8px;
+  align-items: stretch;
+}
+
 .lighting-generated-key {
   min-height: 18px;
+  user-select: all;
+}
+
+.lighting-generated-key-status {
   color: var(--ink);
   font-size: 0.86rem;
   font-weight: 900;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .lighting-generated-key-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .lighting-controller-help {

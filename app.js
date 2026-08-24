@@ -3901,6 +3901,74 @@ function generateLightingApiKey() {
   return generateMonitoringApiKey().replace(/^swm_/, "swl_");
 }
 
+function getLightingApiKeyFormId(form = null) {
+  const editId = String(form?.dataset?.lightingControllerEditForm || "").trim();
+  if (editId) return `edit:${editId}`;
+  const scopeKey = getLightingControllerScopeKey?.() || `${selectedCustomerId || ""}:${selectedLocationId || ""}`;
+  return `new:${scopeKey}`;
+}
+
+function readPendingLightingApiKey() {
+  if (pendingLightingApiKey?.key) return pendingLightingApiKey;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(LIGHTING_PENDING_API_KEY_STORAGE_KEY) || "null");
+    if (saved?.key) {
+      pendingLightingApiKey = saved;
+      return saved;
+    }
+  } catch {
+    pendingLightingApiKey = null;
+  }
+  return null;
+}
+
+function savePendingLightingApiKey(form, key) {
+  pendingLightingApiKey = {
+    formId: getLightingApiKeyFormId(form),
+    key: String(key || ""),
+    savedAt: new Date().toISOString()
+  };
+  try {
+    sessionStorage.setItem(LIGHTING_PENDING_API_KEY_STORAGE_KEY, JSON.stringify(pendingLightingApiKey));
+  } catch {
+    // Session storage is only a convenience; the password field still carries the key.
+  }
+}
+
+function clearPendingLightingApiKey(form = null) {
+  const current = readPendingLightingApiKey();
+  const formId = form ? getLightingApiKeyFormId(form) : "";
+  if (formId && current?.formId && current.formId !== formId) return;
+  pendingLightingApiKey = null;
+  try {
+    sessionStorage.removeItem(LIGHTING_PENDING_API_KEY_STORAGE_KEY);
+  } catch {
+    // Nothing else to clean up.
+  }
+}
+
+function applyPendingLightingApiKeyToForm(form = null) {
+  if (!form) return;
+  const pending = readPendingLightingApiKey();
+  if (!pending?.key || pending.formId !== getLightingApiKeyFormId(form)) return;
+  const input = form.querySelector("input[name='apiKey']");
+  const output = form.querySelector("[data-lighting-generated-key]");
+  const status = form.querySelector("[data-lighting-generated-key-status]");
+  const copyButton = form.querySelector("[data-lighting-copy-key]");
+  const generateButton = form.querySelector("[data-lighting-generate-key]");
+  if (input && !input.value) input.value = pending.key;
+  if (output && !output.value) output.value = pending.key;
+  if (status) status.textContent = "Generated key restored from this browser session. Copy it before saving.";
+  if (copyButton) copyButton.disabled = false;
+  if (generateButton) generateButton.textContent = "Generate New API Key";
+}
+
+function restorePendingLightingApiKeyForms() {
+  document.querySelectorAll("[data-lighting-controller-form], [data-lighting-controller-edit-form]").forEach((form) => {
+    applyPendingLightingApiKeyToForm(form);
+  });
+}
+
 function generatePumpApiKey() {
   return generateMonitoringApiKey().replace(/^swm_/, "swp_");
 }
@@ -5247,12 +5315,13 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260820-lighting-input-release-01";
+const SITEWORKS_APP_VERSION = "20260824-lighting-key-copy-01";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
 const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
 const LIGHTING_OVERRIDES_STORAGE_KEY = "siteworks_lighting_overrides_v1";
+const LIGHTING_PENDING_API_KEY_STORAGE_KEY = "siteworks_lighting_pending_api_key_v1";
 const PUMP_CONTROLLERS_STORAGE_KEY = "siteworks_pump_controllers_v1";
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
@@ -5262,6 +5331,7 @@ let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
 let editingLightingControllerId = "";
+let pendingLightingApiKey = null;
 const openLightingControllerDiagnostics = new Set();
 let lightingZonesCache = [];
 let lightingZonesLoadedScope = "";
@@ -9179,9 +9249,37 @@ document.addEventListener("click", (event) => {
     const form = lightingControllerGenerateKeyButton.closest("form");
     const input = form?.querySelector("input[name='apiKey']");
     const output = form?.querySelector("[data-lighting-generated-key]");
+    const status = form?.querySelector("[data-lighting-generated-key-status]");
     const newKey = generateLightingApiKey();
     if (input) input.value = newKey;
-    if (output) output.textContent = `New API key, shown once: ${newKey}`;
+    if (output) output.value = newKey;
+    if (form) savePendingLightingApiKey(form, newKey);
+    if (status) status.textContent = "New API key. Copy it before saving; only the ending is shown later.";
+    lightingControllerGenerateKeyButton.textContent = "Generate New API Key";
+    const copyButton = form?.querySelector("[data-lighting-copy-key]");
+    if (copyButton) copyButton.disabled = false;
+    return;
+  }
+
+  const lightingControllerCopyKeyButton = event.target.closest("[data-lighting-copy-key]");
+  if (lightingControllerCopyKeyButton) {
+    event.preventDefault();
+    const form = lightingControllerCopyKeyButton.closest("form");
+    const output = form?.querySelector("[data-lighting-generated-key]");
+    const status = form?.querySelector("[data-lighting-generated-key-status]");
+    const key = String(output?.value || form?.querySelector("input[name='apiKey']")?.value || "").trim();
+    if (!key) {
+      if (status) status.textContent = "Generate a key first.";
+      return;
+    }
+    output?.select?.();
+    copyText(key).then(() => {
+      lightingControllerCopyKeyButton.textContent = "Copied";
+      if (status) status.textContent = "Copied. Paste this into the ESP32 setup page.";
+      setTimeout(() => {
+        lightingControllerCopyKeyButton.textContent = "Copy API Key";
+      }, 1600);
+    });
     return;
   }
 
@@ -11899,6 +11997,7 @@ function renderLightingControllers() {
   document.querySelectorAll("[data-lighting-controller-form] button[type='submit']").forEach((button) => {
     button.disabled = !canUseLocation;
   });
+  restorePendingLightingApiKeyForms();
   if (!canUseLocation) {
     lightingControllersCache = [];
     lightingControllersLoadedScope = "";
@@ -11929,10 +12028,12 @@ function renderLightingControllers() {
     : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId);
   if (lightingControllersLoading && lightingControllersLoadedScope !== scopeKey) {
     list.innerHTML = `<div class="lighting-list-row"><strong>Loading controllers</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
+    restorePendingLightingApiKeyForms();
     return;
   }
   if (!controllers.length) {
     list.innerHTML = `<div class="lighting-list-row"><strong>No lighting controllers for this location</strong><span>Use the setup wizard to add an ESP32 controller for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
+    restorePendingLightingApiKeyForms();
     return;
   }
   list.innerHTML = controllers.map((controller) => {
@@ -11964,7 +12065,11 @@ function renderLightingControllers() {
           </label>
           <div class="lighting-api-key-tools">
             <button type="button" data-lighting-generate-key>Generate API Key</button>
-            <span data-lighting-generated-key class="lighting-generated-key" aria-live="polite"></span>
+            <div class="lighting-generated-key-row">
+              <input data-lighting-generated-key class="lighting-generated-key" type="text" readonly placeholder="Generated key appears here">
+              <button type="button" data-lighting-copy-key disabled>Copy API Key</button>
+            </div>
+            <span data-lighting-generated-key-status class="lighting-generated-key-status" aria-live="polite">Shown once after generation.</span>
           </div>
           <label>Notes
             <textarea name="notes" rows="2">${escapeHtml(controller.notes || "")}</textarea>
@@ -12033,6 +12138,7 @@ function renderLightingControllers() {
       </div>
     `;
   }).join("");
+  restorePendingLightingApiKeyForms();
 }
 
 function renderLightingSchedules() {
@@ -12520,6 +12626,7 @@ async function saveLightingControllerFromForm(form, existingControllerId = "") {
     if (status) status.textContent = `Saved ${controller.name} locally. Upload the server file to enable shared controller storage.`;
   }
   form.reset();
+  clearPendingLightingApiKey(form);
   renderLightingControllers();
   renderLightingZones();
   renderLightingInputs();
