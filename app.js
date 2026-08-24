@@ -15935,6 +15935,10 @@ function renderPumpControllerForm(controller = null) {
       <label>Notes
         <textarea name="notes" placeholder="Panel, relay, VFD, floats, or install notes">${escapeHtml(controller?.notes || "")}</textarea>
       </label>
+      <div class="pump-controller-io-preview">
+        <strong>Planned I/O map</strong>
+        <span>Each pump gets run command, run status, fault, and HOA feedback. System points include high level, low level, and proof input.</span>
+      </div>
       <div class="pump-controller-actions">
         <button type="submit">Save Controller</button>
         <button type="button" class="secondary" data-pump-controller-cancel>Cancel</button>
@@ -15965,6 +15969,7 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
     `;
   const controllerRows = controllers.length ? controllers.map((controller) => {
     const status = pumpControllerStatus(controller);
+    const plannedPointCount = pumpHmiPlannedPoints(controller).length;
     return `
       <article class="pump-controller-card ${status.className}">
         <div>
@@ -15972,6 +15977,7 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
           <span>${escapeHtml(controller.uid || "No UID")} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.area || currentLocation.name || "No area")}</span>
         </div>
         <span><b>Pumps</b>${escapeHtml(controller.pumpCount || "1")}</span>
+        <span><b>I/O</b>${plannedPointCount} planned</span>
         <span><b>Status</b>${escapeHtml(status.label)}</span>
         <span><b>Mode</b>${escapeHtml(controller.mode || "Setup only")}</span>
         <div class="pump-controller-actions">
@@ -16160,22 +16166,47 @@ function renderPumpAutomationSummary(pumps = [], controllers = []) {
   `;
 }
 
-function pumpHmiPlannedPoints(controller = null) {
+function pumpHmiPlannedPoints(controller = null, pumps = []) {
   const pumpCount = Math.max(1, Math.min(6, Number(controller?.pumpCount || 1) || 1));
   const points = [
-    { label: "High level", type: "Alarm input", state: "Not wired" },
-    { label: "Low level", type: "Level input", state: "Not wired" },
-    { label: "Pressure", type: "Proof input", state: "Not wired" },
-    { label: "Seal fail", type: "Alarm input", state: "Not wired" }
+    { label: "High level", type: "Alarm input", state: "Planned alarm", channel: "DI-HL", className: "is-alarm" },
+    { label: "Low level", type: "Level input", state: "Planned input", channel: "DI-LL", className: "is-input" },
+    { label: "Pressure proof", type: "Proof input", state: "Planned input", channel: "DI-PROOF", className: "is-input" }
   ];
   for (let index = 1; index <= pumpCount; index += 1) {
+    const pumpName = pumps[index - 1]?.name || `Pump ${index}`;
     points.unshift(
-      { label: `Pump ${index} HOA`, type: "Auto feedback", state: "Not wired" },
-      { label: `Pump ${index} fault`, type: "Fault input", state: "Not wired" },
-      { label: `Pump ${index} run`, type: "Run proof", state: "Not wired" }
+      { label: `${pumpName} HOA`, type: "Auto feedback", state: "Planned feedback", channel: `DI${(index * 3)}`, className: "is-feedback" },
+      { label: `${pumpName} fault`, type: "Fault input", state: "Planned alarm", channel: `DI${(index * 3) - 1}`, className: "is-alarm" },
+      { label: `${pumpName} run status`, type: "Run proof", state: "Planned input", channel: `DI${(index * 3) - 2}`, className: "is-input" },
+      { label: `${pumpName} run command`, type: "Relay output", state: "Planned output", channel: `DO${index}`, className: "is-output" }
     );
   }
   return points.slice(0, 14);
+}
+
+function pumpHmiPumpIoAssignment(index = 0) {
+  const pumpNumber = index + 1;
+  const inputBase = (pumpNumber * 3) - 2;
+  return {
+    command: `DO${pumpNumber}`,
+    runStatus: `DI${inputBase}`,
+    fault: `DI${inputBase + 1}`,
+    hoa: `DI${inputBase + 2}`
+  };
+}
+
+function renderPumpHmiPumpIo(asset = {}, index = 0) {
+  const assignment = pumpHmiPumpIoAssignment(index);
+  const label = asset.name || `Pump ${index + 1}`;
+  return `
+    <div class="pump-hmi-pump-io" aria-label="${escapeAttribute(label)} planned I/O">
+      <span><b>Run cmd</b>${escapeHtml(assignment.command)}</span>
+      <span><b>Run status</b>${escapeHtml(assignment.runStatus)}</span>
+      <span><b>Fault</b>${escapeHtml(assignment.fault)}</span>
+      <span><b>HOA</b>${escapeHtml(assignment.hoa)}</span>
+    </div>
+  `;
 }
 
 function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocation = null, controllers = []) {
@@ -16201,12 +16232,13 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const controllerSetup = renderPumpControllerSetup(controllers, currentLocation);
   const primaryController = controllers[0] || null;
   const primaryControllerStatus = primaryController ? pumpControllerStatus(primaryController) : { label: "No controller", className: "is-listed" };
-  const plannedPoints = pumpHmiPlannedPoints(primaryController);
+  const plannedPoints = pumpHmiPlannedPoints(primaryController, pumps);
   const pointTiles = plannedPoints.map((point) => `
-    <div class="pump-hmi-point ${primaryController ? "is-ready" : ""}">
+    <div class="pump-hmi-point ${primaryController ? "is-ready" : ""} ${point.className || ""}">
       <span>${escapeHtml(point.type)}</span>
       <strong>${escapeHtml(point.label)}</strong>
       <em>${escapeHtml(point.state)}</em>
+      ${point.channel ? `<small>${escapeHtml(point.channel)}</small>` : ""}
     </div>
   `).join("");
   const pumpAlarmTiles = activePumpAlarms.map(({ asset, status, latestEvent, openIssueCount }) => {
@@ -16239,6 +16271,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const latestEventLabel = latestEvent
       ? `${latestEvent.type || latestEvent.result || "Pump event"}${latestEventDate ? ` | ${formatDate(latestEventDate)}` : ""}`
       : "No recent event";
+    const plannedIo = primaryController ? renderPumpHmiPumpIo(asset, index) : "";
     return `
       <button type="button" class="pump-hmi-pump ${status.className} ${isSelected ? "is-selected" : ""}" data-select-pump-asset="${escapeAttribute(asset.id)}">
         <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
@@ -16259,6 +16292,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <span class="pump-hmi-mini">
           <b>Command</b>${escapeHtml(asset.pumpCommand || "None")}
         </span>
+        ${plannedIo}
       </button>
     `;
   }).join("");
@@ -16320,6 +16354,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const selectedPumpLatestEventLabel = selectedPumpLatestEvent
     ? formatPumpEventSummary(selectedPumpLatestEvent)
     : "No recent event";
+  const selectedPumpIndex = selectedPump ? pumps.findIndex((asset) => asset.id === selectedPump.id) : -1;
+  const selectedPumpIo = selectedPump && primaryController ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpIndex)) : "";
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
       <header>
@@ -16339,6 +16375,12 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Last event</span><strong>${escapeHtml(selectedPumpLatestEventLabel)}</strong></div>
       </div>
       <p class="pump-hmi-detail-note">${escapeHtml(selectedPump.notes || "No pump notes recorded.")}</p>
+      ${selectedPumpIo ? `
+        <div class="pump-hmi-action-block">
+          <span>Planned I/O</span>
+          ${selectedPumpIo}
+        </div>
+      ` : ""}
       <div class="pump-hmi-action-block">
         <span>Command</span>
         <div class="pump-hmi-status-actions" aria-label="Pump setup-only command controls">
@@ -16539,8 +16581,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           </section>
           <section class="pump-hmi-points" aria-label="Pump controller points">
             <header>
-              <span>Controller I/O</span>
-              <strong>${primaryController ? "Setup map ready" : "Setup placeholders"}</strong>
+              <span>Configured points</span>
+              <strong>${primaryController ? `${plannedPoints.length} planned I/O` : "Setup placeholders"}</strong>
             </header>
             <div class="pump-hmi-point-grid">${pointTiles}</div>
           </section>
