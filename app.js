@@ -15657,6 +15657,30 @@ function pumpAssetStatus(asset = {}) {
   return { label: "Off", className: "is-off" };
 }
 
+function isPumpAlarmStatus(status = {}) {
+  return status.className === "is-warning" || status.className === "is-alarm";
+}
+
+function activePumpAlarmAssets(pumps = []) {
+  return pumps
+    .map((asset) => ({
+      asset,
+      status: pumpAssetStatus(asset),
+      latestEvent: latestPumpHistoryEntry(asset),
+      openIssueCount: openWorkOrdersForAsset(asset.id).length
+    }))
+    .filter(({ status }) => isPumpAlarmStatus(status));
+}
+
+function formatPumpEventSummary(entry = null) {
+  if (!entry) return "No recent pump event";
+  const eventDate = entry.date || entry.createdAt || entry.timestamp || entry.updatedAt || "";
+  return [
+    entry.result || entry.type || "Pump event",
+    eventDate ? formatDate(eventDate) : ""
+  ].filter(Boolean).join(" | ");
+}
+
 function setPumpAssetRole(assetId = "", role = "") {
   const normalizedRole = normalizePumpRole(role);
   if (!assetId || !normalizedRole) return;
@@ -15694,13 +15718,16 @@ function setPumpAssetOperatingStatus(assetId = "", status = "") {
     : normalizedStatus === "Maintenance"
       ? "Maintenance"
       : "Good";
+  const isAlarmEvent = normalizedStatus === "Alarm" || normalizedStatus === "Needs attention";
   asset.history = Array.isArray(asset.history) ? asset.history : [];
   asset.history.unshift({
     id: crypto.randomUUID?.() || `pump-status-${Date.now()}`,
-    type: "Pump status",
+    type: normalizedStatus === "Alarm" ? "Pump alarm" : isAlarmEvent ? "Pump attention" : "Pump status",
     date: now,
     result: normalizedStatus,
-    notes: `Pump marked ${normalizedStatus}.`,
+    notes: isAlarmEvent
+      ? `Pump marked ${normalizedStatus}. Review and create a ticket if service is required.`
+      : `Pump marked ${normalizedStatus}.`,
     technician: currentUser?.name || currentUser?.email || "SiteWorks"
   });
   asset.updatedAt = now;
@@ -15746,10 +15773,12 @@ function setPumpAssetControlCommand(assetId = "", command = "") {
   asset.history = Array.isArray(asset.history) ? asset.history : [];
   asset.history.unshift({
     id: crypto.randomUUID?.() || `pump-command-${Date.now()}`,
-    type: "Pump command",
+    type: normalizedCommand === "Alarm Reset" ? "Pump alarm reset" : "Pump command",
     date: now,
     result: normalizedCommand,
-    notes: `Setup-only command recorded: ${normalizedCommand}.`,
+    notes: normalizedCommand === "Alarm Reset"
+      ? "Pump alarm reset command recorded. Verify the field condition before returning to service."
+      : `Setup-only command recorded: ${normalizedCommand}.`,
     technician: currentUser?.name || currentUser?.email || "SiteWorks"
   });
   asset.updatedAt = now;
@@ -16005,7 +16034,7 @@ function renderPumpAutomationSummary(pumps = [], controllers = []) {
   if (!summary) return;
   const statuses = pumps.map(pumpAssetStatus);
   const runningCount = statuses.filter((status) => status.className === "is-running").length;
-  const warningCount = statuses.filter((status) => status.className === "is-warning" || status.className === "is-alarm").length;
+  const warningCount = activePumpAlarmAssets(pumps).length;
   summary.innerHTML = `
     <div class="pump-status-tile">
       <span>Pump systems</span>
@@ -16054,9 +16083,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     counts[role] = (counts[role] || 0) + 1;
     return counts;
   }, {});
-  const activePumpAlarms = pumps
-    .map((asset) => ({ asset, status: pumpAssetStatus(asset) }))
-    .filter(({ status }) => status.className === "is-warning" || status.className === "is-alarm");
+  const activePumpAlarms = activePumpAlarmAssets(pumps);
   const warningCount = activePumpAlarms.length;
   const locationName = currentLocation?.name || "Selected location";
   const customerName = currentCustomer?.name || "SiteWorks";
@@ -16076,15 +16103,21 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <em>${escapeHtml(point.state)}</em>
     </div>
   `).join("");
-  const pumpAlarmTiles = activePumpAlarms.map(({ asset, status }) => {
-    const openIssueCount = openWorkOrdersForAsset(asset.id).length;
+  const pumpAlarmTiles = activePumpAlarms.map(({ asset, status, latestEvent, openIssueCount }) => {
     return `
-      <button type="button" class="pump-hmi-alarm ${status.className}" data-select-pump-asset="${escapeAttribute(asset.id)}">
+      <article class="pump-hmi-alarm ${status.className}">
         <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
-        <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
+        <div>
+          <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
+          <small>${escapeHtml(getAssetEquipmentId(asset))} | ${openIssueCount} open ticket${openIssueCount === 1 ? "" : "s"}</small>
+          <small>${escapeHtml(formatPumpEventSummary(latestEvent))}</small>
+        </div>
         <em>${escapeHtml(status.label)}</em>
-        <small>${escapeHtml(getAssetEquipmentId(asset))} | ${openIssueCount} open ticket${openIssueCount === 1 ? "" : "s"}</small>
-      </button>
+        <div class="pump-hmi-alarm-actions">
+          <button type="button" data-select-pump-asset="${escapeAttribute(asset.id)}">Open</button>
+          ${canCreateWorkOrders() ? `<button type="button" data-create-pump-ticket="${escapeAttribute(asset.id)}">Create Ticket</button>` : ""}
+        </div>
+      </article>
     `;
   }).join("");
   const pumpTiles = pumps.map((asset, index) => {
@@ -16153,10 +16186,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     ? selectedPumpLatestEvent.date || selectedPumpLatestEvent.createdAt || selectedPumpLatestEvent.timestamp || selectedPumpLatestEvent.updatedAt || ""
     : "";
   const selectedPumpLatestEventLabel = selectedPumpLatestEvent
-    ? [
-        selectedPumpLatestEvent.result || selectedPumpLatestEvent.type || "Pump event",
-        selectedPumpLatestEventDate ? formatDate(selectedPumpLatestEventDate) : ""
-      ].filter(Boolean).join(" | ")
+    ? formatPumpEventSummary(selectedPumpLatestEvent)
     : "No recent event";
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
@@ -16393,6 +16423,34 @@ function renderAutomationPumps() {
     loadPumpControllersForCurrentScope();
   }
   const pumpControllers = pumpControllersForCurrentView();
+  const activePumpAlarms = activePumpAlarmAssets(pumps);
+  const activePumpAlarmOverview = activePumpAlarms.length ? `
+    <section class="pump-alarm-overview" aria-label="Active pump attention items">
+      <header>
+        <span>Active pump attention</span>
+        <strong>${activePumpAlarms.length}</strong>
+      </header>
+      <div class="pump-alarm-overview-list">
+        ${activePumpAlarms.map(({ asset, status, latestEvent, openIssueCount }) => {
+          const locationRecord = getLocation(asset.locationId);
+          return `
+            <article class="${status.className}">
+              <span class="pump-indicator" aria-hidden="true"></span>
+              <div>
+                <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
+                <small>${escapeHtml(locationRecord?.name || "No location")} | ${escapeHtml(status.label)} | ${openIssueCount} open ticket${openIssueCount === 1 ? "" : "s"}</small>
+                <small>${escapeHtml(formatPumpEventSummary(latestEvent))}</small>
+              </div>
+              <div class="pump-alarm-overview-actions">
+                <button type="button" class="secondary" data-open-pump-asset="${escapeAttribute(asset.id)}">Open equipment</button>
+                ${canCreateWorkOrders() ? `<button type="button" class="secondary" data-create-pump-ticket="${escapeAttribute(asset.id)}">Create Ticket</button>` : ""}
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  ` : "";
   count.textContent = pumps.length;
   scope.textContent = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
   renderPumpAutomationSummary(pumps, pumpControllers);
@@ -16404,6 +16462,7 @@ function renderAutomationPumps() {
 
   if (!pumps.length) {
     list.innerHTML = `
+      ${activePumpAlarmOverview}
       <div class="automation-empty-state">
         <strong>No pump equipment found in this view.</strong>
         <p>Add equipment with pump, booster, sump, circulation, condensate, irrigation, or lift station in the name/type and it will show here.</p>
@@ -16412,11 +16471,14 @@ function renderAutomationPumps() {
     return;
   }
 
-  list.innerHTML = pumps.map((asset) => {
+  list.innerHTML = `
+    ${activePumpAlarmOverview}
+    ${pumps.map((asset) => {
     const status = pumpAssetStatus(asset);
     const locationRecord = getLocation(asset.locationId);
     const due = getDueInfo(asset);
     const openIssueCount = openWorkOrdersForAsset(asset.id).length;
+    const latestEvent = latestPumpHistoryEntry(asset);
     return `
       <article class="pump-equipment-card ${status.className}">
         <div class="pump-equipment-main">
@@ -16431,11 +16493,13 @@ function renderAutomationPumps() {
           <span><b>Equipment ID</b>${escapeHtml(getAssetEquipmentId(asset))}</span>
           <span><b>Next PM</b>${escapeHtml(formatDate(due.nextDate))}</span>
           <span><b>Open tickets</b>${openIssueCount}</span>
+          <span><b>Last event</b>${escapeHtml(formatPumpEventSummary(latestEvent))}</span>
         </div>
         <button type="button" class="secondary" data-open-pump-asset="${escapeAttribute(asset.id)}">Open equipment</button>
       </article>
     `;
-  }).join("");
+  }).join("")}
+  `;
 }
 
 function renderDashboard() {

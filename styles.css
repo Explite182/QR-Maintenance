@@ -1230,6 +1230,11 @@ textarea:disabled {
   background: rgba(255, 251, 235, 0.92);
 }
 
+.pump-equipment-card.is-alarm {
+  border-color: rgba(239, 68, 68, 0.48);
+  background: rgba(254, 242, 242, 0.92);
+}
+
 .pump-equipment-main {
   display: flex;
   gap: 10px;
@@ -1268,9 +1273,14 @@ textarea:disabled {
   box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18);
 }
 
+.pump-equipment-card.is-alarm .pump-indicator {
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
+}
+
 .pump-equipment-facts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(92px, 1fr));
+  grid-template-columns: repeat(5, minmax(92px, 1fr));
   gap: 8px;
 }
 
@@ -1288,6 +1298,73 @@ textarea:disabled {
 
 .pump-equipment-card .secondary {
   white-space: nowrap;
+}
+
+.pump-alarm-overview {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  border-radius: var(--radius);
+  background: rgba(255, 251, 235, 0.86);
+}
+
+.pump-alarm-overview header,
+.pump-alarm-overview article,
+.pump-alarm-overview-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pump-alarm-overview header {
+  justify-content: space-between;
+}
+
+.pump-alarm-overview header span {
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pump-alarm-overview header strong {
+  color: #78350f;
+}
+
+.pump-alarm-overview-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pump-alarm-overview article {
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.pump-alarm-overview article.is-alarm {
+  border-color: rgba(239, 68, 68, 0.42);
+  background: rgba(254, 242, 242, 0.82);
+}
+
+.pump-alarm-overview article > div:first-of-type {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pump-alarm-overview article strong {
+  color: var(--ink);
+}
+
+.pump-alarm-overview article small {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .pump-hmi-controller {
@@ -1554,11 +1631,16 @@ textarea:disabled {
   background: rgba(15, 23, 42, 0.72);
   color: #f8fafc;
   text-align: left;
-  cursor: pointer;
 }
 
 .pump-hmi-alarm:hover {
   border-color: rgba(251, 191, 36, 0.8);
+}
+
+.pump-hmi-alarm > div:first-of-type {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .pump-hmi-alarm strong {
@@ -1574,10 +1656,32 @@ textarea:disabled {
 }
 
 .pump-hmi-alarm small {
-  grid-column: 2 / -1;
   color: #cbd5e1;
   font-size: 0.76rem;
   font-weight: 800;
+}
+
+.pump-hmi-alarm-actions {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pump-hmi-alarm-actions button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid rgba(94, 234, 212, 0.32);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #e0fffa;
+  font-weight: 900;
+}
+
+.pump-hmi-alarm-actions button:hover {
+  border-color: rgba(94, 234, 212, 0.72);
+  background: rgba(13, 148, 136, 0.36);
+  color: #ffffff;
 }
 
 .pump-hmi-alarm.is-alarm {
