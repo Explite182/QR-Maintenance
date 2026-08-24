@@ -17710,8 +17710,11 @@ function localPumpNotifications() {
 }
 
 function visibleNotifications() {
+  const liveServerNotifications = serverNotifications.filter((notification) =>
+    String(notification?.type || "") !== "server-health"
+  );
   return [
-    ...serverNotifications,
+    ...liveServerNotifications,
     ...(currentRole === "Admin" && serverHealthNotification ? [serverHealthNotification] : []),
     ...localBreakerTripNotifications(),
     ...localPumpNotifications()
