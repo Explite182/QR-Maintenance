@@ -1860,6 +1860,19 @@ textarea:disabled {
   text-transform: uppercase;
 }
 
+.pump-hmi-pump-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+
+.pump-hmi-pump-workspace.has-drawer {
+  grid-template-columns: minmax(360px, 1fr) minmax(340px, 0.7fr);
+  align-items: start;
+}
+
 .pump-hmi-pumps {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -2160,6 +2173,8 @@ textarea:disabled {
   display: grid;
   gap: 12px;
   min-width: 0;
+  max-height: min(720px, calc(100vh - 180px));
+  overflow: auto;
   padding: 14px;
   border: 1px solid rgba(94, 234, 212, 0.36);
   border-radius: 10px;
@@ -2168,6 +2183,8 @@ textarea:disabled {
     #031312;
   box-shadow: inset 0 0 28px rgba(20, 184, 166, 0.08);
   color: #f8fafc;
+  position: sticky;
+  top: 10px;
 }
 
 .pump-hmi-detail-drawer.is-warning {
@@ -2680,6 +2697,15 @@ textarea:disabled {
   .pump-hmi-switch,
   .pump-hmi-warning {
     grid-column: span 2;
+  }
+
+  .pump-hmi-pump-workspace.has-drawer {
+    grid-template-columns: 1fr;
+  }
+
+  .pump-hmi-detail-drawer {
+    max-height: none;
+    position: static;
   }
 
   .pump-controller-form,

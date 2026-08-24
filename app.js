@@ -16674,15 +16674,17 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             </header>
             <div class="pump-hmi-point-grid">${pointTiles}</div>
           </section>
-          <section class="pump-hmi-pumps" aria-label="Pump equipment">
-            ${pumpTiles || `
-              <div class="pump-hmi-empty">
-                <strong>No pump equipment at this location.</strong>
-                <span>Add pump equipment or select all locations for the overview.</span>
-              </div>
-            `}
+          <section class="pump-hmi-pump-workspace ${selectedPump ? "has-drawer" : ""}" aria-label="Pump equipment and details">
+            <div class="pump-hmi-pumps" aria-label="Pump equipment">
+              ${pumpTiles || `
+                <div class="pump-hmi-empty">
+                  <strong>No pump equipment at this location.</strong>
+                  <span>Add pump equipment or select all locations for the overview.</span>
+                </div>
+              `}
+            </div>
+            ${pumpDrawer}
           </section>
-          ${pumpDrawer}
           ${controllerSetup}
         </main>
       </div>
