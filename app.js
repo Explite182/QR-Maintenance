@@ -16998,13 +16998,13 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   ` : "";
 
   return `
-    <div class="pump-hmi-controller">
+    <div class="pump-hmi-controller ${alarmOn ? "is-alarm" : ""}">
       <span class="pump-hmi-screw is-top-left" aria-hidden="true"></span>
       <span class="pump-hmi-screw is-top-right" aria-hidden="true"></span>
       <span class="pump-hmi-screw is-bottom-left" aria-hidden="true"></span>
       <span class="pump-hmi-screw is-bottom-right" aria-hidden="true"></span>
       <div class="pump-hmi-nameplate">
-        <strong>PUMP CONTROL CENTER</strong>
+        <strong>SUMP PUMP STATION</strong>
         <span>SITEWORKS BAS HMI</span>
       </div>
       <div class="pump-hmi-display">

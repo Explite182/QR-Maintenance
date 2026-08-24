@@ -2851,6 +2851,337 @@ textarea:disabled {
   color: #ffffff;
 }
 
+/* 4K BAS-style pump station presentation. Keeps existing pump logic intact. */
+.pump-hmi-controller {
+  grid-template-columns: minmax(0, 1fr) clamp(160px, 8.5vw, 260px);
+  gap: clamp(14px, 1vw, 28px);
+  width: min(100%, 3840px);
+  min-height: clamp(760px, 55vw, 1740px);
+  margin-inline: auto;
+  padding: clamp(56px, 3.2vw, 112px) clamp(18px, 1.4vw, 46px) clamp(18px, 1.4vw, 46px);
+  border-radius: clamp(18px, 1.1vw, 34px);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(59, 130, 246, 0.18), transparent 34%),
+    radial-gradient(circle at 88% 10%, rgba(20, 184, 166, 0.16), transparent 30%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04), transparent 18%, rgba(255, 255, 255, 0.025) 58%, transparent),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.026) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, #263134 0%, #11191c 48%, #05090b 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -28px 54px rgba(0, 0, 0, 0.62),
+    0 30px 70px rgba(2, 6, 23, 0.34);
+}
+
+.pump-hmi-controller::before {
+  content: "SITEWORKS";
+  position: absolute;
+  top: clamp(16px, 1.1vw, 34px);
+  left: clamp(28px, 2vw, 72px);
+  color: #dffdf8;
+  font-size: clamp(12px, 0.68vw, 24px);
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 12px rgba(45, 212, 191, 0.32);
+}
+
+.pump-hmi-controller::after {
+  content: "SCADA PUMP CONTROL";
+  position: absolute;
+  right: clamp(30px, 10vw, 390px);
+  bottom: clamp(16px, 1vw, 28px);
+  color: rgba(226, 232, 240, 0.62);
+  font-size: clamp(10px, 0.5vw, 16px);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.pump-hmi-controller.is-alarm {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -28px 54px rgba(0, 0, 0, 0.62),
+    0 0 0 1px rgba(248, 113, 113, 0.42),
+    0 30px 70px rgba(2, 6, 23, 0.34);
+}
+
+.pump-hmi-nameplate {
+  top: clamp(14px, 1vw, 30px);
+  min-width: clamp(260px, 19vw, 560px);
+  padding: clamp(10px, 0.7vw, 20px) clamp(22px, 1.8vw, 52px);
+  border-radius: clamp(7px, 0.45vw, 14px);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98)),
+    #020617;
+}
+
+.pump-hmi-nameplate strong {
+  font-size: clamp(16px, 1vw, 34px);
+}
+
+.pump-hmi-display {
+  grid-template-columns: clamp(132px, 7vw, 250px) minmax(0, 1fr);
+  border-width: clamp(8px, 0.6vw, 18px);
+  border-radius: clamp(14px, 0.9vw, 30px);
+  background:
+    radial-gradient(circle at 12% 4%, rgba(14, 165, 233, 0.14), transparent 32%),
+    radial-gradient(circle at 78% 0%, rgba(20, 184, 166, 0.12), transparent 34%),
+    #020c0f;
+}
+
+.pump-hmi-screen {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: auto auto auto minmax(260px, 0.72fr) minmax(300px, 1.2fr) auto;
+  gap: clamp(10px, 0.7vw, 22px);
+  padding: clamp(18px, 1.35vw, 44px);
+  background:
+    linear-gradient(rgba(45, 212, 191, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 212, 191, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 15% 0%, rgba(14, 165, 233, 0.18), transparent 34%),
+    radial-gradient(circle at 78% 28%, rgba(20, 184, 166, 0.13), transparent 30%),
+    #031112;
+  background-size: 34px 34px, 34px 34px, auto, auto, auto;
+}
+
+.pump-hmi-header {
+  grid-column: 1 / -1;
+}
+
+.pump-hmi-header strong {
+  font-size: clamp(24px, 1.5vw, 52px);
+}
+
+.pump-hmi-status-pill {
+  min-width: clamp(124px, 8vw, 260px);
+  font-size: clamp(20px, 1.35vw, 42px);
+}
+
+.pump-hmi-metrics {
+  grid-column: 1 / 10;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pump-hmi-control-strip {
+  grid-column: 1 / 10;
+}
+
+.pump-hmi-state-key {
+  grid-column: 10 / -1;
+  grid-row: 2 / 4;
+  align-content: start;
+}
+
+.pump-hmi-alarms {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  order: -1;
+  border-color: rgba(248, 113, 113, 0.72);
+  background:
+    linear-gradient(90deg, rgba(127, 29, 29, 0.74), rgba(67, 20, 7, 0.34)),
+    rgba(15, 23, 42, 0.78);
+}
+
+.pump-hmi-alarms header span {
+  color: #fb7185;
+}
+
+.pump-hmi-leadlag {
+  grid-column: 1 / 10;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.pump-hmi-mimic {
+  grid-column: 1 / 9;
+  grid-row: span 2;
+  min-height: clamp(390px, 25vw, 860px);
+  padding: clamp(18px, 1.2vw, 38px);
+  border-color: rgba(56, 189, 248, 0.18);
+  border-radius: clamp(12px, 0.7vw, 24px);
+  background:
+    radial-gradient(circle at 50% 55%, rgba(56, 189, 248, 0.15), transparent 38%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(2, 6, 23, 0.74)),
+    #061316;
+}
+
+.pump-hmi-mimic::before {
+  content: "SUMP PIT OVERVIEW";
+  position: absolute;
+  top: clamp(12px, 0.85vw, 28px);
+  left: clamp(16px, 1vw, 34px);
+  z-index: 3;
+  color: #dffdf8;
+  font-size: clamp(12px, 0.66vw, 22px);
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.pump-hmi-mimic::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 10%;
+  height: 46%;
+  border: 4px solid rgba(203, 213, 225, 0.5);
+  border-top: 0;
+  border-radius: 0 0 42px 42px;
+  background:
+    linear-gradient(180deg, rgba(56, 189, 248, 0.18), rgba(14, 116, 144, 0.34)),
+    repeating-linear-gradient(90deg, transparent 0 68px, rgba(255, 255, 255, 0.04) 68px 70px);
+  box-shadow: inset 0 18px 34px rgba(56, 189, 248, 0.12), 0 18px 38px rgba(0, 0, 0, 0.22);
+}
+
+.pump-pipe {
+  position: relative;
+  z-index: 1;
+  height: clamp(16px, 0.9vw, 32px);
+}
+
+.pump-tank,
+.pump-gauge {
+  position: relative;
+  z-index: 4;
+  min-height: clamp(96px, 5.8vw, 190px);
+}
+
+.pump-hmi-ddc-layer {
+  inset: clamp(58px, 4vw, 135px) clamp(20px, 1.4vw, 44px) clamp(28px, 1.8vw, 60px);
+  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  grid-template-rows: repeat(3, minmax(58px, auto));
+  z-index: 5;
+}
+
+.pump-hmi-pump-workspace {
+  grid-column: 9 / -1;
+  grid-row: 4 / 6;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-color: rgba(94, 234, 212, 0.42) rgba(2, 6, 23, 0.5);
+}
+
+.pump-hmi-pumps {
+  grid-template-columns: 1fr;
+}
+
+.pump-hmi-pump {
+  position: relative;
+  min-height: clamp(240px, 13.8vw, 470px);
+  padding-top: clamp(96px, 5.4vw, 190px);
+  border-color: rgba(56, 189, 248, 0.2);
+  background:
+    radial-gradient(circle at 50% 29%, rgba(34, 197, 94, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.86));
+}
+
+.pump-hmi-pump::before {
+  content: "";
+  position: absolute;
+  top: clamp(20px, 1.5vw, 54px);
+  left: 50%;
+  width: clamp(112px, 7.5vw, 290px);
+  height: clamp(58px, 3.8vw, 148px);
+  transform: translateX(-50%);
+  background:
+    radial-gradient(circle at 20% 62%, #14532d 0 19%, transparent 20%),
+    radial-gradient(circle at 66% 60%, #14532d 0 18%, transparent 19%),
+    linear-gradient(90deg, transparent 0 12%, #166534 12% 36%, transparent 36% 46%, #166534 46% 86%, transparent 86%),
+    linear-gradient(180deg, #4ade80, #14532d);
+  border-radius: 18px;
+  filter: drop-shadow(0 16px 18px rgba(0, 0, 0, 0.35));
+  opacity: 0.88;
+}
+
+.pump-hmi-pump.is-off::before,
+.pump-hmi-pump.is-listed::before {
+  filter: grayscale(0.9) drop-shadow(0 16px 18px rgba(0, 0, 0, 0.35));
+  opacity: 0.48;
+}
+
+.pump-hmi-pump.is-alarm::before,
+.pump-hmi-pump.is-warning::before {
+  background:
+    radial-gradient(circle at 20% 62%, #7f1d1d 0 19%, transparent 20%),
+    radial-gradient(circle at 66% 60%, #7f1d1d 0 18%, transparent 19%),
+    linear-gradient(90deg, transparent 0 12%, #b91c1c 12% 36%, transparent 36% 46%, #b91c1c 46% 86%, transparent 86%),
+    linear-gradient(180deg, #fb7185, #7f1d1d);
+}
+
+.pump-hmi-pump strong {
+  font-size: clamp(16px, 0.9vw, 30px);
+}
+
+.pump-hmi-points,
+.pump-controller-setup,
+.pump-hmi-ddc-setup {
+  grid-column: 1 / -1;
+}
+
+.pump-hmi-side {
+  padding: clamp(18px, 1vw, 34px) clamp(14px, 0.8vw, 28px);
+  border-radius: clamp(12px, 0.7vw, 22px);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04), transparent),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, #26323a, #111820 58%, #090d10);
+}
+
+.pump-hmi-led {
+  min-height: clamp(46px, 2.6vw, 92px);
+  padding: clamp(10px, 0.7vw, 20px);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.pump-hmi-led i {
+  width: clamp(18px, 1.15vw, 38px);
+  height: clamp(18px, 1.15vw, 38px);
+}
+
+.pump-hmi-switch {
+  min-height: clamp(86px, 5vw, 170px);
+}
+
+.pump-hmi-warning {
+  min-height: clamp(110px, 7vw, 240px);
+  align-content: start;
+  font-size: clamp(13px, 0.8vw, 24px);
+}
+
+@media (min-width: 2200px) {
+  .pump-hmi-controller {
+    min-height: 1960px;
+  }
+
+  .pump-hmi-screen {
+    gap: 28px;
+  }
+}
+
+@media (max-width: 1280px) {
+  .pump-hmi-screen {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+
+  .pump-hmi-header,
+  .pump-hmi-metrics,
+  .pump-hmi-control-strip,
+  .pump-hmi-state-key,
+  .pump-hmi-alarms,
+  .pump-hmi-leadlag,
+  .pump-hmi-mimic,
+  .pump-hmi-pump-workspace,
+  .pump-hmi-points,
+  .pump-controller-setup,
+  .pump-hmi-ddc-setup {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .pump-hmi-metrics,
+  .pump-hmi-control-strip,
+  .pump-hmi-leadlag {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .pump-controller-setup {
   display: grid;
   gap: 10px;
