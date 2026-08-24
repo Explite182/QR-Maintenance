@@ -5315,7 +5315,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260824-lighting-key-copy-01";
+const SITEWORKS_APP_VERSION = "20260824-lighting-edit-refresh-02";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -5331,6 +5331,7 @@ let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
 let editingLightingControllerId = "";
+let lightingLiveRefreshActive = false;
 let pendingLightingApiKey = null;
 const openLightingControllerDiagnostics = new Set();
 let lightingZonesCache = [];
@@ -10776,22 +10777,31 @@ function startLightingScheduleClock() {
   renderLightingScheduleClock();
 }
 
+function shouldPreserveLightingForm(container, selector) {
+  return Boolean(lightingLiveRefreshActive && container?.querySelector(selector));
+}
+
 async function refreshLightingLiveStatus() {
   const { canUseLocation } = getLightingScopeDetails();
   if (!canUseLocation) return;
-  await Promise.all([
-    loadLightingZonesForCurrentScope({ force: true }),
-    loadLightingControllersForCurrentScope({ force: true }),
-    loadLightingCommandsForCurrentScope({ force: true }),
-    loadLightingInputsForCurrentScope({ force: true }),
-    loadLightingFirmwareForCurrentScope({ force: true })
-  ]);
-  renderLightingNetworkSummary();
-  renderLightingHome();
-  renderLightingZones();
-  renderLightingInputs();
-  renderLightingFirmware();
-  renderLightingHistory();
+  lightingLiveRefreshActive = true;
+  try {
+    await Promise.all([
+      loadLightingZonesForCurrentScope({ force: true }),
+      loadLightingControllersForCurrentScope({ force: true }),
+      loadLightingCommandsForCurrentScope({ force: true }),
+      loadLightingInputsForCurrentScope({ force: true }),
+      loadLightingFirmwareForCurrentScope({ force: true })
+    ]);
+    renderLightingNetworkSummary();
+    renderLightingHome();
+    renderLightingZones();
+    renderLightingInputs();
+    renderLightingFirmware();
+    renderLightingHistory();
+  } finally {
+    lightingLiveRefreshActive = false;
+  }
 }
 
 function getLightingControllers() {
@@ -11771,10 +11781,6 @@ function renderLightingZones() {
   const zones = lightingZonesLoadedScope === scopeKey
     ? lightingZonesCache
     : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
-  if (lightingZonesLoading && lightingZonesLoadedScope !== scopeKey) {
-    list.innerHTML = `<div class="lighting-list-row"><strong>Loading zones</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
-    return;
-  }
   const zonesOn = zones.filter((zone) => {
     const priorityDecision = getLightingZonePriorityDecision(zone);
     const effectiveState = priorityDecision.state || zone.desiredState || "";
@@ -11784,6 +11790,11 @@ function renderLightingZones() {
   if (zonesOnValue) zonesOnValue.textContent = String(zonesOn);
   const lightingCount = document.querySelector("[data-lighting-count]");
   if (lightingCount) lightingCount.textContent = String(zones.length);
+  if (shouldPreserveLightingForm(list, "[data-lighting-zone-edit-form]")) return;
+  if (lightingZonesLoading && lightingZonesLoadedScope !== scopeKey) {
+    list.innerHTML = `<div class="lighting-list-row"><strong>Loading zones</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
+    return;
+  }
   if (!zones.length) {
     list.innerHTML = `<div class="lighting-list-row"><strong>No lighting zones for this location</strong><span>Add zones like Sales Floor, Exterior Signs, Parking Lot, or Mechanical Room.</span></div>`;
     return;
@@ -12026,6 +12037,10 @@ function renderLightingControllers() {
   const controllers = lightingControllersLoadedScope === scopeKey
     ? lightingControllersCache
     : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId);
+  if (shouldPreserveLightingForm(list, "[data-lighting-controller-edit-form]")) {
+    restorePendingLightingApiKeyForms();
+    return;
+  }
   if (lightingControllersLoading && lightingControllersLoadedScope !== scopeKey) {
     list.innerHTML = `<div class="lighting-list-row"><strong>Loading controllers</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
     restorePendingLightingApiKeyForms();
@@ -12181,6 +12196,7 @@ function renderLightingSchedules() {
   const activeCount = schedules.filter((schedule) => schedule.enabled !== false).length;
   const schedulesActive = document.querySelector("[data-lighting-schedules-active]");
   if (schedulesActive) schedulesActive.textContent = activeCount ? String(activeCount) : "Not active";
+  if (shouldPreserveLightingForm(list, "[data-lighting-schedule-edit-form]")) return;
   if (!schedules.length) {
     list.innerHTML = `<div class="lighting-list-row"><strong>No lighting schedules for this location</strong><span>Add a setup schedule like weekday interior, exterior dusk, or after-hours cleaning.</span></div>`;
     return;
@@ -12292,6 +12308,7 @@ function renderLightingOverrides() {
   const historyOverrides = visibleOverrides.filter((override) => !getLightingOverrideIsActive(override));
   const overrideCount = document.querySelector("[data-lighting-overrides-active]");
   if (overrideCount) overrideCount.textContent = activeOverrides.length ? String(activeOverrides.length) : "None";
+  if (shouldPreserveLightingForm(list, "[data-lighting-override-edit-form]")) return;
   if (!visibleOverrides.length) {
     list.innerHTML = `<div class="lighting-list-row"><strong>No lighting overrides for this location</strong><span>Add a setup override like exterior signs on, cleaning lights on, or parking lot off.</span></div>`;
     return;
@@ -12693,8 +12710,6 @@ function renderLightingInputs() {
     if (list) list.innerHTML = `<div class="lighting-list-row"><strong>Select a location</strong><span>Lighting inputs are saved per location, not globally.</span></div>`;
     return;
   }
-  const activeInputEditForm = list?.querySelector("[data-lighting-input-edit-form]");
-  if (editingLightingInputId && activeInputEditForm) return;
   if (lightingInputsLoadedScope !== scopeKey && !lightingInputsLoading) {
     loadLightingInputsForCurrentScope();
   }
@@ -12703,6 +12718,7 @@ function renderLightingInputs() {
     : getLightingInputs().filter((input) => input.customerId === selectedCustomerId && input.locationId === selectedLocationId);
   if (count) count.textContent = String(inputs.length || 0);
   if (!list) return;
+  if (shouldPreserveLightingForm(list, "[data-lighting-input-edit-form]")) return;
   if (lightingInputsLoading && lightingInputsLoadedScope !== scopeKey) {
     list.innerHTML = `<div class="lighting-list-row"><strong>Loading inputs</strong><span>Checking SiteWorks server for ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
     return;
