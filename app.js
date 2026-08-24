@@ -16891,6 +16891,67 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const diagramDeviceDrawer = selectedDiagramDevice ? renderPumpDiagramDeviceDetail(selectedDiagramDevice) : "";
   const selectedPumpMeaning = selectedPumpStatus ? pumpStatusMeaning(selectedPumpStatus) : "";
   const selectedPumpAction = selectedPumpStatus ? pumpStatusActionText(selectedPumpStatus) : "";
+  const findDiagramPoint = (patterns = []) => {
+    return diagramDevices.find((device) => {
+      const haystack = `${device.label || ""} ${device.type || ""} ${device.channel || ""}`.toLowerCase();
+      return patterns.some((pattern) => haystack.includes(pattern));
+    }) || null;
+  };
+  const lowFloat = findDiagramPoint(["low float", "low level", "di-ll"]);
+  const midFloat = findDiagramPoint(["mid float", "middle float", "mid level"]);
+  const highFloat = findDiagramPoint(["high float", "high level", "di-hl"]);
+  const pressurePoint = findDiagramPoint(["pressure", "proof"]);
+  const floatRows = [
+    ["Low Float", lowFloat, "is-low"],
+    ["Mid Float", midFloat, "is-mid"],
+    ["High Float", highFloat, "is-high"]
+  ].map(([label, device, className]) => {
+    const status = device ? pumpDiagramDeviceStatus(device) : { label: "Not wired", className: "is-idle" };
+    const activeClass = status.className === "is-active" || status.className === "is-alarm" ? "is-active" : "";
+    const alarmClass = status.className === "is-alarm" || (className === "is-high" && activeClass) ? "is-alarm" : "";
+    return `
+      <button
+        type="button"
+        class="pump-station-float ${className} ${activeClass} ${alarmClass}"
+        ${device ? `data-pump-diagram-device-select="${escapeAttribute(device.id)}"` : ""}
+      >
+        <i aria-hidden="true"></i>
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(status.label)}</strong>
+      </button>
+    `;
+  }).join("");
+  const pumpStationCards = Array.from({ length: Math.max(3, Math.min(3, pumps.length || 3)) }, (_, index) => {
+    const asset = pumps[index] || null;
+    const status = asset ? pumpAssetStatus(asset) : { label: "Off", className: "is-off" };
+    const assignedController = asset ? pumpControllerForPump(controllers, asset) : null;
+    const assignedPumpIndex = assignedController && asset ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
+    const pumpRole = asset ? normalizePumpRole(asset.pumpRole || asset.role) : index === 0 ? "Lead" : "Lag";
+    const isSelected = asset && selectedPumpHmiAssetId === asset.id;
+    const openIssueCount = asset ? openWorkOrdersForAsset(asset.id).length : 0;
+    const commandLabel = asset?.pumpCommand || "None";
+    const label = asset?.name || `Pump ${index + 1}`;
+    return `
+      <button
+        type="button"
+        class="pump-station-card ${status.className} ${isSelected ? "is-selected" : ""}"
+        ${asset ? `data-select-pump-asset="${escapeAttribute(asset.id)}"` : ""}
+      >
+        <span class="pump-station-card-top">
+          <strong>${escapeHtml(label)}</strong>
+          <em>${escapeHtml(pumpRole)}</em>
+        </span>
+        <span class="pump-station-art" aria-hidden="true"></span>
+        <span class="pump-station-readouts">
+          <span><b>Status</b><i>${escapeHtml(status.label)}</i></span>
+          <span><b>HOA</b><i>${escapeHtml(asset?.pumpControlMode || "Auto")}</i></span>
+          <span><b>Command</b><i>${escapeHtml(commandLabel)}</i></span>
+          <span><b>Proof</b><i>${assignedController ? `DI${assignedPumpIndex + 1}` : "Not wired"}</i></span>
+          <span><b>Tickets</b><i>${openIssueCount}</i></span>
+        </span>
+      </button>
+    `;
+  }).join("");
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
       <header>
@@ -17025,6 +17086,59 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               ${alarmOn ? "Attention" : "Normal"}
             </div>
           </header>
+          <section class="pump-station-topbar ${alarmOn ? "is-alarm" : ""}" aria-label="Pump station operating status">
+            <div>
+              <span>Location</span>
+              <strong>${escapeHtml(customerName)} - ${escapeHtml(locationName)}</strong>
+            </div>
+            <div>
+              <span>System mode</span>
+              <strong>${escapeHtml(primaryController?.mode || "Setup")}</strong>
+            </div>
+            <div>
+              <span>Controller</span>
+              <strong>${escapeHtml(primaryControllerStatus.label)}</strong>
+            </div>
+            <div>
+              <span>High level</span>
+              <strong>${escapeHtml(highFloat ? pumpDiagramDeviceStatus(highFloat).label : "Not wired")}</strong>
+            </div>
+            <div>
+              <span>Pressure</span>
+              <strong>${escapeHtml(pressurePoint ? pumpDiagramDeviceStatus(pressurePoint).label : "Not wired")}</strong>
+            </div>
+          </section>
+          ${alarmOn ? `
+            <section class="pump-station-alarm-banner" aria-label="Active pump alarm">
+              <strong>Alarm active</strong>
+              <span>${totalWarningCount} pump or DDC item${totalWarningCount === 1 ? "" : "s"} need attention.</span>
+            </section>
+          ` : ""}
+          <section class="pump-station-live-grid" aria-label="Live pump station overview">
+            <aside class="pump-station-floats" aria-label="Float status">
+              <header>
+                <span>Floats</span>
+                <strong>Level Inputs</strong>
+              </header>
+              <div class="pump-station-float-stack">
+                ${floatRows}
+              </div>
+            </aside>
+            <section class="pump-station-pump-cards" aria-label="Pump status">
+              ${pumpStationCards}
+            </section>
+            <aside class="pump-station-summary" aria-label="System summary">
+              <header>
+                <span>System Summary</span>
+                <strong>${alarmOn ? "Alarm" : "Normal"}</strong>
+              </header>
+              <div><span>Total pumps</span><b>${pumps.length}</b></div>
+              <div><span>Running</span><b>${runningCount}</b></div>
+              <div><span>Controllers online</span><b>${controllerOnlineCount}/${controllers.length || 0}</b></div>
+              <div><span>Lead pump</span><b>${escapeHtml(leadPump?.name || "Not assigned")}</b></div>
+              <div><span>Pressure</span><b>${escapeHtml(pressurePoint ? pumpDiagramDeviceStatus(pressurePoint).label : "Not wired")}</b></div>
+            </aside>
+          </section>
           <section class="pump-hmi-metrics" aria-label="Pump station status">
             <div>
               <span>Total pumps</span>
