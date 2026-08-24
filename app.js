@@ -9769,6 +9769,11 @@ document.addEventListener("submit", async (event) => {
     await savePumpControllerFromForm(form);
     return;
   }
+  if (form.matches("[data-pump-io-mapping-form]")) {
+    event.preventDefault();
+    savePumpIoMappingFromForm(form);
+    return;
+  }
   if (form.matches("[data-lighting-controller-form]")) {
     event.preventDefault();
     await saveLightingControllerFromForm(form);
@@ -16247,6 +16252,43 @@ function setPumpSimulationScenario(assetId = "", scenario = "") {
   }
 }
 
+function savePumpIoMappingFromForm(form) {
+  const asset = getAsset(form.dataset.pumpIoMappingForm || "");
+  if (!asset) return;
+  const formData = new FormData(form);
+  const mapping = {
+    command: String(formData.get("command") || "").trim(),
+    runStatus: String(formData.get("runStatus") || "").trim(),
+    fault: String(formData.get("fault") || "").trim(),
+    highLevel: String(formData.get("highLevel") || "").trim(),
+    hoa: String(formData.get("hoa") || "").trim()
+  };
+  asset.pumpIoMapping = mapping;
+  asset.pumpCommandOutput = mapping.command;
+  asset.pumpRunInput = mapping.runStatus;
+  asset.pumpFaultInput = mapping.fault;
+  asset.pumpHighLevelInput = mapping.highLevel;
+  asset.pumpHoaInput = mapping.hoa;
+  asset.updatedAt = new Date().toISOString();
+  if (!Array.isArray(asset.history)) asset.history = [];
+  asset.history.unshift({
+    date: asset.updatedAt,
+    type: "Pump I/O mapping",
+    result: "Saved",
+    notes: [
+      mapping.command ? `Run command ${mapping.command}` : "",
+      mapping.runStatus ? `run proof ${mapping.runStatus}` : "",
+      mapping.fault ? `fault ${mapping.fault}` : "",
+      mapping.highLevel ? `high level ${mapping.highLevel}` : "",
+      mapping.hoa ? `HOA ${mapping.hoa}` : ""
+    ].filter(Boolean).join(", ") || "No channels mapped.",
+    user: currentUser?.name || currentUser?.email || "SiteWorks"
+  });
+  addActivity("Pump I/O mapping saved", `${asset.name || "Pump"} channel mapping updated.`);
+  saveState();
+  renderAutomationPumps();
+}
+
 async function deletePumpController(controllerId = "") {
   if (!controllerId) return;
   const controller = getPumpControllers().find((item) => item.id === controllerId);
@@ -16315,18 +16357,91 @@ function pumpHmiPumpIoAssignment(index = 0) {
     command: `DO${pumpNumber}`,
     runStatus: `DI${inputBase}`,
     fault: `DI${inputBase + 1}`,
+    highLevel: "System HL",
     hoa: `DI${inputBase + 2}`
   };
 }
 
+function normalizePumpIoMapping(asset = {}, index = 0) {
+  const defaults = pumpHmiPumpIoAssignment(index);
+  const saved = asset.pumpIoMapping && typeof asset.pumpIoMapping === "object" ? asset.pumpIoMapping : {};
+  return {
+    command: String(saved.command || asset.pumpCommandOutput || defaults.command || "").trim(),
+    runStatus: String(saved.runStatus || asset.pumpRunInput || defaults.runStatus || "").trim(),
+    fault: String(saved.fault || asset.pumpFaultInput || defaults.fault || "").trim(),
+    highLevel: String(saved.highLevel || asset.pumpHighLevelInput || defaults.highLevel || "").trim(),
+    hoa: String(saved.hoa || asset.pumpHoaInput || defaults.hoa || "").trim()
+  };
+}
+
+function renderPumpIoChannelOptions(selected = "", prefix = "DI", count = 8, blankLabel = "Not mapped", extras = []) {
+  const selectedValue = String(selected || "");
+  const options = [`<option value="">${escapeHtml(blankLabel)}</option>`];
+  for (let index = 1; index <= count; index += 1) {
+    const value = `${prefix}${index}`;
+    options.push(`<option value="${escapeAttribute(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(value)}</option>`);
+  }
+  for (const extra of extras) {
+    const value = String(extra || "");
+    options.push(`<option value="${escapeAttribute(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(value)}</option>`);
+  }
+  return options.join("");
+}
+
+function renderPumpIoMappingForm(asset = {}, index = 0) {
+  const mapping = normalizePumpIoMapping(asset, index);
+  return `
+    <form class="pump-hmi-io-form" data-pump-io-mapping-form="${escapeAttribute(asset.id || "")}">
+      <header>
+        <span>Pump I/O Mapping</span>
+        <strong>Setup channels before wiring the controller</strong>
+      </header>
+      <div class="pump-hmi-io-grid">
+        <label>
+          <span>Run command</span>
+          <select name="command">
+            ${renderPumpIoChannelOptions(mapping.command, "DO", 8, "No output")}
+          </select>
+        </label>
+        <label>
+          <span>Run proof</span>
+          <select name="runStatus">
+            ${renderPumpIoChannelOptions(mapping.runStatus, "DI", 8, "No input")}
+          </select>
+        </label>
+        <label>
+          <span>Fault</span>
+          <select name="fault">
+            ${renderPumpIoChannelOptions(mapping.fault, "DI", 8, "No input")}
+          </select>
+        </label>
+        <label>
+          <span>High level</span>
+          <select name="highLevel">
+            ${renderPumpIoChannelOptions(mapping.highLevel, "DI", 8, "No input", ["System HL"])}
+          </select>
+        </label>
+        <label>
+          <span>HOA / Auto</span>
+          <select name="hoa">
+            ${renderPumpIoChannelOptions(mapping.hoa, "DI", 8, "No input")}
+          </select>
+        </label>
+      </div>
+      <button type="submit">Save I/O Mapping</button>
+    </form>
+  `;
+}
+
 function renderPumpHmiPumpIo(asset = {}, index = 0) {
-  const assignment = pumpHmiPumpIoAssignment(index);
+  const assignment = normalizePumpIoMapping(asset, index);
   const label = asset.name || `Pump ${index + 1}`;
   return `
     <div class="pump-hmi-pump-io" aria-label="${escapeAttribute(label)} planned I/O">
       <span><b>Run cmd</b>${escapeHtml(assignment.command)}</span>
       <span><b>Run status</b>${escapeHtml(assignment.runStatus)}</span>
       <span><b>Fault</b>${escapeHtml(assignment.fault)}</span>
+      <span><b>High level</b>${escapeHtml(assignment.highLevel)}</span>
       <span><b>HOA</b>${escapeHtml(assignment.hoa)}</span>
     </div>
   `;
@@ -16488,7 +16603,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const selectedPumpIndex = selectedPump ? pumps.findIndex((asset) => asset.id === selectedPump.id) : -1;
   const selectedPumpController = selectedPump ? pumpControllerForPump(controllers, selectedPump) : null;
   const selectedPumpAssignedIndex = selectedPumpController ? pumpControllerPumpIndex(selectedPumpController, selectedPump, pumps) : selectedPumpIndex;
-  const selectedPumpIo = selectedPump && selectedPumpController ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : "";
+  const selectedPumpIo = selectedPump ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : "";
   const selectedPumpMeaning = selectedPumpStatus ? pumpStatusMeaning(selectedPumpStatus) : "";
   const selectedPumpAction = selectedPumpStatus ? pumpStatusActionText(selectedPumpStatus) : "";
   const pumpDrawer = selectedPump ? `
@@ -16522,6 +16637,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           ${selectedPumpIo}
         </div>
       ` : ""}
+      ${selectedPump ? renderPumpIoMappingForm(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : ""}
       <div class="pump-hmi-action-block">
         <span>Command</span>
         <div class="pump-hmi-status-actions" aria-label="Pump setup-only command controls">
@@ -16548,26 +16664,24 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           `).join("")}
         </div>
       </div>
-      ${simulationEnabled ? `
-        <div class="pump-hmi-action-block pump-hmi-sim-actions">
-          <span>Simulation</span>
-          <div class="pump-hmi-status-actions" aria-label="Pump simulation controls">
-            ${[
-              ["run", "Demo Run"],
-              ["off", "Demo Off"],
-              ["fault", "Demo Fault"],
-              ["high-level", "Demo High Level"],
-              ["maintenance", "Demo Maintenance"]
-            ].map(([action, label]) => `
-              <button
-                type="button"
-                data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
-                data-pump-simulate-action="${escapeAttribute(action)}"
-              >${escapeHtml(label)}</button>
-            `).join("")}
-          </div>
+      <div class="pump-hmi-action-block pump-hmi-sim-actions">
+        <span>Setup simulator</span>
+        <div class="pump-hmi-status-actions" aria-label="Pump simulation controls">
+          ${[
+            ["run", "Demo Run"],
+            ["off", "Demo Off"],
+            ["fault", "Demo Fault"],
+            ["high-level", "Demo High Level"],
+            ["maintenance", "Demo Maintenance"]
+          ].map(([action, label]) => `
+            <button
+              type="button"
+              data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
+              data-pump-simulate-action="${escapeAttribute(action)}"
+            >${escapeHtml(label)}</button>
+          `).join("")}
         </div>
-      ` : ""}
+      </div>
       <div class="pump-hmi-action-block">
         <span>Lead / lag role</span>
         <div class="pump-hmi-status-actions" aria-label="Pump lead lag role controls">

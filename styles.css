@@ -2067,7 +2067,7 @@ textarea:disabled {
 .pump-hmi-pump-io {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   padding-top: 8px;
   border-top: 1px solid rgba(148, 163, 184, 0.16);
@@ -2094,6 +2094,80 @@ textarea:disabled {
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.pump-hmi-io-form {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(94, 234, 212, 0.24);
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.64), rgba(2, 6, 23, 0.54)),
+    #071615;
+}
+
+.pump-hmi-io-form header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.pump-hmi-io-form header span,
+.pump-hmi-io-form label span {
+  color: #9fb5b4;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pump-hmi-io-form header strong {
+  color: #e0fffa;
+  font-size: 12px;
+}
+
+.pump-hmi-io-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+  gap: 8px;
+}
+
+.pump-hmi-io-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pump-hmi-io-form select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #f8fafc;
+  font-weight: 900;
+}
+
+.pump-hmi-io-form button {
+  justify-self: start;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgba(94, 234, 212, 0.45);
+  border-radius: 8px;
+  background: rgba(13, 148, 136, 0.28);
+  color: #e0fffa;
+  font-weight: 900;
+}
+
+.pump-hmi-io-form button:hover {
+  border-color: rgba(94, 234, 212, 0.78);
+  background: rgba(13, 148, 136, 0.44);
+  color: #ffffff;
 }
 
 .pump-hmi-simulation-panel {
