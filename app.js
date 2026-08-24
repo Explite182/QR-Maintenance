@@ -9048,6 +9048,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const pumpSimulateButton = event.target.closest("[data-pump-simulate-action]");
+  if (pumpSimulateButton) {
+    event.preventDefault();
+    setPumpSimulationScenario(
+      pumpSimulateButton.dataset.pumpAssetId || selectedPumpHmiAssetId || "",
+      pumpSimulateButton.dataset.pumpSimulateAction || ""
+    );
+    return;
+  }
+
   const openPumpAssetButton = event.target.closest("[data-open-pump-asset]");
   if (openPumpAssetButton) {
     event.preventDefault();
@@ -9063,6 +9073,13 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     editingPumpControllerId = "__new__";
     renderAutomationPumps();
+    return;
+  }
+
+  const addPumpDemoControllerButton = event.target.closest("[data-add-pump-demo-controller]");
+  if (addPumpDemoControllerButton) {
+    event.preventDefault();
+    addPumpSimulationController();
     return;
   }
 
@@ -15865,9 +15882,19 @@ function pumpControllersForCurrentView() {
 
 function pumpControllerStatus(controller = {}) {
   const status = String(controller.status || controller.mode || "Setup only").toLowerCase();
+  if (status.includes("simulation") || String(controller.type || "").toLowerCase().includes("simulation")) return { label: "Simulation", className: "is-simulation" };
   if (status.includes("online") || status.includes("run")) return { label: "Online", className: "is-running" };
   if (status.includes("alarm") || status.includes("fault") || status.includes("offline")) return { label: "Needs attention", className: "is-warning" };
   return { label: "Setup only", className: "is-listed" };
+}
+
+function isPumpSimulationController(controller = {}) {
+  const text = `${controller.type || ""} ${controller.mode || ""} ${controller.status || ""}`.toLowerCase();
+  return text.includes("simulation");
+}
+
+function hasPumpSimulationController(controllers = []) {
+  return controllers.some(isPumpSimulationController);
 }
 
 function renderPumpControllerForm(controller = null) {
@@ -15883,7 +15910,7 @@ function renderPumpControllerForm(controller = null) {
       </label>
       <label>Controller type
         <select name="type">
-          ${["Pump controller", "Duplex pump controller", "Booster pump panel", "Lift station controller"].map((type) =>
+          ${["Pump controller", "Simulation pump controller", "Duplex pump controller", "Booster pump panel", "Lift station controller"].map((type) =>
             `<option value="${escapeAttribute(type)}" ${type === (controller?.type || "Pump controller") ? "selected" : ""}>${escapeHtml(type)}</option>`
           ).join("")}
         </select>
@@ -15900,7 +15927,7 @@ function renderPumpControllerForm(controller = null) {
       </label>
       <label>Mode
         <select name="mode">
-          ${["Setup only", "Monitoring ready", "Control ready"].map((mode) =>
+          ${["Setup only", "Simulation", "Monitoring ready", "Control ready"].map((mode) =>
             `<option value="${escapeAttribute(mode)}" ${mode === (controller?.mode || "Setup only") ? "selected" : ""}>${escapeHtml(mode)}</option>`
           ).join("")}
         </select>
@@ -15930,7 +15957,12 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
     : null;
   const formHtml = editingPumpControllerId
     ? renderPumpControllerForm(editingController)
-    : `<button type="button" class="pump-controller-add" data-add-pump-controller>+ Add Pump Controller</button>`;
+    : `
+      <div class="pump-controller-add-row">
+        <button type="button" class="pump-controller-add" data-add-pump-controller>+ Add Pump Controller</button>
+        <button type="button" class="pump-controller-add is-demo" data-add-pump-demo-controller>+ Add Simulation Controller</button>
+      </div>
+    `;
   const controllerRows = controllers.length ? controllers.map((controller) => {
     const status = pumpControllerStatus(controller);
     return `
@@ -15982,7 +16014,8 @@ async function savePumpControllerFromForm(form) {
     pumpCount: String(formData.get("pumpCount") || "1").trim(),
     mode: String(formData.get("mode") || "Setup only").trim(),
     notes: String(formData.get("notes") || "").trim(),
-    status: String(formData.get("mode") || "Setup only").trim(),
+    status: String(formData.get("mode") || "Setup only").trim() === "Simulation" ? "Simulation online" : String(formData.get("mode") || "Setup only").trim(),
+    onlineStatus: String(formData.get("mode") || "Setup only").trim() === "Simulation" ? "online" : existing?.onlineStatus,
     updatedAt: new Date().toISOString()
   });
   const saveLocalPumpController = (savedController) => {
@@ -16011,6 +16044,78 @@ async function savePumpControllerFromForm(form) {
   }
   editingPumpControllerId = "";
   renderAutomationPumps();
+}
+
+async function addPumpSimulationController() {
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
+    renderAutomationPumps();
+    return;
+  }
+  const currentLocation = getLocation(selectedLocationId);
+  const pumpCount = Math.max(1, Math.min(6, pumpAssetsForCurrentView().length || 2));
+  const controller = normalizePumpController({
+    customerId: selectedCustomerId,
+    locationId: selectedLocationId,
+    name: "Pump Simulation Controller",
+    uid: `SIM-PUMP-${String(Date.now()).slice(-5)}`,
+    type: "Simulation pump controller",
+    area: currentLocation?.name || "Demo pump room",
+    pumpCount: String(pumpCount),
+    mode: "Simulation",
+    status: "Simulation online",
+    onlineStatus: "online",
+    notes: "Local demo controller for testing pump status, alarms, and HMI workflow without live pump hardware."
+  });
+  const saveLocalPumpController = (savedController) => {
+    const normalizedController = normalizePumpController(savedController);
+    const controllers = getPumpControllers().filter((item) => item.id !== normalizedController.id);
+    controllers.unshift(normalizedController);
+    savePumpControllers(controllers);
+    pumpControllersCache = [normalizedController, ...pumpControllersCache.filter((item) => item.id !== normalizedController.id)];
+    pumpControllersLoadedScope = getPumpControllerScopeKey();
+  };
+  try {
+    const response = await siteworksApi.savePumpController({
+      ...controller,
+      customer_id: controller.customerId,
+      location_id: controller.locationId,
+      device_uid: controller.uid,
+      controller_type: controller.type,
+      pump_count: controller.pumpCount
+    });
+    if (!response.ok) throw new Error(`Pump simulation controller save failed: ${response.status}`);
+    const payload = await response.json();
+    saveLocalPumpController(payload.controller || controller);
+  } catch (error) {
+    console.warn("Pump simulation controller could not be saved to the server.", error);
+    saveLocalPumpController(controller);
+  }
+  editingPumpControllerId = "";
+  addActivity("Pump simulation ready", `${controller.name} added for ${currentLocation?.name || "selected location"}.`);
+  renderAutomationPumps();
+}
+
+function setPumpSimulationScenario(assetId = "", scenario = "") {
+  const asset = getAsset(assetId);
+  if (!asset) return;
+  const action = String(scenario || "").toLowerCase();
+  if (action === "run") {
+    setPumpAssetControlCommand(asset.id, "Run");
+    setPumpAssetOperatingStatus(asset.id, "Running");
+    return;
+  }
+  if (action === "off") {
+    setPumpAssetControlCommand(asset.id, "Stop");
+    setPumpAssetOperatingStatus(asset.id, "Off");
+    return;
+  }
+  if (action === "alarm") {
+    setPumpAssetOperatingStatus(asset.id, "Alarm");
+    return;
+  }
+  if (action === "maintenance") {
+    setPumpAssetOperatingStatus(asset.id, "Maintenance");
+  }
 }
 
 async function deletePumpController(controllerId = "") {
@@ -16094,6 +16199,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const controllerOnlineCount = controllerStatuses.filter((status) => status.className === "is-running").length;
   const controllerSetup = renderPumpControllerSetup(controllers, currentLocation);
   const primaryController = controllers[0] || null;
+  const simulationEnabled = hasPumpSimulationController(controllers);
   const primaryControllerStatus = primaryController ? pumpControllerStatus(primaryController) : { label: "No controller", className: "is-listed" };
   const plannedPoints = pumpHmiPlannedPoints(primaryController);
   const pointTiles = plannedPoints.map((point) => `
@@ -16233,6 +16339,25 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           `).join("")}
         </div>
       </div>
+      ${simulationEnabled ? `
+        <div class="pump-hmi-action-block pump-hmi-sim-actions">
+          <span>Simulation</span>
+          <div class="pump-hmi-status-actions" aria-label="Pump simulation controls">
+            ${[
+              ["run", "Demo Run"],
+              ["off", "Demo Off"],
+              ["alarm", "Demo Alarm"],
+              ["maintenance", "Demo Maintenance"]
+            ].map(([action, label]) => `
+              <button
+                type="button"
+                data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
+                data-pump-simulate-action="${escapeAttribute(action)}"
+              >${escapeHtml(label)}</button>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
       <div class="pump-hmi-action-block">
         <span>Lead / lag role</span>
         <div class="pump-hmi-status-actions" aria-label="Pump lead lag role controls">

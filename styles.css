@@ -2218,6 +2218,18 @@ textarea:disabled {
   text-align: left;
 }
 
+.pump-controller-add-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pump-controller-add.is-demo {
+  border-color: rgba(251, 191, 36, 0.46);
+  background: rgba(120, 53, 15, 0.34);
+  color: #fef3c7;
+}
+
 .pump-controller-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(180px, 1.3fr) auto;
@@ -2306,6 +2318,13 @@ textarea:disabled {
   border-color: rgba(245, 158, 11, 0.5);
 }
 
+.pump-controller-card.is-simulation {
+  border-color: rgba(56, 189, 248, 0.52);
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(15, 23, 42, 0.62)),
+    rgba(15, 23, 42, 0.58);
+}
+
 .pump-controller-card strong {
   display: block;
   overflow: hidden;
@@ -2356,6 +2375,10 @@ textarea:disabled {
   .pump-controller-form,
   .pump-controller-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pump-controller-add-row {
+    grid-template-columns: 1fr;
   }
 
   .pump-controller-actions {
