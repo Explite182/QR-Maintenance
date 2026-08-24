@@ -1401,7 +1401,7 @@ textarea:disabled {
 
 .pump-hmi-screen {
   display: grid;
-  grid-template-rows: auto auto 142px 1fr;
+  grid-template-rows: auto auto auto 142px auto 1fr auto;
   gap: 12px;
   min-width: 0;
   padding: 18px;
@@ -1474,6 +1474,41 @@ textarea:disabled {
   color: #fbbf24;
 }
 
+.pump-hmi-control-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pump-hmi-control-strip div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(45, 212, 191, 0.18);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(6, 78, 59, 0.28), rgba(2, 6, 23, 0.58));
+}
+
+.pump-hmi-control-strip span,
+.pump-hmi-points header span,
+.pump-hmi-point span,
+.pump-hmi-point em {
+  color: #9fb5b4;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pump-hmi-control-strip strong {
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pump-hmi-mimic {
   position: relative;
   display: grid;
@@ -1521,6 +1556,56 @@ textarea:disabled {
 .pump-gauge strong {
   color: #5eead4;
   font-size: 13px;
+}
+
+.pump-hmi-points {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(45, 212, 191, 0.14);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.3);
+}
+
+.pump-hmi-points header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.pump-hmi-points header strong {
+  color: #5eead4;
+  font-size: 13px;
+}
+
+.pump-hmi-point-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+}
+
+.pump-hmi-point {
+  display: grid;
+  gap: 5px;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.64);
+}
+
+.pump-hmi-point.is-ready {
+  border-color: rgba(45, 212, 191, 0.22);
+  background: rgba(6, 78, 59, 0.2);
+}
+
+.pump-hmi-point strong {
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pump-hmi-pumps {
@@ -1859,6 +1944,7 @@ textarea:disabled {
   .pump-hmi-metrics,
   .pump-hmi-mimic,
   .pump-hmi-side,
+  .pump-hmi-control-strip,
   .pump-controller-form,
   .pump-controller-card {
     grid-template-columns: 1fr;
