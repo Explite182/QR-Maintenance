@@ -16448,12 +16448,22 @@ function serverHealthRow(label, value, ok = true) {
   `;
 }
 
+function backupTimestampFromHealthPayload(payload = null) {
+  const latest = payload?.backups?.latest || {};
+  const latestTime = Date.parse(latest.createdAt || "");
+  if (Number.isFinite(latestTime)) return latestTime;
+  const match = String(latest.name || "").match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/);
+  if (!match) return 0;
+  const parsedTime = Date.parse(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}Z`);
+  return Number.isFinite(parsedTime) ? parsedTime : 0;
+}
+
 function latestBackupIsStale(payload = null) {
-  const latestCreatedAt = payload?.backups?.latest?.createdAt;
-  if (!latestCreatedAt) return true;
-  const latestTime = Date.parse(latestCreatedAt);
-  if (!Number.isFinite(latestTime)) return true;
-  return Date.now() - latestTime > 36 * 60 * 60 * 1000;
+  const latestTime = backupTimestampFromHealthPayload(payload);
+  if (!latestTime) return true;
+  const checkedTime = Date.parse(payload?.checkedAt || "");
+  const referenceTime = Number.isFinite(checkedTime) ? checkedTime : Date.now();
+  return referenceTime - latestTime > 36 * 60 * 60 * 1000;
 }
 
 function serverHealthNotificationFromPayload(payload = null) {
