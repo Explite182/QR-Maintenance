@@ -15737,6 +15737,12 @@ function setPumpAssetControlCommand(assetId = "", command = "") {
   renderAutomationPumps();
 }
 
+function latestPumpHistoryEntry(asset = {}) {
+  if (!Array.isArray(asset.history) || !asset.history.length) return null;
+  return [...asset.history]
+    .sort((a, b) => new Date(b.date || b.createdAt || b.timestamp || b.updatedAt || 0) - new Date(a.date || a.createdAt || a.timestamp || a.updatedAt || 0))[0] || null;
+}
+
 function pumpAssetsForCurrentView() {
   return filteredAssets().filter(isPumpAsset);
 }
@@ -16020,6 +16026,13 @@ function pumpHmiPlannedPoints(controller = null) {
 function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocation = null, controllers = []) {
   const statuses = pumps.map(pumpAssetStatus);
   const runningCount = statuses.filter((status) => status.className === "is-running").length;
+  const offCount = statuses.filter((status) => status.className === "is-off" || status.className === "is-listed").length;
+  const maintenanceCount = statuses.filter((status) => status.className === "is-maintenance").length;
+  const roleCounts = pumps.reduce((counts, asset) => {
+    const role = normalizePumpRole(asset.pumpRole || asset.role);
+    counts[role] = (counts[role] || 0) + 1;
+    return counts;
+  }, {});
   const activePumpAlarms = pumps
     .map((asset) => ({ asset, status: pumpAssetStatus(asset) }))
     .filter(({ status }) => status.className === "is-warning" || status.className === "is-alarm");
@@ -16061,6 +16074,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const equipmentId = getAssetEquipmentId(asset);
     const isSelected = selectedPumpHmiAssetId === asset.id;
     const pumpRole = normalizePumpRole(asset.pumpRole || asset.role);
+    const latestEvent = latestPumpHistoryEntry(asset);
+    const latestEventDate = latestEvent?.date || latestEvent?.createdAt || latestEvent?.timestamp || latestEvent?.updatedAt || "";
+    const latestEventLabel = latestEvent
+      ? `${latestEvent.type || latestEvent.result || "Pump event"}${latestEventDate ? ` | ${formatDate(latestEventDate)}` : ""}`
+      : "No recent event";
     return `
       <button type="button" class="pump-hmi-pump ${status.className} ${isSelected ? "is-selected" : ""}" data-select-pump-asset="${escapeAttribute(asset.id)}">
         <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
@@ -16074,6 +16092,12 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         </span>
         <span class="pump-hmi-mini">
           <b>Tickets</b>${openIssueCount}
+        </span>
+        <span class="pump-hmi-mini pump-hmi-mini-wide">
+          <b>Last event</b>${escapeHtml(latestEventLabel)}
+        </span>
+        <span class="pump-hmi-mini">
+          <b>Command</b>${escapeHtml(asset.pumpCommand || "None")}
         </span>
       </button>
     `;
@@ -16242,6 +16266,28 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               </div>
             </section>
           ` : ""}
+          <section class="pump-hmi-leadlag" aria-label="Pump operating summary">
+            <div>
+              <span>Running</span>
+              <strong>${runningCount}</strong>
+            </div>
+            <div>
+              <span>Off / Listed</span>
+              <strong>${offCount}</strong>
+            </div>
+            <div class="${warningCount ? "is-warning" : ""}">
+              <span>Attention</span>
+              <strong>${warningCount}</strong>
+            </div>
+            <div>
+              <span>Lead / Standby / Backup</span>
+              <strong>${roleCounts.Lead || 0} / ${roleCounts.Standby || 0} / ${roleCounts.Backup || 0}</strong>
+            </div>
+            <div>
+              <span>Maintenance</span>
+              <strong>${maintenanceCount}</strong>
+            </div>
+          </section>
           <section class="pump-hmi-mimic" aria-label="Pump mimic diagram">
             <div class="pump-pipe is-supply"></div>
             <div class="pump-tank">

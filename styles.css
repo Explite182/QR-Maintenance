@@ -1588,6 +1588,48 @@ textarea:disabled {
   color: #fecaca;
 }
 
+.pump-hmi-leadlag {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pump-hmi-leadlag div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.76), rgba(2, 6, 23, 0.62)),
+    #071312;
+}
+
+.pump-hmi-leadlag span {
+  overflow: hidden;
+  color: #9fb5b4;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pump-hmi-leadlag strong {
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 18px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pump-hmi-leadlag .is-warning strong {
+  color: #fbbf24;
+}
+
 .pump-hmi-mimic {
   position: relative;
   display: grid;
@@ -1779,6 +1821,10 @@ textarea:disabled {
   grid-column: span 1;
   min-height: 46px;
   padding: 8px;
+}
+
+.pump-hmi-pump .pump-hmi-mini-wide {
+  grid-column: 2 / -1;
 }
 
 .pump-hmi-detail-drawer {
