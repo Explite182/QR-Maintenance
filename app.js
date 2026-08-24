@@ -16196,10 +16196,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const leadStatus = leadPump ? pumpAssetStatus(leadPump) : { label: "Standby", className: "is-listed" };
   const alarmOn = warningCount > 0;
   const controllerStatuses = controllers.map(pumpControllerStatus);
-  const controllerOnlineCount = controllerStatuses.filter((status) => status.className === "is-running").length;
+  const simulationEnabled = hasPumpSimulationController(controllers);
+  const controllerOnlineCount = controllerStatuses.filter((status) => ["is-running", "is-simulation"].includes(status.className)).length;
   const controllerSetup = renderPumpControllerSetup(controllers, currentLocation);
   const primaryController = controllers[0] || null;
-  const simulationEnabled = hasPumpSimulationController(controllers);
   const primaryControllerStatus = primaryController ? pumpControllerStatus(primaryController) : { label: "No controller", className: "is-listed" };
   const plannedPoints = pumpHmiPlannedPoints(primaryController);
   const pointTiles = plannedPoints.map((point) => `
@@ -16262,6 +16262,32 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </button>
     `;
   }).join("");
+  const demoPumpRows = simulationEnabled && pumps.length ? pumps.slice(0, 6).map((asset) => {
+    const status = pumpAssetStatus(asset);
+    return `
+      <article class="pump-hmi-demo-row ${status.className}">
+        <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
+        <div>
+          <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
+          <small>${escapeHtml(status.label)} | ${escapeHtml(normalizePumpRole(asset.pumpRole || asset.role))}</small>
+        </div>
+        <div class="pump-hmi-demo-actions">
+          ${[
+            ["run", "Run"],
+            ["off", "Off"],
+            ["alarm", "Alarm"],
+            ["maintenance", "Maint."]
+          ].map(([action, label]) => `
+            <button
+              type="button"
+              data-pump-asset-id="${escapeAttribute(asset.id)}"
+              data-pump-simulate-action="${escapeAttribute(action)}"
+            >${escapeHtml(label)}</button>
+          `).join("")}
+        </div>
+      </article>
+    `;
+  }).join("") : "";
   const selectedPump = pumps.find((asset) => asset.id === selectedPumpHmiAssetId) || null;
   const selectedPumpStatus = selectedPump ? pumpAssetStatus(selectedPump) : null;
   const selectedPumpDue = selectedPump ? getDueInfo(selectedPump) : null;
@@ -16452,6 +16478,20 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <strong>${escapeHtml(primaryController?.pumpCount || pumps.length || "1")}</strong>
             </div>
           </section>
+          ${simulationEnabled ? `
+            <section class="pump-hmi-simulation-panel" aria-label="Pump simulation controls">
+              <header>
+                <div>
+                  <span>Simulation Mode</span>
+                  <strong>Demo pump controls active</strong>
+                </div>
+                <em>Setup only</em>
+              </header>
+              <div class="pump-hmi-demo-grid">
+                ${demoPumpRows || `<div class="pump-hmi-empty"><strong>No pump equipment available for simulation.</strong></div>`}
+              </div>
+            </section>
+          ` : ""}
           ${activePumpAlarms.length ? `
             <section class="pump-hmi-alarms" aria-label="Active pump alarms">
               <header>
