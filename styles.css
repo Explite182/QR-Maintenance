@@ -1831,6 +1831,16 @@ textarea:disabled {
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
 }
 
+.pump-hmi-ddc-device {
+  cursor: pointer;
+}
+
+.pump-hmi-ddc-device.is-selected {
+  outline: 2px solid rgba(94, 234, 212, 0.86);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.18), 0 14px 28px rgba(0, 0, 0, 0.34);
+}
+
 .pump-hmi-ddc-device.is-suction {
   grid-column: 1;
   grid-row: 1;
@@ -1931,6 +1941,15 @@ textarea:disabled {
   border-radius: 7px;
   box-shadow: none;
   font-size: 11px;
+}
+
+.pump-hmi-ddc-detail .pump-hmi-status-actions {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.pump-hmi-ddc-detail .pump-hmi-status-actions button[data-pump-diagram-device-delete] {
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
 }
 
 .pump-hmi-ddc-empty {

@@ -5289,6 +5289,7 @@ let pumpControllersLoadedScope = "";
 let pumpControllersLoading = false;
 let editingPumpControllerId = "";
 let selectedPumpHmiAssetId = "";
+let selectedPumpDiagramDeviceId = "";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8985,6 +8986,7 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     const pumpId = selectPumpAssetButton.dataset.selectPumpAsset || "";
     selectedPumpHmiAssetId = selectedPumpHmiAssetId === pumpId ? "" : pumpId;
+    if (selectedPumpHmiAssetId) selectedPumpDiagramDeviceId = "";
     renderAutomationPumps();
     return;
   }
@@ -9061,6 +9063,7 @@ document.addEventListener("click", (event) => {
   const pumpDiagramDeviceToggle = event.target.closest("[data-pump-diagram-device-toggle]");
   if (pumpDiagramDeviceToggle) {
     event.preventDefault();
+    event.stopPropagation();
     togglePumpDiagramDevice(pumpDiagramDeviceToggle.dataset.pumpDiagramDeviceToggle || "");
     return;
   }
@@ -9068,7 +9071,18 @@ document.addEventListener("click", (event) => {
   const pumpDiagramDeviceDelete = event.target.closest("[data-pump-diagram-device-delete]");
   if (pumpDiagramDeviceDelete) {
     event.preventDefault();
+    event.stopPropagation();
     deletePumpDiagramDevice(pumpDiagramDeviceDelete.dataset.pumpDiagramDeviceDelete || "");
+    return;
+  }
+
+  const pumpDiagramDeviceSelect = event.target.closest("[data-pump-diagram-device-select]");
+  if (pumpDiagramDeviceSelect) {
+    event.preventDefault();
+    const deviceId = pumpDiagramDeviceSelect.dataset.pumpDiagramDeviceSelect || "";
+    selectedPumpDiagramDeviceId = selectedPumpDiagramDeviceId === deviceId ? "" : deviceId;
+    if (selectedPumpDiagramDeviceId) selectedPumpHmiAssetId = "";
+    renderAutomationPumps();
     return;
   }
 
@@ -16507,7 +16521,7 @@ function pumpDiagramDeviceIcon(device = {}) {
   return "FL";
 }
 
-function renderPumpDiagramDevices(devices = []) {
+function renderPumpDiagramDevices(devices = [], selectedDeviceId = "") {
   if (!devices.length) {
     return `
       <div class="pump-hmi-ddc-empty">
@@ -16519,8 +16533,14 @@ function renderPumpDiagramDevices(devices = []) {
   return devices.map((device) => {
     const status = pumpDiagramDeviceStatus(device);
     const positionClass = `is-${String(device.position || "wetwell").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    const isSelected = selectedDeviceId === device.id;
     return `
-      <article class="pump-hmi-ddc-device ${status.className} ${positionClass}">
+      <article
+        class="pump-hmi-ddc-device ${status.className} ${positionClass} ${isSelected ? "is-selected" : ""}"
+        data-pump-diagram-device-select="${escapeAttribute(device.id)}"
+        role="button"
+        tabindex="0"
+      >
         <i aria-hidden="true">${escapeHtml(pumpDiagramDeviceIcon(device))}</i>
         <div>
           <strong>${escapeHtml(device.label)}</strong>
@@ -16534,6 +16554,50 @@ function renderPumpDiagramDevices(devices = []) {
       </article>
     `;
   }).join("");
+}
+
+function renderPumpDiagramDeviceDetail(device = null) {
+  if (!device) return "";
+  const status = pumpDiagramDeviceStatus(device);
+  const positionLabel = {
+    suction: "Suction pipe",
+    wetwell: "Tank / wet well",
+    pump: "Pump / motor",
+    discharge: "Discharge pipe",
+    panel: "Control panel"
+  }[String(device.position || "").toLowerCase()] || device.position || "Diagram";
+  const isActive = status.className === "is-active";
+  return `
+    <aside class="pump-hmi-detail-drawer pump-hmi-ddc-detail ${status.className}" aria-label="Selected DDC device details">
+      <header>
+        <span>DDC Device Detail</span>
+        <strong>${escapeHtml(device.label || "DDC device")}</strong>
+      </header>
+      <div class="pump-hmi-detail-grid">
+        <div><span>Status</span><strong>${escapeHtml(status.label)}</strong></div>
+        <div><span>Type</span><strong>${escapeHtml(device.type || "Device")}</strong></div>
+        <div><span>Point</span><strong>${escapeHtml(device.channel || "Not assigned")}</strong></div>
+        <div><span>Diagram area</span><strong>${escapeHtml(positionLabel)}</strong></div>
+        <div><span>Last update</span><strong>${escapeHtml(formatDate(device.updatedAt))}</strong></div>
+      </div>
+      <div class="pump-hmi-detail-advisory ${status.className}">
+        <span>Point meaning</span>
+        <strong>${status.className === "is-alarm" ? "This point is reporting an alarm or fault state." : isActive ? "This point is active on the pump diagram." : "This point is present but inactive."}</strong>
+        <em>${status.className === "is-alarm" ? "Check the related pump equipment and create a ticket if needed." : "Use the setup controls to simulate this point until a live controller is connected."}</em>
+      </div>
+      <p class="pump-hmi-detail-note">${escapeHtml(device.notes || "No device notes recorded.")}</p>
+      <div class="pump-hmi-action-block">
+        <span>Setup control</span>
+        <div class="pump-hmi-status-actions" aria-label="DDC device setup controls">
+          <button type="button" class="${isActive ? "is-active" : ""}" data-pump-diagram-device-toggle="${escapeAttribute(device.id)}">${isActive ? "Set inactive" : "Set active"}</button>
+          <button type="button" data-pump-diagram-device-delete="${escapeAttribute(device.id)}">Delete Device</button>
+        </div>
+      </div>
+      <div class="pump-hmi-detail-actions">
+        <button type="button" class="secondary" data-pump-diagram-device-select="">Close</button>
+      </div>
+    </aside>
+  `;
 }
 
 function renderPumpDiagramDeviceSetup(locationRecord = null, devices = []) {
@@ -16657,7 +16721,6 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const customerName = currentCustomer?.name || "SiteWorks";
   const leadPump = pumps.find((asset) => normalizePumpRole(asset.pumpRole || asset.role) === "Lead") || pumps[0] || null;
   const leadStatus = leadPump ? pumpAssetStatus(leadPump) : { label: "Lag", className: "is-listed" };
-  const alarmOn = warningCount > 0;
   const controllerStatuses = controllers.map(pumpControllerStatus);
   const simulationEnabled = hasPumpSimulationController(controllers);
   const controllerOnlineCount = controllerStatuses.filter((status) => ["is-running", "is-simulation"].includes(status.className)).length;
@@ -16665,6 +16728,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const primaryController = controllers[0] || null;
   const primaryControllerStatus = primaryController ? pumpControllerStatus(primaryController) : { label: "No controller", className: "is-listed" };
   const primaryControllerPumps = primaryController ? pumpControllerAssignedPumps(primaryController, pumps) : pumps;
+  const diagramDevices = pumpDiagramDevicesForLocation(currentLocation);
+  const diagramAlarmDevices = diagramDevices.filter((device) => pumpDiagramDeviceStatus(device).className === "is-alarm");
+  const totalWarningCount = warningCount + diagramAlarmDevices.length;
+  const alarmOn = totalWarningCount > 0;
   const plannedPoints = pumpHmiPlannedPoints(primaryController, primaryControllerPumps);
   const pointTiles = plannedPoints.map((point) => `
     <div class="pump-hmi-point ${primaryController ? "is-ready" : ""} ${point.className || ""}">
@@ -16687,6 +16754,23 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div class="pump-hmi-alarm-actions">
           <button type="button" data-select-pump-asset="${escapeAttribute(asset.id)}">Open</button>
           ${canCreateWorkOrders() ? `<button type="button" data-create-pump-ticket="${escapeAttribute(asset.id)}">Create Ticket</button>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("");
+  const ddcAlarmTiles = diagramAlarmDevices.map((device) => {
+    const status = pumpDiagramDeviceStatus(device);
+    return `
+      <article class="pump-hmi-alarm ${status.className}">
+        <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
+        <div>
+          <strong>${escapeHtml(device.label || "DDC device")}</strong>
+          <small>${escapeHtml(device.type || "Device")}${device.channel ? ` | ${escapeHtml(device.channel)}` : ""}</small>
+          <small>${escapeHtml(device.notes || "Diagram point needs attention.")}</small>
+        </div>
+        <em>${escapeHtml(status.label)}</em>
+        <div class="pump-hmi-alarm-actions">
+          <button type="button" data-pump-diagram-device-select="${escapeAttribute(device.id)}">Open</button>
         </div>
       </article>
     `;
@@ -16798,9 +16882,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const selectedPumpController = selectedPump ? pumpControllerForPump(controllers, selectedPump) : null;
   const selectedPumpAssignedIndex = selectedPumpController ? pumpControllerPumpIndex(selectedPumpController, selectedPump, pumps) : selectedPumpIndex;
   const selectedPumpIo = selectedPump ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : "";
-  const diagramDevices = pumpDiagramDevicesForLocation(currentLocation);
-  const diagramDeviceTiles = renderPumpDiagramDevices(diagramDevices);
+  const selectedDiagramDevice = diagramDevices.find((device) => device.id === selectedPumpDiagramDeviceId) || null;
+  if (selectedPumpDiagramDeviceId && !selectedDiagramDevice) selectedPumpDiagramDeviceId = "";
+  const diagramDeviceTiles = renderPumpDiagramDevices(diagramDevices, selectedPumpDiagramDeviceId);
   const diagramDeviceSetup = renderPumpDiagramDeviceSetup(currentLocation, diagramDevices);
+  const diagramDeviceDrawer = selectedDiagramDevice ? renderPumpDiagramDeviceDetail(selectedDiagramDevice) : "";
   const selectedPumpMeaning = selectedPumpStatus ? pumpStatusMeaning(selectedPumpStatus) : "";
   const selectedPumpAction = selectedPumpStatus ? pumpStatusActionText(selectedPumpStatus) : "";
   const pumpDrawer = selectedPump ? `
@@ -16952,7 +17038,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             </div>
             <div class="${alarmOn ? "is-warning" : ""}">
               <span>Alarms</span>
-              <strong>${warningCount}</strong>
+              <strong>${totalWarningCount}</strong>
             </div>
           </section>
           <section class="pump-hmi-control-strip" aria-label="Pump controller setup status">
@@ -17000,14 +17086,15 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               </div>
             </section>
           ` : ""}
-          ${activePumpAlarms.length ? `
+          ${totalWarningCount ? `
             <section class="pump-hmi-alarms" aria-label="Active pump alarms">
               <header>
-                <span>Active Pump Alarms</span>
-                <strong>${activePumpAlarms.length}</strong>
+                <span>Active Pump / DDC Alarms</span>
+                <strong>${totalWarningCount}</strong>
               </header>
               <div class="pump-hmi-alarm-list">
                 ${pumpAlarmTiles}
+                ${ddcAlarmTiles}
               </div>
             </section>
           ` : ""}
@@ -17020,9 +17107,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <span>Off / Listed</span>
               <strong>${offCount}</strong>
             </div>
-            <div class="${warningCount ? "is-warning" : ""}">
+            <div class="${totalWarningCount ? "is-warning" : ""}">
               <span>Attention</span>
-              <strong>${warningCount}</strong>
+              <strong>${totalWarningCount}</strong>
             </div>
             <div>
               <span>Lead / Lag / Backup</span>
@@ -17056,7 +17143,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             </header>
             <div class="pump-hmi-point-grid">${pointTiles}</div>
           </section>
-          <section class="pump-hmi-pump-workspace ${selectedPump ? "has-drawer" : ""}" aria-label="Pump equipment and details">
+          <section class="pump-hmi-pump-workspace ${selectedPump || selectedDiagramDevice ? "has-drawer" : ""}" aria-label="Pump equipment and details">
             <div class="pump-hmi-pumps" aria-label="Pump equipment">
               ${pumpTiles || `
                 <div class="pump-hmi-empty">
@@ -17066,6 +17153,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               `}
             </div>
             ${pumpDrawer}
+            ${!pumpDrawer ? diagramDeviceDrawer : ""}
           </section>
           ${controllerSetup}
         </main>
