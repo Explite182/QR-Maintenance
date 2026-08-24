@@ -8999,6 +8999,25 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const createPumpTicketButton = event.target.closest("[data-create-pump-ticket]");
+  if (createPumpTicketButton) {
+    event.preventDefault();
+    const pumpAsset = getAsset(createPumpTicketButton.dataset.createPumpTicket || "");
+    if (pumpAsset) {
+      createManualIssueForAsset(pumpAsset, {
+        title: `Pump issue: ${pumpAsset.name || "Pump"}`,
+        priority: pumpAssetStatus(pumpAsset).label === "Alarm" ? "High" : "Medium",
+        notes: [
+          `Created from Pump Control Center.`,
+          `Current status: ${pumpAssetStatus(pumpAsset).label}.`,
+          `Role: ${normalizePumpRole(pumpAsset.pumpRole || pumpAsset.role)}.`,
+          `Last command: ${pumpAsset.pumpCommand || "None"}.`
+        ].join("\n")
+      });
+    }
+    return;
+  }
+
   const pumpStatusActionButton = event.target.closest("[data-pump-status-action]");
   if (pumpStatusActionButton) {
     event.preventDefault();
@@ -15599,6 +15618,7 @@ function normalizePumpOperatingStatus(value = "") {
   if (text.includes("maint")) return "Maintenance";
   if (text.includes("run") || text === "on" || text.includes("online")) return "Running";
   if (text === "off" || text.includes("standby") || text.includes("stop")) return "Off";
+  if (text === "normal" || text === "listed" || text === "good" || text === "clear") return "Normal";
   return "";
 }
 
@@ -15617,6 +15637,7 @@ function pumpAssetStatus(asset = {}) {
   if (manualStatus === "Maintenance") return { label: "Maintenance", className: "is-maintenance" };
   if (manualStatus === "Running") return { label: "Running", className: "is-running" };
   if (manualStatus === "Off") return { label: "Off", className: "is-off" };
+  if (manualStatus === "Normal") return { label: "Normal", className: "is-listed" };
   const text = [
     asset.status,
     asset.condition,
@@ -16127,6 +16148,16 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </article>
     `;
   }).join("") : `<div class="pump-hmi-history-empty">No pump history yet.</div>`;
+  const selectedPumpLatestEvent = selectedPump ? latestPumpHistoryEntry(selectedPump) : null;
+  const selectedPumpLatestEventDate = selectedPumpLatestEvent
+    ? selectedPumpLatestEvent.date || selectedPumpLatestEvent.createdAt || selectedPumpLatestEvent.timestamp || selectedPumpLatestEvent.updatedAt || ""
+    : "";
+  const selectedPumpLatestEventLabel = selectedPumpLatestEvent
+    ? [
+        selectedPumpLatestEvent.result || selectedPumpLatestEvent.type || "Pump event",
+        selectedPumpLatestEventDate ? formatDate(selectedPumpLatestEventDate) : ""
+      ].filter(Boolean).join(" | ")
+    : "No recent event";
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
       <header>
@@ -16143,37 +16174,47 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Control</span><strong>${escapeHtml(selectedPump.pumpControlMode || "Setup only")}</strong></div>
         <div><span>Last command</span><strong>${escapeHtml(selectedPump.pumpCommand || "None")}</strong></div>
         <div><span>Condition</span><strong>${escapeHtml(selectedPump.condition || "Listed")}</strong></div>
+        <div><span>Last event</span><strong>${escapeHtml(selectedPumpLatestEventLabel)}</strong></div>
       </div>
-      <p>${escapeHtml(selectedPump.notes || "No pump notes recorded.")}</p>
-      <div class="pump-hmi-status-actions" aria-label="Pump setup-only command controls">
-        ${["Run", "Stop", "Auto", "Alarm Reset"].map((commandLabel) => `
-          <button
-            type="button"
-            class="${selectedPump.pumpCommand === commandLabel ? "is-active" : ""}"
-            data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
-            data-pump-command-action="${escapeAttribute(commandLabel)}"
-          >${escapeHtml(commandLabel)}</button>
-        `).join("")}
+      <p class="pump-hmi-detail-note">${escapeHtml(selectedPump.notes || "No pump notes recorded.")}</p>
+      <div class="pump-hmi-action-block">
+        <span>Command</span>
+        <div class="pump-hmi-status-actions" aria-label="Pump setup-only command controls">
+          ${["Run", "Stop", "Auto", "Alarm Reset"].map((commandLabel) => `
+            <button
+              type="button"
+              class="${selectedPump.pumpCommand === commandLabel ? "is-active" : ""}"
+              data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
+              data-pump-command-action="${escapeAttribute(commandLabel)}"
+            >${escapeHtml(commandLabel)}</button>
+          `).join("")}
+        </div>
       </div>
-      <div class="pump-hmi-status-actions" aria-label="Pump operating status controls">
-        ${["Running", "Off", "Needs attention", "Alarm", "Maintenance"].map((statusLabel) => `
-          <button
-            type="button"
-            class="${selectedPumpStatus.label === statusLabel ? "is-active" : ""}"
-            data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
-            data-pump-status-action="${escapeAttribute(statusLabel)}"
-          >${escapeHtml(statusLabel)}</button>
-        `).join("")}
+      <div class="pump-hmi-action-block">
+        <span>Status preset</span>
+        <div class="pump-hmi-status-actions" aria-label="Pump operating status controls">
+          ${["Normal", "Running", "Off", "Needs attention", "Alarm", "Maintenance"].map((statusLabel) => `
+            <button
+              type="button"
+              class="${selectedPumpStatus.label === statusLabel ? "is-active" : ""}"
+              data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
+              data-pump-status-action="${escapeAttribute(statusLabel)}"
+            >${escapeHtml(statusLabel)}</button>
+          `).join("")}
+        </div>
       </div>
-      <div class="pump-hmi-status-actions" aria-label="Pump lead lag role controls">
-        ${["Lead", "Standby", "Backup"].map((roleLabel) => `
-          <button
-            type="button"
-            class="${normalizePumpRole(selectedPump.pumpRole || selectedPump.role) === roleLabel ? "is-active" : ""}"
-            data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
-            data-pump-role-action="${escapeAttribute(roleLabel)}"
-          >${escapeHtml(roleLabel)}</button>
-        `).join("")}
+      <div class="pump-hmi-action-block">
+        <span>Lead / lag role</span>
+        <div class="pump-hmi-status-actions" aria-label="Pump lead lag role controls">
+          ${["Lead", "Standby", "Backup"].map((roleLabel) => `
+            <button
+              type="button"
+              class="${normalizePumpRole(selectedPump.pumpRole || selectedPump.role) === roleLabel ? "is-active" : ""}"
+              data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
+              data-pump-role-action="${escapeAttribute(roleLabel)}"
+            >${escapeHtml(roleLabel)}</button>
+          `).join("")}
+        </div>
       </div>
       <section class="pump-hmi-history" aria-label="Pump recent history">
         <header>
@@ -16186,6 +16227,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </section>
       <div class="pump-hmi-detail-actions">
         <button type="button" class="primary" data-open-pump-equipment="${escapeAttribute(selectedPump.id)}">Open Equipment</button>
+        ${canCreateWorkOrders() ? `<button type="button" class="secondary" data-create-pump-ticket="${escapeAttribute(selectedPump.id)}">Create Ticket</button>` : ""}
         <button type="button" class="secondary" data-select-pump-asset="">Close</button>
       </div>
     </aside>
