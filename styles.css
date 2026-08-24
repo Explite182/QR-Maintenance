@@ -2317,6 +2317,47 @@ textarea:disabled {
   font-weight: 800;
 }
 
+.pump-hmi-detail-advisory {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.5);
+  color: #e5fffb;
+}
+
+.pump-hmi-detail-advisory span {
+  color: #9fb5b4;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pump-hmi-detail-advisory strong,
+.pump-hmi-detail-advisory em {
+  color: #f8fafc;
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.pump-hmi-detail-advisory.is-warning {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(120, 53, 15, 0.18);
+}
+
+.pump-hmi-detail-advisory.is-alarm {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(127, 29, 29, 0.2);
+}
+
+.pump-hmi-detail-advisory.is-maintenance {
+  border-color: rgba(56, 189, 248, 0.42);
+  background: rgba(8, 47, 73, 0.2);
+}
+
 .pump-hmi-action-block {
   display: grid;
   gap: 6px;

@@ -15684,6 +15684,37 @@ function isPumpAlarmStatus(status = {}) {
   return status.className === "is-warning" || status.className === "is-alarm";
 }
 
+function pumpStatusSeverity(status = {}) {
+  const label = String(status.label || "").toLowerCase();
+  return label.includes("fault") || label.includes("alarm") || label.includes("high level")
+    ? "critical"
+    : "warning";
+}
+
+function pumpStatusMeaning(status = {}) {
+  const label = String(status.label || "");
+  if (label === "Fault") return "Fault input or trip condition needs service review.";
+  if (label === "High level") return "High level float or water condition needs immediate review.";
+  if (label === "Alarm") return "Pump alarm condition needs service review.";
+  if (label === "Offline") return "Pump has no controller signal or stale controller data.";
+  if (label === "Maintenance") return "Pump is intentionally held for maintenance.";
+  if (label === "Needs attention") return "Pump has an active issue or service condition.";
+  if (label === "Running") return "Pump is running.";
+  if (label === "Off") return "Pump is stopped.";
+  return "Pump is normal.";
+}
+
+function pumpStatusActionText(status = {}) {
+  const label = String(status.label || "");
+  if (label === "Fault") return "Check the fault indication, HOA position, breaker, and starter before reset.";
+  if (label === "High level") return "Inspect the level condition and verify pump operation immediately.";
+  if (label === "Alarm") return "Review the alarm source and create a ticket if the condition is active.";
+  if (label === "Offline") return "Confirm controller power, network, and field wiring.";
+  if (label === "Maintenance") return "Return to normal only after service work is complete.";
+  if (label === "Needs attention") return "Review open tickets and recent pump history.";
+  return "Monitor normal operation.";
+}
+
 function activePumpAlarmAssets(pumps = []) {
   return pumps
     .map((asset) => ({
@@ -16458,6 +16489,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const selectedPumpController = selectedPump ? pumpControllerForPump(controllers, selectedPump) : null;
   const selectedPumpAssignedIndex = selectedPumpController ? pumpControllerPumpIndex(selectedPumpController, selectedPump, pumps) : selectedPumpIndex;
   const selectedPumpIo = selectedPump && selectedPumpController ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : "";
+  const selectedPumpMeaning = selectedPumpStatus ? pumpStatusMeaning(selectedPumpStatus) : "";
+  const selectedPumpAction = selectedPumpStatus ? pumpStatusActionText(selectedPumpStatus) : "";
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
       <header>
@@ -16476,6 +16509,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Last command</span><strong>${escapeHtml(selectedPump.pumpCommand || "None")}</strong></div>
         <div><span>Condition</span><strong>${escapeHtml(selectedPump.condition || "Listed")}</strong></div>
         <div><span>Last event</span><strong>${escapeHtml(selectedPumpLatestEventLabel)}</strong></div>
+      </div>
+      <div class="pump-hmi-detail-advisory ${selectedPumpStatus.className}">
+        <span>Status meaning</span>
+        <strong>${escapeHtml(selectedPumpMeaning)}</strong>
+        <em>${escapeHtml(selectedPumpAction)}</em>
       </div>
       <p class="pump-hmi-detail-note">${escapeHtml(selectedPump.notes || "No pump notes recorded.")}</p>
       ${selectedPumpIo ? `
@@ -16949,11 +16987,38 @@ function localBreakerTripNotifications() {
   return localNotifications;
 }
 
+function localPumpNotifications() {
+  return activePumpAlarmAssets(pumpAssetsForCurrentView()).map(({ asset, status, latestEvent, openIssueCount }) => {
+    const eventDate = latestEvent?.date || latestEvent?.createdAt || latestEvent?.timestamp || latestEvent?.updatedAt || "";
+    return {
+      id: `local-pump-${asset.id}`,
+      type: "pump-attention",
+      status: "active",
+      severity: pumpStatusSeverity(status),
+      title: `${status.label} pump attention`,
+      message: `${asset.name || "Pump equipment"} is ${status.label.toLowerCase()}. ${pumpStatusMeaning(status)}`,
+      created_at: eventDate || asset.updatedAt || asset.updated_at || "",
+      customer_id: asset.customerId || asset.customer_id || "",
+      location_id: asset.locationId || asset.location_id || "",
+      source_id: asset.id,
+      metadata: {
+        synthetic: true,
+        localOnly: true,
+        pumpAssetId: asset.id,
+        equipmentId: getAssetEquipmentId(asset),
+        pumpStatus: status.label,
+        openIssueCount
+      }
+    };
+  });
+}
+
 function visibleNotifications() {
   return [
     ...serverNotifications,
     ...(currentRole === "Admin" && serverHealthNotification ? [serverHealthNotification] : []),
-    ...localBreakerTripNotifications()
+    ...localBreakerTripNotifications(),
+    ...localPumpNotifications()
   ].filter(notificationMatchesCurrentView);
 }
 
@@ -17069,6 +17134,7 @@ function renderNotificationCenterItem(notification = {}) {
     : notification.acknowledged_at || notification.acknowledgedAt || "";
   const isBreakerTrip = notification.type === "breaker-trip";
   const isServerHealth = notification.type === "server-health";
+  const isPumpAttention = notification.type === "pump-attention";
   const isSynthetic = Boolean(notificationMetadata(notification).synthetic);
   return `
     <article class="notification-center-item is-${escapeAttribute(status)} is-${escapeAttribute(severity)}">
@@ -17080,7 +17146,8 @@ function renderNotificationCenterItem(notification = {}) {
       <div class="notification-center-actions">
         ${isBreakerTrip ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Panel</button>` : ""}
         ${isServerHealth ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Server</button>` : ""}
-        ${!isBreakerTrip && ["esp-offline", "lighting-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
+        ${isPumpAttention ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Pump</button>` : ""}
+        ${!isBreakerTrip && !isPumpAttention && ["esp-offline", "lighting-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
       </div>
@@ -17480,6 +17547,15 @@ function openServerNotification(id) {
       const controllerId = metadata.controllerId || metadata.sourceId || "";
       const selector = controllerId ? `[data-lighting-controller-edit="${String(controllerId).replace(/"/g, '\\"')}"]` : "";
       const target = selector ? document.querySelector(selector) : document.getElementById("automationLightingPanel");
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  } else if (notification.type === "pump-attention") {
+    selectedPumpHmiAssetId = metadata.pumpAssetId || notification.source_id || notification.sourceId || "";
+    openAutomationSidebarTab("pumps");
+    render();
+    window.setTimeout(() => {
+      const selector = selectedPumpHmiAssetId ? `[data-select-pump-asset="${String(selectedPumpHmiAssetId).replace(/"/g, '\\"')}"]` : "";
+      const target = selector ? document.querySelector(selector) : document.getElementById("automationPumpsPanel");
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
   } else if (notification.type === "key-overdue") {
