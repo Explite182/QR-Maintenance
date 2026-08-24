@@ -5288,6 +5288,7 @@ let pumpControllersCache = [];
 let pumpControllersLoadedScope = "";
 let pumpControllersLoading = false;
 let editingPumpControllerId = "";
+let selectedPumpHmiAssetId = "";
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8976,6 +8977,25 @@ document.addEventListener("click", (event) => {
   if (openAutomationTabButton) {
     event.preventDefault();
     openAutomationSidebarTab(openAutomationTabButton.dataset.openAutomationTab);
+    return;
+  }
+
+  const selectPumpAssetButton = event.target.closest("[data-select-pump-asset]");
+  if (selectPumpAssetButton) {
+    event.preventDefault();
+    const pumpId = selectPumpAssetButton.dataset.selectPumpAsset || "";
+    selectedPumpHmiAssetId = selectedPumpHmiAssetId === pumpId ? "" : pumpId;
+    renderAutomationPumps();
+    return;
+  }
+
+  const openPumpEquipmentButton = event.target.closest("[data-open-pump-equipment]");
+  if (openPumpEquipmentButton) {
+    event.preventDefault();
+    selectedId = openPumpEquipmentButton.dataset.openPumpEquipment || "";
+    if (selectedId) location.hash = `asset/${selectedId}`;
+    render();
+    getSelectedAsset()?.id && els.assetPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
 
@@ -15870,8 +15890,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const openIssueCount = openWorkOrdersForAsset(asset.id).length;
     const label = asset.name || `Pump ${index + 1}`;
     const equipmentId = getAssetEquipmentId(asset);
+    const isSelected = selectedPumpHmiAssetId === asset.id;
     return `
-      <button type="button" class="pump-hmi-pump ${status.className}" data-open-pump-asset="${escapeAttribute(asset.id)}">
+      <button type="button" class="pump-hmi-pump ${status.className} ${isSelected ? "is-selected" : ""}" data-select-pump-asset="${escapeAttribute(asset.id)}">
         <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
         <span>
           <strong>${escapeHtml(label)}</strong>
@@ -15887,6 +15908,31 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </button>
     `;
   }).join("");
+  const selectedPump = pumps.find((asset) => asset.id === selectedPumpHmiAssetId) || null;
+  const selectedPumpStatus = selectedPump ? pumpAssetStatus(selectedPump) : null;
+  const selectedPumpDue = selectedPump ? getDueInfo(selectedPump) : null;
+  const selectedPumpOpenIssues = selectedPump ? openWorkOrdersForAsset(selectedPump.id) : [];
+  const pumpDrawer = selectedPump ? `
+    <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
+      <header>
+        <span>Pump Detail</span>
+        <strong>${escapeHtml(selectedPump.name || "Pump equipment")}</strong>
+      </header>
+      <div class="pump-hmi-detail-grid">
+        <div><span>Status</span><strong>${escapeHtml(selectedPumpStatus.label)}</strong></div>
+        <div><span>Equipment ID</span><strong>${escapeHtml(getAssetEquipmentId(selectedPump))}</strong></div>
+        <div><span>Next PM</span><strong>${escapeHtml(formatDate(selectedPumpDue.nextDate))}</strong></div>
+        <div><span>Open tickets</span><strong>${selectedPumpOpenIssues.length}</strong></div>
+        <div><span>Type</span><strong>${escapeHtml(selectedPump.type || "Pump")}</strong></div>
+        <div><span>Condition</span><strong>${escapeHtml(selectedPump.condition || "Listed")}</strong></div>
+      </div>
+      <p>${escapeHtml(selectedPump.notes || "No pump notes recorded.")}</p>
+      <div class="pump-hmi-detail-actions">
+        <button type="button" class="primary" data-open-pump-equipment="${escapeAttribute(selectedPump.id)}">Open Equipment</button>
+        <button type="button" class="secondary" data-select-pump-asset="">Close</button>
+      </div>
+    </aside>
+  ` : "";
 
   return `
     <div class="pump-hmi-controller">
@@ -15979,6 +16025,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               </div>
             `}
           </section>
+          ${pumpDrawer}
           ${controllerSetup}
         </main>
       </div>

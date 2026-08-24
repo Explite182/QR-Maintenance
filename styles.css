@@ -1636,6 +1636,11 @@ textarea:disabled {
   border-color: rgba(94, 234, 212, 0.58);
 }
 
+.pump-hmi-pump.is-selected {
+  border-color: rgba(94, 234, 212, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.35), 0 0 18px rgba(20, 184, 166, 0.2);
+}
+
 .pump-hmi-pump-lamp {
   width: 22px;
   height: 22px;
@@ -1680,6 +1685,85 @@ textarea:disabled {
   grid-column: span 1;
   min-height: 46px;
   padding: 8px;
+}
+
+.pump-hmi-detail-drawer {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(94, 234, 212, 0.36);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.92)),
+    #031312;
+  box-shadow: inset 0 0 28px rgba(20, 184, 166, 0.08);
+  color: #f8fafc;
+}
+
+.pump-hmi-detail-drawer.is-warning {
+  border-color: rgba(245, 158, 11, 0.58);
+  box-shadow: inset 0 0 28px rgba(245, 158, 11, 0.12);
+}
+
+.pump-hmi-detail-drawer header {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.pump-hmi-detail-drawer header span,
+.pump-hmi-detail-grid span {
+  color: #9fb5b4;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pump-hmi-detail-drawer header strong {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pump-hmi-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.pump-hmi-detail-grid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.pump-hmi-detail-grid strong {
+  overflow: hidden;
+  color: #e0fffa;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pump-hmi-detail-drawer p {
+  margin: 0;
+  color: #cbd5e1;
+  font-weight: 800;
+}
+
+.pump-hmi-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .pump-hmi-empty {
@@ -13701,5 +13785,3 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
     overflow: auto !important;
   }
 }
-
-
