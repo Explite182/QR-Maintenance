@@ -9058,6 +9058,20 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const pumpDiagramDeviceToggle = event.target.closest("[data-pump-diagram-device-toggle]");
+  if (pumpDiagramDeviceToggle) {
+    event.preventDefault();
+    togglePumpDiagramDevice(pumpDiagramDeviceToggle.dataset.pumpDiagramDeviceToggle || "");
+    return;
+  }
+
+  const pumpDiagramDeviceDelete = event.target.closest("[data-pump-diagram-device-delete]");
+  if (pumpDiagramDeviceDelete) {
+    event.preventDefault();
+    deletePumpDiagramDevice(pumpDiagramDeviceDelete.dataset.pumpDiagramDeviceDelete || "");
+    return;
+  }
+
   const openPumpAssetButton = event.target.closest("[data-open-pump-asset]");
   if (openPumpAssetButton) {
     event.preventDefault();
@@ -9772,6 +9786,11 @@ document.addEventListener("submit", async (event) => {
   if (form.matches("[data-pump-io-mapping-form]")) {
     event.preventDefault();
     savePumpIoMappingFromForm(form);
+    return;
+  }
+  if (form.matches("[data-pump-diagram-device-form]")) {
+    event.preventDefault();
+    savePumpDiagramDeviceFromForm(form);
     return;
   }
   if (form.matches("[data-lighting-controller-form]")) {
@@ -16447,6 +16466,181 @@ function renderPumpHmiPumpIo(asset = {}, index = 0) {
   `;
 }
 
+function normalizePumpDiagramDevice(device = {}) {
+  const type = String(device.type || "Float switch").trim() || "Float switch";
+  const stateValue = String(device.state || device.status || "Inactive").trim() || "Inactive";
+  return {
+    id: String(device.id || crypto.randomUUID?.() || `pump-ddc-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    label: String(device.label || type).trim() || type,
+    type,
+    channel: String(device.channel || "").trim(),
+    position: String(device.position || "wetwell").trim() || "wetwell",
+    state: stateValue,
+    notes: String(device.notes || "").trim(),
+    updatedAt: device.updatedAt || new Date().toISOString()
+  };
+}
+
+function pumpDiagramDevicesForLocation(locationRecord = null) {
+  if (!locationRecord) return [];
+  if (!Array.isArray(locationRecord.pumpDiagramDevices)) locationRecord.pumpDiagramDevices = [];
+  locationRecord.pumpDiagramDevices = locationRecord.pumpDiagramDevices.map(normalizePumpDiagramDevice);
+  return locationRecord.pumpDiagramDevices;
+}
+
+function pumpDiagramDeviceStatus(device = {}) {
+  const stateText = String(device.state || "").toLowerCase();
+  if (stateText.includes("fault") || stateText.includes("alarm")) return { label: "Fault", className: "is-alarm" };
+  if (stateText.includes("active") || stateText.includes("running") || stateText.includes("closed") || stateText.includes("on")) return { label: "Active", className: "is-active" };
+  return { label: "Inactive", className: "is-idle" };
+}
+
+function pumpDiagramDeviceIcon(device = {}) {
+  const typeText = String(device.type || "").toLowerCase();
+  if (typeText.includes("motor")) return "M";
+  if (typeText.includes("pressure")) return "P";
+  if (typeText.includes("level")) return "L";
+  if (typeText.includes("valve")) return "V";
+  if (typeText.includes("fault")) return "F";
+  if (typeText.includes("run")) return "R";
+  if (typeText.includes("aux")) return "A";
+  return "FL";
+}
+
+function renderPumpDiagramDevices(devices = []) {
+  if (!devices.length) {
+    return `
+      <div class="pump-hmi-ddc-empty">
+        <strong>No DDC devices yet</strong>
+        <span>Add floats, motor proofs, pressure switches, or contacts below.</span>
+      </div>
+    `;
+  }
+  return devices.map((device) => {
+    const status = pumpDiagramDeviceStatus(device);
+    const positionClass = `is-${String(device.position || "wetwell").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    return `
+      <article class="pump-hmi-ddc-device ${status.className} ${positionClass}">
+        <i aria-hidden="true">${escapeHtml(pumpDiagramDeviceIcon(device))}</i>
+        <div>
+          <strong>${escapeHtml(device.label)}</strong>
+          <span>${escapeHtml(device.type)}${device.channel ? ` | ${escapeHtml(device.channel)}` : ""}</span>
+        </div>
+        <em>${escapeHtml(status.label)}</em>
+        <div class="pump-hmi-ddc-actions">
+          <button type="button" data-pump-diagram-device-toggle="${escapeAttribute(device.id)}">${status.className === "is-active" ? "Set inactive" : "Set active"}</button>
+          <button type="button" data-pump-diagram-device-delete="${escapeAttribute(device.id)}">Delete</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderPumpDiagramDeviceSetup(locationRecord = null, devices = []) {
+  if (!locationRecord) {
+    return `
+      <section class="pump-hmi-ddc-setup">
+        <strong>Select a single location to add DDC diagram devices.</strong>
+      </section>
+    `;
+  }
+  return `
+    <section class="pump-hmi-ddc-setup">
+      <details>
+        <summary>
+          <span>DDC diagram devices</span>
+          <strong>${devices.length}</strong>
+        </summary>
+        <form class="pump-hmi-ddc-form" data-pump-diagram-device-form>
+          <label>
+            <span>Device label</span>
+            <input name="label" placeholder="High float, Motor proof, Pressure switch" required>
+          </label>
+          <label>
+            <span>Type</span>
+            <select name="type">
+              ${["Float switch", "Motor starter", "Run proof", "Fault contact", "Pressure sensor", "Level sensor", "Valve", "Aux contact"].map((type) => `<option value="${escapeAttribute(type)}">${escapeHtml(type)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Point</span>
+            <input name="channel" placeholder="DI1, DO1, AI1">
+          </label>
+          <label>
+            <span>Position</span>
+            <select name="position">
+              ${[
+                ["suction", "Suction pipe"],
+                ["wetwell", "Tank / wet well"],
+                ["pump", "Pump / motor"],
+                ["discharge", "Discharge pipe"],
+                ["panel", "Control panel"]
+              ].map(([value, label]) => `<option value="${escapeAttribute(value)}">${escapeHtml(label)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>State</span>
+            <select name="state">
+              ${["Inactive", "Active", "Fault", "Alarm"].map((stateLabel) => `<option value="${escapeAttribute(stateLabel)}">${escapeHtml(stateLabel)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Notes</span>
+            <input name="notes" placeholder="Optional">
+          </label>
+          <button type="submit">Add Device</button>
+        </form>
+      </details>
+    </section>
+  `;
+}
+
+function savePumpDiagramDeviceFromForm(form) {
+  const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
+  if (!currentLocation) return;
+  const formData = new FormData(form);
+  const devices = pumpDiagramDevicesForLocation(currentLocation);
+  devices.push(normalizePumpDiagramDevice({
+    label: formData.get("label"),
+    type: formData.get("type"),
+    channel: formData.get("channel"),
+    position: formData.get("position"),
+    state: formData.get("state"),
+    notes: formData.get("notes"),
+    updatedAt: new Date().toISOString()
+  }));
+  currentLocation.updatedAt = new Date().toISOString();
+  addActivity("Pump DDC device added", `${String(formData.get("label") || "Device").trim()} added to ${currentLocation.name || "pump diagram"}.`);
+  saveState();
+  renderAutomationPumps();
+}
+
+function togglePumpDiagramDevice(deviceId = "") {
+  const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
+  if (!currentLocation || !deviceId) return;
+  const device = pumpDiagramDevicesForLocation(currentLocation).find((item) => item.id === deviceId);
+  if (!device) return;
+  const currentStatus = pumpDiagramDeviceStatus(device);
+  device.state = currentStatus.className === "is-active" ? "Inactive" : "Active";
+  device.updatedAt = new Date().toISOString();
+  currentLocation.updatedAt = device.updatedAt;
+  saveState();
+  renderAutomationPumps();
+}
+
+function deletePumpDiagramDevice(deviceId = "") {
+  const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
+  if (!currentLocation || !deviceId) return;
+  const devices = pumpDiagramDevicesForLocation(currentLocation);
+  const device = devices.find((item) => item.id === deviceId);
+  if (!device) return;
+  if (!window.confirm(`Delete ${device.label || "this DDC device"} from the pump diagram?`)) return;
+  currentLocation.pumpDiagramDevices = devices.filter((item) => item.id !== deviceId);
+  currentLocation.updatedAt = new Date().toISOString();
+  saveState();
+  renderAutomationPumps();
+}
+
 function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocation = null, controllers = []) {
   const statuses = pumps.map(pumpAssetStatus);
   const runningCount = statuses.filter((status) => status.className === "is-running").length;
@@ -16604,6 +16798,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const selectedPumpController = selectedPump ? pumpControllerForPump(controllers, selectedPump) : null;
   const selectedPumpAssignedIndex = selectedPumpController ? pumpControllerPumpIndex(selectedPumpController, selectedPump, pumps) : selectedPumpIndex;
   const selectedPumpIo = selectedPump ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : "";
+  const diagramDevices = pumpDiagramDevicesForLocation(currentLocation);
+  const diagramDeviceTiles = renderPumpDiagramDevices(diagramDevices);
+  const diagramDeviceSetup = renderPumpDiagramDeviceSetup(currentLocation, diagramDevices);
   const selectedPumpMeaning = selectedPumpStatus ? pumpStatusMeaning(selectedPumpStatus) : "";
   const selectedPumpAction = selectedPumpStatus ? pumpStatusActionText(selectedPumpStatus) : "";
   const pumpDrawer = selectedPump ? `
@@ -16845,9 +17042,13 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             <div class="pump-pipe is-discharge"></div>
             <div class="pump-gauge">
               <span>Pressure</span>
-              <strong>Not wired</strong>
+              <strong>${diagramDevices.some((device) => String(device.type || "").toLowerCase().includes("pressure")) ? "Wired" : "Not wired"}</strong>
+            </div>
+            <div class="pump-hmi-ddc-layer">
+              ${diagramDeviceTiles}
             </div>
           </section>
+          ${diagramDeviceSetup}
           <section class="pump-hmi-points" aria-label="Pump controller points">
             <header>
               <span>Configured points</span>
