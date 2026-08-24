@@ -16009,6 +16009,27 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const selectedPumpStatus = selectedPump ? pumpAssetStatus(selectedPump) : null;
   const selectedPumpDue = selectedPump ? getDueInfo(selectedPump) : null;
   const selectedPumpOpenIssues = selectedPump ? openWorkOrdersForAsset(selectedPump.id) : [];
+  const selectedPumpHistory = selectedPump && Array.isArray(selectedPump.history)
+    ? [...selectedPump.history]
+        .sort((a, b) => new Date(b.date || b.createdAt || b.timestamp || b.updatedAt || 0) - new Date(a.date || a.createdAt || a.timestamp || a.updatedAt || 0))
+        .slice(0, 6)
+    : [];
+  const selectedPumpHistoryHtml = selectedPumpHistory.length ? selectedPumpHistory.map((entry) => {
+    const eventDate = entry.date || entry.createdAt || entry.timestamp || entry.updatedAt || "";
+    const eventTitle = entry.type || entry.result || "Pump event";
+    const eventSummary = entry.notes || entry.result || "Recorded event";
+    const eventByline = [
+      eventDate ? formatDate(eventDate) : "",
+      entry.technician || entry.user || ""
+    ].filter(Boolean).join(" | ");
+    return `
+      <article>
+        <strong>${escapeHtml(eventTitle)}</strong>
+        <span>${escapeHtml(eventSummary)}</span>
+        ${eventByline ? `<em>${escapeHtml(eventByline)}</em>` : ""}
+      </article>
+    `;
+  }).join("") : `<div class="pump-hmi-history-empty">No pump history yet.</div>`;
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
       <header>
@@ -16045,6 +16066,15 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           >${escapeHtml(roleLabel)}</button>
         `).join("")}
       </div>
+      <section class="pump-hmi-history" aria-label="Pump recent history">
+        <header>
+          <span>Recent history</span>
+          <strong>${selectedPumpHistory.length}</strong>
+        </header>
+        <div class="pump-hmi-history-list">
+          ${selectedPumpHistoryHtml}
+        </div>
+      </section>
       <div class="pump-hmi-detail-actions">
         <button type="button" class="primary" data-open-pump-equipment="${escapeAttribute(selectedPump.id)}">Open Equipment</button>
         <button type="button" class="secondary" data-select-pump-asset="">Close</button>

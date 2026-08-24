@@ -1808,6 +1808,60 @@ textarea:disabled {
   color: #ffffff;
 }
 
+.pump-hmi-history {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(94, 234, 212, 0.2);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.42);
+}
+
+.pump-hmi-history header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #e2e8f0;
+}
+
+.pump-hmi-history header span {
+  color: #67e8f9;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pump-hmi-history-list {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.pump-hmi-history article {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.pump-hmi-history article strong {
+  color: #f8fafc;
+  font-size: 0.9rem;
+}
+
+.pump-hmi-history article span,
+.pump-hmi-history article em,
+.pump-hmi-history-empty {
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
 .pump-hmi-detail-actions {
   display: flex;
   flex-wrap: wrap;
