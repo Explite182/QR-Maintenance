@@ -2517,6 +2517,63 @@ textarea:disabled {
   font-weight: 900;
 }
 
+.pump-controller-pump-picker {
+  display: grid;
+  grid-column: 1 / -2;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(45, 212, 191, 0.22);
+  border-radius: 7px;
+  background: rgba(2, 6, 23, 0.28);
+}
+
+.pump-controller-pump-picker legend {
+  padding: 0 6px;
+  color: #7dd3fc;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pump-controller-pump-picker label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.42);
+  color: #e2e8f0;
+  text-transform: none;
+}
+
+.pump-controller-pump-picker input {
+  width: auto;
+  height: 16px;
+  min-width: 16px;
+  padding: 0;
+  accent-color: #14b8a6;
+}
+
+.pump-controller-pump-picker span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pump-controller-pump-picker.is-empty {
+  display: grid;
+  gap: 4px;
+  color: #e2e8f0;
+}
+
 .pump-controller-actions {
   display: flex;
   gap: 8px;
@@ -2546,7 +2603,7 @@ textarea:disabled {
 
 .pump-controller-card {
   display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(92px, 0.55fr)) auto;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(92px, 0.55fr)) minmax(180px, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-width: 0;
@@ -2592,6 +2649,13 @@ textarea:disabled {
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.pump-controller-card .pump-controller-assigned {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pump-controller-empty {
