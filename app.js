@@ -5315,7 +5315,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260824-lighting-edit-refresh-02";
+const SITEWORKS_APP_VERSION = "20260824-lighting-feedback-input-03";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -11610,11 +11610,17 @@ function getLightingInputHasLiveState(input = {}) {
 
 function getLightingInputActionState(input = {}) {
   if (input.enabled === false || !getLightingInputIsActive(input)) return "";
+  if (isLightingInputRelayFeedback(input)) return "";
   const action = String(input.action || "").toLowerCase();
   if (!action || action === "no action") return "";
   if (action.includes("off")) return "Off";
   if (action.includes("on")) return "On";
   return "";
+}
+
+function isLightingInputRelayFeedback(input = {}) {
+  const text = `${input.inputType || input.input_type || ""} ${input.action || ""}`.toLowerCase();
+  return text.includes("relay feedback") || text.includes("feedback only") || text.includes("monitor relay");
 }
 
 function getLightingInputTargetName(input = {}) {
@@ -11637,8 +11643,36 @@ function getLightingInputActionDescription(input = {}) {
   const action = input.action || "No action";
   const actionState = getLightingInputActionState(input);
   if (input.enabled === false) return `${action} | disabled`;
+  if (isLightingInputRelayFeedback(input)) {
+    const state = getLightingInputHasLiveState(input)
+      ? (getLightingInputIsActive(input) ? "feedback made" : "feedback not made")
+      : "waiting for feedback";
+    return `Relay feedback | ${state}`;
+  }
   if (!actionState) return `${action} | waiting`;
   return `${action} | applying ${actionState}`;
+}
+
+function getLightingZoneFeedbackInputs(zone = {}) {
+  const { scopeKey } = getLightingScopeDetails();
+  if (lightingInputsLoadedScope !== scopeKey) return [];
+  return lightingInputsCache.filter((input) => {
+    if (!isLightingInputRelayFeedback(input)) return false;
+    const targetZoneId = input.zoneId || input.zone_id || "";
+    return !targetZoneId || targetZoneId === zone.id;
+  });
+}
+
+function getLightingZoneFeedbackSummary(zone = {}) {
+  const inputs = getLightingZoneFeedbackInputs(zone);
+  if (!inputs.length) return "";
+  return inputs.map((input) => {
+    const inputNumber = input.inputNumber || input.input_number || "?";
+    const state = getLightingInputHasLiveState(input)
+      ? (getLightingInputIsActive(input) ? "made" : "not made")
+      : "waiting";
+    return `DI${inputNumber} ${input.label || "relay feedback"} ${state}`;
+  }).join(" | ");
 }
 
 function getLightingZoneInputEffect(zone = {}) {
@@ -11861,7 +11895,8 @@ function renderLightingZones() {
           <span>Status <strong>${escapeHtml(zone.status || "Setup only")}</strong></span>
           <span class="lighting-priority-effect">Active rule <strong>${escapeHtml(priorityDecision.source)}: ${escapeHtml(priorityDecision.details.join(" | "))}</strong></span>
           ${overrideEffect ? `<span class="lighting-override-effect">Override <strong>${escapeHtml(overrideEffect.text)}</strong></span>` : ""}
-          ${inputEffect ? `<span class="lighting-input-effect">Input control <strong>${escapeHtml(inputEffect.text)}</strong></span>` : ""}
+              ${inputEffect ? `<span class="lighting-input-effect">Input control <strong>${escapeHtml(inputEffect.text)}</strong></span>` : ""}
+          ${getLightingZoneFeedbackSummary(zone) ? `<span>Relay feedback <strong>${escapeHtml(getLightingZoneFeedbackSummary(zone))}</strong></span>` : ""}
           ${getLightingCommandStatusHtml(zone)}
           <span>Notes <strong>${escapeHtml(zone.notes || "None")}</strong></span>
           ${isDimmingZone ? `
@@ -11915,7 +11950,8 @@ function renderLightingControllerInputSummary(controller = {}) {
     const state = getLightingInputHasLiveState(input)
       ? (getLightingInputIsActive(input) ? "active" : "inactive")
       : "waiting";
-    return `DI${escapeHtml(input.inputNumber || "?")}: ${escapeHtml(input.label || input.inputType || "Input")} (${escapeHtml(state)} -> ${escapeHtml(input.action || "No action")})`;
+    const purpose = isLightingInputRelayFeedback(input) ? "feedback" : (input.action || "No action");
+    return `DI${escapeHtml(input.inputNumber || "?")}: ${escapeHtml(input.label || input.inputType || "Input")} (${escapeHtml(state)} -> ${escapeHtml(purpose)})`;
   }).join(" | ")}</strong></span>`;
 }
 
@@ -11924,6 +11960,10 @@ function renderLightingControllerActiveControlSummary(controller = {}) {
   const activeInputs = lightingInputsCache.filter((input) => (
     input.controllerId === controller.id
     && getLightingInputActionState(input)
+  )).length;
+  const feedbackInputs = lightingInputsCache.filter((input) => (
+    input.controllerId === controller.id
+    && isLightingInputRelayFeedback(input)
   )).length;
   const activeOverrides = getVisibleLightingOverrides(lightingOverridesCache).filter((override) => {
     if (!getLightingOverrideIsActive(override)) return false;
@@ -11935,7 +11975,7 @@ function renderLightingControllerActiveControlSummary(controller = {}) {
     const zoneId = schedule.zoneId || schedule.zone_id || "";
     return !zoneId || controllerZoneIds.has(zoneId);
   }).length;
-  return `<span>Active controls <strong>${activeOverrides} override(s) | ${activeInputs} input(s) | ${activeSchedules} schedule(s)</strong></span>`;
+  return `<span>Active controls <strong>${activeOverrides} override(s) | ${activeInputs} input(s) | ${activeSchedules} schedule(s) | ${feedbackInputs} feedback input(s)</strong></span>`;
 }
 
 function formatLightingDiagnosticTime(value) {
@@ -12743,7 +12783,7 @@ function renderLightingInputs() {
           </label>
           <label>Type
             <select name="inputType">
-              ${["Photocell", "External timeclock", "Aux contact", "Override switch"].map((type) => `<option value="${type}"${type === input.inputType ? " selected" : ""}>${type}</option>`).join("")}
+              ${["Photocell", "External timeclock", "Aux contact", "Override switch", "Relay feedback"].map((type) => `<option value="${type}"${type === input.inputType ? " selected" : ""}>${type}</option>`).join("")}
             </select>
           </label>
           <label>Active state
@@ -12756,7 +12796,7 @@ function renderLightingInputs() {
           </label>
           <label>Action
             <select name="action">
-              ${["No action", "Turn zone on", "Turn zone off", "Hold off when active", "Allow schedule when active", "Manual override on", "Manual override off"].map((action) => `<option value="${action}"${action === input.action ? " selected" : ""}>${action}</option>`).join("")}
+              ${["No action", "Monitor relay feedback", "Turn zone on", "Turn zone off", "Hold off when active", "Allow schedule when active", "Manual override on", "Manual override off"].map((action) => `<option value="${action}"${action === input.action ? " selected" : ""}>${action}</option>`).join("")}
             </select>
           </label>
           <label>Enabled
@@ -12861,6 +12901,9 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
     notes: String(formData.get("notes") || "").trim(),
     createdAt: existingInput?.createdAt || new Date().toISOString()
   };
+  if (String(input.inputType || "").toLowerCase() === "relay feedback" && input.action === "No action") {
+    input.action = "Monitor relay feedback";
+  }
   if (!input.label) {
     if (status) status.textContent = "Input label is required.";
     return;
