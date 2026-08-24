@@ -8999,6 +8999,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const pumpStatusActionButton = event.target.closest("[data-pump-status-action]");
+  if (pumpStatusActionButton) {
+    event.preventDefault();
+    setPumpAssetOperatingStatus(
+      pumpStatusActionButton.dataset.pumpAssetId || selectedPumpHmiAssetId || "",
+      pumpStatusActionButton.dataset.pumpStatusAction || ""
+    );
+    return;
+  }
+
   const openPumpAssetButton = event.target.closest("[data-open-pump-asset]");
   if (openPumpAssetButton) {
     event.preventDefault();
@@ -15562,7 +15572,23 @@ function isPumpAsset(asset = {}) {
   ].some((term) => text.includes(term));
 }
 
+function normalizePumpOperatingStatus(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (text.includes("alarm") || text.includes("fault") || text.includes("trip")) return "Alarm";
+  if (text.includes("attention") || text.includes("warning")) return "Needs attention";
+  if (text.includes("maint")) return "Maintenance";
+  if (text.includes("run") || text === "on" || text.includes("online")) return "Running";
+  if (text === "off" || text.includes("standby") || text.includes("stop")) return "Off";
+  return "";
+}
+
 function pumpAssetStatus(asset = {}) {
+  const manualStatus = normalizePumpOperatingStatus(asset.pumpStatus || asset.operatingStatus || asset.runtimeStatus);
+  if (manualStatus === "Alarm") return { label: "Alarm", className: "is-alarm" };
+  if (manualStatus === "Needs attention") return { label: "Needs attention", className: "is-warning" };
+  if (manualStatus === "Maintenance") return { label: "Maintenance", className: "is-maintenance" };
+  if (manualStatus === "Running") return { label: "Running", className: "is-running" };
+  if (manualStatus === "Off") return { label: "Off", className: "is-off" };
   const text = [
     asset.status,
     asset.condition,
@@ -15579,7 +15605,36 @@ function pumpAssetStatus(asset = {}) {
   if (text.includes("run") || text.includes("on") || text.includes("online")) {
     return { label: "Running", className: "is-running" };
   }
-  return { label: "Listed", className: "is-listed" };
+  return { label: "Off", className: "is-off" };
+}
+
+function setPumpAssetOperatingStatus(assetId = "", status = "") {
+  const normalizedStatus = normalizePumpOperatingStatus(status);
+  if (!assetId || !normalizedStatus) return;
+  const asset = state.assets.find((item) => item.id === assetId);
+  if (!asset) return;
+  const now = new Date().toISOString();
+  asset.pumpStatus = normalizedStatus;
+  asset.operatingStatus = normalizedStatus;
+  asset.status = normalizedStatus;
+  asset.condition = normalizedStatus === "Alarm" || normalizedStatus === "Needs attention"
+    ? "Needs attention"
+    : normalizedStatus === "Maintenance"
+      ? "Maintenance"
+      : "Good";
+  asset.history = Array.isArray(asset.history) ? asset.history : [];
+  asset.history.unshift({
+    id: crypto.randomUUID?.() || `pump-status-${Date.now()}`,
+    type: "Pump status",
+    date: now,
+    result: normalizedStatus,
+    notes: `Pump marked ${normalizedStatus}.`,
+    technician: currentUser?.name || currentUser?.email || "SiteWorks"
+  });
+  asset.updatedAt = now;
+  addActivity("Pump status updated", `${asset.name || "Pump"}: ${normalizedStatus}`);
+  saveState();
+  renderAutomationPumps();
 }
 
 function pumpAssetsForCurrentView() {
@@ -15927,6 +15982,16 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Condition</span><strong>${escapeHtml(selectedPump.condition || "Listed")}</strong></div>
       </div>
       <p>${escapeHtml(selectedPump.notes || "No pump notes recorded.")}</p>
+      <div class="pump-hmi-status-actions" aria-label="Pump operating status controls">
+        ${["Running", "Off", "Needs attention", "Alarm", "Maintenance"].map((statusLabel) => `
+          <button
+            type="button"
+            class="${selectedPumpStatus.label === statusLabel ? "is-active" : ""}"
+            data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
+            data-pump-status-action="${escapeAttribute(statusLabel)}"
+          >${escapeHtml(statusLabel)}</button>
+        `).join("")}
+      </div>
       <div class="pump-hmi-detail-actions">
         <button type="button" class="primary" data-open-pump-equipment="${escapeAttribute(selectedPump.id)}">Open Equipment</button>
         <button type="button" class="secondary" data-select-pump-asset="">Close</button>
