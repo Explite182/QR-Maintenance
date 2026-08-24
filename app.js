@@ -16526,7 +16526,7 @@ function renderPumpDiagramDevices(devices = [], selectedDeviceId = "") {
     return `
       <div class="pump-hmi-ddc-empty">
         <strong>No DDC devices yet</strong>
-        <span>Add floats, motor proofs, pressure switches, or contacts below.</span>
+        <span>Open the add panel below to place floats, motor proofs, pressure switches, or contacts on this diagram.</span>
       </div>
     `;
   }
@@ -16608,13 +16608,15 @@ function renderPumpDiagramDeviceSetup(locationRecord = null, devices = []) {
       </section>
     `;
   }
+  const hasDevices = devices.length > 0;
   return `
-    <section class="pump-hmi-ddc-setup">
-      <details>
+    <section class="pump-hmi-ddc-setup ${hasDevices ? "" : "is-empty"}">
+      <details ${hasDevices ? "" : "open"}>
         <summary>
-          <span>DDC diagram devices</span>
+          <span>${hasDevices ? "DDC diagram devices" : "+ Add Float / Contact / Device"}</span>
           <strong>${devices.length}</strong>
         </summary>
+        ${hasDevices ? "" : `<p class="pump-hmi-ddc-help">Add the first DDC point here. Once saved, it will appear on the pump diagram above and become clickable.</p>`}
         <form class="pump-hmi-ddc-form" data-pump-diagram-device-form>
           <label>
             <span>Device label</span>
