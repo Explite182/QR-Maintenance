@@ -1509,6 +1509,85 @@ textarea:disabled {
   white-space: nowrap;
 }
 
+.pump-hmi-alarms {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 10px;
+  background: rgba(120, 53, 15, 0.18);
+}
+
+.pump-hmi-alarms header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pump-hmi-alarms header span {
+  color: #fbbf24;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pump-hmi-alarms header strong {
+  color: #fef3c7;
+}
+
+.pump-hmi-alarm-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.pump-hmi-alarm {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 5px 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pump-hmi-alarm:hover {
+  border-color: rgba(251, 191, 36, 0.8);
+}
+
+.pump-hmi-alarm strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pump-hmi-alarm em {
+  color: #fbbf24;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.pump-hmi-alarm small {
+  grid-column: 2 / -1;
+  color: #cbd5e1;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.pump-hmi-alarm.is-alarm {
+  border-color: rgba(239, 68, 68, 0.58);
+}
+
+.pump-hmi-alarm.is-alarm em {
+  color: #fecaca;
+}
+
 .pump-hmi-mimic {
   position: relative;
   display: grid;

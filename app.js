@@ -9019,6 +9019,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const pumpCommandActionButton = event.target.closest("[data-pump-command-action]");
+  if (pumpCommandActionButton) {
+    event.preventDefault();
+    setPumpAssetControlCommand(
+      pumpCommandActionButton.dataset.pumpAssetId || selectedPumpHmiAssetId || "",
+      pumpCommandActionButton.dataset.pumpCommandAction || ""
+    );
+    return;
+  }
+
   const openPumpAssetButton = event.target.closest("[data-open-pump-asset]");
   if (openPumpAssetButton) {
     event.preventDefault();
@@ -15678,6 +15688,55 @@ function setPumpAssetOperatingStatus(assetId = "", status = "") {
   renderAutomationPumps();
 }
 
+function normalizePumpControlCommand(command = "") {
+  const raw = String(command || "").trim().toLowerCase();
+  if (raw === "run" || raw === "running" || raw === "start") return "Run";
+  if (raw === "stop" || raw === "off") return "Stop";
+  if (raw === "auto" || raw === "automatic") return "Auto";
+  if (raw === "alarm reset" || raw === "reset") return "Alarm Reset";
+  return "";
+}
+
+function setPumpAssetControlCommand(assetId = "", command = "") {
+  const normalizedCommand = normalizePumpControlCommand(command);
+  if (!assetId || !normalizedCommand) return;
+  const asset = state.assets.find((item) => item.id === assetId);
+  if (!asset) return;
+  const now = new Date().toISOString();
+  asset.pumpCommand = normalizedCommand;
+  asset.lastPumpCommandAt = now;
+  asset.pumpControlMode = normalizedCommand === "Auto" ? "Auto" : "Manual";
+  if (normalizedCommand === "Run") {
+    asset.pumpStatus = "Running";
+    asset.operatingStatus = "Running";
+    asset.status = "Running";
+    asset.condition = "Good";
+  } else if (normalizedCommand === "Stop") {
+    asset.pumpStatus = "Off";
+    asset.operatingStatus = "Off";
+    asset.status = "Off";
+    asset.condition = "Good";
+  } else if (normalizedCommand === "Alarm Reset" && normalizePumpOperatingStatus(asset.pumpStatus || asset.operatingStatus) === "Alarm") {
+    asset.pumpStatus = "Off";
+    asset.operatingStatus = "Off";
+    asset.status = "Off";
+    asset.condition = "Good";
+  }
+  asset.history = Array.isArray(asset.history) ? asset.history : [];
+  asset.history.unshift({
+    id: crypto.randomUUID?.() || `pump-command-${Date.now()}`,
+    type: "Pump command",
+    date: now,
+    result: normalizedCommand,
+    notes: `Setup-only command recorded: ${normalizedCommand}.`,
+    technician: currentUser?.name || currentUser?.email || "SiteWorks"
+  });
+  asset.updatedAt = now;
+  addActivity("Pump command recorded", `${asset.name || "Pump"}: ${normalizedCommand}`);
+  saveState();
+  renderAutomationPumps();
+}
+
 function pumpAssetsForCurrentView() {
   return filteredAssets().filter(isPumpAsset);
 }
@@ -15919,7 +15978,7 @@ function renderPumpAutomationSummary(pumps = [], controllers = []) {
   if (!summary) return;
   const statuses = pumps.map(pumpAssetStatus);
   const runningCount = statuses.filter((status) => status.className === "is-running").length;
-  const warningCount = statuses.filter((status) => status.className === "is-warning").length;
+  const warningCount = statuses.filter((status) => status.className === "is-warning" || status.className === "is-alarm").length;
   summary.innerHTML = `
     <div class="pump-status-tile">
       <span>Pump systems</span>
@@ -15961,7 +16020,10 @@ function pumpHmiPlannedPoints(controller = null) {
 function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocation = null, controllers = []) {
   const statuses = pumps.map(pumpAssetStatus);
   const runningCount = statuses.filter((status) => status.className === "is-running").length;
-  const warningCount = statuses.filter((status) => status.className === "is-warning").length;
+  const activePumpAlarms = pumps
+    .map((asset) => ({ asset, status: pumpAssetStatus(asset) }))
+    .filter(({ status }) => status.className === "is-warning" || status.className === "is-alarm");
+  const warningCount = activePumpAlarms.length;
   const locationName = currentLocation?.name || "Selected location";
   const customerName = currentCustomer?.name || "SiteWorks";
   const leadPump = pumps.find((asset) => normalizePumpRole(asset.pumpRole || asset.role) === "Lead") || pumps[0] || null;
@@ -15980,6 +16042,17 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <em>${escapeHtml(point.state)}</em>
     </div>
   `).join("");
+  const pumpAlarmTiles = activePumpAlarms.map(({ asset, status }) => {
+    const openIssueCount = openWorkOrdersForAsset(asset.id).length;
+    return `
+      <button type="button" class="pump-hmi-alarm ${status.className}" data-select-pump-asset="${escapeAttribute(asset.id)}">
+        <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
+        <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
+        <em>${escapeHtml(status.label)}</em>
+        <small>${escapeHtml(getAssetEquipmentId(asset))} | ${openIssueCount} open ticket${openIssueCount === 1 ? "" : "s"}</small>
+      </button>
+    `;
+  }).join("");
   const pumpTiles = pumps.map((asset, index) => {
     const status = pumpAssetStatus(asset);
     const due = getDueInfo(asset);
@@ -16043,9 +16116,21 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Open tickets</span><strong>${selectedPumpOpenIssues.length}</strong></div>
         <div><span>Type</span><strong>${escapeHtml(selectedPump.type || "Pump")}</strong></div>
         <div><span>Role</span><strong>${escapeHtml(normalizePumpRole(selectedPump.pumpRole || selectedPump.role))}</strong></div>
+        <div><span>Control</span><strong>${escapeHtml(selectedPump.pumpControlMode || "Setup only")}</strong></div>
+        <div><span>Last command</span><strong>${escapeHtml(selectedPump.pumpCommand || "None")}</strong></div>
         <div><span>Condition</span><strong>${escapeHtml(selectedPump.condition || "Listed")}</strong></div>
       </div>
       <p>${escapeHtml(selectedPump.notes || "No pump notes recorded.")}</p>
+      <div class="pump-hmi-status-actions" aria-label="Pump setup-only command controls">
+        ${["Run", "Stop", "Auto", "Alarm Reset"].map((commandLabel) => `
+          <button
+            type="button"
+            class="${selectedPump.pumpCommand === commandLabel ? "is-active" : ""}"
+            data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
+            data-pump-command-action="${escapeAttribute(commandLabel)}"
+          >${escapeHtml(commandLabel)}</button>
+        `).join("")}
+      </div>
       <div class="pump-hmi-status-actions" aria-label="Pump operating status controls">
         ${["Running", "Off", "Needs attention", "Alarm", "Maintenance"].map((statusLabel) => `
           <button
@@ -16146,6 +16231,17 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <strong>${escapeHtml(primaryController?.pumpCount || pumps.length || "1")}</strong>
             </div>
           </section>
+          ${activePumpAlarms.length ? `
+            <section class="pump-hmi-alarms" aria-label="Active pump alarms">
+              <header>
+                <span>Active Pump Alarms</span>
+                <strong>${activePumpAlarms.length}</strong>
+              </header>
+              <div class="pump-hmi-alarm-list">
+                ${pumpAlarmTiles}
+              </div>
+            </section>
+          ` : ""}
           <section class="pump-hmi-mimic" aria-label="Pump mimic diagram">
             <div class="pump-pipe is-supply"></div>
             <div class="pump-tank">
