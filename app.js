@@ -15630,9 +15630,12 @@ function isPumpAsset(asset = {}) {
 
 function normalizePumpOperatingStatus(value = "") {
   const text = String(value || "").trim().toLowerCase();
-  if (text.includes("alarm") || text.includes("fault") || text.includes("trip")) return "Alarm";
+  if (text.includes("high level") || text.includes("float high")) return "High level";
+  if (text.includes("fault") || text.includes("trip")) return "Fault";
+  if (text.includes("alarm")) return "Alarm";
   if (text.includes("attention") || text.includes("warning")) return "Needs attention";
   if (text.includes("maint")) return "Maintenance";
+  if (text.includes("offline") || text.includes("no controller")) return "Offline";
   if (text.includes("run") || text === "on" || text.includes("online")) return "Running";
   if (text === "off" || text.includes("standby") || text.includes("stop")) return "Off";
   if (text === "normal" || text === "listed" || text === "good" || text === "clear") return "Normal";
@@ -15643,15 +15646,18 @@ function normalizePumpRole(value = "") {
   const text = String(value || "").trim().toLowerCase();
   if (text.includes("lead") || text.includes("primary")) return "Lead";
   if (text.includes("backup") || text.includes("reserve")) return "Backup";
-  if (text.includes("standby") || text.includes("lag")) return "Standby";
-  return "Standby";
+  if (text.includes("standby") || text.includes("lag")) return "Lag";
+  return "Lag";
 }
 
 function pumpAssetStatus(asset = {}) {
   const manualStatus = normalizePumpOperatingStatus(asset.pumpStatus || asset.operatingStatus || asset.runtimeStatus);
   if (manualStatus === "Alarm") return { label: "Alarm", className: "is-alarm" };
+  if (manualStatus === "Fault") return { label: "Fault", className: "is-alarm" };
+  if (manualStatus === "High level") return { label: "High level", className: "is-alarm" };
   if (manualStatus === "Needs attention") return { label: "Needs attention", className: "is-warning" };
   if (manualStatus === "Maintenance") return { label: "Maintenance", className: "is-maintenance" };
+  if (manualStatus === "Offline") return { label: "Offline", className: "is-warning" };
   if (manualStatus === "Running") return { label: "Running", className: "is-running" };
   if (manualStatus === "Off") return { label: "Off", className: "is-off" };
   if (manualStatus === "Normal") return { label: "Normal", className: "is-listed" };
@@ -15730,16 +15736,16 @@ function setPumpAssetOperatingStatus(assetId = "", status = "") {
   asset.pumpStatus = normalizedStatus;
   asset.operatingStatus = normalizedStatus;
   asset.status = normalizedStatus;
-  asset.condition = normalizedStatus === "Alarm" || normalizedStatus === "Needs attention"
+  asset.condition = normalizedStatus === "Alarm" || normalizedStatus === "Fault" || normalizedStatus === "High level" || normalizedStatus === "Needs attention" || normalizedStatus === "Offline"
     ? "Needs attention"
     : normalizedStatus === "Maintenance"
       ? "Maintenance"
       : "Good";
-  const isAlarmEvent = normalizedStatus === "Alarm" || normalizedStatus === "Needs attention";
+  const isAlarmEvent = ["Alarm", "Fault", "High level", "Needs attention", "Offline"].includes(normalizedStatus);
   asset.history = Array.isArray(asset.history) ? asset.history : [];
   asset.history.unshift({
     id: crypto.randomUUID?.() || `pump-status-${Date.now()}`,
-    type: normalizedStatus === "Alarm" ? "Pump alarm" : isAlarmEvent ? "Pump attention" : "Pump status",
+    type: ["Alarm", "Fault", "High level"].includes(normalizedStatus) ? "Pump alarm" : isAlarmEvent ? "Pump attention" : "Pump status",
     date: now,
     result: normalizedStatus,
     notes: isAlarmEvent
@@ -16197,6 +16203,14 @@ function setPumpSimulationScenario(assetId = "", scenario = "") {
     setPumpAssetOperatingStatus(asset.id, "Alarm");
     return;
   }
+  if (action === "fault") {
+    setPumpAssetOperatingStatus(asset.id, "Fault");
+    return;
+  }
+  if (action === "high-level") {
+    setPumpAssetOperatingStatus(asset.id, "High level");
+    return;
+  }
   if (action === "maintenance") {
     setPumpAssetOperatingStatus(asset.id, "Maintenance");
   }
@@ -16302,7 +16316,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const locationName = currentLocation?.name || "Selected location";
   const customerName = currentCustomer?.name || "SiteWorks";
   const leadPump = pumps.find((asset) => normalizePumpRole(asset.pumpRole || asset.role) === "Lead") || pumps[0] || null;
-  const leadStatus = leadPump ? pumpAssetStatus(leadPump) : { label: "Standby", className: "is-listed" };
+  const leadStatus = leadPump ? pumpAssetStatus(leadPump) : { label: "Lag", className: "is-listed" };
   const alarmOn = warningCount > 0;
   const controllerStatuses = controllers.map(pumpControllerStatus);
   const simulationEnabled = hasPumpSimulationController(controllers);
@@ -16394,7 +16408,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           ${[
             ["run", "Run"],
             ["off", "Off"],
-            ["alarm", "Alarm"],
+            ["fault", "Fault"],
+            ["high-level", "High level"],
             ["maintenance", "Maint."]
           ].map(([action, label]) => `
             <button
@@ -16485,7 +16500,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <div class="pump-hmi-action-block">
         <span>Status preset</span>
         <div class="pump-hmi-status-actions" aria-label="Pump operating status controls">
-          ${["Normal", "Running", "Off", "Needs attention", "Alarm", "Maintenance"].map((statusLabel) => `
+          ${["Normal", "Running", "Off", "Fault", "High level", "Maintenance", "Offline"].map((statusLabel) => `
             <button
               type="button"
               class="${selectedPumpStatus.label === statusLabel ? "is-active" : ""}"
@@ -16502,7 +16517,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             ${[
               ["run", "Demo Run"],
               ["off", "Demo Off"],
-              ["alarm", "Demo Alarm"],
+              ["fault", "Demo Fault"],
+              ["high-level", "Demo High Level"],
               ["maintenance", "Demo Maintenance"]
             ].map(([action, label]) => `
               <button
@@ -16517,7 +16533,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <div class="pump-hmi-action-block">
         <span>Lead / lag role</span>
         <div class="pump-hmi-status-actions" aria-label="Pump lead lag role controls">
-          ${["Lead", "Standby", "Backup"].map((roleLabel) => `
+          ${["Lead", "Lag", "Backup"].map((roleLabel) => `
             <button
               type="button"
               class="${normalizePumpRole(selectedPump.pumpRole || selectedPump.role) === roleLabel ? "is-active" : ""}"
@@ -16608,6 +16624,19 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <strong>${escapeHtml(primaryController?.pumpCount || pumps.length || "1")}</strong>
             </div>
           </section>
+          <section class="pump-hmi-state-key" aria-label="Pump status legend">
+            ${[
+              ["Normal", "is-listed"],
+              ["Running", "is-running"],
+              ["Off", "is-off"],
+              ["Fault", "is-alarm"],
+              ["High level", "is-alarm"],
+              ["Maintenance", "is-maintenance"],
+              ["Offline / no controller", "is-warning"]
+            ].map(([label, className]) => `
+              <span class="${className}"><i aria-hidden="true"></i>${escapeHtml(label)}</span>
+            `).join("")}
+          </section>
           ${simulationEnabled ? `
             <section class="pump-hmi-simulation-panel" aria-label="Pump simulation controls">
               <header>
@@ -16647,8 +16676,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <strong>${warningCount}</strong>
             </div>
             <div>
-              <span>Lead / Standby / Backup</span>
-              <strong>${roleCounts.Lead || 0} / ${roleCounts.Standby || 0} / ${roleCounts.Backup || 0}</strong>
+              <span>Lead / Lag / Backup</span>
+              <strong>${roleCounts.Lead || 0} / ${roleCounts.Lag || 0} / ${roleCounts.Backup || 0}</strong>
             </div>
             <div>
               <span>Maintenance</span>
