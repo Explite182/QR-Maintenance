@@ -1,15 +1,15 @@
-const SITEWORKS_SW_VERSION = "20260825-pump-add-visible-06";
+const SITEWORKS_SW_VERSION = "20260825-pump-no-simulation-07";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260825-pump-add-visible-06",
+  "/styles.css?v=20260825-pump-no-simulation-07",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/app.js?v=20260825-pump-add-visible-06",
-  "/manifest.webmanifest?v=20260825-pump-add-visible-06",
-  "/icons/siteworks-icon-192.png?v=20260825-pump-add-visible-06",
-  "/icons/siteworks-icon-512.png?v=20260825-pump-add-visible-06"
+  "/app.js?v=20260825-pump-no-simulation-07",
+  "/manifest.webmanifest?v=20260825-pump-no-simulation-07",
+  "/icons/siteworks-icon-192.png?v=20260825-pump-no-simulation-07",
+  "/icons/siteworks-icon-512.png?v=20260825-pump-no-simulation-07"
 ];
 
 self.addEventListener("install", (event) => {

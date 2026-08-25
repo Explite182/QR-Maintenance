@@ -5382,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-add-visible-06";
+const SITEWORKS_APP_VERSION = "20260825-pump-no-simulation-07";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -9247,13 +9247,6 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     editingPumpControllerId = "__new__";
     renderAutomationPumps();
-    return;
-  }
-
-  const addPumpDemoControllerButton = event.target.closest("[data-add-pump-demo-controller]");
-  if (addPumpDemoControllerButton) {
-    event.preventDefault();
-    addPumpSimulationController();
     return;
   }
 
@@ -16326,7 +16319,7 @@ function renderPumpControllerForm(controller = null) {
       </label>
       <label>Controller type
         <select name="type">
-          ${["Pump controller", "Simulation pump controller", "Duplex pump controller", "Booster pump panel", "Lift station controller"].map((type) =>
+          ${["Pump controller", "Duplex pump controller", "Booster pump panel", "Lift station controller"].map((type) =>
             `<option value="${escapeAttribute(type)}" ${type === (controller?.type || "Pump controller") ? "selected" : ""}>${escapeHtml(type)}</option>`
           ).join("")}
         </select>
@@ -16343,7 +16336,7 @@ function renderPumpControllerForm(controller = null) {
       </label>
       <label>Mode
         <select name="mode">
-          ${["Setup only", "Simulation", "Monitoring ready", "Control ready"].map((mode) =>
+          ${["Setup only", "Monitoring ready", "Control ready"].map((mode) =>
             `<option value="${escapeAttribute(mode)}" ${mode === (controller?.mode || "Setup only") ? "selected" : ""}>${escapeHtml(mode)}</option>`
           ).join("")}
         </select>
@@ -16392,7 +16385,6 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
     : `
       <div class="pump-controller-add-row">
         <button type="button" class="pump-controller-add" data-add-pump-controller>+ Add Pump Controller</button>
-        <button type="button" class="pump-controller-add is-demo" data-add-pump-demo-controller>+ Add Simulation Controller</button>
       </div>
     `;
   const controllerRows = controllers.length ? controllers.map((controller) => {
@@ -16509,65 +16501,6 @@ async function savePumpControllerFromForm(form) {
     saveLocalPumpController(controller);
   }
   editingPumpControllerId = "";
-  renderAutomationPumps();
-}
-
-async function addPumpSimulationController() {
-  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
-    renderAutomationPumps();
-    return;
-  }
-  const currentLocation = getLocation(selectedLocationId);
-  const locationPumps = pumpAssetsForCurrentView();
-  const pumpCount = Math.max(1, Math.min(6, locationPumps.length || 2));
-  const controller = normalizePumpController({
-    customerId: selectedCustomerId,
-    locationId: selectedLocationId,
-    name: "Pump Simulation Controller",
-    uid: `SIM-PUMP-${String(Date.now()).slice(-5)}`,
-    type: "Simulation pump controller",
-    area: currentLocation?.name || "Demo pump room",
-    pumpCount: String(pumpCount),
-    pumpIds: locationPumps.slice(0, pumpCount).map((pump) => pump.id),
-    mode: "Simulation",
-    status: "Simulation online",
-    onlineStatus: "online",
-    notes: "Local demo controller for testing pump status, alarms, and HMI workflow without live pump hardware."
-  });
-  const saveLocalPumpController = (savedController) => {
-    const normalizedController = normalizePumpController(savedController);
-    const controllers = getPumpControllers().filter((item) => item.id !== normalizedController.id);
-    controllers.unshift(normalizedController);
-    savePumpControllers(controllers);
-    pumpControllersCache = [normalizedController, ...pumpControllersCache.filter((item) => item.id !== normalizedController.id)];
-    pumpControllersLoadedScope = getPumpControllerScopeKey();
-  };
-  try {
-    const response = await siteworksApi.savePumpController({
-      ...controller,
-      customer_id: controller.customerId,
-      location_id: controller.locationId,
-      device_uid: controller.uid,
-      controller_type: controller.type,
-      pump_count: controller.pumpCount,
-      pump_ids: controller.pumpIds,
-      data: {
-        ...(controller.data || {}),
-        pumpIds: controller.pumpIds
-      }
-    });
-    if (!response.ok) throw new Error(`Pump simulation controller save failed: ${response.status}`);
-    const payload = await response.json();
-    const savedController = payload.controller
-      ? { ...controller, ...payload.controller, pumpIds: normalizePumpControllerPumpIds(payload.controller).length ? normalizePumpControllerPumpIds(payload.controller) : controller.pumpIds }
-      : controller;
-    saveLocalPumpController(savedController);
-  } catch (error) {
-    console.warn("Pump simulation controller could not be saved to the server.", error);
-    saveLocalPumpController(controller);
-  }
-  editingPumpControllerId = "";
-  addActivity("Pump simulation ready", `${controller.name} added for ${currentLocation?.name || "selected location"}.`);
   renderAutomationPumps();
 }
 
@@ -17495,7 +17428,6 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               ${alarmOn ? "Attention" : "Normal"}
             </div>
           </header>
-          ${controllerSetup}
           <section class="pump-scada-dashboard ${alarmOn ? "is-alarm" : ""}" aria-label="Sump pump station HMI">
             <header class="pump-scada-titlebar">
               <div class="pump-scada-brand">
@@ -17786,6 +17718,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             ${pumpDrawer}
             ${!pumpDrawer ? diagramDeviceDrawer : ""}
           </section>
+          ${controllerSetup}
         </main>
       </div>
       <aside class="pump-hmi-side">
@@ -17819,7 +17752,7 @@ function renderAutomationPumps() {
   if (pumpScopeKey && pumpControllersLoadedScope !== pumpScopeKey && !pumpControllersLoading) {
     loadPumpControllersForCurrentScope();
   }
-  const pumpControllers = pumpControllersForCurrentView();
+  const pumpControllers = pumpControllersForCurrentView().filter((controller) => !isPumpSimulationController(controller));
   const activePumpAlarms = activePumpAlarmAssets(pumps);
   const activePumpAlarmOverview = activePumpAlarms.length ? `
     <section class="pump-alarm-overview" aria-label="Active pump attention items">
@@ -17849,10 +17782,7 @@ function renderAutomationPumps() {
     </section>
   ` : "";
   count.textContent = pumps.length;
-  scope.innerHTML = `
-    <span>${escapeHtml(currentCustomer?.name || "No customer selected")} | ${escapeHtml(currentLocation?.name || "All locations")}</span>
-    ${currentLocation ? `<button type="button" class="secondary mini" data-add-pump-controller>+ Add Pump ESP32 Controller</button>` : ""}
-  `;
+  scope.textContent = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
   renderPumpAutomationSummary(pumps, pumpControllers);
 
   if (currentLocation) {
