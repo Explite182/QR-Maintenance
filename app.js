@@ -5382,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-esp32-add-05";
+const SITEWORKS_APP_VERSION = "20260825-pump-add-visible-06";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -17495,6 +17495,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               ${alarmOn ? "Attention" : "Normal"}
             </div>
           </header>
+          ${controllerSetup}
           <section class="pump-scada-dashboard ${alarmOn ? "is-alarm" : ""}" aria-label="Sump pump station HMI">
             <header class="pump-scada-titlebar">
               <div class="pump-scada-brand">
@@ -17785,7 +17786,6 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             ${pumpDrawer}
             ${!pumpDrawer ? diagramDeviceDrawer : ""}
           </section>
-          ${controllerSetup}
         </main>
       </div>
       <aside class="pump-hmi-side">
@@ -17849,7 +17849,10 @@ function renderAutomationPumps() {
     </section>
   ` : "";
   count.textContent = pumps.length;
-  scope.textContent = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
+  scope.innerHTML = `
+    <span>${escapeHtml(currentCustomer?.name || "No customer selected")} | ${escapeHtml(currentLocation?.name || "All locations")}</span>
+    ${currentLocation ? `<button type="button" class="secondary mini" data-add-pump-controller>+ Add Pump ESP32 Controller</button>` : ""}
+  `;
   renderPumpAutomationSummary(pumps, pumpControllers);
 
   if (currentLocation) {

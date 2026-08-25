@@ -1,15 +1,15 @@
-const SITEWORKS_SW_VERSION = "20260819-lighting-input-state-01";
+const SITEWORKS_SW_VERSION = "20260825-pump-add-visible-06";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260819-lighting-input-state-01",
+  "/styles.css?v=20260825-pump-add-visible-06",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/app.js?v=20260819-lighting-input-state-01",
-  "/manifest.webmanifest?v=20260819-lighting-input-state-01",
-  "/icons/siteworks-icon-192.png?v=20260819-lighting-input-state-01",
-  "/icons/siteworks-icon-512.png?v=20260819-lighting-input-state-01"
+  "/app.js?v=20260825-pump-add-visible-06",
+  "/manifest.webmanifest?v=20260825-pump-add-visible-06",
+  "/icons/siteworks-icon-192.png?v=20260825-pump-add-visible-06",
+  "/icons/siteworks-icon-512.png?v=20260825-pump-add-visible-06"
 ];
 
 self.addEventListener("install", (event) => {

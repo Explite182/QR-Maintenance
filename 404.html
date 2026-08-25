@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="SiteWorks">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>SiteWorks</title>
-  <link rel="manifest" href="/manifest.webmanifest?v=20260824-lighting-key-copy-01">
+  <link rel="manifest" href="/manifest.webmanifest?v=20260825-pump-add-visible-06">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260815-pwa-05">
-  <link rel="stylesheet" href="/styles.css?v=20260824-lighting-key-copy-01">
+  <link rel="stylesheet" href="/styles.css?v=20260825-pump-add-visible-06">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -1540,6 +1540,7 @@
                     <option>External timeclock</option>
                     <option>Aux contact</option>
                     <option>Override switch</option>
+                    <option>Relay feedback</option>
                   </select>
                 </label>
                 <label>Active state
@@ -1556,6 +1557,7 @@
                 <label>Action
                   <select name="action">
                     <option>No action</option>
+                    <option>Monitor relay feedback</option>
                     <option>Turn zone on</option>
                     <option>Turn zone off</option>
                     <option>Hold off when active</option>
@@ -2254,11 +2256,11 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/app.js?v=20260824-lighting-key-copy-01"></script>
+  <script src="/app.js?v=20260825-pump-add-visible-06"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-navigator.serviceWorker.register("/sw.js?v=20260824-lighting-key-copy-01").catch((error) => {
+navigator.serviceWorker.register("/sw.js?v=20260825-pump-add-visible-06").catch((error) => {
           console.warn("SiteWorks app install support was not started.", error);
         });
       });
