@@ -3973,6 +3973,73 @@ function generatePumpApiKey() {
   return generateMonitoringApiKey().replace(/^swm_/, "swp_");
 }
 
+function getPumpApiKeyFormId(form = null) {
+  const editId = String(form?.dataset?.pumpControllerForm || "").trim();
+  const scopeKey = getPumpControllerScopeKey?.() || `${selectedCustomerId || ""}:${selectedLocationId || ""}`;
+  return editId ? `edit:${editId}` : `new:${scopeKey}`;
+}
+
+function readPendingPumpApiKey() {
+  if (pendingPumpApiKey?.key) return pendingPumpApiKey;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(PUMP_PENDING_API_KEY_STORAGE_KEY) || "null");
+    if (saved?.key) {
+      pendingPumpApiKey = saved;
+      return saved;
+    }
+  } catch {
+    pendingPumpApiKey = null;
+  }
+  return null;
+}
+
+function savePendingPumpApiKey(form, key) {
+  pendingPumpApiKey = {
+    formId: getPumpApiKeyFormId(form),
+    key: String(key || ""),
+    savedAt: new Date().toISOString()
+  };
+  try {
+    sessionStorage.setItem(PUMP_PENDING_API_KEY_STORAGE_KEY, JSON.stringify(pendingPumpApiKey));
+  } catch {
+    // Session storage is a convenience; the password input still carries the key.
+  }
+}
+
+function clearPendingPumpApiKey(form = null) {
+  const current = readPendingPumpApiKey();
+  const formId = form ? getPumpApiKeyFormId(form) : "";
+  if (formId && current?.formId && current.formId !== formId) return;
+  pendingPumpApiKey = null;
+  try {
+    sessionStorage.removeItem(PUMP_PENDING_API_KEY_STORAGE_KEY);
+  } catch {
+    // Nothing else to clean up.
+  }
+}
+
+function applyPendingPumpApiKeyToForm(form = null) {
+  if (!form) return;
+  const pending = readPendingPumpApiKey();
+  if (!pending?.key || pending.formId !== getPumpApiKeyFormId(form)) return;
+  const input = form.querySelector("input[name='apiKey']");
+  const output = form.querySelector("[data-pump-generated-key]");
+  const status = form.querySelector("[data-pump-generated-key-status]");
+  const copyButton = form.querySelector("[data-pump-copy-key]");
+  const generateButton = form.querySelector("[data-pump-generate-key]");
+  if (input && !input.value) input.value = pending.key;
+  if (output && !output.value) output.value = pending.key;
+  if (status) status.textContent = "Generated key restored from this browser session. Copy it before saving.";
+  if (copyButton) copyButton.disabled = false;
+  if (generateButton) generateButton.textContent = "Generate New API Key";
+}
+
+function restorePendingPumpApiKeyForms() {
+  document.querySelectorAll("[data-pump-controller-form]").forEach((form) => {
+    applyPendingPumpApiKeyToForm(form);
+  });
+}
+
 async function rotateMonitoringDeviceKey() {
   ensureMonitoringCollections();
   const elements = monitoringElements();
@@ -5315,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260824-lighting-feedback-input-03";
+const SITEWORKS_APP_VERSION = "20260825-pump-esp32-add-05";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -5323,6 +5390,9 @@ const LIGHTING_SCHEDULES_STORAGE_KEY = "siteworks_lighting_schedules_v1";
 const LIGHTING_OVERRIDES_STORAGE_KEY = "siteworks_lighting_overrides_v1";
 const LIGHTING_PENDING_API_KEY_STORAGE_KEY = "siteworks_lighting_pending_api_key_v1";
 const PUMP_CONTROLLERS_STORAGE_KEY = "siteworks_pump_controllers_v1";
+const PUMP_PENDING_API_KEY_STORAGE_KEY = "siteworks_pump_pending_api_key_v1";
+const PUMP_DEVICE_CONFIG_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/pumps/device/config`;
+const PUMP_DEVICE_HEARTBEAT_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/pumps/device/heartbeat`;
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
@@ -5363,6 +5433,7 @@ let pumpControllersCache = [];
 let pumpControllersLoadedScope = "";
 let pumpControllersLoading = false;
 let editingPumpControllerId = "";
+let pendingPumpApiKey = null;
 let selectedPumpHmiAssetId = "";
 let selectedPumpDiagramDeviceId = "";
 const ALL_CUSTOMERS = "all";
@@ -9215,9 +9286,37 @@ document.addEventListener("click", (event) => {
     const form = pumpControllerGenerateKeyButton.closest("form");
     const input = form?.querySelector("input[name='apiKey']");
     const output = form?.querySelector("[data-pump-generated-key]");
+    const status = form?.querySelector("[data-pump-generated-key-status]");
     const newKey = generatePumpApiKey();
     if (input) input.value = newKey;
-    if (output) output.textContent = `New API key, shown once: ${newKey}`;
+    if (output) output.value = newKey;
+    if (form) savePendingPumpApiKey(form, newKey);
+    if (status) status.textContent = "New API key. Copy it before saving; only the ending is shown later.";
+    pumpControllerGenerateKeyButton.textContent = "Generate New API Key";
+    const copyButton = form?.querySelector("[data-pump-copy-key]");
+    if (copyButton) copyButton.disabled = false;
+    return;
+  }
+
+  const pumpControllerCopyKeyButton = event.target.closest("[data-pump-copy-key]");
+  if (pumpControllerCopyKeyButton) {
+    event.preventDefault();
+    const form = pumpControllerCopyKeyButton.closest("form");
+    const output = form?.querySelector("[data-pump-generated-key]");
+    const status = form?.querySelector("[data-pump-generated-key-status]");
+    const key = String(output?.value || form?.querySelector("input[name='apiKey']")?.value || "").trim();
+    if (!key) {
+      if (status) status.textContent = "Generate a key first.";
+      return;
+    }
+    output?.select?.();
+    copyText(key).then(() => {
+      pumpControllerCopyKeyButton.textContent = "Copied";
+      if (status) status.textContent = "Copied. Paste this into the ESP32 setup page.";
+      setTimeout(() => {
+        pumpControllerCopyKeyButton.textContent = "Copy API Key";
+      }, 1600);
+    });
     return;
   }
 
@@ -16195,6 +16294,9 @@ function renderPumpControllerForm(controller = null) {
   const pumps = pumpAssetsForCurrentView();
   const selectedPumpIds = new Set(normalizePumpControllerPumpIds(controller));
   const formId = controller?.id || "";
+  const defaultUidSuffix = currentLocation?.name
+    ? currentLocation.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 18)
+    : "PUMP";
   const pumpAssignmentHtml = pumps.length ? `
     <fieldset class="pump-controller-pump-picker">
       <legend>Assigned pumps</legend>
@@ -16217,10 +16319,10 @@ function renderPumpControllerForm(controller = null) {
   return `
     <form class="pump-controller-form" data-pump-controller-form="${escapeAttribute(formId)}">
       <label>Controller name
-        <input name="name" value="${escapeAttribute(controller?.name || "Pump Controller 1")}" required>
+        <input name="name" value="${escapeAttribute(controller?.name || "Pump ESP32 Controller")}" required>
       </label>
       <label>Device UID
-        <input name="uid" value="${escapeAttribute(controller?.uid || "ESP32-PUMP-001")}" required>
+        <input name="uid" value="${escapeAttribute(controller?.uid || `ESP32-PUMP-${defaultUidSuffix || "001"}`)}" required>
       </label>
       <label>Controller type
         <select name="type">
@@ -16254,11 +16356,15 @@ function renderPumpControllerForm(controller = null) {
       </label>
       <div class="pump-controller-key-row">
         <button type="button" class="secondary" data-pump-generate-key>Generate Pump API Key</button>
-        <span data-pump-generated-key>${controller?.apiKeyLast4 ? `Current key ends ${escapeHtml(controller.apiKeyLast4)}` : "Shown once after generation."}</span>
+        <input data-pump-generated-key class="pump-generated-key" type="text" readonly placeholder="Generated key appears here">
+        <button type="button" class="secondary" data-pump-copy-key disabled>Copy API Key</button>
+        <span data-pump-generated-key-status>${controller?.apiKeyLast4 ? `Current key ends ${escapeHtml(controller.apiKeyLast4)}` : "Shown once after generation."}</span>
       </div>
       <div class="pump-controller-io-preview">
-        <strong>Planned I/O map</strong>
-        <span>Each pump gets run command, run status, fault, and HOA feedback. System points include high level, low level, and proof input.</span>
+        <strong>ESP32 setup values</strong>
+        <span>Config: ${escapeHtml(PUMP_DEVICE_CONFIG_URL)}</span>
+        <span>Heartbeat: ${escapeHtml(PUMP_DEVICE_HEARTBEAT_URL)}</span>
+        <span>I/O map: Pump 1 uses DI1 run proof, DI2 fault, DI3 HOA. Pump 2 uses DI4, DI5, DI6.</span>
       </div>
       ${pumpAssignmentHtml}
       <div class="pump-controller-actions">
@@ -16305,6 +16411,7 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
         </div>
         <span><b>Pumps</b>${assignedPumps.length || escapeHtml(controller.pumpCount || "1")}</span>
         <span><b>I/O</b>${plannedPointCount} planned</span>
+        <span><b>Live inputs</b>${escapeHtml(formatPumpControllerLiveInputs(controller))}</span>
         <span><b>Status</b>${escapeHtml(status.label)}</span>
         <span><b>Mode</b>${escapeHtml(controller.mode || "Setup only")}</span>
         <span><b>IP</b>${escapeHtml(controller.ipAddress || "Not seen")}</span>
@@ -16342,8 +16449,8 @@ async function savePumpControllerFromForm(form) {
   const existing = getPumpControllers().find((controller) => controller.id === existingControllerId);
   const pumpIds = formData.getAll("pumpIds").map((id) => String(id || "").trim()).filter(Boolean);
   const apiKey = String(formData.get("apiKey") || "").trim();
+  const keyStatus = form.querySelector("[data-pump-generated-key-status]");
   if (apiKey && apiKey.length < 16) {
-    const keyStatus = form.querySelector("[data-pump-generated-key]");
     if (keyStatus) keyStatus.textContent = "Pump API key must be at least 16 characters.";
     return;
   }
@@ -16395,8 +16502,10 @@ async function savePumpControllerFromForm(form) {
       ? { ...controller, ...payload.controller, pumpIds: normalizePumpControllerPumpIds(payload.controller).length ? normalizePumpControllerPumpIds(payload.controller) : controller.pumpIds }
       : controller;
     saveLocalPumpController(savedController);
+    if (apiKey) clearPendingPumpApiKey(form);
   } catch (error) {
     console.warn("Pump controller could not be saved to the server.", error);
+    if (keyStatus) keyStatus.textContent = "Saved locally. Server save failed, so check account permission or connection before commissioning.";
     saveLocalPumpController(controller);
   }
   editingPumpControllerId = "";
@@ -16570,6 +16679,26 @@ function renderPumpAutomationSummary(pumps = [], controllers = []) {
       <strong>${controllers.length ? `${controllers.length} controller${controllers.length === 1 ? "" : "s"}` : "Setup only"}</strong>
     </div>
   `;
+}
+
+function getPumpControllerLiveInputs(controller = {}) {
+  const data = controller.data && typeof controller.data === "object" ? controller.data : {};
+  return data.liveInputs && typeof data.liveInputs === "object" ? data.liveInputs : null;
+}
+
+function formatPumpControllerLiveInputs(controller = {}) {
+  const liveInputs = getPumpControllerLiveInputs(controller);
+  if (!liveInputs?.updatedAt) return "Waiting for ESP";
+  const activeMask = liveInputs.activeMaskHex || `0x${Number(liveInputs.activeMask || 0).toString(16).toUpperCase().padStart(2, "0")}`;
+  const mappedPoints = Array.isArray(liveInputs.mappedPoints) ? liveInputs.mappedPoints : [];
+  const activeMappedPoints = mappedPoints
+    .filter((point) => point?.active)
+    .map((point) => point.label || point.channel)
+    .filter(Boolean);
+  if (activeMappedPoints.length) return `${activeMask} | ${activeMappedPoints.slice(0, 3).join(", ")}`;
+  const points = Array.isArray(liveInputs.points) ? liveInputs.points : [];
+  const activeCount = points.filter((point) => point?.active).length;
+  return `${activeMask} | ${activeCount} active`;
 }
 
 function pumpHmiPlannedPoints(controller = null, pumps = []) {
@@ -17725,6 +17854,7 @@ function renderAutomationPumps() {
 
   if (currentLocation) {
     list.innerHTML = renderPumpLocationHmi(pumps, currentCustomer, currentLocation, pumpControllers);
+    restorePendingPumpApiKeyForms();
     return;
   }
 
