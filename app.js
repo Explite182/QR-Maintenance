@@ -5382,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-no-simulation-07";
+const SITEWORKS_APP_VERSION = "20260825-pump-add-form-open-08";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16380,7 +16380,8 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
   const editingController = editingPumpControllerId && editingPumpControllerId !== "__new__"
     ? controllers.find((controller) => controller.id === editingPumpControllerId)
     : null;
-  const formHtml = editingPumpControllerId
+  const shouldShowAddForm = Boolean(editingPumpControllerId || !controllers.length);
+  const formHtml = shouldShowAddForm
     ? renderPumpControllerForm(editingController)
     : `
       <div class="pump-controller-add-row">
@@ -16417,12 +16418,7 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
         </div>
       </article>
     `;
-  }).join("") : `
-    <div class="pump-controller-empty">
-      <strong>No pump controllers for this location yet.</strong>
-      <span>Add one to prepare this location for pump monitoring or control.</span>
-    </div>
-  `;
+  }).join("") : "";
   return `
     <section class="pump-controller-setup">
       ${formHtml}
