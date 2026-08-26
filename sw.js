@@ -1,18 +1,18 @@
-const SITEWORKS_SW_VERSION = "20260825-panel-hmi-standard-17";
+const SITEWORKS_SW_VERSION = "20260825-panel-hmi-standard-18";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260825-panel-hmi-standard-17",
+  "/styles.css?v=20260825-panel-hmi-standard-18",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260825-panel-hmi-standard-17",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260825-panel-hmi-standard-17",
-  "/js/panel-hmi-standard-renderer.js?v=20260825-panel-hmi-standard-17",
-  "/app.js?v=20260825-panel-hmi-standard-17",
-  "/manifest.webmanifest?v=20260825-panel-hmi-standard-17",
-  "/icons/siteworks-icon-192.png?v=20260825-panel-hmi-standard-17",
-  "/icons/siteworks-icon-512.png?v=20260825-panel-hmi-standard-17"
+  "/js/panel-hmi-standard-model.js?v=20260825-panel-hmi-standard-18",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260825-panel-hmi-standard-18",
+  "/js/panel-hmi-standard-renderer.js?v=20260825-panel-hmi-standard-18",
+  "/app.js?v=20260825-panel-hmi-standard-18",
+  "/manifest.webmanifest?v=20260825-panel-hmi-standard-18",
+  "/icons/siteworks-icon-192.png?v=20260825-panel-hmi-standard-18",
+  "/icons/siteworks-icon-512.png?v=20260825-panel-hmi-standard-18"
 ];
 
 self.addEventListener("install", (event) => {
