@@ -18371,6 +18371,38 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </div>
     </aside>
   ` : "";
+  const scadaDrawer = (title, body, options = {}) => {
+    const className = options.className ? ` ${options.className}` : "";
+    const openAttr = options.open ? " open" : "";
+    const badge = options.badge ? `<strong>${escapeHtml(options.badge)}</strong>` : "";
+    return `
+      <details class="pump-scada-drawer${className}"${openAttr}>
+        <summary><span>${escapeHtml(title)}</span>${badge}</summary>
+        <div class="pump-scada-drawer-body">
+          ${body}
+        </div>
+      </details>
+    `;
+  };
+  const systemSummaryBody = `
+    <div><span>System Status</span><strong>${alarmOn ? "Alarm" : "Normal"}</strong></div>
+    <div><span>Total Pumps</span><strong>${pumps.length}</strong></div>
+    <div><span>Controllers</span><strong>${controllerOnlineCount}/${controllers.length || 0}</strong></div>
+    <div><span>Power</span><strong>${escapeHtml(primaryControllerStatus.label)}</strong></div>
+    <div><span>Pressure</span><strong>${escapeHtml(pressurePoint ? pumpDiagramDeviceStatus(pressurePoint).label : "Not wired")}</strong></div>
+  `;
+  const pumpAlternationBody = `
+    <div><span>Lead Pump</span><strong>${escapeHtml(leadPump?.name || "Not assigned")}</strong></div>
+    <div><span>Lead / Lag / Backup</span><strong>${roleCounts.Lead || 0} / ${roleCounts.Lag || 0} / ${roleCounts.Backup || 0}</strong></div>
+    <div><span>Rotation</span><strong>${escapeHtml(leadStatus.label)}</strong></div>
+  `;
+  const readinessNeedsAttention = readinessItems.some(item => item.level !== "ok");
+  const autoSequenceNeedsAttention = Boolean(
+    autoSequence?.activeCall ||
+    autoSequence?.commandedPumpIndexes?.length ||
+    autoSequence?.proofFailedPumpIndexes?.length ||
+    autoSequence?.unavailablePumpIndexes?.length
+  );
 
   return `
     <div class="pump-hmi-controller ${alarmOn ? "is-alarm" : ""}">
@@ -18449,43 +18481,12 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               </aside>
             </main>
             <aside class="pump-scada-right" aria-label="Pump station summary and actions">
-              <section>
-                <header>System Summary</header>
-                <div><span>System Status</span><strong>${alarmOn ? "Alarm" : "Normal"}</strong></div>
-                <div><span>Total Pumps</span><strong>${pumps.length}</strong></div>
-                <div><span>Controllers</span><strong>${controllerOnlineCount}/${controllers.length || 0}</strong></div>
-                <div><span>Power</span><strong>${escapeHtml(primaryControllerStatus.label)}</strong></div>
-                <div><span>Pressure</span><strong>${escapeHtml(pressurePoint ? pumpDiagramDeviceStatus(pressurePoint).label : "Not wired")}</strong></div>
-              </section>
-              <section>
-                <header>SiteWorks Control</header>
-                <button type="button">Pump Commands</button>
-                <button type="button">Lead / Lag Setup</button>
-                <button type="button">Alarm Review</button>
-                <button type="button">Input Test</button>
-              </section>
-              <section>
-                <header>Recent Alarms</header>
-                ${scadaAlarmRows}
-              </section>
-              <section>
-                <header>Recent Events</header>
-                ${pumpEventRows}
-              </section>
-              <section>
-                <header>Pump Alternation</header>
-                <div><span>Lead Pump</span><strong>${escapeHtml(leadPump?.name || "Not assigned")}</strong></div>
-                <div><span>Lead / Lag / Backup</span><strong>${roleCounts.Lead || 0} / ${roleCounts.Lag || 0} / ${roleCounts.Backup || 0}</strong></div>
-                <div><span>Rotation</span><strong>${escapeHtml(leadStatus.label)}</strong></div>
-              </section>
-              <section>
-                <header>Auto Sequence</header>
-                ${autoSequenceRows}
-              </section>
-              <section>
-                <header>Ready For Service</header>
-                ${readinessRows}
-              </section>
+              ${scadaDrawer("System Summary", systemSummaryBody, { badge: alarmOn ? "Alarm" : "Normal" })}
+              ${scadaDrawer("Recent Alarms", scadaAlarmRows, { badge: alarmOn ? "Review" : "Clear", open: alarmOn })}
+              ${scadaDrawer("Recent Events", pumpEventRows, { badge: String(recentPumpEvents.length) })}
+              ${scadaDrawer("Pump Alternation", pumpAlternationBody, { badge: leadPump?.name || "Not assigned" })}
+              ${scadaDrawer("Auto Sequence", autoSequenceRows, { badge: autoSequenceNeedsAttention ? "Active" : "Standby", open: autoSequenceNeedsAttention })}
+              ${scadaDrawer("Ready For Service", readinessRows, { badge: readinessNeedsAttention ? "Check" : "Ready", open: readinessNeedsAttention })}
             </aside>
             <section class="pump-scada-pit" aria-label="Sump pit front section">
               <header>Sump Pit Front Section</header>

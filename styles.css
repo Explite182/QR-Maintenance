@@ -18163,6 +18163,84 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   white-space: normal;
 }
 
+.pump-scada-drawer {
+  min-height: 44px;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid #252b2d;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #1a2226, #080d10);
+}
+
+.pump-scada-drawer[open] {
+  min-height: 120px;
+}
+
+.pump-scada-drawer summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+  background: linear-gradient(180deg, #151b1f, #070a0c);
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pump-scada-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.pump-scada-drawer summary::before {
+  content: "+";
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #485257;
+  border-radius: 2px;
+  color: #5eead4;
+  background: #0b1114;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.pump-scada-drawer[open] summary::before {
+  content: "-";
+}
+
+.pump-scada-drawer summary span {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #f8fafc;
+}
+
+.pump-scada-drawer summary strong {
+  flex: 0 0 auto;
+  max-width: 48%;
+  overflow: hidden;
+  color: #5eead4;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pump-scada-drawer-body {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.pump-scada-drawer-body > div,
+.pump-scada-drawer-body .pump-scada-alarm-row {
+  min-height: 32px;
+}
+
 @media (max-width: 1280px) {
   .pump-scada-dashboard {
     grid-template-columns: 1fr;
