@@ -5382,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-live-status-12";
+const SITEWORKS_APP_VERSION = "20260825-pump-scada-redesign-13";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -17381,9 +17381,21 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const label = asset?.name || `Sump Pump ${index + 1}`;
     const isSelected = asset && selectedPumpHmiAssetId === asset.id;
     const flow = asset?.flowGpm || asset?.flow || (status.className === "is-running" ? "Live" : "0 GPM");
-    const current = asset?.currentAmps || asset?.current || (status.className === "is-running" ? "Running" : "--");
     const runtime = asset?.runtimeHours || asset?.runtime || "--";
     const starts = asset?.startsToday || asset?.starts || "0";
+    const statusLabel = status.className === "is-alarm"
+      ? "FAULT"
+      : status.className === "is-running"
+        ? "RUNNING"
+        : "STOPPED";
+    const hoaLabel = liveStatus
+      ? (liveStatus.auto ? "AUTO" : "HAND/OFF")
+      : String(asset?.pumpControlMode || "AUTO").toUpperCase();
+    const proofLabel = liveStatus
+      ? (liveStatus.runProof ? "MADE" : "OPEN")
+      : assignedController
+        ? `DI${(assignedPumpIndex * 3) + 1}`
+        : "NOT WIRED";
     return `
       <button
         type="button"
@@ -17391,20 +17403,18 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         ${asset ? `data-select-pump-asset="${escapeAttribute(asset.id)}"` : ""}
       >
         <span class="pump-scada-pump-head">
-          <strong>PUMP ${index + 1}</strong>
+          <strong>P-${String(index + 1).padStart(2, "0")}</strong>
           <em>${escapeHtml(role)}</em>
         </span>
+        <span class="pump-scada-pump-name">${escapeHtml(label)}</span>
         <span class="pump-scada-pump-art" aria-hidden="true"></span>
-        <span class="pump-scada-readout"><b>Status</b><i>${escapeHtml(status.label)}</i></span>
-        <span class="pump-scada-readout"><b>Mode</b><i>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : (asset?.pumpControlMode || "Auto"))}</i></span>
-        <span class="pump-scada-readout"><b>Runtime</b><i>${escapeHtml(runtime)}</i></span>
+        <span class="pump-scada-readout is-status"><b>Status</b><i>${escapeHtml(statusLabel)}</i></span>
+        <span class="pump-scada-readout"><b>HOA</b><i>${escapeHtml(hoaLabel)}</i></span>
+        <span class="pump-scada-readout"><b>Lead/Lag</b><i>${escapeHtml(role)}</i></span>
+        <span class="pump-scada-readout"><b>Run hours</b><i>${escapeHtml(runtime)}</i></span>
         <span class="pump-scada-readout"><b>Starts</b><i>${escapeHtml(starts)}</i></span>
         <span class="pump-scada-readout"><b>Flow</b><i>${escapeHtml(flow)}</i></span>
-        <span class="pump-scada-readout"><b>Proof</b><i>${assignedController ? `DI${(assignedPumpIndex * 3) + 1}` : "Not wired"}</i></span>
-        <span class="pump-scada-card-actions">
-          <span>${status.className === "is-running" ? "STOP" : "START"}</span>
-          <span>HAND</span>
-        </span>
+        <span class="pump-scada-readout"><b>Run proof</b><i>${escapeHtml(proofLabel)}</i></span>
       </button>
     `;
   }).join("");
@@ -17421,6 +17431,15 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       : lowFloat && floatStateClass(lowFloat) !== "is-idle"
         ? "Low"
         : "Normal";
+  const pitWaterPercent = pitLevelLabel === "High"
+    ? 82
+    : pitLevelLabel === "Mid"
+      ? 56
+      : pitLevelLabel === "Low"
+        ? 30
+        : 18;
+  const stationStateLabel = alarmOn ? "PUMP STATION ALARM" : "SYSTEM NORMAL";
+  const stationStateClass = alarmOn ? "is-active" : "is-normal";
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
       <header>
@@ -17575,10 +17594,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <span>Reports</span>
               <span>Settings</span>
             </nav>
-            <section class="pump-scada-alert ${alarmOn ? "is-active" : ""}" aria-label="Pump station alarm banner">
-              <span class="pump-scada-alert-icon" aria-hidden="true">!</span>
+            <section class="pump-scada-alert ${stationStateClass}" aria-label="Pump station alarm banner">
+              ${alarmOn ? `<span class="pump-scada-alert-icon" aria-hidden="true">!</span>` : `<span class="pump-scada-normal-icon" aria-hidden="true"></span>`}
               <div>
-                <strong>${alarmOn ? "PUMP STATION ALARM" : "SYSTEM NORMAL"}</strong>
+                <strong>${escapeHtml(stationStateLabel)}</strong>
                 <span>${alarmOn ? `${totalWarningCount} pump station item${totalWarningCount === 1 ? "" : "s"} need attention.` : "No active pump station alarms."}</span>
               </div>
               <em>${escapeHtml(primaryControllerStatus.label)}</em>
@@ -17630,22 +17649,25 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
                 <div><span>Rotation</span><strong>${escapeHtml(leadStatus.label)}</strong></div>
               </section>
             </aside>
-            <section class="pump-scada-pit" aria-label="Sump pit overview">
-              <header>Sump Pit Overview</header>
+            <section class="pump-scada-pit" aria-label="Sump pit front section">
+              <header>Sump Pit Front Section</header>
               <div class="pump-scada-level">
                 <span>Pit Level</span>
                 <strong>${escapeHtml(pitLevelLabel)}</strong>
                 <em>Float based</em>
               </div>
-              <div class="pump-scada-pit-vessel" aria-hidden="true">
+              <div class="pump-scada-pit-vessel" aria-hidden="true" style="--pit-water-level: ${pitWaterPercent}%;">
                 <span class="pump-scada-water"></span>
+                <span class="pump-scada-pit-mark is-high">HIGH FLOAT</span>
+                <span class="pump-scada-pit-mark is-mid">MID FLOAT</span>
+                <span class="pump-scada-pit-mark is-low">LOW FLOAT</span>
                 <span class="pump-scada-pit-float is-high ${highFloat && floatStateClass(highFloat) !== "is-idle" ? "is-active" : ""}"></span>
                 <span class="pump-scada-pit-float is-mid ${midFloat && floatStateClass(midFloat) !== "is-idle" ? "is-active" : ""}"></span>
                 <span class="pump-scada-pit-float is-low ${lowFloat && floatStateClass(lowFloat) !== "is-idle" ? "is-active" : ""}"></span>
                 <span class="pump-scada-discharge"></span>
-                <span class="pump-scada-pit-pump is-one ${pumps[0] && pumpDisplayStatus(pumps[0], 0).className === "is-running" ? "is-running" : ""}"></span>
-                <span class="pump-scada-pit-pump is-two ${pumps[1] && pumpDisplayStatus(pumps[1], 1).className === "is-running" ? "is-running" : ""}"></span>
-                <span class="pump-scada-pit-pump is-three ${pumps[2] && pumpDisplayStatus(pumps[2], 2).className === "is-running" ? "is-running" : ""}"></span>
+                <span class="pump-scada-pit-pump is-one ${pumps[0] ? pumpDisplayStatus(pumps[0], 0).className : "is-off"}"></span>
+                <span class="pump-scada-pit-pump is-two ${pumps[1] ? pumpDisplayStatus(pumps[1], 1).className : "is-off"}"></span>
+                <span class="pump-scada-pit-pump is-three ${pumps[2] ? pumpDisplayStatus(pumps[2], 2).className : "is-off"}"></span>
               </div>
               <div class="pump-scada-pit-labels">
                 <span>P-01 <b>${escapeHtml(pumps[0] ? pumpDisplayStatus(pumps[0], 0).label : "Off")}</b></span>
