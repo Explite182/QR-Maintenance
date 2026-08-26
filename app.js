@@ -5385,7 +5385,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-panel-hmi-standard-19";
+const SITEWORKS_APP_VERSION = "20260825-pump-equipment-bind-20";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -9245,6 +9245,13 @@ document.addEventListener("click", (event) => {
     if (selectedId) location.hash = `asset/${selectedId}`;
     render();
     getSelectedAsset()?.id && els.assetPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const createPumpEquipmentButton = event.target.closest("[data-create-pump-equipment]");
+  if (createPumpEquipmentButton) {
+    event.preventDefault();
+    createPumpEquipmentForController(createPumpEquipmentButton.dataset.createPumpEquipment || "");
     return;
   }
 
@@ -16304,6 +16311,140 @@ function pumpControllerPumpIndex(controller = {}, pump = {}, pumps = []) {
   return Math.max(0, pumps.findIndex((item) => item.id === pump?.id));
 }
 
+function defaultPumpTemplateId(customerId = "") {
+  return templatesForCustomer(customerId)[0]?.id || state.templates[0]?.id || "";
+}
+
+async function createPumpEquipmentForController(controllerId = "") {
+  if (!canAddEquipment()) {
+    alert("Your user account cannot add equipment.");
+    return;
+  }
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
+    alert("Select one customer and one location before creating pump equipment.");
+    return;
+  }
+  const currentLocation = getLocation(selectedLocationId);
+  const controllers = pumpControllersForCurrentView().filter((controller) => !isPumpSimulationController(controller));
+  const controller = controllers.find((item) => item.id === controllerId) || controllers[0] || null;
+  const existingPumps = pumpAssetsForCurrentView();
+  const pumpCount = Math.max(1, Math.min(6, Number(controller?.pumpCount || existingPumps.length || 2) || 2));
+  const createdAt = new Date().toISOString();
+  const templateId = defaultPumpTemplateId(selectedCustomerId);
+  const existingNames = new Set(existingPumps.map((pump) => String(pump.name || "").trim().toLowerCase()));
+  const existingEquipmentIds = new Set(existingPumps.map((pump) => String(pump.equipmentId || "").trim().toLowerCase()).filter(Boolean));
+  const createdPumps = [];
+
+  for (let index = existingPumps.length; index < pumpCount; index += 1) {
+    const pumpNumber = index + 1;
+    const defaultName = `${currentLocation?.name || "Pump Station"} Pump ${pumpNumber}`;
+    const defaultEquipmentId = `P-${String(pumpNumber).padStart(2, "0")}`;
+    if (existingNames.has(defaultName.toLowerCase()) || existingEquipmentIds.has(defaultEquipmentId.toLowerCase())) continue;
+    const ioMapping = pumpHmiPumpIoAssignment(index);
+    createdPumps.push({
+      id: crypto.randomUUID?.() || `pump-${Date.now()}-${pumpNumber}`,
+      customerId: selectedCustomerId,
+      locationId: selectedLocationId,
+      templateId,
+      name: defaultName,
+      equipmentId: defaultEquipmentId,
+      nextPmDate: "",
+      manufacturer: "",
+      model: "",
+      serial: "",
+      installDate: "",
+      type: "Sump pump",
+      criticality: pumpNumber === 1 ? "High" : "Medium",
+      documentUrl: "",
+      manualFile: null,
+      notes: `Created from Pump HMI setup for ${controller?.name || "pump controller"}.`,
+      photo: null,
+      frequencyDays: 30,
+      extraChecklistItems: [],
+      pumpRole: pumpNumber === 1 ? "Lead" : "Lag",
+      role: pumpNumber === 1 ? "Lead" : "Lag",
+      pumpStatus: "Off",
+      operatingStatus: "Off",
+      pumpControlMode: "Auto",
+      pumpIoMapping: ioMapping,
+      pumpCommandOutput: ioMapping.command,
+      pumpRunInput: ioMapping.runStatus,
+      pumpFaultInput: ioMapping.fault,
+      pumpHighLevelInput: ioMapping.highLevel,
+      pumpHoaInput: ioMapping.hoa,
+      status: "Off",
+      condition: "Good",
+      createdAt,
+      updatedAt: createdAt,
+      history: [{
+        id: crypto.randomUUID?.() || `pump-setup-${Date.now()}-${pumpNumber}`,
+        type: "Pump setup",
+        date: createdAt,
+        result: "Created",
+        notes: `Default I/O: ${ioMapping.command} command, ${ioMapping.runStatus} run proof, ${ioMapping.fault} fault, ${ioMapping.hoa} HOA.`,
+        technician: currentUser?.name || currentUser?.email || "SiteWorks"
+      }]
+    });
+  }
+
+  if (!createdPumps.length) {
+    alert("Pump equipment already exists for this controller count.");
+    return;
+  }
+
+  state.assets.unshift(...createdPumps);
+  addActivity("Pump equipment created", `${createdPumps.length} pump equipment record${createdPumps.length === 1 ? "" : "s"} added.`);
+
+  if (controller) {
+    const allPumpIds = [...new Set([
+      ...normalizePumpControllerPumpIds(controller),
+      ...existingPumps.map((pump) => pump.id),
+      ...createdPumps.map((pump) => pump.id)
+    ])].slice(0, pumpCount);
+    const updatedController = normalizePumpController({
+      ...controller,
+      pumpIds: allPumpIds,
+      data: {
+        ...(controller.data || {}),
+        pumpIds: allPumpIds
+      },
+      updatedAt: createdAt
+    });
+    savePumpControllers([
+      updatedController,
+      ...getPumpControllers().filter((item) => item.id !== updatedController.id)
+    ]);
+    pumpControllersCache = [
+      updatedController,
+      ...pumpControllersCache.filter((item) => item.id !== updatedController.id)
+    ];
+    pumpControllersLoadedScope = getPumpControllerScopeKey();
+    try {
+      const response = await siteworksApi.savePumpController({
+        ...updatedController,
+        customer_id: updatedController.customerId,
+        location_id: updatedController.locationId,
+        device_uid: updatedController.uid,
+        controller_type: updatedController.type,
+        pump_count: updatedController.pumpCount,
+        pump_ids: updatedController.pumpIds,
+        data: {
+          ...(updatedController.data || {}),
+          pumpIds: updatedController.pumpIds
+        }
+      });
+      if (!response.ok) throw new Error(`Pump controller assignment save failed: ${response.status}`);
+    } catch (error) {
+      console.warn("Pump controller pump assignment could not be saved to the server.", error);
+    }
+  }
+
+  selectedPumpHmiAssetId = createdPumps[0]?.id || selectedPumpHmiAssetId;
+  saveState();
+  if (typeof scheduleStructuredDataSync === "function") scheduleStructuredDataSync(0);
+  renderAutomationPumps();
+}
+
 function renderPumpControllerForm(controller = null) {
   const currentLocation = getLocation(selectedLocationId);
   const pumps = pumpAssetsForCurrentView();
@@ -16399,10 +16540,19 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
       </section>
     `;
   }
+  const locationPumps = pumpAssetsForCurrentView();
   const editingController = editingPumpControllerId && editingPumpControllerId !== "__new__"
     ? controllers.find((controller) => controller.id === editingPumpControllerId)
     : null;
   const shouldShowAddForm = Boolean(editingPumpControllerId || !controllers.length);
+  const equipmentSetupHtml = controllers.length ? `
+    <div class="pump-controller-add-row">
+      <button type="button" class="secondary" data-create-pump-equipment="${escapeAttribute(controllers[0]?.id || "")}">
+        ${locationPumps.length ? "Create Missing Pump Equipment" : "Create Pump Equipment"}
+      </button>
+      <span>${escapeHtml(locationPumps.length ? `${locationPumps.length} pump equipment record${locationPumps.length === 1 ? "" : "s"} at this location.` : "Creates pump equipment and assigns it to the controller.")}</span>
+    </div>
+  ` : "";
   const formHtml = shouldShowAddForm
     ? renderPumpControllerForm(editingController)
     : `
@@ -16444,6 +16594,7 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
   return `
     <section class="pump-controller-setup">
       ${formHtml}
+      ${equipmentSetupHtml}
       <div class="pump-controller-list">${controllerRows}</div>
     </section>
   `;
@@ -17875,6 +18026,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
                 <div class="pump-hmi-empty">
                   <strong>No pump equipment at this location.</strong>
                   <span>Add pump equipment or select all locations for the overview.</span>
+                  ${primaryController ? `<button type="button" class="secondary" data-create-pump-equipment="${escapeAttribute(primaryController.id)}">Create Pump Equipment</button>` : ""}
                 </div>
               `}
             </div>

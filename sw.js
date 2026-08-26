@@ -1,18 +1,18 @@
-const SITEWORKS_SW_VERSION = "20260825-panel-hmi-standard-19";
+const SITEWORKS_SW_VERSION = "20260825-pump-equipment-bind-20";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260825-panel-hmi-standard-19",
+  "/styles.css?v=20260825-pump-equipment-bind-20",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260825-panel-hmi-standard-19",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260825-panel-hmi-standard-19",
-  "/js/panel-hmi-standard-renderer.js?v=20260825-panel-hmi-standard-19",
-  "/app.js?v=20260825-panel-hmi-standard-19",
-  "/manifest.webmanifest?v=20260825-panel-hmi-standard-19",
-  "/icons/siteworks-icon-192.png?v=20260825-panel-hmi-standard-19",
-  "/icons/siteworks-icon-512.png?v=20260825-panel-hmi-standard-19"
+  "/js/panel-hmi-standard-model.js?v=20260825-pump-equipment-bind-20",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260825-pump-equipment-bind-20",
+  "/js/panel-hmi-standard-renderer.js?v=20260825-pump-equipment-bind-20",
+  "/app.js?v=20260825-pump-equipment-bind-20",
+  "/manifest.webmanifest?v=20260825-pump-equipment-bind-20",
+  "/icons/siteworks-icon-192.png?v=20260825-pump-equipment-bind-20",
+  "/icons/siteworks-icon-512.png?v=20260825-pump-equipment-bind-20"
 ];
 
 self.addEventListener("install", (event) => {
