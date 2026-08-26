@@ -5385,7 +5385,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-panel-render-21";
+const SITEWORKS_APP_VERSION = "20260825-pump-live-status-22";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16304,6 +16304,20 @@ function pumpControllerForPump(controllers = [], pump = {}) {
   return assignedController || controllers.find((controller) => !normalizePumpControllerPumpIds(controller).length) || controllers[0] || null;
 }
 
+function pumpLiveControllerForPump(controllers = [], pump = {}, pumpIndex = 0) {
+  const assignedController = pumpControllerForPump(controllers, pump);
+  if (assignedController && getPumpControllerLiveInputs(assignedController)?.updatedAt) return assignedController;
+  const liveControllers = controllers.filter((controller) => getPumpControllerLiveInputs(controller)?.updatedAt);
+  if (!liveControllers.length) return assignedController || controllers[0] || null;
+  const assignedPumpIdSet = new Set(normalizePumpControllerPumpIds(assignedController || {}));
+  if (assignedController && assignedPumpIdSet.has(pump?.id || "")) return liveControllers[0] || assignedController;
+  const matchingLiveController = liveControllers.find((controller) => {
+    const pumpIds = normalizePumpControllerPumpIds(controller);
+    return pumpIds.includes(pump?.id || "") || (!pumpIds.length && Number(pumpIndex) < Math.max(1, Number(controller.pumpCount || 1) || 1));
+  });
+  return matchingLiveController || liveControllers[0] || assignedController || controllers[0] || null;
+}
+
 function pumpControllerPumpIndex(controller = {}, pump = {}, pumps = []) {
   const assignedPumps = pumpControllerAssignedPumps(controller, pumps);
   const assignedIndex = assignedPumps.findIndex((item) => item.id === pump?.id);
@@ -17257,7 +17271,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const primaryControllerStatus = primaryController ? pumpControllerStatus(primaryController) : { label: "No controller", className: "is-listed" };
   const primaryControllerPumps = primaryController ? pumpControllerAssignedPumps(primaryController, pumps) : pumps;
   const pumpDisplayStatus = (asset = {}, index = 0) => {
-    const assignedController = pumpControllerForPump(controllers, asset);
+    const assignedController = pumpLiveControllerForPump(controllers, asset, index);
     const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
     return getPumpLiveStatus(assignedController, assignedPumpIndex, asset) || pumpAssetStatus(asset);
   };
@@ -17332,7 +17346,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     `;
   }).join("");
   const pumpTiles = pumps.map((asset, index) => {
-    const assignedController = pumpControllerForPump(controllers, asset);
+    const assignedController = pumpLiveControllerForPump(controllers, asset, index);
     const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
     const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
     const status = liveStatus || pumpAssetStatus(asset);
@@ -17439,7 +17453,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const selectedPumpLatestEventLabel = selectedPumpLatestEvent
     ? formatPumpEventSummary(selectedPumpLatestEvent)
     : "No recent event";
-  const selectedPumpController = selectedPump ? pumpControllerForPump(controllers, selectedPump) : null;
+  const selectedPumpController = selectedPump ? pumpLiveControllerForPump(controllers, selectedPump, selectedPumpIndex) : null;
   const selectedPumpAssignedIndex = selectedPumpController ? pumpControllerPumpIndex(selectedPumpController, selectedPump, pumps) : selectedPumpIndex;
   const selectedPumpIo = selectedPump ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : "";
   const selectedDiagramDevice = diagramDevices.find((device) => device.id === selectedPumpDiagramDeviceId) || null;
@@ -17481,7 +17495,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   }).join("");
   const pumpStationCards = Array.from({ length: Math.max(3, Math.min(3, pumps.length || 3)) }, (_, index) => {
     const asset = pumps[index] || null;
-    const assignedController = asset ? pumpControllerForPump(controllers, asset) : null;
+    const assignedController = asset ? pumpLiveControllerForPump(controllers, asset, index) : null;
     const assignedPumpIndex = assignedController && asset ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
     const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
     const status = asset ? (liveStatus || pumpAssetStatus(asset)) : { label: "Off", className: "is-off" };
@@ -17537,7 +17551,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const scadaPumpCards = Array.from({ length: 3 }, (_, index) => {
     const asset = pumps[index] || null;
     const role = asset ? normalizePumpRole(asset.pumpRole || asset.role) : index === 0 ? "Lead" : "Lag";
-    const assignedController = asset ? pumpControllerForPump(controllers, asset) : null;
+    const assignedController = asset ? pumpLiveControllerForPump(controllers, asset, index) : null;
     const assignedPumpIndex = assignedController && asset ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
     const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
     const status = asset ? (liveStatus || pumpAssetStatus(asset)) : { label: "Not added", className: "is-off" };
