@@ -22,7 +22,12 @@
   }
 
   function stateLabel(state, supplied) {
-    if (!supplied) return "State not supplied";
+    if (!supplied) return "No physical state";
+    return String(state || "UNKNOWN");
+  }
+
+  function stateBadgeLabel(state, supplied) {
+    if (!supplied) return "NO STATE";
     return String(state || "UNKNOWN");
   }
 
@@ -104,7 +109,7 @@
           <small>${escapeHtml([breaker.ampRating ? `${breaker.ampRating}A` : "", breaker.poleCount > 1 ? `${breaker.poleCount}P` : "1P"].filter(Boolean).join(" | "))}</small>
         </span>
         ${renderHandle(panel, breaker, breaker.panelSide)}
-        <span class="standard-breaker-state-label">${escapeHtml(status)}</span>
+        <span class="standard-breaker-state-label">${escapeHtml(stateBadgeLabel(breaker.state, supplied))}</span>
         ${renderTelemetryOverlay(breaker)}
       </button>
     `;
