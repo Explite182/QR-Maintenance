@@ -39,11 +39,19 @@
     return "info";
   }
 
-  function renderTelemetryOverlay(breaker) {
+  function renderTelemetrySummary(breaker) {
     const telemetry = breaker.telemetry;
     const ai = breaker.aiAdvisory || false;
-    if (!telemetry && !ai) return "";
     const tone = telemetryTone(telemetry?.condition || telemetry?.communication || "");
+    const primary = telemetry?.communication
+      ? "COMM"
+      : telemetry?.advisory
+        ? "ADVISORY"
+        : telemetry?.condition
+          ? telemetry.condition
+          : ai
+            ? "AI"
+            : "--";
     const parts = [
       telemetry?.condition ? `Condition: ${telemetry.condition}` : "",
       telemetry?.physicalChannel ? `Source: ${telemetry.physicalChannel}` : "",
@@ -52,10 +60,10 @@
       ai ? "AI/camera advisory present" : ""
     ].filter(Boolean);
     return `
-      <span class="standard-panel-telemetry is-${escapeAttribute(tone)}" title="${escapeAttribute(parts.join(" | "))}">
-        ${telemetry?.communication ? "COM" : telemetry?.advisory ? "ADV" : "TEL"}
+      <span class="standard-panel-meter is-${escapeAttribute(tone)}" title="${escapeAttribute(parts.join(" | ") || "No telemetry source")}" aria-label="${escapeAttribute(parts.join(" | ") || "No telemetry source")}">
+        <b>${escapeHtml(primary)}</b>
+        <small>${escapeHtml(telemetry?.physicalChannel || (ai ? "AI" : "--"))}</small>
       </span>
-      ${ai ? `<span class="standard-panel-ai-badge" title="AI/camera advisory only">AI</span>` : ""}
     `;
   }
 
@@ -101,16 +109,20 @@
         title="${escapeAttribute(title)}"
         ${style}
       >
-        <span class="standard-breaker-position">
+        <span class="standard-breaker-position" aria-label="Panel position">
           ${breaker.occupiedPositions.map((position) => `<b>${escapeHtml(position)}</b>`).join("")}
         </span>
-        <span class="standard-breaker-face">
+        <span class="standard-breaker-module">
+          <span class="standard-breaker-screw top"></span>
+          ${renderHandle(panel, breaker, breaker.panelSide)}
+          <span class="standard-breaker-screw bottom"></span>
+        </span>
+        <span class="standard-breaker-label-plate">
           <strong>${escapeHtml(breaker.occupancyType === "SPARE" ? "SPARE" : breaker.label || "UNASSIGNED")}</strong>
           <small>${escapeHtml([breaker.ampRating ? `${breaker.ampRating}A` : "", breaker.poleCount > 1 ? `${breaker.poleCount}P` : "1P"].filter(Boolean).join(" | "))}</small>
         </span>
-        ${renderHandle(panel, breaker, breaker.panelSide)}
         <span class="standard-breaker-state-label">${escapeHtml(stateBadgeLabel(breaker.state, supplied))}</span>
-        ${renderTelemetryOverlay(breaker)}
+        ${renderTelemetrySummary(breaker)}
       </button>
     `;
   }
@@ -119,7 +131,7 @@
     return `
       <div class="standard-panel-space ${position.side.toLowerCase()}" data-panel-position="${escapeAttribute(position.position)}">
         <span>${escapeHtml(position.position)}</span>
-        <strong>SPACE</strong>
+        <strong><b>SPACE</b><small>no device</small></strong>
       </div>
     `;
   }
@@ -179,12 +191,15 @@
   function renderLegend() {
     return `
       <div class="standard-panel-legend" aria-label="Panel HMI legend">
+        <span class="legend-label">Legend</span>
         <span class="state-on">ON</span>
         <span class="state-off">OFF</span>
         <span class="state-tripped">TRIPPED</span>
         <span class="state-unknown">UNKNOWN</span>
+        <span class="state-not-supplied">NO STATE</span>
         <span class="is-info">COMM</span>
         <span class="is-ai">AI</span>
+        <span class="legend-note">Handle direction: left ON toward center, right ON toward center.</span>
       </div>
     `;
   }
@@ -216,9 +231,18 @@
             <span>${escapeHtml(`${panel.totalPositions} positions | ${panel.rowsPerSide} rows`)}</span>
           </div>
           <div class="standard-panel-physical-grid">
+            <div class="standard-panel-section-label left">LEFT ODD CIRCUITS</div>
+            <div class="standard-panel-section-label center">MAIN / SERVICE</div>
+            <div class="standard-panel-section-label right">RIGHT EVEN CIRCUITS</div>
             ${renderColumn(panel, "LEFT")}
             <div class="standard-panel-center-bus">
               ${renderMainDevice(panel)}
+              <div class="standard-panel-equipment-plate">
+                <strong>SiteWorks Panel Monitor</strong>
+                <span>${escapeHtml(panel.systemVoltage || "Voltage not supplied")}</span>
+                <span>${escapeHtml(panel.phaseWiring || "Wiring not supplied")}</span>
+                <small>Monitoring only. Breaker control disabled.</small>
+              </div>
               <div class="standard-panel-phase-labels"><b>A</b><b>B</b><b>C</b></div>
               <div class="standard-panel-note">Physical view. Telemetry and AI are overlays only.</div>
             </div>
