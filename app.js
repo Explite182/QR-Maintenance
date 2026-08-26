@@ -5391,7 +5391,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260826-pump-fast-refresh-26";
+const SITEWORKS_APP_VERSION = "20260826-pump-refresh-focus-27";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16261,9 +16261,9 @@ async function loadPumpControllersForCurrentScope({ force = false } = {}) {
 }
 
 function isPumpSetupEditingActive() {
-  return Boolean(document.querySelector(
-    "[data-pump-controller-form], [data-pump-io-mapping-form], [data-pump-diagram-device-form]"
-  ));
+  const formSelector = "[data-pump-controller-form], [data-pump-io-mapping-form], [data-pump-diagram-device-form]";
+  const activeElement = document.activeElement;
+  return Boolean(activeElement?.closest?.(formSelector));
 }
 
 async function refreshPumpLiveStatus() {
