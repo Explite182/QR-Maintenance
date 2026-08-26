@@ -5391,7 +5391,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260826-pump-refresh-focus-27";
+const SITEWORKS_APP_VERSION = "20260826-pump-programming-hold-28";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -5443,10 +5443,13 @@ let pumpControllersCache = [];
 let pumpControllersLoadedScope = "";
 let pumpControllersLoading = false;
 let pumpLiveRefreshActive = false;
+let pumpSetupEditHoldUntil = 0;
 let editingPumpControllerId = "";
 let pendingPumpApiKey = null;
 let selectedPumpHmiAssetId = "";
 let selectedPumpDiagramDeviceId = "";
+const PUMP_SETUP_FORM_SELECTOR = "[data-pump-controller-form], [data-pump-io-mapping-form], [data-pump-diagram-device-form]";
+const PUMP_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -7901,6 +7904,22 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+document.addEventListener("pointerdown", (event) => {
+  const form = event.target?.closest?.(PUMP_SETUP_FORM_SELECTOR);
+  if (form) {
+    markPumpSetupEditingActive(form);
+  } else {
+    clearPumpSetupEditingActive();
+  }
+}, true);
+
+["focusin", "input", "change", "keydown"].forEach((eventName) => {
+  document.addEventListener(eventName, (event) => {
+    const form = event.target?.closest?.(PUMP_SETUP_FORM_SELECTOR);
+    if (form) markPumpSetupEditingActive(form);
+  }, true);
+});
+
 document.addEventListener("click", async (event) => {
   if (window.SiteWorksKeybox?.handleClick(event, getKeyboxContext())) return;
 
@@ -10024,16 +10043,19 @@ document.addEventListener("submit", async (event) => {
   if (!(form instanceof HTMLFormElement)) return;
   if (form.matches("[data-pump-controller-form]")) {
     event.preventDefault();
+    clearPumpSetupEditingActive();
     await savePumpControllerFromForm(form);
     return;
   }
   if (form.matches("[data-pump-io-mapping-form]")) {
     event.preventDefault();
+    clearPumpSetupEditingActive();
     savePumpIoMappingFromForm(form);
     return;
   }
   if (form.matches("[data-pump-diagram-device-form]")) {
     event.preventDefault();
+    clearPumpSetupEditingActive();
     savePumpDiagramDeviceFromForm(form);
     return;
   }
@@ -16261,9 +16283,24 @@ async function loadPumpControllersForCurrentScope({ force = false } = {}) {
 }
 
 function isPumpSetupEditingActive() {
-  const formSelector = "[data-pump-controller-form], [data-pump-io-mapping-form], [data-pump-diagram-device-form]";
   const activeElement = document.activeElement;
-  return Boolean(activeElement?.closest?.(formSelector));
+  if (activeElement?.closest?.(PUMP_SETUP_FORM_SELECTOR)) return true;
+  const now = Date.now();
+  if (pumpSetupEditHoldUntil && now < pumpSetupEditHoldUntil) return true;
+  if (pumpSetupEditHoldUntil && now >= pumpSetupEditHoldUntil) clearPumpSetupEditingActive();
+  return Boolean(document.querySelector(`${PUMP_SETUP_FORM_SELECTOR}[data-pump-editing-active="true"]`));
+}
+
+function markPumpSetupEditingActive(form = null) {
+  pumpSetupEditHoldUntil = Date.now() + PUMP_SETUP_EDIT_HOLD_MS;
+  if (form) form.dataset.pumpEditingActive = "true";
+}
+
+function clearPumpSetupEditingActive() {
+  pumpSetupEditHoldUntil = 0;
+  document.querySelectorAll(`${PUMP_SETUP_FORM_SELECTOR}[data-pump-editing-active="true"]`).forEach((form) => {
+    delete form.dataset.pumpEditingActive;
+  });
 }
 
 async function refreshPumpLiveStatus() {
