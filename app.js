@@ -5090,81 +5090,52 @@ function renderMonitoringLivePanel(devices) {
   const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
   setMonitoringPanelSummary(primaryDevice, channels);
   const displayChannels = monitoringDisplayChannelsForDevice(primaryDevice, channels);
-  if (window.SiteWorksPanelHmiAdapter && window.SiteWorksPanelHmiRenderer) {
-    const preparedPanel = window.SiteWorksPanelHmiAdapter.createPreparedPanel({
-      panel: fallbackPanel,
-      location: getLocation(fallbackPanel?.locationId || fallbackPanel?.location_id || ""),
-      schedule: isElectricalPanelAsset(fallbackPanel) ? getElectricalPanelSchedule(fallbackPanel) : {},
-      device: primaryDevice,
-      channels: displayChannels
-    });
-    elements.livePanel.innerHTML = window.SiteWorksPanelHmiRenderer.render(preparedPanel);
-    if (shouldRestoreBreakerDetail) {
-      const circuitSelectorValue = window.CSS?.escape
-        ? CSS.escape(String(selectedMonitoringBreakerCircuit || ""))
-        : String(selectedMonitoringBreakerCircuit || "").replace(/"/g, '\\"');
-      const anchor = document.querySelector(`[data-monitoring-breaker-circuit="${circuitSelectorValue}"]`);
-      const channelId = anchor?.dataset.monitoringBreakerDetail || selectedMonitoringBreakerChannelId;
-      if (anchor && channelId) {
-        showMonitoringBreakerDetail(channelId, selectedMonitoringBreakerCircuit, anchor);
-      } else {
-        selectedMonitoringBreakerChannelId = "";
-        selectedMonitoringBreakerCircuit = "";
-        elements.breakerDetail.classList.add("hidden");
-        elements.breakerDetail.innerHTML = "";
-        elements.breakerDetail.classList.remove("is-floating");
+  const standardPanelModulesReady = Boolean(window.SiteWorksPanelHmiAdapter && window.SiteWorksPanelHmiRenderer);
+  if (standardPanelModulesReady) {
+    try {
+      const preparedPanel = window.SiteWorksPanelHmiAdapter.createPreparedPanel({
+        panel: fallbackPanel,
+        location: getLocation(fallbackPanel?.locationId || fallbackPanel?.location_id || ""),
+        schedule: isElectricalPanelAsset(fallbackPanel) ? getElectricalPanelSchedule(fallbackPanel) : {},
+        device: primaryDevice,
+        channels: displayChannels
+      });
+      elements.livePanel.innerHTML = window.SiteWorksPanelHmiRenderer.render(preparedPanel);
+      if (shouldRestoreBreakerDetail) {
+        const circuitSelectorValue = window.CSS?.escape
+          ? CSS.escape(String(selectedMonitoringBreakerCircuit || ""))
+          : String(selectedMonitoringBreakerCircuit || "").replace(/"/g, '\\"');
+        const anchor = document.querySelector(`[data-monitoring-breaker-circuit="${circuitSelectorValue}"]`);
+        const channelId = anchor?.dataset.monitoringBreakerDetail || selectedMonitoringBreakerChannelId;
+        if (anchor && channelId) {
+          showMonitoringBreakerDetail(channelId, selectedMonitoringBreakerCircuit, anchor);
+        } else {
+          selectedMonitoringBreakerChannelId = "";
+          selectedMonitoringBreakerCircuit = "";
+          elements.breakerDetail.classList.add("hidden");
+          elements.breakerDetail.innerHTML = "";
+          elements.breakerDetail.classList.remove("is-floating");
+        }
       }
+      return;
+    } catch (error) {
+      console.warn("Standard panel HMI render failed.", error);
+      elements.livePanel.innerHTML = `
+        <div class="monitoring-empty-state">
+          <strong>Panel HMI renderer error.</strong>
+          <p>The standard panel view loaded, but it could not render this panel. Check the browser console for the renderer error.</p>
+        </div>
+      `;
+      return;
     }
-    return;
   }
-  const circuitCount = monitoringPanelCircuitCount(fallbackPanel, displayChannels);
-  const channelByCircuit = monitoringChannelByCircuitMap(displayChannels);
-  const rowCount = Math.ceil(circuitCount / 2);
-  const oddCircuits = Array.from({ length: rowCount }, (_, index) => index * 2 + 1).filter(number => number <= circuitCount);
-  const evenCircuits = Array.from({ length: rowCount }, (_, index) => (index + 1) * 2).filter(number => number <= circuitCount);
-  const voltage = monitoringMainMeterValue(primaryDevice, ["mainVoltage", "main_voltage", "voltage", "lineVoltage", "line_voltage"]);
-  const current = monitoringMainMeterValue(primaryDevice, ["mainCurrent", "main_current", "current", "loadCurrent", "load_current", "amps", "amperage"]);
-  const meterHtml = voltage || current ? `
-    <div class="monitoring-main-meter">
-      ${voltage ? `<span><small>Main voltage</small><strong>${escapeHtml(voltage)}</strong></span>` : ""}
-      ${current ? `<span><small>Main current</small><strong>${escapeHtml(current)}</strong></span>` : ""}
-    </div>
-  ` : "";
   elements.livePanel.innerHTML = `
-    ${meterHtml}
-    <div class="monitoring-panel-mockup generated-template" style="--monitoring-panel-rows:${escapeAttribute(rowCount)};" aria-label="${escapeAttribute(fallbackPanel?.name || "Panel")} live monitor layout">
-      ${renderMonitoringPanelCabinetLabel(fallbackPanel, getLocation(fallbackPanel?.locationId || fallbackPanel?.location_id || ""))}
-      <div class="monitoring-panel-rail-label" aria-hidden="true">
-        <span>Odd circuits</span>
-        <span>Even circuits</span>
-      </div>
-      <div class="monitoring-panel-board">
-        <div class="monitoring-breaker-column left">
-          ${renderMonitoringBreakerColumn(oddCircuits, channelByCircuit, fallbackPanel, "left")}
-        </div>
-        ${renderMonitoringPanelCenter(fallbackPanel, circuitCount)}
-        <div class="monitoring-breaker-column right">
-          ${renderMonitoringBreakerColumn(evenCircuits, channelByCircuit, fallbackPanel, "right")}
-        </div>
-      </div>
+    <div class="monitoring-empty-state">
+      <strong>Panel HMI renderer files are not active.</strong>
+      <p>The browser did not activate the standard panel renderer scripts. Confirm the three /js/panel-hmi files load with status 200, then hard refresh.</p>
     </div>
   `;
-  if (shouldRestoreBreakerDetail) {
-    const circuitSelectorValue = window.CSS?.escape
-      ? CSS.escape(String(selectedMonitoringBreakerCircuit || ""))
-      : String(selectedMonitoringBreakerCircuit || "").replace(/"/g, '\\"');
-    const anchor = document.querySelector(`[data-monitoring-breaker-circuit="${circuitSelectorValue}"]`);
-    const channelId = anchor?.dataset.monitoringBreakerDetail || selectedMonitoringBreakerChannelId;
-    if (anchor && channelId) {
-      showMonitoringBreakerDetail(channelId, selectedMonitoringBreakerCircuit, anchor);
-    } else {
-      selectedMonitoringBreakerChannelId = "";
-      selectedMonitoringBreakerCircuit = "";
-      elements.breakerDetail.classList.add("hidden");
-      elements.breakerDetail.innerHTML = "";
-      elements.breakerDetail.classList.remove("is-floating");
-    }
-  }
+  return;
 }
 
 function renderMonitoringPanelCabinetLabel(panel = null, location = null) {
@@ -5414,7 +5385,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-panel-hmi-standard-15";
+const SITEWORKS_APP_VERSION = "20260825-panel-hmi-standard-17";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
