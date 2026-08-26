@@ -3319,6 +3319,25 @@ textarea:disabled {
   color: #ffffff;
 }
 
+.pump-hmi-status-actions button:disabled {
+  cursor: not-allowed;
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(120, 53, 15, 0.22);
+  color: rgba(254, 243, 199, 0.72);
+}
+
+.pump-hmi-command-note {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 8px;
+  background: rgba(120, 53, 15, 0.18);
+  color: #fde68a;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .pump-hmi-history {
   display: grid;
   gap: 8px;

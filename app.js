@@ -16220,8 +16220,24 @@ function setPumpAssetControlCommand(assetId = "", command = "", options = {}) {
   if (!assetId || !normalizedCommand) return;
   const asset = state.assets.find((item) => item.id === assetId);
   if (!asset) return;
-  const now = new Date().toISOString();
   const shouldQueueOutput = options.queueOutput !== false;
+  if (shouldQueueOutput && normalizedCommand === "Run") {
+    const controllers = pumpControllersForCurrentView().filter((controller) => !isPumpSimulationController(controller));
+    const pumpIndex = Math.max(0, pumpAssetsForCurrentView().findIndex((item) => item.id === assetId));
+    const assignedController = pumpLiveControllerForPump(controllers, asset, pumpIndex);
+    const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumpAssetsForCurrentView()) : pumpIndex;
+    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
+    if (!pumpSiteWorksRunAllowed(liveStatus)) {
+      asset.pumpCommandStatus = "Blocked";
+      asset.pumpCommandError = `${liveStatus.channels.auto} HOA auto is inactive. Put the pump in Auto before sending a SiteWorks Run command.`;
+      asset.updatedAt = new Date().toISOString();
+      saveState();
+      renderAutomationPumps();
+      alert(asset.pumpCommandError);
+      return;
+    }
+  }
+  const now = new Date().toISOString();
   asset.pumpCommand = normalizedCommand;
   asset.lastPumpCommandAt = now;
   asset.pumpCommandStatus = shouldQueueOutput ? "Pending" : "Local only";
@@ -17190,8 +17206,8 @@ function getPumpLiveStatus(controller = null, pumpIndex = 0, asset = null) {
     };
   }
   return {
-    label: auto ? "Auto ready" : "Off",
-    className: auto ? "is-listed" : "is-off",
+    label: auto ? "Auto ready" : "Hand/Off",
+    className: auto ? "is-listed" : "is-warning",
     runProof,
     fault,
     auto,
@@ -17201,12 +17217,21 @@ function getPumpLiveStatus(controller = null, pumpIndex = 0, asset = null) {
     channels,
     reason: auto
       ? `${channels.auto} HOA auto is active, ${channels.runProof} run proof is open.`
-      : `${channels.runProof} run proof is open and ${channels.auto} HOA auto is inactive.`
+      : `${channels.auto} HOA auto is inactive. SiteWorks Run is blocked until the pump is in Auto.`
   };
 }
 
 function pumpLiveStatusReason(status = null) {
   return status?.reason || "No live ESP32 input mapped.";
+}
+
+function pumpHoaAvailabilityLabel(liveStatus = null, asset = {}) {
+  if (liveStatus) return liveStatus.auto ? "AUTO - AVAILABLE" : "HAND/OFF - LOCAL";
+  return String(asset?.pumpControlMode || "AUTO").toUpperCase();
+}
+
+function pumpSiteWorksRunAllowed(liveStatus = null) {
+  return !liveStatus || liveStatus.auto === true;
 }
 
 function pumpLiveChannelLabel(controller = null, channel = "", fallback = "") {
@@ -17791,7 +17816,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           <b>Command</b>${escapeHtml(commandFeedback.label)}
         </span>
         <span class="pump-hmi-mini">
-          <b>HOA</b>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : "No live data")}
+          <b>HOA</b>${escapeHtml(pumpHoaAvailabilityLabel(liveStatus, asset))}
         </span>
         <span class="pump-hmi-mini pump-hmi-mini-wide">
           <b>Live reason</b>${escapeHtml(pumpLiveStatusReason(liveStatus))}
@@ -17936,7 +17961,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <span class="pump-station-art" aria-hidden="true"></span>
         <span class="pump-station-readouts">
           <span><b>Status</b><i>${escapeHtml(status.label)}</i></span>
-          <span><b>HOA</b><i>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : (asset?.pumpControlMode || "Auto"))}</i></span>
+          <span><b>HOA</b><i>${escapeHtml(pumpHoaAvailabilityLabel(liveStatus, asset))}</i></span>
           <span><b>Command</b><i>${escapeHtml(commandFeedback.label)}</i></span>
           <span><b>Proof</b><i>${escapeHtml(liveStatus ? (liveStatus.runProof ? "Made" : "Open") : (assignedController ? `DI${(assignedPumpIndex * 3) + 1}` : "Not wired"))}</i></span>
           <span><b>Reason</b><i>${escapeHtml(pumpLiveStatusReason(liveStatus))}</i></span>
@@ -17990,9 +18015,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       : status.className === "is-running"
         ? "RUNNING"
         : "STOPPED";
-    const hoaLabel = liveStatus
-      ? (liveStatus.auto ? "AUTO" : "HAND/OFF")
-      : String(asset?.pumpControlMode || "AUTO").toUpperCase();
+    const hoaLabel = pumpHoaAvailabilityLabel(liveStatus, asset);
     const proofLabel = liveStatus
       ? (liveStatus.runProof ? "MADE" : "OPEN")
       : assignedController
@@ -18084,7 +18107,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Open tickets</span><strong>${selectedPumpOpenIssues.length}</strong></div>
         <div><span>Type</span><strong>${escapeHtml(selectedPump.type || "Pump")}</strong></div>
         <div><span>Role</span><strong>${escapeHtml(normalizePumpRole(selectedPump.pumpRole || selectedPump.role))}</strong></div>
-        <div><span>Control</span><strong>${escapeHtml(selectedPump.pumpControlMode || "Setup only")}</strong></div>
+        <div><span>Control</span><strong>${escapeHtml(pumpHoaAvailabilityLabel(selectedPumpLiveStatus, selectedPump))}</strong></div>
         <div><span>Controller</span><strong>${escapeHtml(selectedPumpController?.name || "Not assigned")}</strong></div>
         <div><span>Last command</span><strong>${escapeHtml(selectedPump.pumpCommand || "None")}</strong></div>
         <div><span>Command status</span><strong>${escapeHtml(selectedPumpCommandFeedback?.label || "No command")}</strong></div>
@@ -18092,7 +18115,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Last event</span><strong>${escapeHtml(selectedPumpLatestEventLabel)}</strong></div>
         <div><span>Run proof</span><strong>${escapeHtml(selectedPumpLiveStatus ? `${selectedPumpLiveStatus.channels.runProof} ${selectedPumpLiveStatus.runProof ? "Made" : "Open"}` : "No live data")}</strong></div>
         <div><span>Fault input</span><strong>${escapeHtml(selectedPumpLiveStatus ? `${selectedPumpLiveStatus.channels.fault} ${selectedPumpLiveStatus.fault ? "Active" : "Normal"}` : "No live data")}</strong></div>
-        <div><span>HOA input</span><strong>${escapeHtml(selectedPumpLiveStatus ? `${selectedPumpLiveStatus.channels.auto} ${selectedPumpLiveStatus.auto ? "Auto" : "Not auto"}` : "No live data")}</strong></div>
+        <div><span>HOA input</span><strong>${escapeHtml(selectedPumpLiveStatus ? `${selectedPumpLiveStatus.channels.auto} ${selectedPumpLiveStatus.auto ? "Auto available" : "Hand/Off local"}` : "No live data")}</strong></div>
       </div>
       <div class="pump-hmi-detail-advisory ${selectedPumpStatus.className}">
         <span>Status meaning</span>
@@ -18109,11 +18132,16 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       ${selectedPump ? renderPumpIoMappingForm(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : ""}
       <div class="pump-hmi-action-block">
         <span>Command</span>
+        ${selectedPumpLiveStatus && !selectedPumpLiveStatus.auto ? `
+          <p class="pump-hmi-command-note">SiteWorks Run is blocked because ${escapeHtml(selectedPumpLiveStatus.channels.auto)} HOA Auto is inactive. Stop and reset commands remain available.</p>
+        ` : ""}
         <div class="pump-hmi-status-actions" aria-label="SiteWorks pump command controls">
           ${["Run", "Stop", "Auto", "Alarm Reset"].map((commandLabel) => `
             <button
               type="button"
               class="${selectedPump.pumpCommand === commandLabel ? "is-active" : ""}"
+              ${commandLabel === "Run" && !pumpSiteWorksRunAllowed(selectedPumpLiveStatus) ? "disabled" : ""}
+              title="${commandLabel === "Run" && !pumpSiteWorksRunAllowed(selectedPumpLiveStatus) ? "HOA Auto is inactive. Put pump in Auto before SiteWorks Run." : ""}"
               data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
               data-pump-command-action="${escapeAttribute(commandLabel)}"
             >${escapeHtml(commandLabel)}</button>
