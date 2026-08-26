@@ -188,6 +188,19 @@
     `;
   }
 
+  function renderCenterTelemetry(panel) {
+    const comm = panel.communication || {};
+    return `
+      <div class="standard-panel-live-telemetry">
+        <header>Panel Telemetry</header>
+        <div><span>Voltage</span><strong>${escapeHtml(panel.systemVoltage || "--")}</strong></div>
+        <div><span>Wiring</span><strong>${escapeHtml(panel.phaseWiring || "--")}</strong></div>
+        <div><span>Positions</span><strong>${escapeHtml(panel.totalPositions || "--")}</strong></div>
+        <div><span>Comms</span><strong>${escapeHtml(comm.state || "Not supplied")}</strong></div>
+      </div>
+    `;
+  }
+
   function renderLegend() {
     return `
       <div class="standard-panel-legend" aria-label="Panel HMI legend">
@@ -214,11 +227,15 @@
     return `
       <section class="standard-panel-hmi" style="--standard-panel-rows:${escapeAttribute(panel.rowsPerSide)};" aria-label="Physical electrical panel view">
         <header class="standard-panel-header">
-          <div>
-            <span>SiteWorks Electrical Panel HMI</span>
+          <div class="standard-panel-brand">
+            <span>SiteWorks</span>
+            <strong>Panel HMI</strong>
+          </div>
+          <div class="standard-panel-title">
+            <span>Physical Panel View</span>
             <strong>${escapeHtml(panel.panelId || "Panel")}</strong>
           </div>
-          <div>
+          <div class="standard-panel-service">
             <span>${escapeHtml(panel.systemVoltage || "Voltage not supplied")}</span>
             <strong>${escapeHtml(panel.phaseWiring || "Wiring not supplied")}</strong>
           </div>
@@ -243,6 +260,7 @@
                 <span>${escapeHtml(panel.phaseWiring || "Wiring not supplied")}</span>
                 <small>Monitoring only. Breaker control disabled.</small>
               </div>
+              ${renderCenterTelemetry(panel)}
               <div class="standard-panel-phase-labels"><b>A</b><b>B</b><b>C</b></div>
               <div class="standard-panel-note">Physical view. Telemetry and AI are overlays only.</div>
             </div>
