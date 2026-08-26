@@ -18169,7 +18169,12 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: transparent;
+  background-color: transparent;
+  background-image: url("/assets/equipment/pump-centrifugal-blue.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  contain: paint;
 }
 
 .pump-scada-pump-art {
@@ -18185,6 +18190,7 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   height: 100%;
   object-fit: contain;
   pointer-events: none;
+  transform: translateZ(0);
 }
 
 .pump-scada-pit-pump,

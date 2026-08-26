@@ -5457,6 +5457,8 @@ let selectedPumpHmiAssetId = "";
 let selectedPumpDiagramDeviceId = "";
 const openPumpScadaDrawers = new Set();
 const touchedPumpScadaDrawers = new Set();
+const PUMP_EQUIPMENT_IMAGE_SRC = "/assets/equipment/pump-centrifugal-blue.png";
+let pumpEquipmentImagePreloaded = false;
 const PUMP_SETUP_FORM_SELECTOR = "[data-pump-controller-form], [data-pump-io-mapping-form], [data-pump-diagram-device-form]";
 const PUMP_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
 const ALL_CUSTOMERS = "all";
@@ -16587,6 +16589,15 @@ function pumpControllerForPump(controllers = [], pump = {}) {
   return assignedController || controllers.find((controller) => !normalizePumpControllerPumpIds(controller).length) || controllers[0] || null;
 }
 
+function preloadPumpEquipmentImage() {
+  if (pumpEquipmentImagePreloaded || typeof Image === "undefined") return;
+  pumpEquipmentImagePreloaded = true;
+  const image = new Image();
+  image.decoding = "sync";
+  image.loading = "eager";
+  image.src = PUMP_EQUIPMENT_IMAGE_SRC;
+}
+
 function pumpLiveControllerForPump(controllers = [], pump = {}, pumpIndex = 0) {
   const assignedController = pumpControllerForPump(controllers, pump);
   if (assignedController && getPumpControllerLiveInputs(assignedController)?.updatedAt) return assignedController;
@@ -17785,6 +17796,7 @@ function deletePumpDiagramDevice(deviceId = "") {
 }
 
 function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocation = null, controllers = []) {
+  preloadPumpEquipmentImage();
   const roleCounts = pumps.reduce((counts, asset) => {
     const role = normalizePumpRole(asset.pumpRole || asset.role);
     counts[role] = (counts[role] || 0) + 1;
@@ -18149,7 +18161,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         </span>
         <span class="pump-scada-pump-name">${escapeHtml(label)}</span>
         <span class="pump-scada-pump-art" aria-hidden="true">
-          <img src="/assets/equipment/pump-centrifugal-blue.png" alt="" loading="lazy">
+          <img src="${escapeAttribute(PUMP_EQUIPMENT_IMAGE_SRC)}" alt="" width="1536" height="1024" loading="eager" decoding="sync" fetchpriority="high">
         </span>
         <span class="pump-scada-readout is-status"><b>Status</b><i>${escapeHtml(statusLabel)}</i></span>
         <span class="pump-scada-readout"><b>HOA</b><i>${escapeHtml(hoaLabel)}</i></span>
@@ -18169,7 +18181,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       class="pump-scada-pit-pump ${["is-one", "is-two", "is-three"][index] || ""} ${pumps[index] ? pumpDisplayStatus(pumps[index], index).className : "is-off"}"
       style="left: ${pitPumpPosition(index)}%;"
     >
-      <img src="/assets/equipment/pump-centrifugal-blue.png" alt="" loading="lazy">
+      <img src="${escapeAttribute(PUMP_EQUIPMENT_IMAGE_SRC)}" alt="" width="1536" height="1024" loading="eager" decoding="sync" fetchpriority="high">
     </span>
   `).join("");
   const scadaPitLabels = Array.from({ length: visualPumpCount }, (_, index) => `
