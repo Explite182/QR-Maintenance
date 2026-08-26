@@ -18107,7 +18107,13 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </button>
     `;
   }).join("");
-  const scadaPumpCards = Array.from({ length: 3 }, (_, index) => {
+  const visualPumpCount = Math.max(1, Math.min(3, Number(primaryController?.pumpCount || primaryControllerPumps.length || pumps.length || 2) || 2));
+  const pitPumpPosition = (index) => {
+    if (visualPumpCount === 1) return 53;
+    if (visualPumpCount === 2) return index === 0 ? 43 : 61;
+    return [36, 53, 70][index] || 53;
+  };
+  const scadaPumpCards = Array.from({ length: visualPumpCount }, (_, index) => {
     const asset = pumps[index] || null;
     const role = asset ? normalizePumpRole(asset.pumpRole || asset.role) : index === 0 ? "Lead" : "Lag";
     const assignedController = asset ? pumpLiveControllerForPump(controllers, asset, index) : null;
@@ -18157,6 +18163,15 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </button>
     `;
   }).join("");
+  const scadaPitPumps = Array.from({ length: visualPumpCount }, (_, index) => `
+    <span
+      class="pump-scada-pit-pump ${["is-one", "is-two", "is-three"][index] || ""} ${pumps[index] ? pumpDisplayStatus(pumps[index], index).className : "is-off"}"
+      style="left: ${pitPumpPosition(index)}%;"
+    ></span>
+  `).join("");
+  const scadaPitLabels = Array.from({ length: visualPumpCount }, (_, index) => `
+    <span>P-${String(index + 1).padStart(2, "0")} <b>${escapeHtml(pumps[index] ? pumpDisplayStatus(pumps[index], index).label : "Off")}</b></span>
+  `).join("");
   const scadaAlarmSourceRows = [
     ...liveFaultPumps.map(({ asset, liveStatus }) => ({
       label: asset?.name || "Pump",
@@ -18503,14 +18518,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
                 <span class="pump-scada-pit-float is-mid ${floatStateClass("mid", midFloat) !== "is-idle" ? "is-active" : ""}"></span>
                 <span class="pump-scada-pit-float is-low ${floatStateClass("low", lowFloat) !== "is-idle" ? "is-active" : ""}"></span>
                 <span class="pump-scada-discharge"></span>
-                <span class="pump-scada-pit-pump is-one ${pumps[0] ? pumpDisplayStatus(pumps[0], 0).className : "is-off"}"></span>
-                <span class="pump-scada-pit-pump is-two ${pumps[1] ? pumpDisplayStatus(pumps[1], 1).className : "is-off"}"></span>
-                <span class="pump-scada-pit-pump is-three ${pumps[2] ? pumpDisplayStatus(pumps[2], 2).className : "is-off"}"></span>
+                ${scadaPitPumps}
               </div>
-              <div class="pump-scada-pit-labels">
-                <span>P-01 <b>${escapeHtml(pumps[0] ? pumpDisplayStatus(pumps[0], 0).label : "Off")}</b></span>
-                <span>P-02 <b>${escapeHtml(pumps[1] ? pumpDisplayStatus(pumps[1], 1).label : "Off")}</b></span>
-                <span>P-03 <b>${escapeHtml(pumps[2] ? pumpDisplayStatus(pumps[2], 2).label : "Off")}</b></span>
+              <div class="pump-scada-pit-labels" style="grid-template-columns: repeat(${visualPumpCount}, minmax(0, 1fr));">
+                ${scadaPitLabels}
               </div>
             </section>
             <footer class="pump-scada-footer">
