@@ -1,18 +1,18 @@
-const SITEWORKS_SW_VERSION = "20260825-pump-edit-hold-23";
+const SITEWORKS_SW_VERSION = "20260826-pm-history-id-24";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260825-pump-edit-hold-23",
+  "/styles.css?v=20260826-pm-history-id-24",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260825-pump-edit-hold-23",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260825-pump-edit-hold-23",
-  "/js/panel-hmi-standard-renderer.js?v=20260825-pump-edit-hold-23",
-  "/app.js?v=20260825-pump-edit-hold-23",
-  "/manifest.webmanifest?v=20260825-pump-edit-hold-23",
-  "/icons/siteworks-icon-192.png?v=20260825-pump-edit-hold-23",
-  "/icons/siteworks-icon-512.png?v=20260825-pump-edit-hold-23"
+  "/js/panel-hmi-standard-model.js?v=20260826-pm-history-id-24",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260826-pm-history-id-24",
+  "/js/panel-hmi-standard-renderer.js?v=20260826-pm-history-id-24",
+  "/app.js?v=20260826-pm-history-id-24",
+  "/manifest.webmanifest?v=20260826-pm-history-id-24",
+  "/icons/siteworks-icon-192.png?v=20260826-pm-history-id-24",
+  "/icons/siteworks-icon-512.png?v=20260826-pm-history-id-24"
 ];
 
 self.addEventListener("install", (event) => {

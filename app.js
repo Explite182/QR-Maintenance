@@ -682,6 +682,12 @@ function groupStructuredHistoryByAsset(historyRows = []) {
   return grouped;
 }
 
+function ensurePmHistoryId(item = {}) {
+  if (item.id) return item.id;
+  item.id = crypto.randomUUID();
+  return item.id;
+}
+
 function newestStructuredUpdatedAt(rows) {
   return newestTimestampFromRows([
     ...rows.customers,
@@ -1491,7 +1497,7 @@ async function syncStructuredDataToServer() {
     await upsertStructuredRows("monitoring_alerts", syncMonitoringAlerts.filter((alert) => alert.id).map((alert) => buildMonitoringAlertRow(alert, cloudLocationIds)));
 
     const historyRows = syncAssets.filter(canSyncHistoryRecord).flatMap((asset) => (asset.history || []).map((item) => ({
-      id: item.id,
+      id: ensurePmHistoryId(item),
       pm_number: item.pmNumber || null,
       asset_id: asset.id,
       technician: item.technician || "",
@@ -5385,7 +5391,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-edit-hold-23";
+const SITEWORKS_APP_VERSION = "20260826-pm-history-id-24";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -27637,7 +27643,7 @@ function normalizeState(input) {
         ? numeric
         : 0;
       if (pmNumber) usedPmNumbers.add(pmNumber);
-      return { photo: null, ...item, pmNumber };
+      return { photo: null, ...item, id: ensurePmHistoryId(item), pmNumber };
     });
   });
   let pmNumberCursor = 1;
