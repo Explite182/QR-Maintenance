@@ -5382,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-live-io-panel-11";
+const SITEWORKS_APP_VERSION = "20260825-pump-live-status-12";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16649,6 +16649,30 @@ function formatPumpControllerLiveInputs(controller = {}) {
   return `${activeMask} | ${activeCount} active`;
 }
 
+function getPumpLiveInputActive(controller = null, inputNumber = 0) {
+  const liveInputs = getPumpControllerLiveInputs(controller || {});
+  const points = Array.isArray(liveInputs?.points) ? liveInputs.points : [];
+  const point = points.find((item) => Number(item?.inputNumber) === Number(inputNumber));
+  if (point) return Boolean(point.active);
+  const mask = Number(liveInputs?.activeMask || 0) || 0;
+  return inputNumber > 0 ? Boolean(mask & (1 << (inputNumber - 1))) : false;
+}
+
+function getPumpLiveStatus(controller = null, pumpIndex = 0) {
+  if (!controller) return null;
+  const base = (pumpIndex + 1) * 3 - 2;
+  const runProof = getPumpLiveInputActive(controller, base);
+  const fault = getPumpLiveInputActive(controller, base + 1);
+  const auto = getPumpLiveInputActive(controller, base + 2);
+  if (fault) {
+    return { label: "Fault", className: "is-alarm", runProof, fault, auto };
+  }
+  if (runProof) {
+    return { label: "Running", className: "is-running", runProof, fault, auto };
+  }
+  return { label: auto ? "Auto ready" : "Off", className: auto ? "is-listed" : "is-off", runProof, fault, auto };
+}
+
 function pumpLiveInputLabels(pumpCount = 2) {
   const labels = {
     DI1: "Pump 1 run proof",
@@ -17052,10 +17076,6 @@ function deletePumpDiagramDevice(deviceId = "") {
 }
 
 function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocation = null, controllers = []) {
-  const statuses = pumps.map(pumpAssetStatus);
-  const runningCount = statuses.filter((status) => status.className === "is-running").length;
-  const offCount = statuses.filter((status) => status.className === "is-off" || status.className === "is-listed").length;
-  const maintenanceCount = statuses.filter((status) => status.className === "is-maintenance").length;
   const roleCounts = pumps.reduce((counts, asset) => {
     const role = normalizePumpRole(asset.pumpRole || asset.role);
     counts[role] = (counts[role] || 0) + 1;
@@ -17066,7 +17086,6 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const locationName = currentLocation?.name || "Selected location";
   const customerName = currentCustomer?.name || "SiteWorks";
   const leadPump = pumps.find((asset) => normalizePumpRole(asset.pumpRole || asset.role) === "Lead") || pumps[0] || null;
-  const leadStatus = leadPump ? pumpAssetStatus(leadPump) : { label: "Lag", className: "is-listed" };
   const controllerStatuses = controllers.map(pumpControllerStatus);
   const simulationEnabled = hasPumpSimulationController(controllers);
   const controllerOnlineCount = controllerStatuses.filter((status) => ["is-running", "is-simulation"].includes(status.className)).length;
@@ -17074,9 +17093,23 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const primaryController = controllers[0] || null;
   const primaryControllerStatus = primaryController ? pumpControllerStatus(primaryController) : { label: "No controller", className: "is-listed" };
   const primaryControllerPumps = primaryController ? pumpControllerAssignedPumps(primaryController, pumps) : pumps;
+  const pumpDisplayStatus = (asset = {}, index = 0) => {
+    const assignedController = pumpControllerForPump(controllers, asset);
+    const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
+    return getPumpLiveStatus(assignedController, assignedPumpIndex) || pumpAssetStatus(asset);
+  };
+  const statuses = pumps.map((asset, index) => pumpDisplayStatus(asset, index));
+  const runningCount = statuses.filter((status) => status.className === "is-running").length;
+  const offCount = statuses.filter((status) => status.className === "is-off" || status.className === "is-listed").length;
+  const maintenanceCount = statuses.filter((status) => status.className === "is-maintenance").length;
+  const activeAlarmAssetIds = new Set(activePumpAlarms.map(({ asset }) => asset?.id).filter(Boolean));
+  const liveFaultPumps = pumps
+    .map((asset, index) => ({ asset, status: statuses[index] }))
+    .filter(({ asset, status }) => !activeAlarmAssetIds.has(asset?.id) && String(status?.label || "").toLowerCase().includes("fault"));
+  const leadStatus = leadPump ? pumpDisplayStatus(leadPump, Math.max(0, pumps.findIndex((asset) => asset.id === leadPump.id))) : { label: "Lag", className: "is-listed" };
   const diagramDevices = pumpDiagramDevicesForLocation(currentLocation);
   const diagramAlarmDevices = diagramDevices.filter((device) => pumpDiagramDeviceStatus(device).className === "is-alarm");
-  const totalWarningCount = warningCount + diagramAlarmDevices.length;
+  const totalWarningCount = warningCount + diagramAlarmDevices.length + liveFaultPumps.length;
   const alarmOn = totalWarningCount > 0;
   const plannedPoints = pumpHmiPlannedPoints(primaryController, primaryControllerPumps);
   const liveIoPanel = renderPumpLiveIoPanel(primaryController);
@@ -17104,7 +17137,20 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         </div>
       </article>
     `;
-  }).join("");
+  }).join("") + liveFaultPumps.map(({ asset, status }) => `
+    <article class="pump-hmi-alarm ${status.className}">
+      <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
+      <div>
+        <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
+        <small>${escapeHtml(getAssetEquipmentId(asset))} | Live ESP32 input</small>
+        <small>Fault input is active.</small>
+      </div>
+      <em>${escapeHtml(status.label)}</em>
+      <div class="pump-hmi-alarm-actions">
+        <button type="button" data-select-pump-asset="${escapeAttribute(asset.id)}">Open</button>
+      </div>
+    </article>
+  `).join("");
   const ddcAlarmTiles = diagramAlarmDevices.map((device) => {
     const status = pumpDiagramDeviceStatus(device);
     return `
@@ -17123,7 +17169,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     `;
   }).join("");
   const pumpTiles = pumps.map((asset, index) => {
-    const status = pumpAssetStatus(asset);
+    const assignedController = pumpControllerForPump(controllers, asset);
+    const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
+    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex);
+    const status = liveStatus || pumpAssetStatus(asset);
     const due = getDueInfo(asset);
     const openIssueCount = openWorkOrdersForAsset(asset.id).length;
     const label = asset.name || `Pump ${index + 1}`;
@@ -17135,8 +17184,6 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const latestEventLabel = latestEvent
       ? `${latestEvent.type || latestEvent.result || "Pump event"}${latestEventDate ? ` | ${formatDate(latestEventDate)}` : ""}`
       : "No recent event";
-    const assignedController = pumpControllerForPump(controllers, asset);
-    const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
     const plannedIo = assignedController ? renderPumpHmiPumpIo(asset, assignedPumpIndex) : "";
     const controllerLabel = assignedController?.name || "No controller assigned";
     return `
@@ -17158,6 +17205,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         </span>
         <span class="pump-hmi-mini">
           <b>Command</b>${escapeHtml(asset.pumpCommand || "None")}
+        </span>
+        <span class="pump-hmi-mini">
+          <b>HOA</b>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : "No live data")}
         </span>
         <span class="pump-hmi-mini">
           <b>Controller</b>${escapeHtml(controllerLabel)}
@@ -17194,7 +17244,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     `;
   }).join("") : "";
   const selectedPump = pumps.find((asset) => asset.id === selectedPumpHmiAssetId) || null;
-  const selectedPumpStatus = selectedPump ? pumpAssetStatus(selectedPump) : null;
+  const selectedPumpIndex = selectedPump ? Math.max(0, pumps.findIndex((asset) => asset.id === selectedPump.id)) : 0;
+  const selectedPumpStatus = selectedPump ? pumpDisplayStatus(selectedPump, selectedPumpIndex) : null;
   const selectedPumpDue = selectedPump ? getDueInfo(selectedPump) : null;
   const selectedPumpOpenIssues = selectedPump ? openWorkOrdersForAsset(selectedPump.id) : [];
   const selectedPumpHistory = selectedPump && Array.isArray(selectedPump.history)
@@ -17225,7 +17276,6 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const selectedPumpLatestEventLabel = selectedPumpLatestEvent
     ? formatPumpEventSummary(selectedPumpLatestEvent)
     : "No recent event";
-  const selectedPumpIndex = selectedPump ? pumps.findIndex((asset) => asset.id === selectedPump.id) : -1;
   const selectedPumpController = selectedPump ? pumpControllerForPump(controllers, selectedPump) : null;
   const selectedPumpAssignedIndex = selectedPumpController ? pumpControllerPumpIndex(selectedPumpController, selectedPump, pumps) : selectedPumpIndex;
   const selectedPumpIo = selectedPump ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : "";
@@ -17268,9 +17318,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   }).join("");
   const pumpStationCards = Array.from({ length: Math.max(3, Math.min(3, pumps.length || 3)) }, (_, index) => {
     const asset = pumps[index] || null;
-    const status = asset ? pumpAssetStatus(asset) : { label: "Off", className: "is-off" };
     const assignedController = asset ? pumpControllerForPump(controllers, asset) : null;
     const assignedPumpIndex = assignedController && asset ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
+    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex);
+    const status = asset ? (liveStatus || pumpAssetStatus(asset)) : { label: "Off", className: "is-off" };
     const pumpRole = asset ? normalizePumpRole(asset.pumpRole || asset.role) : index === 0 ? "Lead" : "Lag";
     const isSelected = asset && selectedPumpHmiAssetId === asset.id;
     const openIssueCount = asset ? openWorkOrdersForAsset(asset.id).length : 0;
@@ -17289,9 +17340,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <span class="pump-station-art" aria-hidden="true"></span>
         <span class="pump-station-readouts">
           <span><b>Status</b><i>${escapeHtml(status.label)}</i></span>
-          <span><b>HOA</b><i>${escapeHtml(asset?.pumpControlMode || "Auto")}</i></span>
+          <span><b>HOA</b><i>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : (asset?.pumpControlMode || "Auto"))}</i></span>
           <span><b>Command</b><i>${escapeHtml(commandLabel)}</i></span>
-          <span><b>Proof</b><i>${assignedController ? `DI${assignedPumpIndex + 1}` : "Not wired"}</i></span>
+          <span><b>Proof</b><i>${assignedController ? `DI${(assignedPumpIndex * 3) + 1}` : "Not wired"}</i></span>
           <span><b>Tickets</b><i>${openIssueCount}</i></span>
         </span>
       </button>
@@ -17322,10 +17373,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   }).join("");
   const scadaPumpCards = Array.from({ length: 3 }, (_, index) => {
     const asset = pumps[index] || null;
-    const status = asset ? pumpAssetStatus(asset) : { label: "Not added", className: "is-off" };
     const role = asset ? normalizePumpRole(asset.pumpRole || asset.role) : index === 0 ? "Lead" : "Lag";
     const assignedController = asset ? pumpControllerForPump(controllers, asset) : null;
     const assignedPumpIndex = assignedController && asset ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
+    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex);
+    const status = asset ? (liveStatus || pumpAssetStatus(asset)) : { label: "Not added", className: "is-off" };
     const label = asset?.name || `Sump Pump ${index + 1}`;
     const isSelected = asset && selectedPumpHmiAssetId === asset.id;
     const flow = asset?.flowGpm || asset?.flow || (status.className === "is-running" ? "Live" : "0 GPM");
@@ -17344,11 +17396,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         </span>
         <span class="pump-scada-pump-art" aria-hidden="true"></span>
         <span class="pump-scada-readout"><b>Status</b><i>${escapeHtml(status.label)}</i></span>
-        <span class="pump-scada-readout"><b>Mode</b><i>${escapeHtml(asset?.pumpControlMode || "Auto")}</i></span>
+        <span class="pump-scada-readout"><b>Mode</b><i>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : (asset?.pumpControlMode || "Auto"))}</i></span>
         <span class="pump-scada-readout"><b>Runtime</b><i>${escapeHtml(runtime)}</i></span>
         <span class="pump-scada-readout"><b>Starts</b><i>${escapeHtml(starts)}</i></span>
         <span class="pump-scada-readout"><b>Flow</b><i>${escapeHtml(flow)}</i></span>
-        <span class="pump-scada-readout"><b>Proof</b><i>${assignedController ? `DI${assignedPumpIndex + 1}` : "Not wired"}</i></span>
+        <span class="pump-scada-readout"><b>Proof</b><i>${assignedController ? `DI${(assignedPumpIndex * 3) + 1}` : "Not wired"}</i></span>
         <span class="pump-scada-card-actions">
           <span>${status.className === "is-running" ? "STOP" : "START"}</span>
           <span>HAND</span>
@@ -17574,8 +17626,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <section>
                 <header>Pump Alternation</header>
                 <div><span>Lead Pump</span><strong>${escapeHtml(leadPump?.name || "Not assigned")}</strong></div>
-                <div><span>Lead / Lag / Backup</span><strong>${roleCounts.lead} / ${roleCounts.lag} / ${roleCounts.backup}</strong></div>
-                <div><span>Rotation</span><strong>${escapeHtml(leadStatus)}</strong></div>
+                <div><span>Lead / Lag / Backup</span><strong>${roleCounts.Lead || 0} / ${roleCounts.Lag || 0} / ${roleCounts.Backup || 0}</strong></div>
+                <div><span>Rotation</span><strong>${escapeHtml(leadStatus.label)}</strong></div>
               </section>
             </aside>
             <section class="pump-scada-pit" aria-label="Sump pit overview">
@@ -17591,14 +17643,14 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
                 <span class="pump-scada-pit-float is-mid ${midFloat && floatStateClass(midFloat) !== "is-idle" ? "is-active" : ""}"></span>
                 <span class="pump-scada-pit-float is-low ${lowFloat && floatStateClass(lowFloat) !== "is-idle" ? "is-active" : ""}"></span>
                 <span class="pump-scada-discharge"></span>
-                <span class="pump-scada-pit-pump is-one ${pumps[0] && pumpAssetStatus(pumps[0]).className === "is-running" ? "is-running" : ""}"></span>
-                <span class="pump-scada-pit-pump is-two ${pumps[1] && pumpAssetStatus(pumps[1]).className === "is-running" ? "is-running" : ""}"></span>
-                <span class="pump-scada-pit-pump is-three ${pumps[2] && pumpAssetStatus(pumps[2]).className === "is-running" ? "is-running" : ""}"></span>
+                <span class="pump-scada-pit-pump is-one ${pumps[0] && pumpDisplayStatus(pumps[0], 0).className === "is-running" ? "is-running" : ""}"></span>
+                <span class="pump-scada-pit-pump is-two ${pumps[1] && pumpDisplayStatus(pumps[1], 1).className === "is-running" ? "is-running" : ""}"></span>
+                <span class="pump-scada-pit-pump is-three ${pumps[2] && pumpDisplayStatus(pumps[2], 2).className === "is-running" ? "is-running" : ""}"></span>
               </div>
               <div class="pump-scada-pit-labels">
-                <span>P-01 <b>${escapeHtml(pumps[0] ? pumpAssetStatus(pumps[0]).label : "Off")}</b></span>
-                <span>P-02 <b>${escapeHtml(pumps[1] ? pumpAssetStatus(pumps[1]).label : "Off")}</b></span>
-                <span>P-03 <b>${escapeHtml(pumps[2] ? pumpAssetStatus(pumps[2]).label : "Off")}</b></span>
+                <span>P-01 <b>${escapeHtml(pumps[0] ? pumpDisplayStatus(pumps[0], 0).label : "Off")}</b></span>
+                <span>P-02 <b>${escapeHtml(pumps[1] ? pumpDisplayStatus(pumps[1], 1).label : "Off")}</b></span>
+                <span>P-03 <b>${escapeHtml(pumps[2] ? pumpDisplayStatus(pumps[2], 2).label : "Off")}</b></span>
               </div>
             </section>
             <footer class="pump-scada-footer">
