@@ -5382,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-startup-nullfix-09";
+const SITEWORKS_APP_VERSION = "20260825-pump-live-refresh-10";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -5397,6 +5397,7 @@ const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
 const LIGHTING_LIVE_REFRESH_INTERVAL_MS = 5000;
+const PUMP_LIVE_REFRESH_INTERVAL_MS = 5000;
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
@@ -5432,6 +5433,7 @@ let lightingFirmwareLoading = false;
 let pumpControllersCache = [];
 let pumpControllersLoadedScope = "";
 let pumpControllersLoading = false;
+let pumpLiveRefreshActive = false;
 let editingPumpControllerId = "";
 let pendingPumpApiKey = null;
 let selectedPumpHmiAssetId = "";
@@ -6340,6 +6342,7 @@ window.setInterval(loadServerHealth, 5 * 60 * 1000);
 window.setInterval(refreshSiteMapMonitorMode, 30000);
 window.setInterval(renderLightingScheduleClock, 1000);
 window.setInterval(refreshLightingLiveStatus, LIGHTING_LIVE_REFRESH_INTERVAL_MS);
+window.setInterval(refreshPumpLiveStatus, PUMP_LIVE_REFRESH_INTERVAL_MS);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 initPasswordRecoveryFromUrl();
 
@@ -16234,6 +16237,18 @@ async function loadPumpControllersForCurrentScope({ force = false } = {}) {
   } finally {
     pumpControllersLoading = false;
     renderAutomationPumps();
+  }
+}
+
+async function refreshPumpLiveStatus() {
+  const scopeKey = getPumpControllerScopeKey();
+  if (!scopeKey || editingPumpControllerId) return;
+  if (document.querySelector("[data-pump-controller-form]")) return;
+  pumpLiveRefreshActive = true;
+  try {
+    await loadPumpControllersForCurrentScope({ force: true });
+  } finally {
+    pumpLiveRefreshActive = false;
   }
 }
 
