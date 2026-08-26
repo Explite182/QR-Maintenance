@@ -16074,6 +16074,7 @@ function pumpStatusSeverity(status = {}) {
 function pumpStatusMeaning(status = {}) {
   const label = String(status.label || "");
   if (label === "Fault") return "Fault input or trip condition needs service review.";
+  if (label === "Proof failed") return "SiteWorks commanded the pump, but run proof did not make before the timeout.";
   if (label === "High level") return "High level float or water condition needs immediate review.";
   if (label === "Alarm") return "Pump alarm condition needs service review.";
   if (label === "Offline") return "Pump has no controller signal or stale controller data.";
@@ -16087,6 +16088,7 @@ function pumpStatusMeaning(status = {}) {
 function pumpStatusActionText(status = {}) {
   const label = String(status.label || "");
   if (label === "Fault") return "Check the fault indication, HOA position, breaker, and starter before reset.";
+  if (label === "Proof failed") return "Verify the pump ran, confirm the proof contact, then use Alarm Reset to clear the latched proof alarm.";
   if (label === "High level") return "Inspect the level condition and verify pump operation immediately.";
   if (label === "Alarm") return "Review the alarm source and create a ticket if the condition is active.";
   if (label === "Offline") return "Confirm controller power, network, and field wiring.";
@@ -16111,12 +16113,16 @@ function livePumpStatusesForView(pumps = [], controllers = []) {
     const assignedController = pumpLiveControllerForPump(controllers, asset, index);
     const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
     const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
+    const proofFailed = assignedController && isPumpProofFailed(assignedController, assignedPumpIndex);
+    const status = proofFailed && !liveStatus?.fault
+      ? pumpProofFailedStatus(assignedController, assignedPumpIndex, liveStatus)
+      : liveStatus || pumpAssetStatus(asset);
     return {
       asset,
       controller: assignedController,
       pumpIndex: assignedPumpIndex,
       liveStatus,
-      status: liveStatus || pumpAssetStatus(asset)
+      status
     };
   });
 }
@@ -16203,6 +16209,55 @@ function pumpDesiredStateForCommand(command = "") {
   return normalizePumpControlCommand(command) === "Run" ? "On" : "Off";
 }
 
+function pumpAutoSequenceState(controller = null) {
+  const data = controller?.data && typeof controller.data === "object" ? controller.data : {};
+  return data.autoSequence && typeof data.autoSequence === "object" ? data.autoSequence : {};
+}
+
+function pumpAutoSequenceProofFailedSet(controller = null) {
+  const sequence = pumpAutoSequenceState(controller);
+  const failed = Array.isArray(sequence.proofFailedPumpIndexes) ? sequence.proofFailedPumpIndexes : [];
+  return new Set(failed.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0));
+}
+
+function isPumpProofFailed(controller = null, pumpIndex = 0) {
+  return pumpAutoSequenceProofFailedSet(controller).has(Number(pumpIndex) + 1);
+}
+
+function pumpProofFailedStatus(controller = null, pumpIndex = 0, liveStatus = null) {
+  return {
+    label: "Proof failed",
+    className: "is-alarm",
+    runProof: Boolean(liveStatus?.runProof),
+    fault: Boolean(liveStatus?.fault),
+    auto: Boolean(liveStatus?.auto),
+    channels: liveStatus?.channels || {},
+    proofFailed: true,
+    reason: `P-${Number(pumpIndex) + 1} run proof did not make within the SiteWorks proof timeout.`
+  };
+}
+
+function clearLocalPumpProofFailure(controller = null, pumpIndex = 0) {
+  if (!controller?.data || typeof controller.data !== "object") return false;
+  const sequence = pumpAutoSequenceState(controller);
+  if (!sequence || !Array.isArray(sequence.proofFailedPumpIndexes)) return false;
+  const failedPumpIndex = Number(pumpIndex) + 1;
+  const nextFailed = sequence.proofFailedPumpIndexes
+    .map((value) => Number(value))
+    .filter((value) => value && value !== failedPumpIndex);
+  if (nextFailed.length === sequence.proofFailedPumpIndexes.length) return false;
+  controller.data.autoSequence = {
+    ...sequence,
+    proofFailedPumpIndexes: nextFailed,
+    unavailablePumpReasons: Array.isArray(sequence.unavailablePumpReasons)
+      ? sequence.unavailablePumpReasons.filter((reason) => !String(reason || "").includes(`P-${failedPumpIndex} proof timeout`))
+      : sequence.unavailablePumpReasons,
+    lastReason: nextFailed.length ? sequence.lastReason : "Proof failure reset from SiteWorks HMI.",
+    lastUpdatedAt: new Date().toISOString()
+  };
+  return true;
+}
+
 async function queuePumpOutputCommand(asset = {}, normalizedCommand = "") {
   if (!asset?.id || !normalizedCommand || !siteworksServerEnabled()) return null;
   const controllers = pumpControllersForCurrentView().filter((controller) => !isPumpSimulationController(controller));
@@ -16281,11 +16336,21 @@ function setPumpAssetControlCommand(assetId = "", command = "", options = {}) {
     asset.operatingStatus = "Off";
     asset.status = "Off";
     asset.condition = "Good";
-  } else if (normalizedCommand === "Alarm Reset" && normalizePumpOperatingStatus(asset.pumpStatus || asset.operatingStatus) === "Alarm") {
-    asset.pumpStatus = "Off";
-    asset.operatingStatus = "Off";
-    asset.status = "Off";
-    asset.condition = "Good";
+  } else if (normalizedCommand === "Alarm Reset") {
+    const controllers = pumpControllersForCurrentView().filter((controller) => !isPumpSimulationController(controller));
+    const pumps = pumpAssetsForCurrentView();
+    const pumpIndex = Math.max(0, pumps.findIndex((item) => item.id === assetId));
+    const assignedController = pumpLiveControllerForPump(controllers, asset, pumpIndex);
+    const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : pumpIndex;
+    clearLocalPumpProofFailure(assignedController, assignedPumpIndex);
+    const resettableAssetAlarm = ["Alarm", "Fault", "Needs attention", "Offline"].includes(normalizePumpOperatingStatus(asset.pumpStatus || asset.operatingStatus));
+    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
+    if (resettableAssetAlarm && !liveStatus?.fault) {
+      asset.pumpStatus = "Off";
+      asset.operatingStatus = "Off";
+      asset.status = "Off";
+      asset.condition = "Good";
+    }
   }
   asset.history = Array.isArray(asset.history) ? asset.history : [];
   asset.history.unshift({
@@ -16637,6 +16702,14 @@ function pumpCommandFeedback(asset = {}, controller = null, pumpIndex = 0, liveS
   const localStatus = String(asset?.pumpCommandStatus || "").trim();
   const commandName = latestCommand?.pumpCommand || asset?.pumpCommand || "None";
   const status = String(latestCommand?.status || localStatus || (commandName === "None" ? "" : "Local")).trim();
+  if (controller && isPumpProofFailed(controller, pumpIndex)) {
+    const timeout = pumpAutoSequenceState(controller).proofTimeoutSeconds || 15;
+    return {
+      label: "Proof failed",
+      className: "is-alarm",
+      detail: `Run proof did not make within ${timeout} seconds. Verify the field condition, then use Alarm Reset.`
+    };
+  }
   if (!latestCommand && commandName === "None") {
     return { label: "No command", className: "is-listed", detail: "No SiteWorks pump command has been sent." };
   }
@@ -17901,14 +17974,23 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const offCount = statuses.filter((status) => status.className === "is-off" || status.className === "is-listed").length;
   const maintenanceCount = statuses.filter((status) => status.className === "is-maintenance").length;
   const activeAlarmAssetIds = new Set(activePumpAlarms.map(({ asset }) => asset?.id).filter(Boolean));
-  const liveFaultPumps = livePumpStatuses
-    .filter(({ asset, status }) => !activeAlarmAssetIds.has(asset?.id) && String(status?.label || "").toLowerCase().includes("fault"));
+  const liveAlarmPumps = livePumpStatuses
+    .filter(({ asset, status }) => {
+      const label = String(status?.label || "").toLowerCase();
+      return !activeAlarmAssetIds.has(asset?.id) && (
+        status?.className === "is-alarm" ||
+        status?.proofFailed ||
+        label.includes("fault") ||
+        label.includes("proof failed")
+      );
+    });
+  const proofFailedPumps = liveAlarmPumps.filter(({ status }) => status?.proofFailed || String(status?.label || "").toLowerCase().includes("proof failed"));
   const leadStatus = leadPump ? pumpDisplayStatus(leadPump, Math.max(0, pumps.findIndex((asset) => asset.id === leadPump.id))) : { label: "Lag", className: "is-listed" };
   const diagramDevices = pumpDiagramDevicesForLocation(currentLocation);
   const diagramAlarmDevices = diagramDevices.filter((device) => pumpDiagramDeviceStatus(device).className === "is-alarm");
   const primaryPumpCount = Math.max(1, Math.min(8, Number(primaryController?.pumpCount || primaryControllerPumps.length || 2) || 2));
   const liveHighFloatState = getPumpSystemFloatLiveState(primaryController, "high", primaryPumpCount);
-  const totalWarningCount = warningCount + diagramAlarmDevices.length + liveFaultPumps.length + (liveHighFloatState?.active ? 1 : 0);
+  const totalWarningCount = warningCount + diagramAlarmDevices.length + liveAlarmPumps.length + (liveHighFloatState?.active ? 1 : 0);
   const alarmOn = totalWarningCount > 0;
   const liveHighLevelAlarmTile = liveHighFloatState?.active ? `
     <article class="pump-hmi-alarm is-alarm">
@@ -17941,13 +18023,13 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         </div>
       </article>
     `;
-  }).join("") + liveFaultPumps.map(({ asset, status }) => `
+  }).join("") + liveAlarmPumps.map(({ asset, status, liveStatus }) => `
     <article class="pump-hmi-alarm ${status.className}">
       <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
       <div>
         <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
         <small>${escapeHtml(getAssetEquipmentId(asset))} | Live ESP32 input</small>
-        <small>Fault input is active.</small>
+        <small>${escapeHtml(status.reason || liveStatus?.reason || pumpStatusMeaning(status))}</small>
       </div>
       <em>${escapeHtml(status.label)}</em>
       <div class="pump-hmi-alarm-actions">
@@ -17981,7 +18063,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const assignedController = pumpLiveControllerForPump(controllers, asset, index);
     const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
     const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
-    const status = liveStatus || pumpAssetStatus(asset);
+    const status = pumpDisplayStatus(asset, index);
     const due = getDueInfo(asset);
     const openIssueCount = openWorkOrdersForAsset(asset.id).length;
     const label = asset.name || `Pump ${index + 1}`;
@@ -18142,7 +18224,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const assignedController = asset ? pumpLiveControllerForPump(controllers, asset, index) : null;
     const assignedPumpIndex = assignedController && asset ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
     const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
-    const status = asset ? (liveStatus || pumpAssetStatus(asset)) : { label: "Off", className: "is-off" };
+    const status = asset ? pumpDisplayStatus(asset, index) : { label: "Off", className: "is-off" };
     const pumpRole = asset ? normalizePumpRole(asset.pumpRole || asset.role) : index === 0 ? "Lead" : "Lag";
     const isSelected = asset && selectedPumpHmiAssetId === asset.id;
     const openIssueCount = asset ? openWorkOrdersForAsset(asset.id).length : 0;
@@ -18210,7 +18292,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const assignedController = asset ? pumpLiveControllerForPump(controllers, asset, index) : null;
     const assignedPumpIndex = assignedController && asset ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
     const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
-    const status = asset ? (liveStatus || pumpAssetStatus(asset)) : { label: "Not added", className: "is-off" };
+    const status = asset ? pumpDisplayStatus(asset, index) : { label: "Not added", className: "is-off" };
     const label = asset?.name || `Sump Pump ${index + 1}`;
     const isSelected = asset && selectedPumpHmiAssetId === asset.id;
     const flow = asset?.flowGpm || asset?.flow || (status.className === "is-running" ? "Live" : "0 GPM");
@@ -18268,9 +18350,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     <span>P-${String(index + 1).padStart(2, "0")} <b>${escapeHtml(pumps[index] ? pumpDisplayStatus(pumps[index], index).label : "Off")}</b></span>
   `).join("");
   const scadaAlarmSourceRows = [
-    ...liveFaultPumps.map(({ asset, liveStatus }) => ({
+    ...liveAlarmPumps.map(({ asset, status, liveStatus }) => ({
       label: asset?.name || "Pump",
-      value: liveStatus?.reason || "Fault input is active."
+      value: status?.reason || liveStatus?.reason || status?.label || "Pump alarm is active."
     })),
     ...(liveHighFloatState?.active ? [{
       label: "High level",
@@ -18311,6 +18393,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const stationStateClass = alarmOn ? "is-active" : "is-normal";
   const stationAlarmMessage = liveHighFloatState?.active
     ? `High level input ${liveHighFloatState.channel || ""} is active. Verify wet well level and pump operation.`
+    : proofFailedPumps.length
+      ? `${proofFailedPumps.length} pump proof failure${proofFailedPumps.length === 1 ? "" : "s"} latched. Verify field proof, then use Alarm Reset.`
     : alarmOn
       ? `${totalWarningCount} pump station item${totalWarningCount === 1 ? "" : "s"} need attention.`
       : "No active pump station alarms.";

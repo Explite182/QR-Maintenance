@@ -1,19 +1,19 @@
-const SITEWORKS_SW_VERSION = "20260826-pump-setup-cleanup-48";
+const SITEWORKS_SW_VERSION = "20260826-pump-alarm-polish-49";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260826-pump-setup-cleanup-48",
+  "/styles.css?v=20260826-pump-alarm-polish-49",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260826-pump-setup-cleanup-48",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260826-pump-setup-cleanup-48",
-  "/js/panel-hmi-standard-renderer.js?v=20260826-pump-setup-cleanup-48",
-  "/app.js?v=20260826-pump-setup-cleanup-48",
-  "/manifest.webmanifest?v=20260826-pump-setup-cleanup-48",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260826-pump-setup-cleanup-48",
-  "/icons/siteworks-icon-192.png?v=20260826-pump-setup-cleanup-48",
-  "/icons/siteworks-icon-512.png?v=20260826-pump-setup-cleanup-48"
+  "/js/panel-hmi-standard-model.js?v=20260826-pump-alarm-polish-49",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260826-pump-alarm-polish-49",
+  "/js/panel-hmi-standard-renderer.js?v=20260826-pump-alarm-polish-49",
+  "/app.js?v=20260826-pump-alarm-polish-49",
+  "/manifest.webmanifest?v=20260826-pump-alarm-polish-49",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260826-pump-alarm-polish-49",
+  "/icons/siteworks-icon-192.png?v=20260826-pump-alarm-polish-49",
+  "/icons/siteworks-icon-512.png?v=20260826-pump-alarm-polish-49"
 ];
 
 self.addEventListener("install", (event) => {
