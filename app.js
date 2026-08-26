@@ -16087,6 +16087,21 @@ function activePumpAlarmAssets(pumps = []) {
     .filter(({ status }) => isPumpAlarmStatus(status));
 }
 
+function livePumpStatusesForView(pumps = [], controllers = []) {
+  return pumps.map((asset, index) => {
+    const assignedController = pumpLiveControllerForPump(controllers, asset, index);
+    const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
+    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
+    return {
+      asset,
+      controller: assignedController,
+      pumpIndex: assignedPumpIndex,
+      liveStatus,
+      status: liveStatus || pumpAssetStatus(asset)
+    };
+  });
+}
+
 function formatPumpEventSummary(entry = null) {
   if (!entry) return "No recent pump event";
   const eventDate = entry.date || entry.createdAt || entry.timestamp || entry.updatedAt || "";
@@ -17020,9 +17035,18 @@ async function deletePumpController(controllerId = "") {
 function renderPumpAutomationSummary(pumps = [], controllers = []) {
   const summary = document.getElementById("pumpAutomationSummary");
   if (!summary) return;
-  const statuses = pumps.map(pumpAssetStatus);
+  const liveStatuses = livePumpStatusesForView(pumps, controllers);
+  const statuses = liveStatuses.map(({ status }) => status);
   const runningCount = statuses.filter((status) => status.className === "is-running").length;
-  const warningCount = activePumpAlarmAssets(pumps).length;
+  const activeAlarmAssetIds = new Set(activePumpAlarmAssets(pumps).map(({ asset }) => asset?.id).filter(Boolean));
+  const liveFaultCount = liveStatuses.filter(({ asset, status }) => (
+    !activeAlarmAssetIds.has(asset?.id) && String(status?.label || "").toLowerCase().includes("fault")
+  )).length;
+  const primaryController = controllers.find((controller) => getPumpControllerLiveInputs(controller)?.updatedAt) || controllers[0] || null;
+  const primaryPumps = primaryController ? pumpControllerAssignedPumps(primaryController, pumps) : pumps;
+  const primaryPumpCount = Math.max(1, Math.min(8, Number(primaryController?.pumpCount || primaryPumps.length || 2) || 2));
+  const liveHighFloatState = getPumpSystemFloatLiveState(primaryController, "high", primaryPumpCount);
+  const warningCount = activePumpAlarmAssets(pumps).length + liveFaultCount + (liveHighFloatState?.active ? 1 : 0);
   summary.innerHTML = `
     <div class="pump-status-tile">
       <span>Pump systems</span>
@@ -17629,18 +17653,14 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const primaryController = controllers[0] || null;
   const primaryControllerStatus = primaryController ? pumpControllerStatus(primaryController) : { label: "No controller", className: "is-listed" };
   const primaryControllerPumps = primaryController ? pumpControllerAssignedPumps(primaryController, pumps) : pumps;
-  const pumpDisplayStatus = (asset = {}, index = 0) => {
-    const assignedController = pumpLiveControllerForPump(controllers, asset, index);
-    const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
-    return getPumpLiveStatus(assignedController, assignedPumpIndex, asset) || pumpAssetStatus(asset);
-  };
-  const statuses = pumps.map((asset, index) => pumpDisplayStatus(asset, index));
+  const livePumpStatuses = livePumpStatusesForView(pumps, controllers);
+  const pumpDisplayStatus = (asset = {}, index = 0) => livePumpStatuses.find(({ asset: item }) => item?.id === asset?.id)?.status || pumpAssetStatus(asset);
+  const statuses = livePumpStatuses.map(({ status }) => status);
   const runningCount = statuses.filter((status) => status.className === "is-running").length;
   const offCount = statuses.filter((status) => status.className === "is-off" || status.className === "is-listed").length;
   const maintenanceCount = statuses.filter((status) => status.className === "is-maintenance").length;
   const activeAlarmAssetIds = new Set(activePumpAlarms.map(({ asset }) => asset?.id).filter(Boolean));
-  const liveFaultPumps = pumps
-    .map((asset, index) => ({ asset, status: statuses[index] }))
+  const liveFaultPumps = livePumpStatuses
     .filter(({ asset, status }) => !activeAlarmAssetIds.has(asset?.id) && String(status?.label || "").toLowerCase().includes("fault"));
   const leadStatus = leadPump ? pumpDisplayStatus(leadPump, Math.max(0, pumps.findIndex((asset) => asset.id === leadPump.id))) : { label: "Lag", className: "is-listed" };
   const diagramDevices = pumpDiagramDevicesForLocation(currentLocation);
@@ -17649,6 +17669,20 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const liveHighFloatState = getPumpSystemFloatLiveState(primaryController, "high", primaryPumpCount);
   const totalWarningCount = warningCount + diagramAlarmDevices.length + liveFaultPumps.length + (liveHighFloatState?.active ? 1 : 0);
   const alarmOn = totalWarningCount > 0;
+  const liveHighLevelAlarmTile = liveHighFloatState?.active ? `
+    <article class="pump-hmi-alarm is-alarm">
+      <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
+      <div>
+        <strong>High level alarm</strong>
+        <small>${escapeHtml(liveHighFloatState.channel || "High level input")} | Live ESP32 input</small>
+        <small>High level input is active. Verify wet well level and pump operation.</small>
+      </div>
+      <em>High level</em>
+      <div class="pump-hmi-alarm-actions">
+        <button type="button" data-select-pump-asset="${escapeAttribute(leadPump?.id || "")}" ${leadPump ? "" : "disabled"}>Open Lead Pump</button>
+      </div>
+    </article>
+  ` : "";
   const plannedPoints = pumpHmiPlannedPoints(primaryController, primaryControllerPumps);
   const liveIoPanel = renderPumpLiveIoPanel(primaryController);
   const pointTiles = plannedPoints.map((point) => {
@@ -17712,6 +17746,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </article>
     `;
   }).join("");
+  const activeAlarmTiles = [
+    pumpAlarmTiles,
+    ddcAlarmTiles,
+    liveHighLevelAlarmTile
+  ].filter(Boolean).join("");
   const pumpTiles = pumps.map((asset, index) => {
     const assignedController = pumpLiveControllerForPump(controllers, asset, index);
     const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
@@ -17985,9 +18024,29 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </button>
     `;
   }).join("");
+  const scadaAlarmSourceRows = [
+    ...liveFaultPumps.map(({ asset, liveStatus }) => ({
+      label: asset?.name || "Pump",
+      value: liveStatus?.reason || "Fault input is active."
+    })),
+    ...(liveHighFloatState?.active ? [{
+      label: "High level",
+      value: `${liveHighFloatState.channel || "High level input"} active`
+    }] : []),
+    ...activePumpAlarms.map(({ asset, status }) => ({
+      label: asset?.name || "Pump",
+      value: status?.label || "Needs attention"
+    })),
+    ...diagramAlarmDevices.map((device) => ({
+      label: device.label || "Field point",
+      value: pumpDiagramDeviceStatus(device).label
+    }))
+  ];
   const scadaAlarmRows = totalWarningCount ? `
     <div class="pump-scada-alarm-row is-alarm"><span>Alarm active</span><strong>${totalWarningCount} item${totalWarningCount === 1 ? "" : "s"}</strong></div>
-    ${leadPump ? `<div class="pump-scada-alarm-row"><span>Lead pump</span><strong>${escapeHtml(leadPump.name || "Lead")}</strong></div>` : ""}
+    ${scadaAlarmSourceRows.slice(0, 4).map((row) => `
+      <div class="pump-scada-alarm-row"><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(row.value)}</strong></div>
+    `).join("")}
   ` : `
     <div class="pump-scada-alarm-row"><span>No active alarms</span><strong>Normal</strong></div>
   `;
@@ -18007,6 +18066,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         : 18;
   const stationStateLabel = alarmOn ? "PUMP STATION ALARM" : "SYSTEM NORMAL";
   const stationStateClass = alarmOn ? "is-active" : "is-normal";
+  const stationAlarmMessage = liveHighFloatState?.active
+    ? `High level input ${liveHighFloatState.channel || ""} is active. Verify wet well level and pump operation.`
+    : alarmOn
+      ? `${totalWarningCount} pump station item${totalWarningCount === 1 ? "" : "s"} need attention.`
+      : "No active pump station alarms.";
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
       <header>
@@ -18169,7 +18233,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               ${alarmOn ? `<span class="pump-scada-alert-icon" aria-hidden="true">!</span>` : `<span class="pump-scada-normal-icon" aria-hidden="true"></span>`}
               <div>
                 <strong>${escapeHtml(stationStateLabel)}</strong>
-                <span>${alarmOn ? `${totalWarningCount} pump station item${totalWarningCount === 1 ? "" : "s"} need attention.` : "No active pump station alarms."}</span>
+                <span>${escapeHtml(stationAlarmMessage)}</span>
               </div>
               <em>${escapeHtml(primaryControllerStatus.label)}</em>
             </section>
@@ -18278,7 +18342,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           ${alarmOn ? `
             <section class="pump-station-alarm-banner" aria-label="Active pump alarm">
               <strong>Alarm active</strong>
-              <span>${totalWarningCount} SiteWorks pump point${totalWarningCount === 1 ? "" : "s"} need attention.</span>
+              <span>${escapeHtml(stationAlarmMessage)}</span>
             </section>
           ` : ""}
           <section class="pump-station-live-grid" aria-label="Live pump station overview">
@@ -18376,8 +18440,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
                 <strong>${totalWarningCount}</strong>
               </header>
               <div class="pump-hmi-alarm-list">
-                ${pumpAlarmTiles}
-                ${ddcAlarmTiles}
+                ${activeAlarmTiles}
               </div>
             </section>
           ` : ""}
