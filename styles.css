@@ -4584,6 +4584,18 @@ textarea:disabled {
   color: #fb7185;
 }
 
+.pump-readiness-row.is-ok strong {
+  color: #34d399;
+}
+
+.pump-readiness-row.is-warning strong {
+  color: #fbbf24;
+}
+
+.pump-readiness-row.is-alarm strong {
+  color: #f87171;
+}
+
 .pump-scada-pit {
   grid-column: 2;
   grid-row: 4;

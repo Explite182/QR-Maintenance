@@ -16227,6 +16227,16 @@ function setPumpAssetControlCommand(assetId = "", command = "", options = {}) {
     const assignedController = pumpLiveControllerForPump(controllers, asset, pumpIndex);
     const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumpAssetsForCurrentView()) : pumpIndex;
     const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
+    const missingMapping = pumpMappingMissingItems(asset, assignedPumpIndex);
+    if (missingMapping.length) {
+      asset.pumpCommandStatus = "Blocked";
+      asset.pumpCommandError = `Complete pump I/O mapping before SiteWorks Run: ${missingMapping.join(", ")}.`;
+      asset.updatedAt = new Date().toISOString();
+      saveState();
+      renderAutomationPumps();
+      alert(asset.pumpCommandError);
+      return;
+    }
     if (!pumpSiteWorksRunAllowed(liveStatus)) {
       asset.pumpCommandStatus = "Blocked";
       asset.pumpCommandError = `${liveStatus.channels.auto} HOA auto is inactive. Put the pump in Auto before sending a SiteWorks Run command.`;
@@ -17295,10 +17305,10 @@ function renderPumpLiveIoPanel(controller = null) {
   const outputTiles = Array.from({ length: Math.min(2, pumpCount) }, (_, index) => {
     const channel = `DO${index + 1}`;
     return `
-      <div class="pump-live-io-tile is-disabled">
+      <div class="pump-live-io-tile is-idle">
         <span><i aria-hidden="true"></i>${channel}</span>
         <strong>Pump ${index + 1} run command</strong>
-        <em>Planned only</em>
+        <em>SiteWorks command output</em>
       </div>
     `;
   }).join("");
@@ -17422,15 +17432,69 @@ function renderPumpIoMappingForm(asset = {}, index = 0) {
 function renderPumpHmiPumpIo(asset = {}, index = 0) {
   const assignment = normalizePumpIoMapping(asset, index);
   const label = asset.name || `Pump ${index + 1}`;
+  const showChannel = (value, fallback = "Not mapped") => escapeHtml(String(value || "").trim() || fallback);
   return `
     <div class="pump-hmi-pump-io" aria-label="${escapeAttribute(label)} planned I/O">
-      <span><b>Run cmd</b>${escapeHtml(assignment.command)}</span>
-      <span><b>Run status</b>${escapeHtml(assignment.runStatus)}</span>
-      <span><b>Fault</b>${escapeHtml(assignment.fault)}</span>
-      <span><b>High level</b>${escapeHtml(assignment.highLevel)}</span>
-      <span><b>HOA</b>${escapeHtml(assignment.hoa)}</span>
+      <span><b>Run output</b>${showChannel(assignment.command)}</span>
+      <span><b>Run proof</b>${showChannel(assignment.runStatus)}</span>
+      <span><b>Fault input</b>${showChannel(assignment.fault)}</span>
+      <span><b>High level</b>${showChannel(assignment.highLevel)}</span>
+      <span><b>HOA Auto</b>${showChannel(assignment.hoa)}</span>
     </div>
   `;
+}
+
+function pumpMappingMissingItems(asset = {}, index = 0) {
+  const assignment = normalizePumpIoMapping(asset, index);
+  return [
+    ["Run command", assignment.command],
+    ["Run proof", assignment.runStatus],
+    ["Fault", assignment.fault],
+    ["HOA Auto", assignment.hoa]
+  ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+}
+
+function pumpStationReadinessItems(pumps = [], controllers = [], totalWarningCount = 0) {
+  const onlineControllers = controllers.filter((controller) => pumpControllerStatus(controller).className === "is-running");
+  const assignedPumpIds = new Set(controllers.flatMap((controller) => normalizePumpControllerPumpIds(controller)));
+  const unassignedPumps = assignedPumpIds.size
+    ? pumps.filter((pump) => !assignedPumpIds.has(pump.id))
+    : [];
+  const missingMapCount = pumps.filter((pump, index) => pumpMappingMissingItems(pump, index).length).length;
+  const liveStatuses = livePumpStatusesForView(pumps, controllers);
+  const localOnlyCount = liveStatuses.filter(({ liveStatus }) => liveStatus && !liveStatus.auto).length;
+  return [
+    {
+      label: "Pump controller",
+      value: onlineControllers.length ? `${onlineControllers.length} online` : "No controller online",
+      className: onlineControllers.length ? "is-ok" : "is-warning"
+    },
+    {
+      label: "Pump equipment",
+      value: pumps.length ? `${pumps.length} pump${pumps.length === 1 ? "" : "s"} added` : "No pump equipment",
+      className: pumps.length ? "is-ok" : "is-warning"
+    },
+    {
+      label: "Pump assignment",
+      value: unassignedPumps.length ? `${unassignedPumps.length} unassigned` : "Assigned",
+      className: unassignedPumps.length ? "is-warning" : "is-ok"
+    },
+    {
+      label: "I/O mapping",
+      value: missingMapCount ? `${missingMapCount} pump${missingMapCount === 1 ? "" : "s"} incomplete` : "Mapped",
+      className: missingMapCount ? "is-warning" : "is-ok"
+    },
+    {
+      label: "HOA availability",
+      value: localOnlyCount ? `${localOnlyCount} in Hand/Off` : "Available",
+      className: localOnlyCount ? "is-warning" : "is-ok"
+    },
+    {
+      label: "Active alarms",
+      value: totalWarningCount ? `${totalWarningCount} active` : "Clear",
+      className: totalWarningCount ? "is-alarm" : "is-ok"
+    }
+  ];
 }
 
 function normalizePumpDiagramDevice(device = {}) {
@@ -18094,6 +18158,14 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     : alarmOn
       ? `${totalWarningCount} pump station item${totalWarningCount === 1 ? "" : "s"} need attention.`
       : "No active pump station alarms.";
+  const readinessItems = pumpStationReadinessItems(pumps, controllers, totalWarningCount);
+  const readinessRows = readinessItems.map((item) => `
+    <div class="pump-readiness-row ${item.className}">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+    </div>
+  `).join("");
+  const selectedPumpMissingMapping = selectedPump ? pumpMappingMissingItems(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : [];
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
       <header>
@@ -18135,13 +18207,16 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         ${selectedPumpLiveStatus && !selectedPumpLiveStatus.auto ? `
           <p class="pump-hmi-command-note">SiteWorks Run is blocked because ${escapeHtml(selectedPumpLiveStatus.channels.auto)} HOA Auto is inactive. Stop and reset commands remain available.</p>
         ` : ""}
+        ${selectedPumpMissingMapping.length ? `
+          <p class="pump-hmi-command-note">Complete pump I/O mapping before service: ${escapeHtml(selectedPumpMissingMapping.join(", "))}.</p>
+        ` : ""}
         <div class="pump-hmi-status-actions" aria-label="SiteWorks pump command controls">
           ${["Run", "Stop", "Auto", "Alarm Reset"].map((commandLabel) => `
             <button
               type="button"
               class="${selectedPump.pumpCommand === commandLabel ? "is-active" : ""}"
-              ${commandLabel === "Run" && !pumpSiteWorksRunAllowed(selectedPumpLiveStatus) ? "disabled" : ""}
-              title="${commandLabel === "Run" && !pumpSiteWorksRunAllowed(selectedPumpLiveStatus) ? "HOA Auto is inactive. Put pump in Auto before SiteWorks Run." : ""}"
+              ${commandLabel === "Run" && (!pumpSiteWorksRunAllowed(selectedPumpLiveStatus) || selectedPumpMissingMapping.length) ? "disabled" : ""}
+              title="${commandLabel === "Run" && !pumpSiteWorksRunAllowed(selectedPumpLiveStatus) ? "HOA Auto is inactive. Put pump in Auto before SiteWorks Run." : commandLabel === "Run" && selectedPumpMissingMapping.length ? "Complete pump I/O mapping before SiteWorks Run." : ""}"
               data-pump-asset-id="${escapeAttribute(selectedPump.id)}"
               data-pump-command-action="${escapeAttribute(commandLabel)}"
             >${escapeHtml(commandLabel)}</button>
@@ -18310,6 +18385,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
                 <div><span>Lead Pump</span><strong>${escapeHtml(leadPump?.name || "Not assigned")}</strong></div>
                 <div><span>Lead / Lag / Backup</span><strong>${roleCounts.Lead || 0} / ${roleCounts.Lag || 0} / ${roleCounts.Backup || 0}</strong></div>
                 <div><span>Rotation</span><strong>${escapeHtml(leadStatus.label)}</strong></div>
+              </section>
+              <section>
+                <header>Ready For Service</header>
+                ${readinessRows}
               </section>
             </aside>
             <section class="pump-scada-pit" aria-label="Sump pit front section">
