@@ -5382,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-add-form-open-08";
+const SITEWORKS_APP_VERSION = "20260825-pump-startup-nullfix-09";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16164,7 +16164,9 @@ function pumpAssetsForCurrentView() {
 }
 
 function normalizePumpControllerPumpIds(controller = {}) {
-  const rawIds = controller.pumpIds || controller.pump_ids || controller.assignedPumpIds || controller.assigned_pump_ids || controller.data?.pumpIds || [];
+  const source = controller && typeof controller === "object" ? controller : {};
+  const data = source.data && typeof source.data === "object" ? source.data : {};
+  const rawIds = source.pumpIds || source.pump_ids || source.assignedPumpIds || source.assigned_pump_ids || data.pumpIds || data.pump_ids || [];
   if (Array.isArray(rawIds)) return rawIds.map((id) => String(id || "").trim()).filter(Boolean);
   if (typeof rawIds === "string") {
     return rawIds.split(",").map((id) => id.trim()).filter(Boolean);
@@ -16178,6 +16180,8 @@ function getPumpControllerScopeKey() {
 }
 
 function normalizePumpController(controller = {}) {
+  controller = controller && typeof controller === "object" ? controller : {};
+  const data = controller.data && typeof controller.data === "object" ? controller.data : {};
   const now = new Date().toISOString();
   return {
     id: controller.id || crypto.randomUUID?.() || `pump-controller-${Date.now()}`,
@@ -16191,16 +16195,16 @@ function normalizePumpController(controller = {}) {
     pumpIds: normalizePumpControllerPumpIds(controller),
     mode: controller.mode || "Setup only",
     notes: controller.notes || "",
-    data: controller.data && typeof controller.data === "object" ? controller.data : {},
+    data,
     status: controller.status || "Setup only",
     onlineStatus: controller.onlineStatus || controller.online_status || "setup",
     firmwareVersion: controller.firmwareVersion || controller.firmware_version || "",
     lastSeenAt: controller.lastSeenAt || controller.last_seen_at || "",
-    ipAddress: controller.ipAddress || controller.ip_address || controller.data?.ipAddress || controller.data?.lastNetwork?.ip || "",
-    macAddress: controller.macAddress || controller.mac_address || controller.data?.macAddress || controller.data?.lastNetwork?.mac || "",
-    networkType: controller.networkType || controller.network_type || controller.data?.networkType || controller.data?.lastNetwork?.type || "",
-    uptimeMs: controller.uptimeMs || controller.uptime_ms || controller.data?.uptimeMs || controller.data?.lastNetwork?.uptimeMs || "",
-    apiKeyLast4: controller.apiKeyLast4 || controller.api_key_last4 || controller.data?.apiKeyLast4 || controller.data?.api_key_last4 || "",
+    ipAddress: controller.ipAddress || controller.ip_address || data.ipAddress || data.lastNetwork?.ip || "",
+    macAddress: controller.macAddress || controller.mac_address || data.macAddress || data.lastNetwork?.mac || "",
+    networkType: controller.networkType || controller.network_type || data.networkType || data.lastNetwork?.type || "",
+    uptimeMs: controller.uptimeMs || controller.uptime_ms || data.uptimeMs || data.lastNetwork?.uptimeMs || "",
+    apiKeyLast4: controller.apiKeyLast4 || controller.api_key_last4 || data.apiKeyLast4 || data.api_key_last4 || "",
     createdAt: controller.createdAt || controller.created_at || now,
     updatedAt: controller.updatedAt || controller.updated_at || now
   };

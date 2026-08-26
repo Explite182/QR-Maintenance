@@ -1,15 +1,15 @@
-const SITEWORKS_SW_VERSION = "20260825-pump-add-form-open-08";
+const SITEWORKS_SW_VERSION = "20260825-pump-startup-nullfix-09";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260825-pump-add-form-open-08",
+  "/styles.css?v=20260825-pump-startup-nullfix-09",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/app.js?v=20260825-pump-add-form-open-08",
-  "/manifest.webmanifest?v=20260825-pump-add-form-open-08",
-  "/icons/siteworks-icon-192.png?v=20260825-pump-add-form-open-08",
-  "/icons/siteworks-icon-512.png?v=20260825-pump-add-form-open-08"
+  "/app.js?v=20260825-pump-startup-nullfix-09",
+  "/manifest.webmanifest?v=20260825-pump-startup-nullfix-09",
+  "/icons/siteworks-icon-192.png?v=20260825-pump-startup-nullfix-09",
+  "/icons/siteworks-icon-512.png?v=20260825-pump-startup-nullfix-09"
 ];
 
 self.addEventListener("install", (event) => {
