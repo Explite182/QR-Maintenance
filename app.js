@@ -5402,6 +5402,7 @@ const PUMP_CONTROLLERS_STORAGE_KEY = "siteworks_pump_controllers_v1";
 const PUMP_PENDING_API_KEY_STORAGE_KEY = "siteworks_pump_pending_api_key_v1";
 const PUMP_DEVICE_CONFIG_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/pumps/device/config`;
 const PUMP_DEVICE_HEARTBEAT_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/pumps/device/heartbeat`;
+const PUMP_DEVICE_COMMANDS_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/pumps/device/commands`;
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
@@ -16156,14 +16157,56 @@ function normalizePumpControlCommand(command = "") {
   return "";
 }
 
-function setPumpAssetControlCommand(assetId = "", command = "") {
+function pumpOutputNumberFromChannel(channel = "") {
+  const match = String(channel || "").trim().toUpperCase().match(/^DO\s*(\d+)$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function pumpDesiredStateForCommand(command = "") {
+  return normalizePumpControlCommand(command) === "Run" ? "On" : "Off";
+}
+
+async function queuePumpOutputCommand(asset = {}, normalizedCommand = "") {
+  if (!asset?.id || !normalizedCommand || !siteworksServerEnabled()) return null;
+  const controllers = pumpControllersForCurrentView().filter((controller) => !isPumpSimulationController(controller));
+  const controller = pumpControllerForPump(controllers, asset);
+  if (!controller?.id) return null;
+  const pumps = pumpAssetsForCurrentView();
+  const pumpIndex = Math.max(0, pumpControllerPumpIndex(controller, asset, pumps));
+  const mapping = normalizePumpIoMapping(asset, pumpIndex);
+  const outputNumber = pumpOutputNumberFromChannel(mapping.command);
+  if (!outputNumber) throw new Error("No pump relay output is mapped for this pump.");
+  const response = await siteworksApi.queuePumpCommand({
+    customer_id: asset.customerId || selectedCustomerId,
+    location_id: asset.locationId || selectedLocationId,
+    controller_id: controller.id,
+    pump_asset_id: asset.id,
+    pump_index: pumpIndex + 1,
+    output_number: outputNumber,
+    command_output: mapping.command,
+    pump_command: normalizedCommand,
+    desired_state: pumpDesiredStateForCommand(normalizedCommand),
+    metadata: {
+      pumpName: asset.name || "",
+      equipmentId: getAssetEquipmentId(asset),
+      commandOutput: mapping.command,
+      source: "pump-hmi"
+    }
+  });
+  if (!response.ok) throw new Error(`Pump command queue failed: ${response.status}`);
+  return response.json();
+}
+
+function setPumpAssetControlCommand(assetId = "", command = "", options = {}) {
   const normalizedCommand = normalizePumpControlCommand(command);
   if (!assetId || !normalizedCommand) return;
   const asset = state.assets.find((item) => item.id === assetId);
   if (!asset) return;
   const now = new Date().toISOString();
+  const shouldQueueOutput = options.queueOutput !== false;
   asset.pumpCommand = normalizedCommand;
   asset.lastPumpCommandAt = now;
+  asset.pumpCommandStatus = shouldQueueOutput ? "Pending" : "Local only";
   asset.pumpControlMode = normalizedCommand === "Auto" ? "Auto" : "Manual";
   if (normalizedCommand === "Run") {
     asset.pumpStatus = "Running";
@@ -16188,14 +16231,37 @@ function setPumpAssetControlCommand(assetId = "", command = "") {
     date: now,
     result: normalizedCommand,
     notes: normalizedCommand === "Alarm Reset"
-      ? "Pump alarm reset command recorded. Verify the field condition before returning to service."
-      : `SiteWorks pump command recorded: ${normalizedCommand}.`,
+      ? "Pump alarm reset command queued. Verify the field condition before returning to service."
+      : shouldQueueOutput ? `SiteWorks pump command queued: ${normalizedCommand}.` : `SiteWorks pump command recorded locally: ${normalizedCommand}.`,
     technician: currentUser?.name || currentUser?.email || "SiteWorks"
   });
   asset.updatedAt = now;
-  addActivity("Pump command recorded", `${asset.name || "Pump"}: ${normalizedCommand}`);
+  addActivity(shouldQueueOutput ? "Pump command queued" : "Pump command recorded", `${asset.name || "Pump"}: ${normalizedCommand}`);
   saveState();
   renderAutomationPumps();
+  if (shouldQueueOutput) {
+    queuePumpOutputCommand(asset, normalizedCommand)
+      .then((payload) => {
+        const queuedAsset = state.assets.find((item) => item.id === assetId);
+        if (!queuedAsset) return;
+        queuedAsset.pumpCommandStatus = payload?.command?.status || "Pending";
+        queuedAsset.pumpCommandId = payload?.command?.id || queuedAsset.pumpCommandId || "";
+        queuedAsset.pumpCommandOutput = payload?.command?.outputNumber ? `DO${payload.command.outputNumber}` : queuedAsset.pumpCommandOutput;
+        queuedAsset.updatedAt = new Date().toISOString();
+        saveState();
+        if (!isPumpSetupEditingActive()) renderAutomationPumps();
+      })
+      .catch((error) => {
+        console.warn("Pump command could not be queued for the field controller.", error);
+        const failedAsset = state.assets.find((item) => item.id === assetId);
+        if (!failedAsset) return;
+        failedAsset.pumpCommandStatus = "Queue failed";
+        failedAsset.pumpCommandError = error?.message || "Pump command queue failed.";
+        failedAsset.updatedAt = new Date().toISOString();
+        saveState();
+        if (!isPumpSetupEditingActive()) renderAutomationPumps();
+      });
+  }
 }
 
 function latestPumpHistoryEntry(asset = {}) {
@@ -16587,7 +16653,8 @@ function renderPumpControllerForm(controller = null) {
         <strong>ESP32 setup values</strong>
         <span>Config: ${escapeHtml(PUMP_DEVICE_CONFIG_URL)}</span>
         <span>Heartbeat: ${escapeHtml(PUMP_DEVICE_HEARTBEAT_URL)}</span>
-        <span>I/O map: Pump 1 uses DI1 run proof, DI2 fault, DI3 HOA. Pump 2 uses DI4, DI5, DI6.</span>
+        <span>Commands: ${escapeHtml(PUMP_DEVICE_COMMANDS_URL)}</span>
+        <span>I/O map: Pump 1 uses DO1 command, DI1 run proof, DI2 fault, DI3 HOA. Pump 2 uses DO2, DI4, DI5, DI6.</span>
       </div>
       ${pumpAssignmentHtml}
       <div class="pump-controller-actions">
@@ -16745,12 +16812,12 @@ function setPumpSimulationScenario(assetId = "", scenario = "") {
   if (!asset) return;
   const action = String(scenario || "").toLowerCase();
   if (action === "run") {
-    setPumpAssetControlCommand(asset.id, "Run");
+    setPumpAssetControlCommand(asset.id, "Run", { queueOutput: false });
     setPumpAssetOperatingStatus(asset.id, "Running");
     return;
   }
   if (action === "off") {
-    setPumpAssetControlCommand(asset.id, "Stop");
+    setPumpAssetControlCommand(asset.id, "Stop", { queueOutput: false });
     setPumpAssetOperatingStatus(asset.id, "Off");
     return;
   }
@@ -26704,6 +26771,13 @@ const siteworksApi = {
     return this.server("/api/automation/pumps/controllers", {
       method: "POST",
       body: JSON.stringify(controller)
+    });
+  },
+  queuePumpCommand(command) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, command }), { status: 200 }));
+    return this.server("/api/automation/pumps/commands", {
+      method: "POST",
+      body: JSON.stringify(command)
     });
   },
   deletePumpController(id) {
