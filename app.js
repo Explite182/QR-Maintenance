@@ -5391,7 +5391,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260826-pm-history-id-24";
+const SITEWORKS_APP_VERSION = "20260826-pump-input-mask-25";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16811,7 +16811,52 @@ function renderPumpAutomationSummary(pumps = [], controllers = []) {
 
 function getPumpControllerLiveInputs(controller = {}) {
   const data = controller.data && typeof controller.data === "object" ? controller.data : {};
-  return data.liveInputs && typeof data.liveInputs === "object" ? data.liveInputs : null;
+  const liveInputs = data.liveInputs && typeof data.liveInputs === "object"
+    ? data.liveInputs
+    : data.live_inputs && typeof data.live_inputs === "object"
+      ? data.live_inputs
+      : null;
+  if (!liveInputs) return null;
+  const activeMask = normalizePumpInputMaskValue(
+    liveInputs.activeMask ?? liveInputs.active_mask ?? liveInputs.mask ?? liveInputs.inputMask ?? data.activeMask ?? data.active_mask
+  );
+  const points = Array.isArray(liveInputs.points) && liveInputs.points.length
+    ? liveInputs.points.map((point, index) => {
+      const inputNumber = Number(point.inputNumber || point.input_number || String(point.channel || "").replace(/\D/g, "")) || index + 1;
+      return {
+        ...point,
+        channel: point.channel || `DI${inputNumber}`,
+        inputNumber,
+        active: Boolean(point.active ?? point.isActive ?? (activeMask & (1 << (inputNumber - 1))))
+      };
+    })
+    : Array.from({ length: 8 }, (_, index) => ({
+      channel: `DI${index + 1}`,
+      inputNumber: index + 1,
+      active: Boolean(activeMask & (1 << index))
+    }));
+  return {
+    ...liveInputs,
+    activeMask,
+    activeMaskHex: liveInputs.activeMaskHex || liveInputs.active_mask_hex || `0x${activeMask.toString(16).toUpperCase().padStart(2, "0")}`,
+    updatedAt: liveInputs.updatedAt || liveInputs.updated_at || data.lastSeenAt || data.last_seen_at || controller.lastSeenAt || controller.last_seen_at || "",
+    points
+  };
+}
+
+function normalizePumpInputMaskValue(value) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const parsed = trimmed.toLowerCase().startsWith("0x")
+      ? Number.parseInt(trimmed, 16)
+      : trimmed.toLowerCase().startsWith("0b")
+        ? Number.parseInt(trimmed.slice(2), 2)
+      : Number.parseInt(trimmed, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function formatPumpControllerLiveInputs(controller = {}) {
