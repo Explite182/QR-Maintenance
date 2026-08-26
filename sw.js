@@ -1,18 +1,18 @@
-const SITEWORKS_SW_VERSION = "20260826-pump-proof-timeout-37";
+const SITEWORKS_SW_VERSION = "20260826-pump-event-history-38";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260826-pump-proof-timeout-37",
+  "/styles.css?v=20260826-pump-event-history-38",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260826-pump-proof-timeout-37",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260826-pump-proof-timeout-37",
-  "/js/panel-hmi-standard-renderer.js?v=20260826-pump-proof-timeout-37",
-  "/app.js?v=20260826-pump-proof-timeout-37",
-  "/manifest.webmanifest?v=20260826-pump-proof-timeout-37",
-  "/icons/siteworks-icon-192.png?v=20260826-pump-proof-timeout-37",
-  "/icons/siteworks-icon-512.png?v=20260826-pump-proof-timeout-37"
+  "/js/panel-hmi-standard-model.js?v=20260826-pump-event-history-38",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260826-pump-event-history-38",
+  "/js/panel-hmi-standard-renderer.js?v=20260826-pump-event-history-38",
+  "/app.js?v=20260826-pump-event-history-38",
+  "/manifest.webmanifest?v=20260826-pump-event-history-38",
+  "/icons/siteworks-icon-192.png?v=20260826-pump-event-history-38",
+  "/icons/siteworks-icon-512.png?v=20260826-pump-event-history-38"
 ];
 
 self.addEventListener("install", (event) => {

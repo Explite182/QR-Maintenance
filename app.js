@@ -5446,6 +5446,9 @@ let pumpControllersLoading = false;
 let pumpCommandsCache = [];
 let pumpCommandsLoadedScope = "";
 let pumpCommandsLoading = false;
+let pumpEventsCache = [];
+let pumpEventsLoadedScope = "";
+let pumpEventsLoading = false;
 let pumpLiveRefreshActive = false;
 let pumpSetupEditHoldUntil = 0;
 let editingPumpControllerId = "";
@@ -16397,7 +16400,28 @@ function normalizePumpCommand(command = {}) {
   };
 }
 
+function normalizePumpEvent(event = {}) {
+  const metadata = event.metadata && typeof event.metadata === "object" ? event.metadata : {};
+  return {
+    id: event.id || "",
+    customerId: event.customerId || event.customer_id || "",
+    locationId: event.locationId || event.location_id || "",
+    controllerId: event.controllerId || event.controller_id || "",
+    pumpAssetId: event.pumpAssetId || event.pump_asset_id || "",
+    pumpIndex: Number(event.pumpIndex || event.pump_index || 0) || 0,
+    eventType: event.eventType || event.event_type || "",
+    message: event.message || "",
+    severity: event.severity || "info",
+    metadata,
+    createdAt: event.createdAt || event.created_at || ""
+  };
+}
+
 function getPumpCommandScopeKey() {
+  return getPumpControllerScopeKey();
+}
+
+function getPumpEventScopeKey() {
   return getPumpControllerScopeKey();
 }
 
@@ -16418,6 +16442,27 @@ async function loadPumpCommandsForCurrentScope({ force = false } = {}) {
     pumpCommandsLoadedScope = scopeKey;
   } finally {
     pumpCommandsLoading = false;
+    if (!isPumpSetupEditingActive()) renderAutomationPumps();
+  }
+}
+
+async function loadPumpEventsForCurrentScope({ force = false } = {}) {
+  const scopeKey = getPumpEventScopeKey();
+  if (!scopeKey || pumpEventsLoading) return;
+  if (!force && pumpEventsLoadedScope === scopeKey) return;
+  pumpEventsLoading = true;
+  try {
+    const response = await siteworksApi.loadPumpEvents(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`Pump event load failed: ${response.status}`);
+    const payload = await response.json();
+    pumpEventsCache = Array.isArray(payload.events) ? payload.events.map(normalizePumpEvent) : [];
+    pumpEventsLoadedScope = scopeKey;
+  } catch (error) {
+    console.warn("Pump events could not be loaded from the server.", error);
+    pumpEventsCache = [];
+    pumpEventsLoadedScope = scopeKey;
+  } finally {
+    pumpEventsLoading = false;
     if (!isPumpSetupEditingActive()) renderAutomationPumps();
   }
 }
@@ -16478,7 +16523,8 @@ async function refreshPumpLiveStatus() {
   try {
     await Promise.all([
       loadPumpControllersForCurrentScope({ force: true }),
-      loadPumpCommandsForCurrentScope({ force: true })
+      loadPumpCommandsForCurrentScope({ force: true }),
+      loadPumpEventsForCurrentScope({ force: true })
     ]);
   } finally {
     pumpLiveRefreshActive = false;
@@ -18189,6 +18235,24 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     <div><span>Unavailable</span><strong>${escapeHtml(autoSequenceBlocked)}</strong></div>
     <div><span>Last Action</span><strong>${escapeHtml(autoSequence?.lastReason || "None")}</strong></div>
   `;
+  const recentPumpEvents = pumpEventsCache
+    .filter((event) => (
+      (!currentCustomer?.id || event.customerId === currentCustomer.id) &&
+      (!currentLocation?.id || event.locationId === currentLocation.id)
+    ))
+    .slice(0, 6);
+  const pumpEventRows = recentPumpEvents.length ? recentPumpEvents.map((event) => {
+    const className = event.severity === "alarm" ? "is-alarm" : event.severity === "warning" ? "is-warning" : "";
+    const pumpLabel = event.pumpIndex ? `P-${event.pumpIndex}` : "Station";
+    return `
+      <div class="pump-scada-alarm-row ${className}">
+        <span>${escapeHtml(`${formatDateTime(event.createdAt)} | ${pumpLabel}`)}</span>
+        <strong>${escapeHtml(event.message || event.eventType || "Pump event")}</strong>
+      </div>
+    `;
+  }).join("") : `
+    <div class="pump-scada-alarm-row"><span>No sequence events</span><strong>Waiting</strong></div>
+  `;
   const selectedPumpMissingMapping = selectedPump ? pumpMappingMissingItems(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : [];
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
@@ -18403,6 +18467,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <section>
                 <header>Recent Alarms</header>
                 ${scadaAlarmRows}
+              </section>
+              <section>
+                <header>Recent Events</header>
+                ${pumpEventRows}
               </section>
               <section>
                 <header>Pump Alternation</header>
@@ -18675,6 +18743,10 @@ function renderAutomationPumps() {
   const pumpCommandScopeKey = getPumpCommandScopeKey();
   if (pumpCommandScopeKey && pumpCommandsLoadedScope !== pumpCommandScopeKey && !pumpCommandsLoading) {
     loadPumpCommandsForCurrentScope();
+  }
+  const pumpEventScopeKey = getPumpEventScopeKey();
+  if (pumpEventScopeKey && pumpEventsLoadedScope !== pumpEventScopeKey && !pumpEventsLoading) {
+    loadPumpEventsForCurrentScope();
   }
   const pumpControllers = pumpControllersForCurrentView().filter((controller) => !isPumpSimulationController(controller));
   const activePumpAlarms = activePumpAlarmAssets(pumps);
@@ -27112,6 +27184,14 @@ const siteworksApi = {
       location_id: locationId || ""
     });
     return this.server(`/api/automation/pumps/commands?${params.toString()}`);
+  },
+  loadPumpEvents(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ events: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/pumps/events?${params.toString()}`);
   },
   savePumpController(controller) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, controller }), { status: 200 }));
