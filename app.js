@@ -5455,6 +5455,8 @@ let editingPumpControllerId = "";
 let pendingPumpApiKey = null;
 let selectedPumpHmiAssetId = "";
 let selectedPumpDiagramDeviceId = "";
+const openPumpScadaDrawers = new Set();
+const touchedPumpScadaDrawers = new Set();
 const PUMP_SETUP_FORM_SELECTOR = "[data-pump-controller-form], [data-pump-io-mapping-form], [data-pump-diagram-device-form]";
 const PUMP_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
 const ALL_CUSTOMERS = "all";
@@ -8238,6 +8240,18 @@ els.customerFilter.addEventListener("change", () => {
 });
 
 document.addEventListener("toggle", (event) => {
+  const pumpScadaDrawer = event.target.closest?.("[data-pump-scada-drawer]");
+  if (pumpScadaDrawer) {
+    const drawerKey = pumpScadaDrawer.dataset.pumpScadaDrawer || "";
+    if (!drawerKey) return;
+    touchedPumpScadaDrawers.add(drawerKey);
+    if (pumpScadaDrawer.open) {
+      openPumpScadaDrawers.add(drawerKey);
+    } else {
+      openPumpScadaDrawers.delete(drawerKey);
+    }
+    return;
+  }
   const zoneDetails = event.target.closest?.("[data-lighting-zone-details]");
   if (zoneDetails) {
     const zoneId = zoneDetails.dataset.lightingZoneDetails || "";
@@ -18372,11 +18386,13 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     </aside>
   ` : "";
   const scadaDrawer = (title, body, options = {}) => {
+    const key = options.key || title;
     const className = options.className ? ` ${options.className}` : "";
-    const openAttr = options.open ? " open" : "";
+    const shouldOpen = touchedPumpScadaDrawers.has(key) ? openPumpScadaDrawers.has(key) : options.open;
+    const openAttr = shouldOpen ? " open" : "";
     const badge = options.badge ? `<strong>${escapeHtml(options.badge)}</strong>` : "";
     return `
-      <details class="pump-scada-drawer${className}"${openAttr}>
+      <details class="pump-scada-drawer${className}" data-pump-scada-drawer="${escapeAttribute(key)}"${openAttr}>
         <summary><span>${escapeHtml(title)}</span>${badge}</summary>
         <div class="pump-scada-drawer-body">
           ${body}

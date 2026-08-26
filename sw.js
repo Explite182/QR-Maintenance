@@ -1,18 +1,18 @@
-const SITEWORKS_SW_VERSION = "20260826-pump-collapsible-panels-42";
+const SITEWORKS_SW_VERSION = "20260826-pump-wide-drawers-44";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260826-pump-collapsible-panels-42",
+  "/styles.css?v=20260826-pump-wide-drawers-44",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260826-pump-collapsible-panels-42",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260826-pump-collapsible-panels-42",
-  "/js/panel-hmi-standard-renderer.js?v=20260826-pump-collapsible-panels-42",
-  "/app.js?v=20260826-pump-collapsible-panels-42",
-  "/manifest.webmanifest?v=20260826-pump-collapsible-panels-42",
-  "/icons/siteworks-icon-192.png?v=20260826-pump-collapsible-panels-42",
-  "/icons/siteworks-icon-512.png?v=20260826-pump-collapsible-panels-42"
+  "/js/panel-hmi-standard-model.js?v=20260826-pump-wide-drawers-44",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260826-pump-wide-drawers-44",
+  "/js/panel-hmi-standard-renderer.js?v=20260826-pump-wide-drawers-44",
+  "/app.js?v=20260826-pump-wide-drawers-44",
+  "/manifest.webmanifest?v=20260826-pump-wide-drawers-44",
+  "/icons/siteworks-icon-192.png?v=20260826-pump-wide-drawers-44",
+  "/icons/siteworks-icon-512.png?v=20260826-pump-wide-drawers-44"
 ];
 
 self.addEventListener("install", (event) => {
