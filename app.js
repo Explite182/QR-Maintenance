@@ -5391,7 +5391,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260826-pump-programming-hold-28";
+const SITEWORKS_APP_VERSION = "20260826-pump-live-bindings-29";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16939,13 +16939,81 @@ function getPumpLiveStatus(controller = null, pumpIndex = 0, asset = null) {
   const runProof = getPumpLiveInputActive(controller, runInput);
   const fault = getPumpLiveInputActive(controller, faultInput);
   const auto = getPumpLiveInputActive(controller, autoInput);
+  const channels = {
+    runProof: `DI${runInput}`,
+    fault: `DI${faultInput}`,
+    auto: `DI${autoInput}`
+  };
   if (fault) {
-    return { label: "Fault", className: "is-alarm", runProof, fault, auto, runInput, faultInput, autoInput };
+    return {
+      label: "Fault",
+      className: "is-alarm",
+      runProof,
+      fault,
+      auto,
+      runInput,
+      faultInput,
+      autoInput,
+      channels,
+      reason: `${channels.fault} fault input is active.`
+    };
   }
   if (runProof) {
-    return { label: "Running", className: "is-running", runProof, fault, auto, runInput, faultInput, autoInput };
+    return {
+      label: "Running",
+      className: "is-running",
+      runProof,
+      fault,
+      auto,
+      runInput,
+      faultInput,
+      autoInput,
+      channels,
+      reason: `${channels.runProof} run proof is active.`
+    };
   }
-  return { label: auto ? "Auto ready" : "Off", className: auto ? "is-listed" : "is-off", runProof, fault, auto, runInput, faultInput, autoInput };
+  return {
+    label: auto ? "Auto ready" : "Off",
+    className: auto ? "is-listed" : "is-off",
+    runProof,
+    fault,
+    auto,
+    runInput,
+    faultInput,
+    autoInput,
+    channels,
+    reason: auto
+      ? `${channels.auto} HOA auto is active, ${channels.runProof} run proof is open.`
+      : `${channels.runProof} run proof is open and ${channels.auto} HOA auto is inactive.`
+  };
+}
+
+function pumpLiveStatusReason(status = null) {
+  return status?.reason || "No live ESP32 input mapped.";
+}
+
+function pumpLiveChannelLabel(controller = null, channel = "", fallback = "") {
+  const inputNumber = pumpDiChannelNumber(channel);
+  if (!controller || !inputNumber) return fallback || "Not wired";
+  return getPumpLiveInputActive(controller, inputNumber) ? "Active" : "Inactive";
+}
+
+function getPumpSystemFloatLiveState(controller = null, kind = "high", pumpCount = 2) {
+  const liveInputs = getPumpControllerLiveInputs(controller || {});
+  if (!liveInputs?.updatedAt) return null;
+  const defaultChannels = pumpCount > 2
+    ? { high: "", mid: "", low: "" }
+    : { high: "DI7", mid: "", low: "DI8" };
+  const channel = defaultChannels[kind] || "";
+  const inputNumber = pumpDiChannelNumber(channel);
+  if (!inputNumber) return null;
+  const active = getPumpLiveInputActive(controller, inputNumber);
+  return {
+    label: active ? "Active" : "Inactive",
+    className: active ? (kind === "high" ? "is-alarm" : "is-active") : "is-idle",
+    channel,
+    active
+  };
 }
 
 function pumpLiveInputLabels(pumpCount = 2) {
@@ -17384,18 +17452,26 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const leadStatus = leadPump ? pumpDisplayStatus(leadPump, Math.max(0, pumps.findIndex((asset) => asset.id === leadPump.id))) : { label: "Lag", className: "is-listed" };
   const diagramDevices = pumpDiagramDevicesForLocation(currentLocation);
   const diagramAlarmDevices = diagramDevices.filter((device) => pumpDiagramDeviceStatus(device).className === "is-alarm");
-  const totalWarningCount = warningCount + diagramAlarmDevices.length + liveFaultPumps.length;
+  const primaryPumpCount = Math.max(1, Math.min(8, Number(primaryController?.pumpCount || primaryControllerPumps.length || 2) || 2));
+  const liveHighFloatState = getPumpSystemFloatLiveState(primaryController, "high", primaryPumpCount);
+  const totalWarningCount = warningCount + diagramAlarmDevices.length + liveFaultPumps.length + (liveHighFloatState?.active ? 1 : 0);
   const alarmOn = totalWarningCount > 0;
   const plannedPoints = pumpHmiPlannedPoints(primaryController, primaryControllerPumps);
   const liveIoPanel = renderPumpLiveIoPanel(primaryController);
-  const pointTiles = plannedPoints.map((point) => `
-    <div class="pump-hmi-point ${primaryController ? "is-ready" : ""} ${point.className || ""}">
+  const pointTiles = plannedPoints.map((point) => {
+    const inputNumber = pumpDiChannelNumber(point.channel);
+    const hasLiveState = Boolean(primaryController && inputNumber);
+    const isActive = hasLiveState && getPumpLiveInputActive(primaryController, inputNumber);
+    const liveState = hasLiveState ? (isActive ? "Live active" : "Live inactive") : point.state;
+    return `
+    <div class="pump-hmi-point ${primaryController ? "is-ready" : ""} ${isActive ? "is-live-active" : ""} ${point.className || ""}">
       <span>${escapeHtml(point.type)}</span>
       <strong>${escapeHtml(point.label)}</strong>
-      <em>${escapeHtml(point.state)}</em>
+      <em>${escapeHtml(liveState)}</em>
       ${point.channel ? `<small>${escapeHtml(point.channel)}</small>` : ""}
     </div>
-  `).join("");
+  `;
+  }).join("");
   const pumpAlarmTiles = activePumpAlarms.map(({ asset, status, latestEvent, openIssueCount }) => {
     return `
       <article class="pump-hmi-alarm ${status.className}">
@@ -17484,6 +17560,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <span class="pump-hmi-mini">
           <b>HOA</b>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : "No live data")}
         </span>
+        <span class="pump-hmi-mini pump-hmi-mini-wide">
+          <b>Live reason</b>${escapeHtml(pumpLiveStatusReason(liveStatus))}
+        </span>
         <span class="pump-hmi-mini">
           <b>Controller</b>${escapeHtml(controllerLabel)}
         </span>
@@ -17553,6 +17632,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     : "No recent event";
   const selectedPumpController = selectedPump ? pumpLiveControllerForPump(controllers, selectedPump, selectedPumpIndex) : null;
   const selectedPumpAssignedIndex = selectedPumpController ? pumpControllerPumpIndex(selectedPumpController, selectedPump, pumps) : selectedPumpIndex;
+  const selectedPumpLiveStatus = selectedPump ? getPumpLiveStatus(selectedPumpController, selectedPumpAssignedIndex, selectedPump) : null;
   const selectedPumpIo = selectedPump ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : "";
   const selectedDiagramDevice = diagramDevices.find((device) => device.id === selectedPumpDiagramDeviceId) || null;
   if (selectedPumpDiagramDeviceId && !selectedDiagramDevice) selectedPumpDiagramDeviceId = "";
@@ -17571,14 +17651,17 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const midFloat = findDiagramPoint(["mid float", "middle float", "mid level"]);
   const highFloat = findDiagramPoint(["high float", "high level", "di-hl"]);
   const pressurePoint = findDiagramPoint(["pressure", "proof"]);
+  const liveFloatState = (kind, device = null) => getPumpSystemFloatLiveState(primaryController, kind, primaryPumpCount)
+    || (device ? pumpDiagramDeviceStatus(device) : { label: "Not wired", className: "is-idle" });
   const floatRows = [
-    ["Low Float", lowFloat, "is-low"],
-    ["Mid Float", midFloat, "is-mid"],
-    ["High Float", highFloat, "is-high"]
-  ].map(([label, device, className]) => {
-    const status = device ? pumpDiagramDeviceStatus(device) : { label: "Not wired", className: "is-idle" };
+    ["Low Float", lowFloat, "is-low", "low"],
+    ["Mid Float", midFloat, "is-mid", "mid"],
+    ["High Float", highFloat, "is-high", "high"]
+  ].map(([label, device, className, kind]) => {
+    const status = liveFloatState(kind, device);
     const activeClass = status.className === "is-active" || status.className === "is-alarm" ? "is-active" : "";
     const alarmClass = status.className === "is-alarm" || (className === "is-high" && activeClass) ? "is-alarm" : "";
+    const channelLabel = status.channel ? ` | ${status.channel}` : "";
     return `
       <button
         type="button"
@@ -17587,7 +17670,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       >
         <i aria-hidden="true"></i>
         <span>${escapeHtml(label)}</span>
-        <strong>${escapeHtml(status.label)}</strong>
+        <strong>${escapeHtml(`${status.label}${channelLabel}`)}</strong>
       </button>
     `;
   }).join("");
@@ -17617,20 +17700,24 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           <span><b>Status</b><i>${escapeHtml(status.label)}</i></span>
           <span><b>HOA</b><i>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : (asset?.pumpControlMode || "Auto"))}</i></span>
           <span><b>Command</b><i>${escapeHtml(commandLabel)}</i></span>
-          <span><b>Proof</b><i>${assignedController ? `DI${(assignedPumpIndex * 3) + 1}` : "Not wired"}</i></span>
+          <span><b>Proof</b><i>${escapeHtml(liveStatus ? (liveStatus.runProof ? "Made" : "Open") : (assignedController ? `DI${(assignedPumpIndex * 3) + 1}` : "Not wired"))}</i></span>
+          <span><b>Reason</b><i>${escapeHtml(pumpLiveStatusReason(liveStatus))}</i></span>
           <span><b>Tickets</b><i>${openIssueCount}</i></span>
         </span>
       </button>
     `;
   }).join("");
-  const floatStateLabel = (device) => device ? pumpDiagramDeviceStatus(device).label : "Not wired";
-  const floatStateClass = (device) => device ? pumpDiagramDeviceStatus(device).className : "is-idle";
+  const floatStateLabel = (kind, device) => {
+    const status = liveFloatState(kind, device);
+    return `${status.label}${status.channel ? ` ${status.channel}` : ""}`;
+  };
+  const floatStateClass = (kind, device) => liveFloatState(kind, device).className;
   const scadaFloatRows = [
-    ["High Float", highFloat, "HIGH", "is-high"],
-    ["Mid Float", midFloat, "MID", "is-mid"],
-    ["Low Float", lowFloat, "LOW", "is-low"]
-  ].map(([label, device, shortLabel, className]) => {
-    const statusClass = floatStateClass(device);
+    ["High Float", highFloat, "HIGH", "is-high", "high"],
+    ["Mid Float", midFloat, "MID", "is-mid", "mid"],
+    ["Low Float", lowFloat, "LOW", "is-low", "low"]
+  ].map(([label, device, shortLabel, className, kind]) => {
+    const statusClass = floatStateClass(kind, device);
     const isActive = statusClass === "is-active" || statusClass === "is-alarm";
     return `
       <button
@@ -17641,7 +17728,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <span class="pump-scada-float-lamp" aria-hidden="true"></span>
         <span>
           <strong>${escapeHtml(label)}</strong>
-          <em>${escapeHtml(shortLabel)} ${escapeHtml(floatStateLabel(device))}</em>
+          <em>${escapeHtml(shortLabel)} ${escapeHtml(floatStateLabel(kind, device))}</em>
         </span>
       </button>
     `;
@@ -17691,6 +17778,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <span class="pump-scada-readout"><b>Starts</b><i>${escapeHtml(starts)}</i></span>
         <span class="pump-scada-readout"><b>Flow</b><i>${escapeHtml(flow)}</i></span>
         <span class="pump-scada-readout"><b>Run proof</b><i>${escapeHtml(proofLabel)}</i></span>
+        <span class="pump-scada-readout pump-scada-readout-wide"><b>Why</b><i>${escapeHtml(pumpLiveStatusReason(liveStatus))}</i></span>
       </button>
     `;
   }).join("");
@@ -17700,11 +17788,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   ` : `
     <div class="pump-scada-alarm-row"><span>No active alarms</span><strong>Normal</strong></div>
   `;
-  const pitLevelLabel = highFloat && floatStateClass(highFloat) !== "is-idle"
+  const pitLevelLabel = floatStateClass("high", highFloat) !== "is-idle"
     ? "High"
-    : midFloat && floatStateClass(midFloat) !== "is-idle"
+    : floatStateClass("mid", midFloat) !== "is-idle"
       ? "Mid"
-      : lowFloat && floatStateClass(lowFloat) !== "is-idle"
+      : floatStateClass("low", lowFloat) !== "is-idle"
         ? "Low"
         : "Normal";
   const pitWaterPercent = pitLevelLabel === "High"
@@ -17734,10 +17822,13 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Last command</span><strong>${escapeHtml(selectedPump.pumpCommand || "None")}</strong></div>
         <div><span>Condition</span><strong>${escapeHtml(selectedPump.condition || "Listed")}</strong></div>
         <div><span>Last event</span><strong>${escapeHtml(selectedPumpLatestEventLabel)}</strong></div>
+        <div><span>Run proof</span><strong>${escapeHtml(selectedPumpLiveStatus ? `${selectedPumpLiveStatus.channels.runProof} ${selectedPumpLiveStatus.runProof ? "Made" : "Open"}` : "No live data")}</strong></div>
+        <div><span>Fault input</span><strong>${escapeHtml(selectedPumpLiveStatus ? `${selectedPumpLiveStatus.channels.fault} ${selectedPumpLiveStatus.fault ? "Active" : "Normal"}` : "No live data")}</strong></div>
+        <div><span>HOA input</span><strong>${escapeHtml(selectedPumpLiveStatus ? `${selectedPumpLiveStatus.channels.auto} ${selectedPumpLiveStatus.auto ? "Auto" : "Not auto"}` : "No live data")}</strong></div>
       </div>
       <div class="pump-hmi-detail-advisory ${selectedPumpStatus.className}">
         <span>Status meaning</span>
-        <strong>${escapeHtml(selectedPumpMeaning)}</strong>
+        <strong>${escapeHtml(selectedPumpLiveStatus ? pumpLiveStatusReason(selectedPumpLiveStatus) : selectedPumpMeaning)}</strong>
         <em>${escapeHtml(selectedPumpAction)}</em>
       </div>
       <p class="pump-hmi-detail-note">${escapeHtml(selectedPump.notes || "No pump notes recorded.")}</p>
@@ -17937,9 +18028,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
                 <span class="pump-scada-pit-mark is-high">HIGH FLOAT</span>
                 <span class="pump-scada-pit-mark is-mid">MID FLOAT</span>
                 <span class="pump-scada-pit-mark is-low">LOW FLOAT</span>
-                <span class="pump-scada-pit-float is-high ${highFloat && floatStateClass(highFloat) !== "is-idle" ? "is-active" : ""}"></span>
-                <span class="pump-scada-pit-float is-mid ${midFloat && floatStateClass(midFloat) !== "is-idle" ? "is-active" : ""}"></span>
-                <span class="pump-scada-pit-float is-low ${lowFloat && floatStateClass(lowFloat) !== "is-idle" ? "is-active" : ""}"></span>
+                <span class="pump-scada-pit-float is-high ${floatStateClass("high", highFloat) !== "is-idle" ? "is-active" : ""}"></span>
+                <span class="pump-scada-pit-float is-mid ${floatStateClass("mid", midFloat) !== "is-idle" ? "is-active" : ""}"></span>
+                <span class="pump-scada-pit-float is-low ${floatStateClass("low", lowFloat) !== "is-idle" ? "is-active" : ""}"></span>
                 <span class="pump-scada-discharge"></span>
                 <span class="pump-scada-pit-pump is-one ${pumps[0] ? pumpDisplayStatus(pumps[0], 0).className : "is-off"}"></span>
                 <span class="pump-scada-pit-pump is-two ${pumps[1] ? pumpDisplayStatus(pumps[1], 1).className : "is-off"}"></span>
