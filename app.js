@@ -5443,6 +5443,9 @@ let lightingFirmwareLoading = false;
 let pumpControllersCache = [];
 let pumpControllersLoadedScope = "";
 let pumpControllersLoading = false;
+let pumpCommandsCache = [];
+let pumpCommandsLoadedScope = "";
+let pumpCommandsLoading = false;
 let pumpLiveRefreshActive = false;
 let pumpSetupEditHoldUntil = 0;
 let editingPumpControllerId = "";
@@ -16247,6 +16250,14 @@ function setPumpAssetControlCommand(assetId = "", command = "", options = {}) {
         queuedAsset.pumpCommandStatus = payload?.command?.status || "Pending";
         queuedAsset.pumpCommandId = payload?.command?.id || queuedAsset.pumpCommandId || "";
         queuedAsset.pumpCommandOutput = payload?.command?.outputNumber ? `DO${payload.command.outputNumber}` : queuedAsset.pumpCommandOutput;
+        if (payload?.command) {
+          const queuedCommand = normalizePumpCommand(payload.command);
+          pumpCommandsCache = [
+            queuedCommand,
+            ...pumpCommandsCache.filter((item) => item.id !== queuedCommand.id)
+          ];
+          pumpCommandsLoadedScope = getPumpCommandScopeKey();
+        }
         queuedAsset.updatedAt = new Date().toISOString();
         saveState();
         if (!isPumpSetupEditingActive()) renderAutomationPumps();
@@ -16321,6 +16332,55 @@ function normalizePumpController(controller = {}) {
   };
 }
 
+function normalizePumpCommand(command = {}) {
+  const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
+  return {
+    id: command.id || "",
+    customerId: command.customerId || command.customer_id || "",
+    locationId: command.locationId || command.location_id || "",
+    controllerId: command.controllerId || command.controller_id || "",
+    pumpAssetId: command.pumpAssetId || command.pump_asset_id || "",
+    pumpIndex: Number(command.pumpIndex || command.pump_index || 1) || 1,
+    outputNumber: Number(command.outputNumber || command.output_number || 0) || 0,
+    commandType: command.commandType || command.command_type || "pump-output",
+    pumpCommand: command.pumpCommand || command.pump_command || command.command || "",
+    desiredState: command.desiredState || command.desired_state || "",
+    status: command.status || "pending",
+    requestedBy: command.requestedBy || command.requested_by || "",
+    acknowledgedAt: command.acknowledgedAt || command.acknowledged_at || "",
+    completedAt: command.completedAt || command.completed_at || "",
+    error: command.error || "",
+    metadata,
+    createdAt: command.createdAt || command.created_at || "",
+    updatedAt: command.updatedAt || command.updated_at || ""
+  };
+}
+
+function getPumpCommandScopeKey() {
+  return getPumpControllerScopeKey();
+}
+
+async function loadPumpCommandsForCurrentScope({ force = false } = {}) {
+  const scopeKey = getPumpCommandScopeKey();
+  if (!scopeKey || pumpCommandsLoading) return;
+  if (!force && pumpCommandsLoadedScope === scopeKey) return;
+  pumpCommandsLoading = true;
+  try {
+    const response = await siteworksApi.loadPumpCommands(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`Pump command load failed: ${response.status}`);
+    const payload = await response.json();
+    pumpCommandsCache = Array.isArray(payload.commands) ? payload.commands.map(normalizePumpCommand) : [];
+    pumpCommandsLoadedScope = scopeKey;
+  } catch (error) {
+    console.warn("Pump commands could not be loaded from the server.", error);
+    pumpCommandsCache = [];
+    pumpCommandsLoadedScope = scopeKey;
+  } finally {
+    pumpCommandsLoading = false;
+    if (!isPumpSetupEditingActive()) renderAutomationPumps();
+  }
+}
+
 async function loadPumpControllersForCurrentScope({ force = false } = {}) {
   const scopeKey = getPumpControllerScopeKey();
   if (!scopeKey || pumpControllersLoading) return;
@@ -16375,7 +16435,10 @@ async function refreshPumpLiveStatus() {
   if (isPumpSetupEditingActive()) return;
   pumpLiveRefreshActive = true;
   try {
-    await loadPumpControllersForCurrentScope({ force: true });
+    await Promise.all([
+      loadPumpControllersForCurrentScope({ force: true }),
+      loadPumpCommandsForCurrentScope({ force: true })
+    ]);
   } finally {
     pumpLiveRefreshActive = false;
   }
@@ -16442,6 +16505,69 @@ function pumpControllerPumpIndex(controller = {}, pump = {}, pumps = []) {
   const assignedIndex = assignedPumps.findIndex((item) => item.id === pump?.id);
   if (assignedIndex >= 0) return assignedIndex;
   return Math.max(0, pumps.findIndex((item) => item.id === pump?.id));
+}
+
+function latestPumpCommandForAsset(asset = {}, controller = null, pumpIndex = 0) {
+  const assetId = String(asset?.id || "");
+  const controllerId = String(controller?.id || "");
+  const outputNumber = pumpOutputNumberFromChannel(normalizePumpIoMapping(asset, pumpIndex).command);
+  return pumpCommandsCache
+    .filter((command) => {
+      if (assetId && command.pumpAssetId === assetId) return true;
+      if (controllerId && command.controllerId === controllerId && outputNumber && Number(command.outputNumber) === outputNumber) return true;
+      return false;
+    })
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0] || null;
+}
+
+function pumpCommandFeedback(asset = {}, controller = null, pumpIndex = 0, liveStatus = null) {
+  const latestCommand = latestPumpCommandForAsset(asset, controller, pumpIndex);
+  const localStatus = String(asset?.pumpCommandStatus || "").trim();
+  const commandName = latestCommand?.pumpCommand || asset?.pumpCommand || "None";
+  const status = String(latestCommand?.status || localStatus || (commandName === "None" ? "" : "Local")).trim();
+  if (!latestCommand && commandName === "None") {
+    return { label: "No command", className: "is-listed", detail: "No SiteWorks pump command has been sent." };
+  }
+  if (status.toLowerCase() === "failed" || localStatus.toLowerCase().includes("failed")) {
+    return {
+      label: "Failed",
+      className: "is-alarm",
+      detail: latestCommand?.error || asset?.pumpCommandError || "The pump command failed before confirmation."
+    };
+  }
+  if (["pending", "queued"].includes(status.toLowerCase())) {
+    return {
+      label: "Pending",
+      className: "is-warning",
+      detail: `${commandName} command is waiting for the ESP32.`
+    };
+  }
+  if (["completed", "acknowledged"].includes(status.toLowerCase()) && commandName === "Run" && liveStatus && !liveStatus.runProof) {
+    return {
+      label: "Waiting for proof",
+      className: "is-warning",
+      detail: `Run output was confirmed, but ${liveStatus.channels.runProof} run proof is still open.`
+    };
+  }
+  if (["completed", "acknowledged"].includes(status.toLowerCase()) && commandName === "Run" && liveStatus?.runProof) {
+    return {
+      label: "Run proven",
+      className: "is-running",
+      detail: `Run command completed and ${liveStatus.channels.runProof} is made.`
+    };
+  }
+  if (["completed", "acknowledged"].includes(status.toLowerCase())) {
+    return {
+      label: "Completed",
+      className: "is-running",
+      detail: `${commandName} command was confirmed by the ESP32.`
+    };
+  }
+  return {
+    label: status || "Recorded",
+    className: "is-listed",
+    detail: `${commandName} command is recorded in SiteWorks.`
+  };
 }
 
 function defaultPumpTemplateId(customerId = "") {
@@ -17604,6 +17730,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       : "No recent event";
     const plannedIo = assignedController ? renderPumpHmiPumpIo(asset, assignedPumpIndex) : "";
     const controllerLabel = assignedController?.name || "No controller assigned";
+    const commandFeedback = pumpCommandFeedback(asset, assignedController, assignedPumpIndex, liveStatus);
     return `
       <button type="button" class="pump-hmi-pump ${status.className} ${isSelected ? "is-selected" : ""}" data-select-pump-asset="${escapeAttribute(asset.id)}">
         <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
@@ -17622,13 +17749,16 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           <b>Last event</b>${escapeHtml(latestEventLabel)}
         </span>
         <span class="pump-hmi-mini">
-          <b>Command</b>${escapeHtml(asset.pumpCommand || "None")}
+          <b>Command</b>${escapeHtml(commandFeedback.label)}
         </span>
         <span class="pump-hmi-mini">
           <b>HOA</b>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : "No live data")}
         </span>
         <span class="pump-hmi-mini pump-hmi-mini-wide">
           <b>Live reason</b>${escapeHtml(pumpLiveStatusReason(liveStatus))}
+        </span>
+        <span class="pump-hmi-mini pump-hmi-mini-wide">
+          <b>Proof check</b>${escapeHtml(commandFeedback.detail)}
         </span>
         <span class="pump-hmi-mini">
           <b>Controller</b>${escapeHtml(controllerLabel)}
@@ -17700,6 +17830,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const selectedPumpController = selectedPump ? pumpLiveControllerForPump(controllers, selectedPump, selectedPumpIndex) : null;
   const selectedPumpAssignedIndex = selectedPumpController ? pumpControllerPumpIndex(selectedPumpController, selectedPump, pumps) : selectedPumpIndex;
   const selectedPumpLiveStatus = selectedPump ? getPumpLiveStatus(selectedPumpController, selectedPumpAssignedIndex, selectedPump) : null;
+  const selectedPumpCommandFeedback = selectedPump ? pumpCommandFeedback(selectedPump, selectedPumpController, selectedPumpAssignedIndex, selectedPumpLiveStatus) : null;
   const selectedPumpIo = selectedPump ? renderPumpHmiPumpIo(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : "";
   const selectedDiagramDevice = diagramDevices.find((device) => device.id === selectedPumpDiagramDeviceId) || null;
   if (selectedPumpDiagramDeviceId && !selectedDiagramDevice) selectedPumpDiagramDeviceId = "";
@@ -17751,6 +17882,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const isSelected = asset && selectedPumpHmiAssetId === asset.id;
     const openIssueCount = asset ? openWorkOrdersForAsset(asset.id).length : 0;
     const commandLabel = asset?.pumpCommand || "None";
+    const commandFeedback = asset ? pumpCommandFeedback(asset, assignedController, assignedPumpIndex, liveStatus) : { label: "No command", detail: "No pump equipment added." };
     const label = asset?.name || `Pump ${index + 1}`;
     return `
       <button
@@ -17766,9 +17898,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <span class="pump-station-readouts">
           <span><b>Status</b><i>${escapeHtml(status.label)}</i></span>
           <span><b>HOA</b><i>${escapeHtml(liveStatus ? (liveStatus.auto ? "Auto" : "Not auto") : (asset?.pumpControlMode || "Auto"))}</i></span>
-          <span><b>Command</b><i>${escapeHtml(commandLabel)}</i></span>
+          <span><b>Command</b><i>${escapeHtml(commandFeedback.label)}</i></span>
           <span><b>Proof</b><i>${escapeHtml(liveStatus ? (liveStatus.runProof ? "Made" : "Open") : (assignedController ? `DI${(assignedPumpIndex * 3) + 1}` : "Not wired"))}</i></span>
           <span><b>Reason</b><i>${escapeHtml(pumpLiveStatusReason(liveStatus))}</i></span>
+          <span><b>Proof</b><i>${escapeHtml(commandFeedback.detail)}</i></span>
           <span><b>Tickets</b><i>${openIssueCount}</i></span>
         </span>
       </button>
@@ -17826,6 +17959,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       : assignedController
         ? ioMapping.runStatus || `DI${(assignedPumpIndex * 3) + 1}`
         : "NOT WIRED";
+    const commandFeedback = asset ? pumpCommandFeedback(asset, assignedController, assignedPumpIndex, liveStatus) : { label: "No command", detail: "No pump equipment added." };
     return `
       <button
         type="button"
@@ -17845,7 +17979,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <span class="pump-scada-readout"><b>Starts</b><i>${escapeHtml(starts)}</i></span>
         <span class="pump-scada-readout"><b>Flow</b><i>${escapeHtml(flow)}</i></span>
         <span class="pump-scada-readout"><b>Run proof</b><i>${escapeHtml(proofLabel)}</i></span>
+        <span class="pump-scada-readout"><b>Command</b><i>${escapeHtml(commandFeedback.label)}</i></span>
         <span class="pump-scada-readout pump-scada-readout-wide"><b>Why</b><i>${escapeHtml(pumpLiveStatusReason(liveStatus))}</i></span>
+        <span class="pump-scada-readout pump-scada-readout-wide"><b>Proof check</b><i>${escapeHtml(commandFeedback.detail)}</i></span>
       </button>
     `;
   }).join("");
@@ -17887,6 +18023,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Control</span><strong>${escapeHtml(selectedPump.pumpControlMode || "Setup only")}</strong></div>
         <div><span>Controller</span><strong>${escapeHtml(selectedPumpController?.name || "Not assigned")}</strong></div>
         <div><span>Last command</span><strong>${escapeHtml(selectedPump.pumpCommand || "None")}</strong></div>
+        <div><span>Command status</span><strong>${escapeHtml(selectedPumpCommandFeedback?.label || "No command")}</strong></div>
         <div><span>Condition</span><strong>${escapeHtml(selectedPump.condition || "Listed")}</strong></div>
         <div><span>Last event</span><strong>${escapeHtml(selectedPumpLatestEventLabel)}</strong></div>
         <div><span>Run proof</span><strong>${escapeHtml(selectedPumpLiveStatus ? `${selectedPumpLiveStatus.channels.runProof} ${selectedPumpLiveStatus.runProof ? "Made" : "Open"}` : "No live data")}</strong></div>
@@ -17896,7 +18033,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <div class="pump-hmi-detail-advisory ${selectedPumpStatus.className}">
         <span>Status meaning</span>
         <strong>${escapeHtml(selectedPumpLiveStatus ? pumpLiveStatusReason(selectedPumpLiveStatus) : selectedPumpMeaning)}</strong>
-        <em>${escapeHtml(selectedPumpAction)}</em>
+        <em>${escapeHtml(selectedPumpCommandFeedback?.detail || selectedPumpAction)}</em>
       </div>
       <p class="pump-hmi-detail-note">${escapeHtml(selectedPump.notes || "No pump notes recorded.")}</p>
       ${selectedPumpIo ? `
@@ -18336,6 +18473,10 @@ function renderAutomationPumps() {
   const pumpScopeKey = getPumpControllerScopeKey();
   if (pumpScopeKey && pumpControllersLoadedScope !== pumpScopeKey && !pumpControllersLoading) {
     loadPumpControllersForCurrentScope();
+  }
+  const pumpCommandScopeKey = getPumpCommandScopeKey();
+  if (pumpCommandScopeKey && pumpCommandsLoadedScope !== pumpCommandScopeKey && !pumpCommandsLoading) {
+    loadPumpCommandsForCurrentScope();
   }
   const pumpControllers = pumpControllersForCurrentView().filter((controller) => !isPumpSimulationController(controller));
   const activePumpAlarms = activePumpAlarmAssets(pumps);
@@ -26765,6 +26906,14 @@ const siteworksApi = {
       location_id: locationId || ""
     });
     return this.server(`/api/automation/pumps/controllers?${params.toString()}`);
+  },
+  loadPumpCommands(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ commands: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/pumps/commands?${params.toString()}`);
   },
   savePumpController(controller) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, controller }), { status: 200 }));
