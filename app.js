@@ -18165,6 +18165,25 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <strong>${escapeHtml(item.value)}</strong>
     </div>
   `).join("");
+  const autoSequence = primaryController?.data?.autoSequence && typeof primaryController.data.autoSequence === "object"
+    ? primaryController.data.autoSequence
+    : null;
+  const autoSequenceCommanded = Array.isArray(autoSequence?.commandedPumpIndexes) && autoSequence.commandedPumpIndexes.length
+    ? autoSequence.commandedPumpIndexes.map((index) => `P-${Number(index) || index}`).join(", ")
+    : "None";
+  const autoSequenceBlocked = Array.isArray(autoSequence?.unavailablePumpReasons) && autoSequence.unavailablePumpReasons.length
+    ? autoSequence.unavailablePumpReasons.join(", ")
+    : "None";
+  const autoSequenceRows = `
+    <div><span>Mode</span><strong>${autoSequence?.enabled === false ? "Disabled" : "Enabled"}</strong></div>
+    <div><span>Status</span><strong>${escapeHtml(autoSequence?.status || "Waiting for ESP")}</strong></div>
+    <div><span>Next Lead</span><strong>P-${escapeHtml(autoSequence?.nextLeadPumpIndex || 1)}</strong></div>
+    <div><span>Low Float</span><strong>${autoSequence?.lowFloatActive ? "Active" : "Normal"}</strong></div>
+    <div><span>High Float</span><strong>${autoSequence?.highFloatActive ? "Active" : "Normal"}</strong></div>
+    <div><span>Commanded</span><strong>${escapeHtml(autoSequenceCommanded)}</strong></div>
+    <div><span>Unavailable</span><strong>${escapeHtml(autoSequenceBlocked)}</strong></div>
+    <div><span>Last Action</span><strong>${escapeHtml(autoSequence?.lastReason || "None")}</strong></div>
+  `;
   const selectedPumpMissingMapping = selectedPump ? pumpMappingMissingItems(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : [];
   const pumpDrawer = selectedPump ? `
     <aside class="pump-hmi-detail-drawer ${selectedPumpStatus.className}" aria-label="Selected pump details">
@@ -18385,6 +18404,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
                 <div><span>Lead Pump</span><strong>${escapeHtml(leadPump?.name || "Not assigned")}</strong></div>
                 <div><span>Lead / Lag / Backup</span><strong>${roleCounts.Lead || 0} / ${roleCounts.Lag || 0} / ${roleCounts.Backup || 0}</strong></div>
                 <div><span>Rotation</span><strong>${escapeHtml(leadStatus.label)}</strong></div>
+              </section>
+              <section>
+                <header>Auto Sequence</header>
+                ${autoSequenceRows}
               </section>
               <section>
                 <header>Ready For Service</header>
