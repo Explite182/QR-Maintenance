@@ -5385,7 +5385,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-live-status-22";
+const SITEWORKS_APP_VERSION = "20260825-pump-edit-hold-23";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16246,14 +16246,20 @@ async function loadPumpControllersForCurrentScope({ force = false } = {}) {
     pumpControllersLoadedScope = scopeKey;
   } finally {
     pumpControllersLoading = false;
-    renderAutomationPumps();
+    if (!isPumpSetupEditingActive()) renderAutomationPumps();
   }
+}
+
+function isPumpSetupEditingActive() {
+  return Boolean(document.querySelector(
+    "[data-pump-controller-form], [data-pump-io-mapping-form], [data-pump-diagram-device-form]"
+  ));
 }
 
 async function refreshPumpLiveStatus() {
   const scopeKey = getPumpControllerScopeKey();
   if (!scopeKey || editingPumpControllerId) return;
-  if (document.querySelector("[data-pump-controller-form]")) return;
+  if (isPumpSetupEditingActive()) return;
   pumpLiveRefreshActive = true;
   try {
     await loadPumpControllersForCurrentScope({ force: true });
