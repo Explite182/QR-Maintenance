@@ -5079,12 +5079,44 @@ function renderMonitoringLivePanel(devices) {
   });
   const fallbackPanel = panel || getAsset(channels[0]?.panelAssetId || channels[0]?.panel_asset_id || "");
   if (!fallbackPanel && !channels.length) {
-    elements.livePanel.innerHTML = `<p class="muted">Add a monitoring device to select a panel and see its breaker layout.</p>`;
+    if (window.SiteWorksPanelHmiAdapter && window.SiteWorksPanelHmiRenderer) {
+      const examplePanel = window.SiteWorksPanelHmiAdapter.createPreparedPanel({ useExample: true });
+      elements.livePanel.innerHTML = window.SiteWorksPanelHmiRenderer.render(examplePanel);
+    } else {
+      elements.livePanel.innerHTML = `<p class="muted">Add a monitoring device to select a panel and see its breaker layout.</p>`;
+    }
     return;
   }
   const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
   setMonitoringPanelSummary(primaryDevice, channels);
   const displayChannels = monitoringDisplayChannelsForDevice(primaryDevice, channels);
+  if (window.SiteWorksPanelHmiAdapter && window.SiteWorksPanelHmiRenderer) {
+    const preparedPanel = window.SiteWorksPanelHmiAdapter.createPreparedPanel({
+      panel: fallbackPanel,
+      location: getLocation(fallbackPanel?.locationId || fallbackPanel?.location_id || ""),
+      schedule: isElectricalPanelAsset(fallbackPanel) ? getElectricalPanelSchedule(fallbackPanel) : {},
+      device: primaryDevice,
+      channels: displayChannels
+    });
+    elements.livePanel.innerHTML = window.SiteWorksPanelHmiRenderer.render(preparedPanel);
+    if (shouldRestoreBreakerDetail) {
+      const circuitSelectorValue = window.CSS?.escape
+        ? CSS.escape(String(selectedMonitoringBreakerCircuit || ""))
+        : String(selectedMonitoringBreakerCircuit || "").replace(/"/g, '\\"');
+      const anchor = document.querySelector(`[data-monitoring-breaker-circuit="${circuitSelectorValue}"]`);
+      const channelId = anchor?.dataset.monitoringBreakerDetail || selectedMonitoringBreakerChannelId;
+      if (anchor && channelId) {
+        showMonitoringBreakerDetail(channelId, selectedMonitoringBreakerCircuit, anchor);
+      } else {
+        selectedMonitoringBreakerChannelId = "";
+        selectedMonitoringBreakerCircuit = "";
+        elements.breakerDetail.classList.add("hidden");
+        elements.breakerDetail.innerHTML = "";
+        elements.breakerDetail.classList.remove("is-floating");
+      }
+    }
+    return;
+  }
   const circuitCount = monitoringPanelCircuitCount(fallbackPanel, displayChannels);
   const channelByCircuit = monitoringChannelByCircuitMap(displayChannels);
   const rowCount = Math.ceil(circuitCount / 2);
@@ -5382,7 +5414,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-card-live-fix-14";
+const SITEWORKS_APP_VERSION = "20260825-panel-hmi-standard-15";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
