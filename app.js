@@ -5391,7 +5391,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260826-pump-live-bindings-29";
+const SITEWORKS_APP_VERSION = "20260826-siteworks-pump-automation-30";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16189,7 +16189,7 @@ function setPumpAssetControlCommand(assetId = "", command = "") {
     result: normalizedCommand,
     notes: normalizedCommand === "Alarm Reset"
       ? "Pump alarm reset command recorded. Verify the field condition before returning to service."
-      : `Setup-only command recorded: ${normalizedCommand}.`,
+      : `SiteWorks pump command recorded: ${normalizedCommand}.`,
     technician: currentUser?.name || currentUser?.email || "SiteWorks"
   });
   asset.updatedAt = now;
@@ -17236,8 +17236,8 @@ function renderPumpDiagramDevices(devices = [], selectedDeviceId = "") {
   if (!devices.length) {
     return `
       <div class="pump-hmi-ddc-empty">
-        <strong>No DDC devices yet</strong>
-        <span>Open the add panel below to place floats, motor proofs, pressure switches, or contacts on this diagram.</span>
+        <strong>No field points yet</strong>
+        <span>Add SiteWorks pump inputs, floats, proofs, pressure points, or relay outputs below.</span>
       </div>
     `;
   }
@@ -17279,29 +17279,29 @@ function renderPumpDiagramDeviceDetail(device = null) {
   }[String(device.position || "").toLowerCase()] || device.position || "Diagram";
   const isActive = status.className === "is-active";
   return `
-    <aside class="pump-hmi-detail-drawer pump-hmi-ddc-detail ${status.className}" aria-label="Selected DDC device details">
+    <aside class="pump-hmi-detail-drawer pump-hmi-ddc-detail ${status.className}" aria-label="Selected field point details">
       <header>
-        <span>DDC Device Detail</span>
-        <strong>${escapeHtml(device.label || "DDC device")}</strong>
+        <span>Field Point Detail</span>
+        <strong>${escapeHtml(device.label || "field point")}</strong>
       </header>
       <div class="pump-hmi-detail-grid">
         <div><span>Status</span><strong>${escapeHtml(status.label)}</strong></div>
-        <div><span>Type</span><strong>${escapeHtml(device.type || "Device")}</strong></div>
+        <div><span>Type</span><strong>${escapeHtml(device.type || "Point")}</strong></div>
         <div><span>Point</span><strong>${escapeHtml(device.channel || "Not assigned")}</strong></div>
         <div><span>Diagram area</span><strong>${escapeHtml(positionLabel)}</strong></div>
         <div><span>Last update</span><strong>${escapeHtml(formatDate(device.updatedAt))}</strong></div>
       </div>
       <div class="pump-hmi-detail-advisory ${status.className}">
         <span>Point meaning</span>
-        <strong>${status.className === "is-alarm" ? "This point is reporting an alarm or fault state." : isActive ? "This point is active on the pump diagram." : "This point is present but inactive."}</strong>
-        <em>${status.className === "is-alarm" ? "Check the related pump equipment and create a ticket if needed." : "Use the setup controls to simulate this point until a live controller is connected."}</em>
+        <strong>${status.className === "is-alarm" ? "SiteWorks is reporting this pump point in alarm or fault." : isActive ? "SiteWorks is seeing this pump point active." : "SiteWorks is seeing this pump point inactive."}</strong>
+        <em>${status.className === "is-alarm" ? "Check the related pump equipment and create a ticket if needed." : "Use setup controls only while commissioning the SiteWorks pump controller."}</em>
       </div>
-      <p class="pump-hmi-detail-note">${escapeHtml(device.notes || "No device notes recorded.")}</p>
+      <p class="pump-hmi-detail-note">${escapeHtml(device.notes || "No point notes recorded.")}</p>
       <div class="pump-hmi-action-block">
         <span>Setup control</span>
-        <div class="pump-hmi-status-actions" aria-label="DDC device setup controls">
+        <div class="pump-hmi-status-actions" aria-label="field point setup controls">
           <button type="button" class="${isActive ? "is-active" : ""}" data-pump-diagram-device-toggle="${escapeAttribute(device.id)}">${isActive ? "Set inactive" : "Set active"}</button>
-          <button type="button" data-pump-diagram-device-delete="${escapeAttribute(device.id)}">Delete Device</button>
+          <button type="button" data-pump-diagram-device-delete="${escapeAttribute(device.id)}">Delete Point</button>
         </div>
       </div>
       <div class="pump-hmi-detail-actions">
@@ -17315,7 +17315,7 @@ function renderPumpDiagramDeviceSetup(locationRecord = null, devices = []) {
   if (!locationRecord) {
     return `
       <section class="pump-hmi-ddc-setup">
-        <strong>Select a single location to add DDC diagram devices.</strong>
+        <strong>Select a single location to add SiteWorks field points.</strong>
       </section>
     `;
   }
@@ -17324,13 +17324,13 @@ function renderPumpDiagramDeviceSetup(locationRecord = null, devices = []) {
     <section class="pump-hmi-ddc-setup ${hasDevices ? "" : "is-empty"}">
       <details ${hasDevices ? "" : "open"}>
         <summary>
-          <span>${hasDevices ? "DDC diagram devices" : "+ Add Float / Contact / Device"}</span>
+          <span>${hasDevices ? "SiteWorks pump points" : "+ Add Pump Point"}</span>
           <strong>${devices.length}</strong>
         </summary>
-        ${hasDevices ? "" : `<p class="pump-hmi-ddc-help">Add the first DDC point here. Once saved, it will appear on the pump diagram above and become clickable.</p>`}
+        ${hasDevices ? "" : `<p class="pump-hmi-ddc-help">Add the first SiteWorks pump point here. Once saved, it will appear on the pump diagram above and become clickable.</p>`}
         <form class="pump-hmi-ddc-form" data-pump-diagram-device-form>
           <label>
-            <span>Device label</span>
+            <span>Point label</span>
             <input name="label" placeholder="High float, Motor proof, Pressure switch" required>
           </label>
           <label>
@@ -17365,7 +17365,7 @@ function renderPumpDiagramDeviceSetup(locationRecord = null, devices = []) {
             <span>Notes</span>
             <input name="notes" placeholder="Optional">
           </label>
-          <button type="submit">Add Device</button>
+          <button type="submit">Add Point</button>
         </form>
       </details>
     </section>
@@ -17387,7 +17387,7 @@ function savePumpDiagramDeviceFromForm(form) {
     updatedAt: new Date().toISOString()
   }));
   currentLocation.updatedAt = new Date().toISOString();
-  addActivity("Pump DDC device added", `${String(formData.get("label") || "Device").trim()} added to ${currentLocation.name || "pump diagram"}.`);
+  addActivity("Pump field point added", `${String(formData.get("label") || "Device").trim()} added to ${currentLocation.name || "pump diagram"}.`);
   saveState();
   renderAutomationPumps();
 }
@@ -17411,7 +17411,7 @@ function deletePumpDiagramDevice(deviceId = "") {
   const devices = pumpDiagramDevicesForLocation(currentLocation);
   const device = devices.find((item) => item.id === deviceId);
   if (!device) return;
-  if (!window.confirm(`Delete ${device.label || "this DDC device"} from the pump diagram?`)) return;
+  if (!window.confirm(`Delete ${device.label || "this field point"} from the pump diagram?`)) return;
   currentLocation.pumpDiagramDevices = devices.filter((item) => item.id !== deviceId);
   currentLocation.updatedAt = new Date().toISOString();
   saveState();
@@ -17508,7 +17508,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <article class="pump-hmi-alarm ${status.className}">
         <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
         <div>
-          <strong>${escapeHtml(device.label || "DDC device")}</strong>
+          <strong>${escapeHtml(device.label || "field point")}</strong>
           <small>${escapeHtml(device.type || "Device")}${device.channel ? ` | ${escapeHtml(device.channel)}` : ""}</small>
           <small>${escapeHtml(device.notes || "Diagram point needs attention.")}</small>
         </div>
@@ -17841,7 +17841,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       ${selectedPump ? renderPumpIoMappingForm(selectedPump, Math.max(0, selectedPumpAssignedIndex)) : ""}
       <div class="pump-hmi-action-block">
         <span>Command</span>
-        <div class="pump-hmi-status-actions" aria-label="Pump setup-only command controls">
+        <div class="pump-hmi-status-actions" aria-label="SiteWorks pump command controls">
           ${["Run", "Stop", "Auto", "Alarm Reset"].map((commandLabel) => `
             <button
               type="button"
@@ -17866,14 +17866,14 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         </div>
       </div>
       <div class="pump-hmi-action-block pump-hmi-sim-actions">
-        <span>Setup simulator</span>
+        <span>Commissioning test</span>
         <div class="pump-hmi-status-actions" aria-label="Pump simulation controls">
           ${[
-            ["run", "Demo Run"],
-            ["off", "Demo Off"],
-            ["fault", "Demo Fault"],
-            ["high-level", "Demo High Level"],
-            ["maintenance", "Demo Maintenance"]
+            ["run", "Test Run"],
+            ["off", "Test Off"],
+            ["fault", "Test Fault"],
+            ["high-level", "Test High Level"],
+            ["maintenance", "Test Maintenance"]
           ].map(([action, label]) => `
             <button
               type="button"
@@ -17921,7 +17921,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <span class="pump-hmi-screw is-bottom-right" aria-hidden="true"></span>
       <div class="pump-hmi-nameplate">
         <strong>SUMP PUMP STATION</strong>
-        <span>SITEWORKS BAS HMI</span>
+        <span>SITEWORKS PUMP AUTOMATION</span>
       </div>
       <div class="pump-hmi-display">
         <aside class="pump-hmi-nav" aria-label="Pump HMI sections">
@@ -17945,7 +17945,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             <header class="pump-scada-titlebar">
               <div class="pump-scada-brand">
                 <strong>SITEWORKS</strong>
-                <span>BAS HMI</span>
+                <span>PUMP AUTOMATION</span>
               </div>
               <h2>SUMP PUMP STATION</h2>
               <div class="pump-scada-place">
@@ -17999,11 +17999,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
                 <div><span>Pressure</span><strong>${escapeHtml(pressurePoint ? pumpDiagramDeviceStatus(pressurePoint).label : "Not wired")}</strong></div>
               </section>
               <section>
-                <header>Quick Actions</header>
-                <button type="button">Start All Pumps</button>
-                <button type="button">Stop All Pumps</button>
-                <button type="button">Acknowledge Alarm</button>
-                <button type="button">Test Floats</button>
+                <header>SiteWorks Control</header>
+                <button type="button">Pump Commands</button>
+                <button type="button">Lead / Lag Setup</button>
+                <button type="button">Alarm Review</button>
+                <button type="button">Input Test</button>
               </section>
               <section>
                 <header>Recent Alarms</header>
@@ -18064,7 +18064,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             </div>
             <div>
               <span>High level</span>
-              <strong>${escapeHtml(highFloat ? pumpDiagramDeviceStatus(highFloat).label : "Not wired")}</strong>
+              <strong>${escapeHtml(floatStateLabel("high", highFloat))}</strong>
             </div>
             <div>
               <span>Pressure</span>
@@ -18074,7 +18074,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           ${alarmOn ? `
             <section class="pump-station-alarm-banner" aria-label="Active pump alarm">
               <strong>Alarm active</strong>
-              <span>${totalWarningCount} pump or DDC item${totalWarningCount === 1 ? "" : "s"} need attention.</span>
+              <span>${totalWarningCount} SiteWorks pump point${totalWarningCount === 1 ? "" : "s"} need attention.</span>
             </section>
           ` : ""}
           <section class="pump-station-live-grid" aria-label="Live pump station overview">
@@ -18155,8 +18155,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             <section class="pump-hmi-simulation-panel" aria-label="Pump simulation controls">
               <header>
                 <div>
-                  <span>Simulation Mode</span>
-                  <strong>Demo pump controls active</strong>
+                  <span>Commissioning Mode</span>
+                  <strong>SiteWorks pump test controls active</strong>
                 </div>
                 <em>Setup only</em>
               </header>
@@ -18168,7 +18168,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           ${totalWarningCount ? `
             <section class="pump-hmi-alarms" aria-label="Active pump alarms">
               <header>
-                <span>Active Pump / DDC Alarms</span>
+                <span>Active SiteWorks Pump Alarms</span>
                 <strong>${totalWarningCount}</strong>
               </header>
               <div class="pump-hmi-alarm-list">

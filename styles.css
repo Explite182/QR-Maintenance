@@ -3461,7 +3461,7 @@ textarea:disabled {
   color: #ffffff;
 }
 
-/* 4K BAS-style pump station presentation. Keeps existing pump logic intact. */
+/* 4K SiteWorks pump station presentation. Keeps existing pump logic intact. */
 .pump-hmi-controller {
   grid-template-columns: minmax(0, 1fr) clamp(160px, 8.5vw, 260px);
   gap: clamp(14px, 1vw, 28px);
