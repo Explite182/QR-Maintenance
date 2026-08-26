@@ -5391,7 +5391,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260826-pump-input-mask-25";
+const SITEWORKS_APP_VERSION = "20260826-pump-fast-refresh-26";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -5406,7 +5406,7 @@ const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
 const LIGHTING_LIVE_REFRESH_INTERVAL_MS = 5000;
-const PUMP_LIVE_REFRESH_INTERVAL_MS = 5000;
+const PUMP_LIVE_REFRESH_INTERVAL_MS = 2000;
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
@@ -6353,6 +6353,10 @@ window.setInterval(renderLightingScheduleClock, 1000);
 window.setInterval(refreshLightingLiveStatus, LIGHTING_LIVE_REFRESH_INTERVAL_MS);
 window.setInterval(refreshPumpLiveStatus, PUMP_LIVE_REFRESH_INTERVAL_MS);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refreshPumpLiveStatus();
+});
+window.addEventListener("focus", refreshPumpLiveStatus);
 initPasswordRecoveryFromUrl();
 
 window.addEventListener("hashchange", () => {
