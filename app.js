@@ -16826,7 +16826,7 @@ function renderPumpControllerForm(controller = null) {
     : "PUMP";
   const pumpAssignmentHtml = pumps.length ? `
     <fieldset class="pump-controller-pump-picker">
-      <legend>Assigned pumps</legend>
+      <legend>Assign pumps to this controller</legend>
       ${pumps.map((pump, index) => {
         const checked = selectedPumpIds.size ? selectedPumpIds.has(pump.id) : index < Number(controller?.pumpCount || 1);
         return `
@@ -16917,6 +16917,17 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
     ? controllers.find((controller) => controller.id === editingPumpControllerId)
     : null;
   const shouldShowAddForm = Boolean(editingPumpControllerId || !controllers.length);
+  const setupItems = pumpControllerSetupItems(locationPumps, controllers);
+  const setupSummaryHtml = `
+    <div class="pump-controller-commissioning" aria-label="Pump commissioning readiness">
+      ${setupItems.map((item) => `
+        <div class="${item.className}">
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${escapeHtml(item.value)}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
   const equipmentSetupHtml = controllers.length ? `
     <div class="pump-controller-add-row">
       <button type="button" class="secondary" data-create-pump-equipment="${escapeAttribute(controllers[0]?.id || "")}">
@@ -16936,18 +16947,19 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
     const status = pumpControllerStatus(controller);
     const pumps = pumpAssetsForCurrentView();
     const assignedPumps = pumpControllerAssignedPumps(controller, pumps);
-    const plannedPointCount = pumpHmiPlannedPoints(controller, assignedPumps).length;
     const assignedPumpLabel = assignedPumps.length
       ? assignedPumps.map((pump) => pump.name || "Pump").join(", ")
       : "No pumps assigned";
+    const mappingCompleteCount = assignedPumps.filter((pump, index) => !pumpMappingMissingItems(pump, index).length).length;
+    const slotRows = pumpControllerSlotRows(controller, pumps);
     return `
       <article class="pump-controller-card ${status.className}">
         <div>
           <strong>${escapeHtml(controller.name)}</strong>
           <span>${escapeHtml(controller.uid || "No UID")} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.area || currentLocation.name || "No area")}</span>
         </div>
-        <span><b>Pumps</b>${assignedPumps.length || escapeHtml(controller.pumpCount || "1")}</span>
-        <span><b>I/O</b>${plannedPointCount} planned</span>
+        <span><b>Pumps</b>${assignedPumps.length}/${escapeHtml(controller.pumpCount || assignedPumps.length || "1")}</span>
+        <span><b>I/O</b>${mappingCompleteCount}/${assignedPumps.length || 0} mapped</span>
         <span><b>Live inputs</b>${escapeHtml(formatPumpControllerLiveInputs(controller))}</span>
         <span><b>Status</b>${escapeHtml(status.label)}</span>
         <span><b>Mode</b>${escapeHtml(controller.mode || "Setup only")}</span>
@@ -16956,6 +16968,7 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
         <span><b>Last seen</b>${escapeHtml(formatDateTime(controller.lastSeenAt) || "Never")}</span>
         <span><b>API key</b>${controller.apiKeyLast4 ? `Ends ${escapeHtml(controller.apiKeyLast4)}` : "Not set"}</span>
         <span class="pump-controller-assigned"><b>Assigned</b>${escapeHtml(assignedPumpLabel)}</span>
+        <div class="pump-controller-slots">${slotRows}</div>
         <div class="pump-controller-actions">
           <button type="button" class="secondary" data-pump-controller-edit="${escapeAttribute(controller.id)}">Edit</button>
           <button type="button" class="secondary" data-pump-controller-delete="${escapeAttribute(controller.id)}">Delete</button>
@@ -16965,6 +16978,7 @@ function renderPumpControllerSetup(controllers = [], currentLocation = null) {
   }).join("") : "";
   return `
     <section class="pump-controller-setup">
+      ${setupSummaryHtml}
       ${formHtml}
       ${equipmentSetupHtml}
       <div class="pump-controller-list">${controllerRows}</div>
@@ -17523,6 +17537,72 @@ function pumpMappingMissingItems(asset = {}, index = 0) {
     ["Fault", assignment.fault],
     ["HOA Auto", assignment.hoa]
   ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+}
+
+function pumpControllerSetupItems(pumps = [], controllers = []) {
+  const onlineControllers = controllers.filter((controller) => pumpControllerStatus(controller).className === "is-running");
+  const liveControllers = controllers.filter((controller) => getPumpControllerLiveInputs(controller)?.updatedAt);
+  const assignedPumpIds = new Set(controllers.flatMap((controller) => normalizePumpControllerPumpIds(controller)));
+  const assignedCount = assignedPumpIds.size ? pumps.filter((pump) => assignedPumpIds.has(pump.id)).length : Math.min(pumps.length, Number(controllers[0]?.pumpCount || pumps.length || 0) || 0);
+  const expectedCount = controllers.reduce((total, controller) => total + (Number(controller.pumpCount) || 0), 0) || pumps.length;
+  const mappedCount = pumps.filter((pump, index) => !pumpMappingMissingItems(pump, index).length).length;
+  const keyedControllers = controllers.filter((controller) => controller.apiKeyLast4);
+  return [
+    {
+      label: "Controller",
+      value: controllers.length ? `${onlineControllers.length}/${controllers.length} online` : "Not added",
+      className: onlineControllers.length ? "is-ok" : "is-warning"
+    },
+    {
+      label: "Pump Equipment",
+      value: pumps.length ? `${pumps.length} added` : "None",
+      className: pumps.length ? "is-ok" : "is-warning"
+    },
+    {
+      label: "Assigned Pumps",
+      value: expectedCount ? `${assignedCount}/${expectedCount}` : "Not set",
+      className: expectedCount && assignedCount >= Math.min(expectedCount, pumps.length || expectedCount) ? "is-ok" : "is-warning"
+    },
+    {
+      label: "I/O Mapping",
+      value: pumps.length ? `${mappedCount}/${pumps.length} mapped` : "No pumps",
+      className: pumps.length && mappedCount === pumps.length ? "is-ok" : "is-warning"
+    },
+    {
+      label: "API Key",
+      value: controllers.length ? `${keyedControllers.length}/${controllers.length} set` : "Not set",
+      className: controllers.length && keyedControllers.length === controllers.length ? "is-ok" : "is-warning"
+    },
+    {
+      label: "Live ESP",
+      value: liveControllers.length ? "Receiving" : "Waiting",
+      className: liveControllers.length ? "is-ok" : "is-warning"
+    }
+  ];
+}
+
+function pumpControllerSlotRows(controller = {}, pumps = []) {
+  const assignedPumps = pumpControllerAssignedPumps(controller, pumps);
+  const slotCount = Math.max(1, Math.min(6, Number(controller.pumpCount || assignedPumps.length || 1) || 1));
+  return Array.from({ length: slotCount }, (_, index) => {
+    const pump = assignedPumps[index] || null;
+    const missing = pump ? pumpMappingMissingItems(pump, index) : [];
+    const mapping = pump ? normalizePumpIoMapping(pump, index) : pumpHmiPumpIoAssignment(index);
+    const statusText = pump
+      ? missing.length
+        ? `Missing ${missing.join(", ")}`
+        : "Mapped"
+      : "Unassigned";
+    const className = pump && !missing.length ? "is-ok" : "is-warning";
+    return `
+      <div class="pump-controller-slot ${className}">
+        <span>P-${String(index + 1).padStart(2, "0")}</span>
+        <strong>${escapeHtml(pump?.name || "No pump assigned")}</strong>
+        <em>${escapeHtml(statusText)}</em>
+        <small>${escapeHtml(`${mapping.command || "DO?"} / ${mapping.runStatus || "DI?"} proof / ${mapping.fault || "DI?"} fault / ${mapping.hoa || "DI?"} HOA`)}</small>
+      </div>
+    `;
+  }).join("");
 }
 
 function pumpStationReadinessItems(pumps = [], controllers = [], totalWarningCount = 0) {
