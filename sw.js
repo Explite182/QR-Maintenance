@@ -1,18 +1,18 @@
-const SITEWORKS_SW_VERSION = "20260826-pump-panel-style-40";
+const SITEWORKS_SW_VERSION = "20260826-pump-live-io-strip-41";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260826-pump-panel-style-40",
+  "/styles.css?v=20260826-pump-live-io-strip-41",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260826-pump-panel-style-40",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260826-pump-panel-style-40",
-  "/js/panel-hmi-standard-renderer.js?v=20260826-pump-panel-style-40",
-  "/app.js?v=20260826-pump-panel-style-40",
-  "/manifest.webmanifest?v=20260826-pump-panel-style-40",
-  "/icons/siteworks-icon-192.png?v=20260826-pump-panel-style-40",
-  "/icons/siteworks-icon-512.png?v=20260826-pump-panel-style-40"
+  "/js/panel-hmi-standard-model.js?v=20260826-pump-live-io-strip-41",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260826-pump-live-io-strip-41",
+  "/js/panel-hmi-standard-renderer.js?v=20260826-pump-live-io-strip-41",
+  "/app.js?v=20260826-pump-live-io-strip-41",
+  "/manifest.webmanifest?v=20260826-pump-live-io-strip-41",
+  "/icons/siteworks-icon-192.png?v=20260826-pump-live-io-strip-41",
+  "/icons/siteworks-icon-512.png?v=20260826-pump-live-io-strip-41"
 ];
 
 self.addEventListener("install", (event) => {

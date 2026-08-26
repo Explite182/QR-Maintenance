@@ -17787,3 +17787,395 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   background: #334155;
   color: #e2e8f0;
 }
+
+/* Pump HMI physical-view pass aligned with the panel HMI visual standard. */
+.pump-hmi-controller {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #f4f7f7;
+  box-shadow: none;
+}
+
+.pump-hmi-controller > .pump-hmi-screw,
+.pump-hmi-nameplate,
+.pump-hmi-nav,
+.pump-hmi-header {
+  display: none;
+}
+
+.pump-hmi-display,
+.pump-hmi-screen {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pump-scada-dashboard {
+  width: min(100%, 1780px);
+  min-height: auto;
+  margin: 0 auto 28px;
+  padding: 14px;
+  border: 3px solid #30383a;
+  border-radius: 5px;
+  grid-template-columns: minmax(720px, 1.55fr) minmax(430px, 0.95fr);
+  grid-template-rows: auto auto auto auto;
+  gap: 12px;
+  color: #eef7f5;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12), transparent 18%, transparent 82%, rgba(0, 0, 0, 0.18)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, #8d958f, #6f7872 52%, #8b938d);
+  box-shadow:
+    inset 0 0 0 2px #161d1f,
+    inset 0 0 38px rgba(0, 0, 0, 0.28),
+    0 24px 58px rgba(15, 23, 42, 0.2);
+}
+
+.pump-scada-titlebar,
+.pump-scada-alert,
+.pump-scada-pit,
+.pump-scada-pumps,
+.pump-scada-right section,
+.pump-scada-footer {
+  border-radius: 3px;
+  box-shadow: none;
+}
+
+.pump-scada-titlebar {
+  grid-column: 1 / -1;
+  min-height: 54px;
+  padding: 8px 14px;
+  border: 2px solid #252b2d;
+  grid-template-columns: minmax(230px, 0.9fr) minmax(0, 1fr) minmax(220px, 0.85fr);
+  background: linear-gradient(180deg, #1b2226, #080d10);
+}
+
+.pump-scada-titlebar h2 {
+  font-size: clamp(1.2rem, 1.8vw, 2rem);
+  letter-spacing: 0;
+}
+
+.pump-scada-brand strong,
+.pump-scada-place strong {
+  color: #ffffff;
+}
+
+.pump-scada-brand span,
+.pump-scada-place span {
+  color: #a8c3ce;
+}
+
+.pump-scada-alert {
+  grid-column: 1 / -1;
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 2px solid #273236;
+  background: linear-gradient(180deg, #12191d, #070b0e);
+}
+
+.pump-scada-alert.is-normal {
+  border-color: #254c3a;
+}
+
+.pump-scada-alert.is-active {
+  border-color: #b91c1c;
+  background: linear-gradient(180deg, #451313, #140707);
+}
+
+.pump-scada-normal-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.pump-scada-alert strong,
+.pump-scada-alert em {
+  font-size: clamp(0.92rem, 1.15vw, 1.35rem);
+  letter-spacing: 0;
+}
+
+.pump-scada-alert span {
+  font-size: clamp(0.82rem, 0.9vw, 1rem);
+}
+
+.pump-scada-main {
+  grid-column: 2;
+  grid-row: 3;
+  display: block;
+}
+
+.pump-scada-pit {
+  grid-column: 1;
+  grid-row: 3;
+  grid-template-columns: 140px minmax(0, 1fr);
+  padding: 12px;
+  border: 2px solid #3f4948;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12), transparent 20%, transparent 82%, rgba(0, 0, 0, 0.12)),
+    linear-gradient(180deg, #6e7872, #8f968f);
+}
+
+.pump-scada-pit header,
+.pump-scada-pumps header,
+.pump-scada-right header {
+  min-height: 27px;
+  padding: 5px 10px;
+  border-radius: 2px;
+  color: #f8fafc;
+  font-size: 0.74rem;
+  letter-spacing: 0;
+  background: linear-gradient(180deg, #171d20, #06090b);
+}
+
+.pump-scada-level {
+  border: 2px solid #2d383a;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #12191d, #070b0e);
+}
+
+.pump-scada-level span,
+.pump-scada-level em {
+  color: #b7cbd2;
+}
+
+.pump-scada-level strong {
+  color: #ffffff;
+  font-size: clamp(2.2rem, 3vw, 4.4rem);
+  letter-spacing: 0;
+}
+
+.pump-scada-pit-vessel {
+  min-height: clamp(440px, 44vw, 620px);
+  border: 10px solid #b7c0c3;
+  border-top: 0;
+  border-radius: 0 0 44px 44px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 15%, transparent 85%, rgba(255, 255, 255, 0.08)),
+    linear-gradient(180deg, #132529, #091316);
+}
+
+.pump-scada-water {
+  background:
+    linear-gradient(180deg, rgba(125, 211, 252, 0.72), rgba(14, 116, 144, 0.82)),
+    repeating-linear-gradient(90deg, transparent 0 82px, rgba(255, 255, 255, 0.08) 82px 86px);
+}
+
+.pump-scada-pit-mark {
+  color: #f8fafc;
+  font-size: 0.7rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.pump-scada-pit-mark::before {
+  border-top-color: rgba(248, 250, 252, 0.42);
+}
+
+.pump-scada-pit-float {
+  left: 8%;
+  width: 25px;
+  height: 50px;
+}
+
+.pump-scada-discharge {
+  top: 9%;
+  height: 22px;
+  background: linear-gradient(180deg, #e5e7eb, #64748b 55%, #27313a);
+}
+
+.pump-scada-pit-pump {
+  bottom: 9%;
+  width: min(132px, 16%);
+  height: 124px;
+  border: 1px solid rgba(15, 23, 42, 0.5);
+  border-radius: 9px 9px 18px 18px;
+  background:
+    radial-gradient(circle at 26% 72%, #64748b 0 13%, transparent 14%),
+    radial-gradient(circle at 72% 72%, #64748b 0 13%, transparent 14%),
+    linear-gradient(90deg, transparent 0 13%, #475569 13% 82%, transparent 82%),
+    linear-gradient(180deg, #cbd5e1, #475569 58%, #1f2937);
+  opacity: 0.78;
+}
+
+.pump-scada-pit-pump.is-running {
+  background:
+    radial-gradient(circle at 26% 72%, #14532d 0 13%, transparent 14%),
+    radial-gradient(circle at 72% 72%, #14532d 0 13%, transparent 14%),
+    linear-gradient(90deg, transparent 0 13%, #16a34a 13% 82%, transparent 82%),
+    linear-gradient(180deg, #86efac, #15803d 58%, #14532d);
+}
+
+.pump-scada-pit-labels span {
+  min-height: 48px;
+  border: 2px solid #252b2d;
+  border-radius: 3px;
+  color: #ffffff;
+  background: linear-gradient(180deg, #141b1f, #06090b);
+}
+
+.pump-scada-pumps {
+  padding: 12px;
+  border: 2px solid #3f4948;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 22%, rgba(0, 0, 0, 0.12)),
+    linear-gradient(180deg, #6f7872, #8b928c);
+}
+
+.pump-scada-pump-grid {
+  gap: 8px;
+}
+
+.pump-scada-pump {
+  grid-template-columns: 86px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px 10px;
+  padding: 10px;
+  border: 2px solid #222a2d;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #222b2f, #0b1114);
+}
+
+.pump-scada-pump.is-selected {
+  border-color: #22c5af;
+  box-shadow: 0 0 0 2px rgba(34, 197, 175, 0.24);
+}
+
+.pump-scada-pump-head strong {
+  font-size: 1rem;
+}
+
+.pump-scada-pump-head em {
+  border-color: #315747;
+  border-radius: 3px;
+  color: #86efac;
+  background: #123124;
+}
+
+.pump-scada-pump-name {
+  color: #f4f0e6;
+  font-size: 0.84rem;
+}
+
+.pump-scada-pump-art {
+  width: 74px;
+  height: 74px;
+  border-radius: 6px;
+}
+
+.pump-scada-readout {
+  min-height: 25px;
+  border: 1px solid #2c3538;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #10181c, #080c0f);
+}
+
+.pump-scada-readout b,
+.pump-scada-right span {
+  color: #9fc0cc;
+  letter-spacing: 0;
+}
+
+.pump-scada-readout i,
+.pump-scada-right strong,
+.pump-scada-alarm-row strong {
+  color: #f8fafc;
+  white-space: normal;
+}
+
+.pump-scada-right {
+  grid-column: 1 / -1;
+  grid-row: 4;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pump-scada-right section {
+  min-height: 132px;
+  padding: 10px;
+  border: 2px solid #252b2d;
+  background: linear-gradient(180deg, #1a2226, #080d10);
+}
+
+.pump-scada-right section:nth-of-type(2) {
+  display: none;
+}
+
+.pump-scada-right div,
+.pump-scada-alarm-row {
+  align-items: flex-start;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.pump-scada-footer {
+  display: none;
+}
+
+.pump-live-io-panel {
+  gap: 8px;
+  padding: 10px;
+  border: 2px solid #252b2d;
+  border-radius: 3px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 22%, rgba(0, 0, 0, 0.12)),
+    linear-gradient(180deg, #1a2226, #080d10);
+}
+
+.pump-live-io-panel header {
+  min-height: 30px;
+  padding: 4px 8px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #171d20, #06090b);
+}
+
+.pump-live-io-panel header strong {
+  color: #5eead4;
+  font-size: 1rem;
+}
+
+.pump-live-io-grid,
+.pump-live-output-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pump-live-output-grid {
+  opacity: 1;
+}
+
+.pump-live-io-tile {
+  flex: 1 1 138px;
+  max-width: 190px;
+  min-height: 66px;
+  padding: 8px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #121a1f, #080c0f);
+}
+
+.pump-live-io-tile strong {
+  overflow: visible;
+  font-size: 0.78rem;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+@media (max-width: 1280px) {
+  .pump-scada-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .pump-scada-pit,
+  .pump-scada-main,
+  .pump-scada-right {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .pump-scada-right {
+    grid-template-columns: 1fr;
+  }
+}

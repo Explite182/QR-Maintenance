@@ -17818,22 +17818,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </div>
     </article>
   ` : "";
-  const plannedPoints = pumpHmiPlannedPoints(primaryController, primaryControllerPumps);
   const liveIoPanel = renderPumpLiveIoPanel(primaryController);
-  const pointTiles = plannedPoints.map((point) => {
-    const inputNumber = pumpDiChannelNumber(point.channel);
-    const hasLiveState = Boolean(primaryController && inputNumber);
-    const isActive = hasLiveState && getPumpLiveInputActive(primaryController, inputNumber);
-    const liveState = hasLiveState ? (isActive ? "Live active" : "Live inactive") : point.state;
-    return `
-    <div class="pump-hmi-point ${primaryController ? "is-ready" : ""} ${isActive ? "is-live-active" : ""} ${point.className || ""}">
-      <span>${escapeHtml(point.type)}</span>
-      <strong>${escapeHtml(point.label)}</strong>
-      <em>${escapeHtml(liveState)}</em>
-      ${point.channel ? `<small>${escapeHtml(point.channel)}</small>` : ""}
-    </div>
-  `;
-  }).join("");
   const pumpAlarmTiles = activePumpAlarms.map(({ asset, status, latestEvent, openIssueCount }) => {
     return `
       <article class="pump-hmi-alarm ${status.className}">
@@ -18697,13 +18682,6 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           </section>
           ${diagramDeviceSetup}
           ${liveIoPanel}
-          <section class="pump-hmi-points" aria-label="Pump controller points">
-            <header>
-              <span>Planned I/O map</span>
-              <strong>${primaryController ? `${plannedPoints.length} planned I/O` : "Setup placeholders"}</strong>
-            </header>
-            <div class="pump-hmi-point-grid">${pointTiles}</div>
-          </section>
           <section class="pump-hmi-pump-workspace ${selectedPump || selectedDiagramDevice ? "has-drawer" : ""}" aria-label="Pump equipment and details">
             <div class="pump-hmi-pumps" aria-label="Pump equipment">
               ${pumpTiles || `
