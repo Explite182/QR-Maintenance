@@ -5382,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-scada-redesign-13";
+const SITEWORKS_APP_VERSION = "20260825-pump-card-live-fix-14";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16658,19 +16658,28 @@ function getPumpLiveInputActive(controller = null, inputNumber = 0) {
   return inputNumber > 0 ? Boolean(mask & (1 << (inputNumber - 1))) : false;
 }
 
-function getPumpLiveStatus(controller = null, pumpIndex = 0) {
+function pumpDiChannelNumber(channel = "") {
+  const match = String(channel || "").trim().toUpperCase().match(/^DI\s*([1-8])$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function getPumpLiveStatus(controller = null, pumpIndex = 0, asset = null) {
   if (!controller) return null;
+  const mapping = asset ? normalizePumpIoMapping(asset, pumpIndex) : pumpHmiPumpIoAssignment(pumpIndex);
   const base = (pumpIndex + 1) * 3 - 2;
-  const runProof = getPumpLiveInputActive(controller, base);
-  const fault = getPumpLiveInputActive(controller, base + 1);
-  const auto = getPumpLiveInputActive(controller, base + 2);
+  const runInput = pumpDiChannelNumber(mapping.runStatus) || base;
+  const faultInput = pumpDiChannelNumber(mapping.fault) || base + 1;
+  const autoInput = pumpDiChannelNumber(mapping.hoa) || base + 2;
+  const runProof = getPumpLiveInputActive(controller, runInput);
+  const fault = getPumpLiveInputActive(controller, faultInput);
+  const auto = getPumpLiveInputActive(controller, autoInput);
   if (fault) {
-    return { label: "Fault", className: "is-alarm", runProof, fault, auto };
+    return { label: "Fault", className: "is-alarm", runProof, fault, auto, runInput, faultInput, autoInput };
   }
   if (runProof) {
-    return { label: "Running", className: "is-running", runProof, fault, auto };
+    return { label: "Running", className: "is-running", runProof, fault, auto, runInput, faultInput, autoInput };
   }
-  return { label: auto ? "Auto ready" : "Off", className: auto ? "is-listed" : "is-off", runProof, fault, auto };
+  return { label: auto ? "Auto ready" : "Off", className: auto ? "is-listed" : "is-off", runProof, fault, auto, runInput, faultInput, autoInput };
 }
 
 function pumpLiveInputLabels(pumpCount = 2) {
@@ -17096,7 +17105,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const pumpDisplayStatus = (asset = {}, index = 0) => {
     const assignedController = pumpControllerForPump(controllers, asset);
     const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
-    return getPumpLiveStatus(assignedController, assignedPumpIndex) || pumpAssetStatus(asset);
+    return getPumpLiveStatus(assignedController, assignedPumpIndex, asset) || pumpAssetStatus(asset);
   };
   const statuses = pumps.map((asset, index) => pumpDisplayStatus(asset, index));
   const runningCount = statuses.filter((status) => status.className === "is-running").length;
@@ -17171,7 +17180,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const pumpTiles = pumps.map((asset, index) => {
     const assignedController = pumpControllerForPump(controllers, asset);
     const assignedPumpIndex = assignedController ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
-    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex);
+    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
     const status = liveStatus || pumpAssetStatus(asset);
     const due = getDueInfo(asset);
     const openIssueCount = openWorkOrdersForAsset(asset.id).length;
@@ -17320,7 +17329,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const asset = pumps[index] || null;
     const assignedController = asset ? pumpControllerForPump(controllers, asset) : null;
     const assignedPumpIndex = assignedController && asset ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
-    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex);
+    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
     const status = asset ? (liveStatus || pumpAssetStatus(asset)) : { label: "Off", className: "is-off" };
     const pumpRole = asset ? normalizePumpRole(asset.pumpRole || asset.role) : index === 0 ? "Lead" : "Lag";
     const isSelected = asset && selectedPumpHmiAssetId === asset.id;
@@ -17376,13 +17385,14 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const role = asset ? normalizePumpRole(asset.pumpRole || asset.role) : index === 0 ? "Lead" : "Lag";
     const assignedController = asset ? pumpControllerForPump(controllers, asset) : null;
     const assignedPumpIndex = assignedController && asset ? pumpControllerPumpIndex(assignedController, asset, pumps) : index;
-    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex);
+    const liveStatus = getPumpLiveStatus(assignedController, assignedPumpIndex, asset);
     const status = asset ? (liveStatus || pumpAssetStatus(asset)) : { label: "Not added", className: "is-off" };
     const label = asset?.name || `Sump Pump ${index + 1}`;
     const isSelected = asset && selectedPumpHmiAssetId === asset.id;
     const flow = asset?.flowGpm || asset?.flow || (status.className === "is-running" ? "Live" : "0 GPM");
     const runtime = asset?.runtimeHours || asset?.runtime || "--";
     const starts = asset?.startsToday || asset?.starts || "0";
+    const ioMapping = asset ? normalizePumpIoMapping(asset, assignedPumpIndex) : pumpHmiPumpIoAssignment(assignedPumpIndex);
     const statusLabel = status.className === "is-alarm"
       ? "FAULT"
       : status.className === "is-running"
@@ -17394,7 +17404,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const proofLabel = liveStatus
       ? (liveStatus.runProof ? "MADE" : "OPEN")
       : assignedController
-        ? `DI${(assignedPumpIndex * 3) + 1}`
+        ? ioMapping.runStatus || `DI${(assignedPumpIndex * 3) + 1}`
         : "NOT WIRED";
     return `
       <button

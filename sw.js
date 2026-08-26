@@ -1,15 +1,15 @@
-const SITEWORKS_SW_VERSION = "20260825-pump-scada-redesign-13";
+const SITEWORKS_SW_VERSION = "20260825-pump-card-live-fix-14";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260825-pump-scada-redesign-13",
+  "/styles.css?v=20260825-pump-card-live-fix-14",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/app.js?v=20260825-pump-scada-redesign-13",
-  "/manifest.webmanifest?v=20260825-pump-scada-redesign-13",
-  "/icons/siteworks-icon-192.png?v=20260825-pump-scada-redesign-13",
-  "/icons/siteworks-icon-512.png?v=20260825-pump-scada-redesign-13"
+  "/app.js?v=20260825-pump-card-live-fix-14",
+  "/manifest.webmanifest?v=20260825-pump-card-live-fix-14",
+  "/icons/siteworks-icon-192.png?v=20260825-pump-card-live-fix-14",
+  "/icons/siteworks-icon-512.png?v=20260825-pump-card-live-fix-14"
 ];
 
 self.addEventListener("install", (event) => {
