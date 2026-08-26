@@ -5382,7 +5382,7 @@ const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
 const SITEWORKS_API_MODE = "server";
 const STRUCTURED_DATA_SYNC_ENABLED = true;
-const SITEWORKS_APP_VERSION = "20260825-pump-live-refresh-10";
+const SITEWORKS_APP_VERSION = "20260825-pump-live-io-panel-11";
 const LIGHTING_CONTROLLERS_STORAGE_KEY = "siteworks_lighting_controllers_v1";
 const LIGHTING_ZONES_STORAGE_KEY = "siteworks_lighting_zones_v1";
 const LIGHTING_INPUTS_STORAGE_KEY = "siteworks_lighting_inputs_v1";
@@ -16649,6 +16649,65 @@ function formatPumpControllerLiveInputs(controller = {}) {
   return `${activeMask} | ${activeCount} active`;
 }
 
+function pumpLiveInputLabels(pumpCount = 2) {
+  const labels = {
+    DI1: "Pump 1 run proof",
+    DI2: "Pump 1 fault",
+    DI3: "Pump 1 HOA auto",
+    DI4: "Pump 2 run proof",
+    DI5: "Pump 2 fault",
+    DI6: "Pump 2 HOA auto",
+    DI7: pumpCount > 2 ? "Pump 3 run proof" : "High level",
+    DI8: pumpCount > 2 ? "Pump 3 fault" : "Low level"
+  };
+  return labels;
+}
+
+function renderPumpLiveIoPanel(controller = null) {
+  const liveInputs = getPumpControllerLiveInputs(controller || {});
+  const pumpCount = Math.max(1, Math.min(8, Number(controller?.pumpCount || 2) || 2));
+  const labels = pumpLiveInputLabels(pumpCount);
+  const activeMask = liveInputs?.activeMaskHex || "0x00";
+  const updatedAt = liveInputs?.updatedAt ? formatDateTime(liveInputs.updatedAt) : "Waiting for ESP";
+  const livePoints = Array.isArray(liveInputs?.points) ? liveInputs.points : [];
+  const pointByChannel = new Map(livePoints.map((point) => [String(point.channel || "").toUpperCase(), point]));
+  const inputTiles = Array.from({ length: 8 }, (_, index) => {
+    const channel = `DI${index + 1}`;
+    const point = pointByChannel.get(channel);
+    const active = Boolean(point?.active);
+    return `
+      <div class="pump-live-io-tile ${active ? "is-active" : "is-idle"}">
+        <span><i aria-hidden="true"></i>${channel}</span>
+        <strong>${escapeHtml(labels[channel] || "Spare input")}</strong>
+        <em>${active ? "Active" : "Inactive"}</em>
+      </div>
+    `;
+  }).join("");
+  const outputTiles = Array.from({ length: Math.min(2, pumpCount) }, (_, index) => {
+    const channel = `DO${index + 1}`;
+    return `
+      <div class="pump-live-io-tile is-disabled">
+        <span><i aria-hidden="true"></i>${channel}</span>
+        <strong>Pump ${index + 1} run command</strong>
+        <em>Planned only</em>
+      </div>
+    `;
+  }).join("");
+  return `
+    <section class="pump-live-io-panel" aria-label="Live pump I/O test">
+      <header>
+        <div>
+          <span>Live I/O test</span>
+          <strong>${escapeHtml(activeMask)}</strong>
+        </div>
+        <em>${escapeHtml(updatedAt)}</em>
+      </header>
+      <div class="pump-live-io-grid">${inputTiles}</div>
+      <div class="pump-live-output-grid">${outputTiles}</div>
+    </section>
+  `;
+}
+
 function pumpHmiPlannedPoints(controller = null, pumps = []) {
   const pumpCount = Math.max(1, Math.min(6, Number(controller?.pumpCount || 1) || 1));
   const points = [
@@ -17020,6 +17079,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const totalWarningCount = warningCount + diagramAlarmDevices.length;
   const alarmOn = totalWarningCount > 0;
   const plannedPoints = pumpHmiPlannedPoints(primaryController, primaryControllerPumps);
+  const liveIoPanel = renderPumpLiveIoPanel(primaryController);
   const pointTiles = plannedPoints.map((point) => `
     <div class="pump-hmi-point ${primaryController ? "is-ready" : ""} ${point.className || ""}">
       <span>${escapeHtml(point.type)}</span>
@@ -17714,9 +17774,10 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             </div>
           </section>
           ${diagramDeviceSetup}
+          ${liveIoPanel}
           <section class="pump-hmi-points" aria-label="Pump controller points">
             <header>
-              <span>Configured points</span>
+              <span>Planned I/O map</span>
               <strong>${primaryController ? `${plannedPoints.length} planned I/O` : "Setup placeholders"}</strong>
             </header>
             <div class="pump-hmi-point-grid">${pointTiles}</div>
