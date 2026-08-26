@@ -18174,13 +18174,18 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const autoSequenceBlocked = Array.isArray(autoSequence?.unavailablePumpReasons) && autoSequence.unavailablePumpReasons.length
     ? autoSequence.unavailablePumpReasons.join(", ")
     : "None";
+  const autoSequenceProofFailed = Array.isArray(autoSequence?.proofFailedPumpIndexes) && autoSequence.proofFailedPumpIndexes.length
+    ? autoSequence.proofFailedPumpIndexes.map((index) => `P-${Number(index) || index}`).join(", ")
+    : "None";
   const autoSequenceRows = `
     <div><span>Mode</span><strong>${autoSequence?.enabled === false ? "Disabled" : "Enabled"}</strong></div>
     <div><span>Status</span><strong>${escapeHtml(autoSequence?.status || "Waiting for ESP")}</strong></div>
     <div><span>Next Lead</span><strong>P-${escapeHtml(autoSequence?.nextLeadPumpIndex || 1)}</strong></div>
+    <div><span>Proof Timeout</span><strong>${escapeHtml(autoSequence?.proofTimeoutSeconds || 15)} sec</strong></div>
     <div><span>Low Float</span><strong>${autoSequence?.lowFloatActive ? "Active" : "Normal"}</strong></div>
     <div><span>High Float</span><strong>${autoSequence?.highFloatActive ? "Active" : "Normal"}</strong></div>
     <div><span>Commanded</span><strong>${escapeHtml(autoSequenceCommanded)}</strong></div>
+    <div><span>Proof Failed</span><strong>${escapeHtml(autoSequenceProofFailed)}</strong></div>
     <div><span>Unavailable</span><strong>${escapeHtml(autoSequenceBlocked)}</strong></div>
     <div><span>Last Action</span><strong>${escapeHtml(autoSequence?.lastReason || "None")}</strong></div>
   `;
