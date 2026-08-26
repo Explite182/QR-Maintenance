@@ -18148,7 +18148,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           <em>${escapeHtml(role)}</em>
         </span>
         <span class="pump-scada-pump-name">${escapeHtml(label)}</span>
-        <span class="pump-scada-pump-art" aria-hidden="true"></span>
+        <span class="pump-scada-pump-art" aria-hidden="true">
+          <img src="/assets/equipment/pump-centrifugal-blue.png" alt="" loading="lazy">
+        </span>
         <span class="pump-scada-readout is-status"><b>Status</b><i>${escapeHtml(statusLabel)}</i></span>
         <span class="pump-scada-readout"><b>HOA</b><i>${escapeHtml(hoaLabel)}</i></span>
         <span class="pump-scada-readout"><b>Lead/Lag</b><i>${escapeHtml(role)}</i></span>
@@ -18166,7 +18168,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     <span
       class="pump-scada-pit-pump ${["is-one", "is-two", "is-three"][index] || ""} ${pumps[index] ? pumpDisplayStatus(pumps[index], index).className : "is-off"}"
       style="left: ${pitPumpPosition(index)}%;"
-    ></span>
+    >
+      <img src="/assets/equipment/pump-centrifugal-blue.png" alt="" loading="lazy">
+    </span>
   `).join("");
   const scadaPitLabels = Array.from({ length: visualPumpCount }, (_, index) => `
     <span>P-${String(index + 1).padStart(2, "0")} <b>${escapeHtml(pumps[index] ? pumpDisplayStatus(pumps[index], index).label : "Off")}</b></span>
