@@ -18376,8 +18376,20 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   min-height: 120px;
 }
 
-.pump-scada-drawer.is-secondary {
+.pump-scada-support-drawers {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(160px, 1fr));
+  gap: 8px;
   margin-top: 12px;
+}
+
+.pump-scada-support-drawers > .pump-scada-drawer[open],
+.pump-scada-support-drawers > .pump-hmi-ddc-setup[open] {
+  grid-column: 1 / -1;
+}
+
+.pump-scada-drawer.is-secondary {
+  margin-top: 0;
 }
 
 .pump-scada-drawer summary {
@@ -18445,6 +18457,26 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   display: block;
 }
 
+.pump-scada-support-drawers .pump-hmi-ddc-setup {
+  margin: 0;
+  min-height: 44px;
+  border: 2px solid #252b2d;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #1a2226, #080d10);
+  overflow: hidden;
+}
+
+.pump-scada-support-drawers .pump-hmi-ddc-setup summary {
+  min-height: 42px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(180deg, #151b1f, #070a0c);
+}
+
+.pump-scada-support-drawers .pump-hmi-ddc-setup[open] {
+  min-height: 120px;
+}
+
 .pump-scada-drawer-body > div,
 .pump-scada-drawer-body .pump-scada-alarm-row {
   min-height: 32px;
@@ -18504,6 +18536,16 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   }
 
   .pump-scada-right {
+    grid-template-columns: 1fr;
+  }
+
+  .pump-scada-support-drawers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .pump-scada-support-drawers {
     grid-template-columns: 1fr;
   }
 }

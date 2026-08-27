@@ -19058,11 +19058,13 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <strong>${controllerOnlineCount > 0 ? "Live" : "Setup"}</strong>
             </footer>
           </section>
-          ${scadaDrawer("Station Details", stationDetailsBody, { key: "Pump station details", badge: alarmOn ? "Alarm" : "Normal", className: "is-wide is-secondary" })}
-          ${scadaDrawer("Equipment", pumpEquipmentBody, { key: "Pump equipment details", badge: `${pumps.length} pumps`, open: Boolean(selectedPump || selectedDiagramDevice), className: "is-wide is-secondary" })}
-          ${scadaDrawer("Live I/O", liveIoPanel, { key: "Pump live I/O", badge: primaryController ? primaryControllerStatus.label : "No controller", className: "is-wide is-secondary" })}
-          ${diagramDeviceSetup}
-          ${scadaDrawer("Controller Setup", controllerSetup, { key: "Pump controller setup", badge: controllers.length ? `${controllers.length} controller${controllers.length === 1 ? "" : "s"}` : "Add controller", open: Boolean(editingPumpControllerId || !controllers.length), className: "is-wide is-secondary" })}
+          <section class="pump-scada-support-drawers" aria-label="Pump setup and diagnostic drawers">
+            ${scadaDrawer("Station Details", stationDetailsBody, { key: "Pump station details", badge: alarmOn ? "Alarm" : "Normal", className: "is-wide is-secondary" })}
+            ${scadaDrawer("Equipment", pumpEquipmentBody, { key: "Pump equipment details", badge: `${pumps.length} pumps`, open: Boolean(selectedPump || selectedDiagramDevice), className: "is-wide is-secondary" })}
+            ${scadaDrawer("Live I/O", liveIoPanel, { key: "Pump live I/O", badge: primaryController ? primaryControllerStatus.label : "No controller", className: "is-wide is-secondary" })}
+            ${diagramDeviceSetup}
+            ${scadaDrawer("Controller Setup", controllerSetup, { key: "Pump controller setup", badge: controllers.length ? `${controllers.length} controller${controllers.length === 1 ? "" : "s"}` : "Add controller", open: Boolean(editingPumpControllerId || !controllers.length), className: "is-wide is-secondary" })}
+          </section>
         </main>
       </div>
       <aside class="pump-hmi-side">
