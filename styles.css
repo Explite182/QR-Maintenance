@@ -1948,6 +1948,13 @@ textarea:disabled {
   box-shadow: 0 0 12px rgba(45, 212, 191, 0.44);
 }
 
+.hvac-stage-dots i.is-active {
+  border-color: rgba(74, 222, 128, 0.95);
+  color: #052e16;
+  background: #4ade80;
+  box-shadow: 0 0 16px rgba(74, 222, 128, 0.7);
+}
+
 .hvac-fan-section {
   background: radial-gradient(circle at center, rgba(15, 23, 42, 0.2), rgba(2, 6, 23, 0.68));
 }
@@ -5892,7 +5899,8 @@ textarea:disabled {
   resize: vertical;
 }
 
-.pump-controller-key-row {
+.pump-controller-key-row,
+.hvac-controller-key-row {
   display: grid;
   grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1.4fr) minmax(120px, auto);
   grid-column: 1 / -1;
@@ -5901,19 +5909,22 @@ textarea:disabled {
   min-width: 0;
 }
 
-.pump-controller-key-row span {
+.pump-controller-key-row span,
+.hvac-controller-key-row span {
   grid-column: 1 / -1;
   color: #9fb5b4;
   font-size: 11px;
   font-weight: 900;
 }
 
-.pump-generated-key {
+.pump-generated-key,
+.hvac-generated-key {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   letter-spacing: 0;
 }
 
-.pump-controller-io-preview {
+.pump-controller-io-preview,
+.hvac-controller-io-preview {
   display: grid;
   grid-column: 1 / -1;
   gap: 4px;
@@ -5925,11 +5936,13 @@ textarea:disabled {
   color: #dffdf8;
 }
 
-.pump-controller-io-preview strong {
+.pump-controller-io-preview strong,
+.hvac-controller-io-preview strong {
   color: #f8fafc;
 }
 
-.pump-controller-io-preview span {
+.pump-controller-io-preview span,
+.hvac-controller-io-preview span {
   color: #9fb5b4;
   font-weight: 900;
 }
@@ -6181,7 +6194,8 @@ textarea:disabled {
     justify-content: flex-start;
   }
 
-  .pump-controller-key-row {
+  .pump-controller-key-row,
+  .hvac-controller-key-row {
     grid-template-columns: 1fr;
   }
 }

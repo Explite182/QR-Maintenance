@@ -3979,6 +3979,10 @@ function generatePumpApiKey() {
   return generateMonitoringApiKey().replace(/^swm_/, "swp_");
 }
 
+function generateHvacApiKey() {
+  return generateMonitoringApiKey().replace(/^swm_/, "swh_");
+}
+
 function getPumpApiKeyFormId(form = null) {
   const editId = String(form?.dataset?.pumpControllerForm || "").trim();
   const scopeKey = getPumpControllerScopeKey?.() || `${selectedCustomerId || ""}:${selectedLocationId || ""}`;
@@ -4043,6 +4047,73 @@ function applyPendingPumpApiKeyToForm(form = null) {
 function restorePendingPumpApiKeyForms() {
   document.querySelectorAll("[data-pump-controller-form]").forEach((form) => {
     applyPendingPumpApiKeyToForm(form);
+  });
+}
+
+function getHvacApiKeyFormId(form = null) {
+  const editId = String(form?.dataset?.hvacControllerForm || "").trim();
+  const scopeKey = getHvacControllerScopeKey?.() || `${selectedCustomerId || ""}:${selectedLocationId || ""}`;
+  return editId ? `edit:${editId}` : `new:${scopeKey}`;
+}
+
+function readPendingHvacApiKey() {
+  if (pendingHvacApiKey?.key) return pendingHvacApiKey;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(HVAC_PENDING_API_KEY_STORAGE_KEY) || "null");
+    if (saved?.key) {
+      pendingHvacApiKey = saved;
+      return saved;
+    }
+  } catch {
+    pendingHvacApiKey = null;
+  }
+  return null;
+}
+
+function savePendingHvacApiKey(form, key) {
+  pendingHvacApiKey = {
+    formId: getHvacApiKeyFormId(form),
+    key: String(key || ""),
+    savedAt: new Date().toISOString()
+  };
+  try {
+    sessionStorage.setItem(HVAC_PENDING_API_KEY_STORAGE_KEY, JSON.stringify(pendingHvacApiKey));
+  } catch {
+    // Session storage only keeps generated keys visible across refreshes.
+  }
+}
+
+function clearPendingHvacApiKey(form = null) {
+  const current = readPendingHvacApiKey();
+  const formId = form ? getHvacApiKeyFormId(form) : "";
+  if (formId && current?.formId && current.formId !== formId) return;
+  pendingHvacApiKey = null;
+  try {
+    sessionStorage.removeItem(HVAC_PENDING_API_KEY_STORAGE_KEY);
+  } catch {
+    // Nothing else to clean up.
+  }
+}
+
+function applyPendingHvacApiKeyToForm(form = null) {
+  if (!form) return;
+  const pending = readPendingHvacApiKey();
+  if (!pending?.key || pending.formId !== getHvacApiKeyFormId(form)) return;
+  const input = form.querySelector("input[name='apiKey']");
+  const output = form.querySelector("[data-hvac-generated-key]");
+  const status = form.querySelector("[data-hvac-generated-key-status]");
+  const copyButton = form.querySelector("[data-hvac-copy-key]");
+  const generateButton = form.querySelector("[data-hvac-generate-key]");
+  if (input && !input.value) input.value = pending.key;
+  if (output && !output.value) output.value = pending.key;
+  if (status) status.textContent = "Generated key restored from this browser session. Copy it before saving.";
+  if (copyButton) copyButton.disabled = false;
+  if (generateButton) generateButton.textContent = "Generate New API Key";
+}
+
+function restorePendingHvacApiKeyForms() {
+  document.querySelectorAll("[data-hvac-controller-form]").forEach((form) => {
+    applyPendingHvacApiKeyToForm(form);
   });
 }
 
@@ -5403,11 +5474,15 @@ const PUMP_PENDING_API_KEY_STORAGE_KEY = "siteworks_pump_pending_api_key_v1";
 const PUMP_DEVICE_CONFIG_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/pumps/device/config`;
 const PUMP_DEVICE_HEARTBEAT_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/pumps/device/heartbeat`;
 const PUMP_DEVICE_COMMANDS_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/pumps/device/commands`;
+const HVAC_PENDING_API_KEY_STORAGE_KEY = "siteworks_hvac_pending_api_key_v1";
+const HVAC_DEVICE_CONFIG_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/hvac/device/config`;
+const HVAC_DEVICE_HEARTBEAT_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/hvac/device/heartbeat`;
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
 const LIGHTING_LIVE_REFRESH_INTERVAL_MS = 5000;
 const PUMP_LIVE_REFRESH_INTERVAL_MS = 2000;
+const HVAC_LIVE_REFRESH_INTERVAL_MS = 5000;
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
@@ -5457,7 +5532,9 @@ let editingHvacControllerId = "";
 let hvacControllersCache = [];
 let hvacControllersLoadedScope = "";
 let hvacControllersLoading = false;
+let hvacLiveRefreshActive = false;
 let pendingPumpApiKey = null;
+let pendingHvacApiKey = null;
 let selectedPumpHmiAssetId = "";
 let selectedPumpDiagramDeviceId = "";
 const openPumpScadaDrawers = new Set();
@@ -6371,11 +6448,18 @@ window.setInterval(refreshSiteMapMonitorMode, 30000);
 window.setInterval(renderLightingScheduleClock, 1000);
 window.setInterval(refreshLightingLiveStatus, LIGHTING_LIVE_REFRESH_INTERVAL_MS);
 window.setInterval(refreshPumpLiveStatus, PUMP_LIVE_REFRESH_INTERVAL_MS);
+window.setInterval(refreshHvacLiveStatus, HVAC_LIVE_REFRESH_INTERVAL_MS);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) refreshPumpLiveStatus();
+  if (!document.hidden) {
+    refreshPumpLiveStatus();
+    refreshHvacLiveStatus();
+  }
 });
-window.addEventListener("focus", refreshPumpLiveStatus);
+window.addEventListener("focus", () => {
+  refreshPumpLiveStatus();
+  refreshHvacLiveStatus();
+});
 initPasswordRecoveryFromUrl();
 
 window.addEventListener("hashchange", () => {
@@ -9433,6 +9517,46 @@ document.addEventListener("click", async (event) => {
       if (status) status.textContent = "Copied. Paste this into the ESP32 setup page.";
       setTimeout(() => {
         pumpControllerCopyKeyButton.textContent = "Copy API Key";
+      }, 1600);
+    });
+    return;
+  }
+
+  const hvacControllerGenerateKeyButton = event.target.closest("[data-hvac-generate-key]");
+  if (hvacControllerGenerateKeyButton) {
+    event.preventDefault();
+    const form = hvacControllerGenerateKeyButton.closest("form");
+    const input = form?.querySelector("input[name='apiKey']");
+    const output = form?.querySelector("[data-hvac-generated-key]");
+    const status = form?.querySelector("[data-hvac-generated-key-status]");
+    const newKey = generateHvacApiKey();
+    if (input) input.value = newKey;
+    if (output) output.value = newKey;
+    if (form) savePendingHvacApiKey(form, newKey);
+    if (status) status.textContent = "New API key. Copy it before saving; only the ending is shown later.";
+    hvacControllerGenerateKeyButton.textContent = "Generate New API Key";
+    const copyButton = form?.querySelector("[data-hvac-copy-key]");
+    if (copyButton) copyButton.disabled = false;
+    return;
+  }
+
+  const hvacControllerCopyKeyButton = event.target.closest("[data-hvac-copy-key]");
+  if (hvacControllerCopyKeyButton) {
+    event.preventDefault();
+    const form = hvacControllerCopyKeyButton.closest("form");
+    const output = form?.querySelector("[data-hvac-generated-key]");
+    const status = form?.querySelector("[data-hvac-generated-key-status]");
+    const key = String(output?.value || form?.querySelector("input[name='apiKey']")?.value || "").trim();
+    if (!key) {
+      if (status) status.textContent = "Generate a key first.";
+      return;
+    }
+    output?.select?.();
+    copyText(key).then(() => {
+      hvacControllerCopyKeyButton.textContent = "Copied";
+      if (status) status.textContent = "Copied. Paste this into the ESP32 HVAC setup page.";
+      setTimeout(() => {
+        hvacControllerCopyKeyButton.textContent = "Copy API Key";
       }, 1600);
     });
     return;
@@ -19161,6 +19285,14 @@ function normalizeHvacController(controller = {}) {
     equipmentIds: equipmentIds.map((id) => String(id || "").trim()).filter(Boolean),
     mode: controller.mode || "Setup only",
     status: controller.status || "Setup only",
+    onlineStatus: controller.onlineStatus || controller.online_status || data.onlineStatus || data.online_status || "setup",
+    firmwareVersion: controller.firmwareVersion || controller.firmware_version || data.firmwareVersion || data.firmware_version || "",
+    lastSeenAt: controller.lastSeenAt || controller.last_seen_at || data.lastSeenAt || data.last_seen_at || "",
+    ipAddress: controller.ipAddress || controller.ip_address || data.ipAddress || data.ip_address || data.ip || data.lastNetwork?.ip || "",
+    macAddress: controller.macAddress || controller.mac_address || data.macAddress || data.mac_address || data.mac || data.lastNetwork?.mac || "",
+    networkType: controller.networkType || controller.network_type || data.networkType || data.network_type || data.lastNetwork?.type || "",
+    uptimeMs: controller.uptimeMs || controller.uptime_ms || data.uptimeMs || data.uptime_ms || data.lastNetwork?.uptimeMs || "",
+    apiKeyLast4: data.apiKeyLast4 || data.api_key_last4 || controller.apiKeyLast4 || controller.api_key_last4 || "",
     notes: controller.notes || "",
     points: {
       fanCommand: pointsSource.fanCommand || controller.fanCommandOutput || "DO1",
@@ -19226,6 +19358,17 @@ async function loadHvacControllersForCurrentScope(force = false) {
   }
 }
 
+async function refreshHvacLiveStatus() {
+  const scopeKey = getHvacControllerScopeKey();
+  if (!scopeKey || editingHvacControllerId || hvacControllersLoading) return;
+  hvacLiveRefreshActive = true;
+  try {
+    await loadHvacControllersForCurrentScope(true);
+  } finally {
+    hvacLiveRefreshActive = false;
+  }
+}
+
 function hvacControllersForCurrentView() {
   const scopeKey = getHvacControllerScopeKey();
   const controllers = scopeKey && hvacControllersLoadedScope === scopeKey
@@ -19256,10 +19399,30 @@ function defaultHvacTemplateId(customerId = "") {
 }
 
 function hvacControllerStatus(controller = {}) {
+  const onlineStatus = String(controller.onlineStatus || controller.online_status || "").toLowerCase();
+  const lastSeenMs = Date.parse(controller.lastSeenAt || controller.last_seen_at || "");
+  if (onlineStatus === "online" && Number.isFinite(lastSeenMs) && Date.now() - lastSeenMs <= LIGHTING_CONTROLLER_ONLINE_WINDOW_MS) {
+    return { label: "Online", className: "is-running" };
+  }
+  if (onlineStatus === "online") return { label: "Last seen", className: "is-info" };
   const mode = String(controller.mode || controller.status || "Setup only").toLowerCase();
   if (mode.includes("control")) return { label: "Control ready", className: "is-running" };
   if (mode.includes("monitor")) return { label: "Monitoring ready", className: "is-info" };
   return { label: "Setup only", className: "is-info" };
+}
+
+function hvacLiveChannelActive(controller = {}, collectionName = "inputs", channel = "") {
+  const liveHvac = controller?.data?.liveHvac && typeof controller.data.liveHvac === "object" ? controller.data.liveHvac : {};
+  const points = Array.isArray(liveHvac[collectionName]) ? liveHvac[collectionName] : [];
+  const target = String(channel || "").trim().toUpperCase();
+  if (!target) return false;
+  return Boolean(points.find((point) => String(point.channel || "").toUpperCase() === target)?.active);
+}
+
+function hvacActiveStageCount(controller = {}, prefix = "heatStage", count = 0) {
+  return Array.from({ length: count }, (_, index) => controller?.points?.[`${prefix}${index + 1}`] || "")
+    .filter((channel) => hvacLiveChannelActive(controller, "outputs", channel))
+    .length;
 }
 
 function hvacControllerAssignedEquipment(controller = {}, equipment = []) {
@@ -19471,6 +19634,21 @@ function renderHvacControllerForm(controller = null) {
       <label>Notes
         <textarea name="notes" placeholder="RTU, MAU, thermostat, safeties, or wiring notes">${escapeHtml(controller?.notes || "")}</textarea>
       </label>
+      <label>API key
+        <input name="apiKey" type="password" placeholder="${controller?.apiKeyLast4 ? `Leave blank to keep key ending ${escapeAttribute(controller.apiKeyLast4)}` : "Generate or paste HVAC controller key"}">
+      </label>
+      <div class="hvac-controller-key-row">
+        <button type="button" class="secondary" data-hvac-generate-key>Generate HVAC API Key</button>
+        <input data-hvac-generated-key class="hvac-generated-key" type="text" readonly placeholder="Generated key appears here">
+        <button type="button" class="secondary" data-hvac-copy-key disabled>Copy API Key</button>
+        <span data-hvac-generated-key-status>${controller?.apiKeyLast4 ? `Current key ends ${escapeHtml(controller.apiKeyLast4)}` : "Shown once after generation."}</span>
+      </div>
+      <div class="hvac-controller-io-preview">
+        <strong>ESP32 setup values</strong>
+        <span>Config: ${escapeHtml(HVAC_DEVICE_CONFIG_URL)}</span>
+        <span>Heartbeat: ${escapeHtml(HVAC_DEVICE_HEARTBEAT_URL)}</span>
+        <span>I/O map: Fan command, fan proof, stages, damper, safeties, and temperatures follow the point map below.</span>
+      </div>
       <div class="hvac-point-map">
         <strong>Planned HVAC points</strong>
         ${pointFields.map(([name, label, fallback]) => `
@@ -19497,6 +19675,13 @@ async function saveHvacControllerFromForm(form) {
   const existingControllerId = form.dataset.hvacControllerForm || "";
   const existing = getHvacControllers().find((controller) => controller.id === existingControllerId);
   const equipmentIds = formData.getAll("equipmentIds").map((id) => String(id || "").trim()).filter(Boolean);
+  const apiKey = String(formData.get("apiKey") || "").trim();
+  const keyStatus = form.querySelector("[data-hvac-generated-key-status]");
+  if (apiKey && apiKey.length < 16) {
+    if (keyStatus) keyStatus.textContent = "HVAC API key must be at least 16 characters.";
+    return;
+  }
+  const apiKeyHash = apiKey ? await hashMonitoringApiKey(apiKey) : "";
   const now = new Date().toISOString();
   const heatStageCount = Math.max(0, Math.min(4, Number(formData.get("heatStageCount") || 1) || 0));
   const coolStageCount = Math.max(0, Math.min(4, Number(formData.get("coolStageCount") || 1) || 0));
@@ -19536,12 +19721,14 @@ async function saveHvacControllerFromForm(form) {
     equipmentIds,
     mode: String(formData.get("mode") || "Setup only").trim(),
     status: String(formData.get("mode") || "Setup only").trim(),
+    apiKeyLast4: apiKey ? apiKey.slice(-4) : existing?.apiKeyLast4,
     notes: String(formData.get("notes") || "").trim(),
     data: {
       ...(existing?.data || {}),
       equipmentIds,
       heatStageCount,
       coolStageCount,
+      ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: apiKey.slice(-4) } : {}),
       points
     },
     createdAt: existing?.createdAt || now,
@@ -19573,14 +19760,17 @@ async function saveHvacControllerFromForm(form) {
         equipmentIds: controller.equipmentIds,
         heatStageCount: controller.heatStageCount,
         coolStageCount: controller.coolStageCount,
+        ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: controller.apiKeyLast4 } : {}),
         points: controller.points
       }
     });
     if (!response.ok) throw new Error(`HVAC controller save failed: ${response.status}`);
     const payload = await response.json();
     saveLocalHvacController(payload.controller || controller);
+    if (apiKey) clearPendingHvacApiKey(form);
   } catch (error) {
     console.warn("HVAC controller could not be saved to the server.", error);
+    if (keyStatus) keyStatus.textContent = "Saved locally. Server save failed, so check account permission or connection before commissioning.";
     saveLocalHvacController(controller);
   }
   addActivity("HVAC controller saved", controller.name);
@@ -19608,6 +19798,9 @@ function renderAutomationHvac() {
   const panel = document.querySelector("#automationHvacPanel .hvac-hmi-panel");
   const count = document.querySelector("#automationHvacPanel .section-title span");
   if (!panel) return;
+  const openHvacDrawers = new Set(Array.from(panel.querySelectorAll(".hvac-drawer[open] summary span"))
+    .map((item) => String(item.textContent || "").trim())
+    .filter(Boolean));
   const scopeKey = getHvacControllerScopeKey();
   if (scopeKey && hvacControllersLoadedScope !== scopeKey && !hvacControllersLoading) {
     loadHvacControllersForCurrentScope();
@@ -19623,8 +19816,26 @@ function renderAutomationHvac() {
   const coolStageCount = Math.max(0, Math.min(4, Number(primaryController?.coolStageCount || primaryController?.data?.coolStageCount || 1) || 0));
   const heatStageLabel = heatStageCount === 1 ? "1 Stage" : `${heatStageCount} Stages`;
   const coolStageLabel = coolStageCount === 1 ? "1 Stage" : `${coolStageCount} Stages`;
-  const heatStageDots = [1, 2, 3, 4].map((stage) => `<i class="${stage <= heatStageCount ? "is-configured" : ""}">${stage}</i>`).join("");
-  const coolStageDots = [1, 2, 3, 4].map((stage) => `<i class="${stage <= coolStageCount ? "is-configured" : ""}">${stage}</i>`).join("");
+  const liveHvac = primaryController?.data?.liveHvac && typeof primaryController.data.liveHvac === "object" ? primaryController.data.liveHvac : {};
+  const fanCommandActive = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.fanCommand || "");
+  const fanProofActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
+  const activeHeatStages = hvacActiveStageCount(primaryController, "heatStage", heatStageCount);
+  const activeCoolStages = hvacActiveStageCount(primaryController, "coolStage", coolStageCount);
+  const heatStageDots = [1, 2, 3, 4].map((stage) => {
+    const active = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.[`heatStage${stage}`] || "");
+    return `<i class="${[stage <= heatStageCount ? "is-configured" : "", active ? "is-active" : ""].filter(Boolean).join(" ")}">${stage}</i>`;
+  }).join("");
+  const coolStageDots = [1, 2, 3, 4].map((stage) => {
+    const active = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.[`coolStage${stage}`] || "");
+    return `<i class="${[stage <= coolStageCount ? "is-configured" : "", active ? "is-active" : ""].filter(Boolean).join(" ")}">${stage}</i>`;
+  }).join("");
+  const runningUnits = fanCommandActive || fanProofActive ? 1 : 0;
+  const liveMode = liveHvac.mode || primaryEquipment?.hvacMode || "Auto";
+  const liveOccupancy = liveHvac.occupancy || primaryEquipment?.hvacOccupancy || "Unoccupied";
+  const temperatureValue = (name) => {
+    const value = liveHvac.temperatures?.[name] ?? liveHvac.analog?.[name] ?? "";
+    return value === "" || value === null || value === undefined ? "--" : `${value}`;
+  };
   const shouldShowForm = Boolean(editingHvacControllerId || !controllers.length);
   const editingController = editingHvacControllerId && editingHvacControllerId !== "__new__"
     ? controllers.find((controller) => controller.id === editingHvacControllerId)
@@ -19712,17 +19923,17 @@ function renderAutomationHvac() {
               </div>
               <div class="hvac-section hvac-coil-section is-cooling">
                 <span>Cooling Coil</span>
-                <strong>${escapeHtml(coolStageLabel)}</strong>
+                <strong>${escapeHtml(activeCoolStages ? `${activeCoolStages} Active` : coolStageLabel)}</strong>
                 <div class="hvac-stage-dots" aria-label="Cooling stage configuration">${coolStageDots}</div>
               </div>
               <div class="hvac-section hvac-coil-section is-heating">
                 <span>Heating Coil</span>
-                <strong>${escapeHtml(heatStageLabel)}</strong>
+                <strong>${escapeHtml(activeHeatStages ? `${activeHeatStages} Active` : heatStageLabel)}</strong>
                 <div class="hvac-stage-dots" aria-label="Heating stage configuration">${heatStageDots}</div>
               </div>
               <div class="hvac-section hvac-fan-section">
                 <span>Supply Fan</span>
-                <strong>Stopped</strong>
+                <strong>${escapeHtml(fanProofActive ? "Running" : fanCommandActive ? "Commanded" : "Stopped")}</strong>
                 <div class="hvac-fan-wheel" aria-hidden="true"><i></i></div>
               </div>
             </div>
@@ -19734,15 +19945,20 @@ function renderAutomationHvac() {
           </div>
         </section>
         <aside class="hvac-status-panel" aria-label="HVAC status points">
-          <header><span>Unit Status</span><strong>0 Running</strong></header>
+          <header><span>Unit Status</span><strong>${runningUnits} Running</strong></header>
           <div><span>Controller</span><strong>${escapeHtml(primaryController?.name || "Not added")}</strong></div>
           <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
-          <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand || "Not mapped")}</strong></div>
-          <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof || "Not mapped")}</strong></div>
+          <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped")}</strong></div>
+          <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
           <div><span>Heating Stages</span><strong>${escapeHtml(heatStageLabel)}</strong></div>
           <div><span>Cooling Stages</span><strong>${escapeHtml(coolStageLabel)}</strong></div>
-          <div><span>Mode</span><strong>Auto</strong></div>
-          <div><span>Occupancy</span><strong>Unoccupied</strong></div>
+          <div><span>Mode</span><strong>${escapeHtml(liveMode)}</strong></div>
+          <div><span>Occupancy</span><strong>${escapeHtml(liveOccupancy)}</strong></div>
+          <div><span>Live I/O</span><strong>${escapeHtml(liveHvac.inputMaskHex || "--")} / ${escapeHtml(liveHvac.outputMaskHex || "--")}</strong></div>
+          <div><span>Space Temp</span><strong>${escapeHtml(temperatureValue("space"))}</strong></div>
+          <div><span>Supply Temp</span><strong>${escapeHtml(temperatureValue("supply"))}</strong></div>
+          <div><span>Last Seen</span><strong>${escapeHtml(formatDateTime(primaryController?.lastSeenAt) || "Never")}</strong></div>
+          <div><span>IP</span><strong>${escapeHtml(primaryController?.ipAddress || "Not seen")}</strong></div>
           <div><span>Safety Chain</span><strong>Not wired</strong></div>
           <div><span>Smoke Shutdown</span><strong>Not wired</strong></div>
         </aside>
@@ -19771,6 +19987,13 @@ function renderAutomationHvac() {
       </section>
     </section>
   `;
+  if (openHvacDrawers.size) {
+    panel.querySelectorAll(".hvac-drawer").forEach((drawer) => {
+      const label = String(drawer.querySelector("summary span")?.textContent || "").trim();
+      drawer.open = openHvacDrawers.has(label);
+    });
+  }
+  restorePendingHvacApiKeyForms();
 }
 
 function renderAutomationPumps() {
