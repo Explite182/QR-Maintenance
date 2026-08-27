@@ -17850,9 +17850,11 @@ function renderPumpDiagramDeviceSetup(locationRecord = null, devices = []) {
     `;
   }
   const hasDevices = devices.length > 0;
+  const drawerKey = "SiteWorks pump points";
+  const shouldOpen = touchedPumpScadaDrawers.has(drawerKey) ? openPumpScadaDrawers.has(drawerKey) : !hasDevices;
   return `
     <section class="pump-hmi-ddc-setup ${hasDevices ? "" : "is-empty"}">
-      <details ${hasDevices ? "" : "open"}>
+      <details data-pump-scada-drawer="${escapeAttribute(drawerKey)}"${shouldOpen ? " open" : ""}>
         <summary>
           <span>${hasDevices ? "SiteWorks pump points" : "+ Add Pump Point"}</span>
           <strong>${devices.length}</strong>
@@ -18343,6 +18345,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       class="pump-scada-pit-pump ${["is-one", "is-two", "is-three"][index] || ""} ${pumps[index] ? pumpDisplayStatus(pumps[index], index).className : "is-off"}"
       style="left: ${pitPumpPosition(index)}%;"
     >
+      <span class="pump-scada-pit-pump-label">
+        <strong>P-${String(index + 1).padStart(2, "0")}</strong>
+        <em>${escapeHtml(pumps[index] ? pumpDisplayStatus(pumps[index], index).label : "Off")}</em>
+      </span>
+      <span class="pump-scada-pit-run-lamp" aria-hidden="true"></span>
       <img src="${escapeAttribute(PUMP_EQUIPMENT_IMAGE_SRC)}" alt="" width="1536" height="1024" loading="eager" decoding="sync" fetchpriority="high">
     </span>
   `).join("");
@@ -18686,11 +18693,6 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
             </aside>
             <section class="pump-scada-pit" aria-label="Sump pit front section">
               <header>Sump Pit Front Section</header>
-              <div class="pump-scada-level">
-                <span>Pit Level</span>
-                <strong>${escapeHtml(pitLevelLabel)}</strong>
-                <em>Float based</em>
-              </div>
               <div class="pump-scada-pit-vessel" aria-hidden="true" style="--pit-water-level: ${pitWaterPercent}%;">
                 <span class="pump-scada-water"></span>
                 <span class="pump-scada-pit-mark is-high">HIGH FLOAT</span>
