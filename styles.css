@@ -2132,7 +2132,8 @@ textarea:disabled {
 .hvac-controller-form input,
 .hvac-controller-form select,
 .hvac-controller-form textarea,
-.hvac-point-map input {
+.hvac-point-map input,
+.hvac-point-map select {
   width: 100%;
   min-height: 38px;
   border: 1px solid #29363b;
@@ -2164,6 +2165,61 @@ textarea:disabled {
 
 .hvac-point-map > strong {
   grid-column: 1 / -1;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.hvac-point-map > strong:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.hvac-point-live-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  padding: 0;
+}
+
+.hvac-point-live {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  min-height: 54px;
+  padding: 9px 10px;
+  border: 1px solid #263033;
+  border-radius: 3px;
+  background: rgba(3, 7, 10, 0.74);
+}
+
+.hvac-point-live b,
+.hvac-point-live i,
+.hvac-point-live strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-style: normal;
+}
+
+.hvac-point-live b {
+  color: #d7edf4;
+  font-size: 0.74rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-point-live i {
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.hvac-point-live strong {
+  grid-column: 1 / -1;
+  color: #ffffff;
+  font-size: 0.86rem;
+  font-weight: 950;
 }
 
 .hvac-controller-equipment-picker {

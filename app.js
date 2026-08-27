@@ -19309,6 +19309,8 @@ function normalizeHvacController(controller = {}) {
       filter: pointsSource.filter || controller.filterInput || "DI2",
       freezestat: pointsSource.freezestat || controller.freezestatInput || "DI3",
       smoke: pointsSource.smoke || controller.smokeInput || "DI4",
+      occupied: pointsSource.occupied || controller.occupiedInput || "DI5",
+      fault: pointsSource.fault || controller.faultInput || "DI6",
       supplyTemp: pointsSource.supplyTemp || controller.supplyTempInput || "AI1",
       returnTemp: pointsSource.returnTemp || controller.returnTempInput || "AI2",
       outsideTemp: pointsSource.outsideTemp || controller.outsideTempInput || "AI3",
@@ -19417,6 +19419,32 @@ function hvacLiveChannelActive(controller = {}, collectionName = "inputs", chann
   const target = String(channel || "").trim().toUpperCase();
   if (!target) return false;
   return Boolean(points.find((point) => String(point.channel || "").toUpperCase() === target)?.active);
+}
+
+function hvacChannelOptions(kind = "DI") {
+  const type = String(kind || "DI").toUpperCase();
+  const count = type === "DO" || type === "DI" ? 8 : 4;
+  return ["", ...Array.from({ length: count }, (_, index) => `${type}${index + 1}`)];
+}
+
+function renderHvacPointSelect(name, label, fallback, kind, controller = null) {
+  const current = String(controller?.points?.[name] || fallback || "").trim().toUpperCase();
+  return `
+    <label>${escapeHtml(label)}
+      <select name="${escapeAttribute(name)}">
+        ${hvacChannelOptions(kind).map((channel) => `
+          <option value="${escapeAttribute(channel)}" ${channel === current ? "selected" : ""}>${escapeHtml(channel || "Not mapped")}</option>
+        `).join("")}
+      </select>
+    </label>
+  `;
+}
+
+function hvacMappedPointState(controller = {}, pointName = "", collectionName = "inputs") {
+  const channel = String(controller?.points?.[pointName] || "").trim().toUpperCase();
+  if (!channel) return { channel: "", label: "Not mapped", active: false, className: "is-unmapped" };
+  const active = hvacLiveChannelActive(controller, collectionName, channel);
+  return { channel, label: active ? "Active" : "Inactive", active, className: active ? "is-active" : "is-inactive" };
 }
 
 function hvacActiveStageCount(controller = {}, prefix = "heatStage", count = 0) {
@@ -19565,25 +19593,31 @@ function renderHvacControllerForm(controller = null) {
       <span>Create equipment now, or add equipment later and edit this controller.</span>
     </div>
   `;
-  const pointFields = [
-    ["fanCommand", "Fan command", "DO1"],
-    ["fanProof", "Fan proof", "DI1"],
-    ["heatStage1", "Heat stage 1", "DO2"],
-    ["coolStage1", "Cool stage 1", "DO3"],
-    ["heatStage2", "Heat stage 2", "DO4"],
-    ["coolStage2", "Cool stage 2", "DO5"],
-    ["heatStage3", "Heat stage 3", "DO6"],
-    ["coolStage3", "Cool stage 3", "DO7"],
-    ["heatStage4", "Heat stage 4", "DO8"],
-    ["coolStage4", "Cool stage 4", "DO9"],
-    ["damper", "OA damper", "AO1"],
-    ["filter", "Filter", "DI2"],
-    ["freezestat", "Freezestat", "DI3"],
-    ["smoke", "Smoke shutdown", "DI4"],
-    ["supplyTemp", "Supply temp", "AI1"],
-    ["returnTemp", "Return temp", "AI2"],
-    ["outsideTemp", "Outside temp", "AI3"],
-    ["spaceTemp", "Space temp", "AI4"]
+  const outputPointFields = [
+    ["fanCommand", "Fan command", "DO1", "DO"],
+    ["heatStage1", "Heat stage 1", "DO2", "DO"],
+    ["coolStage1", "Cool stage 1", "DO3", "DO"],
+    ["heatStage2", "Heat stage 2", "DO4", "DO"],
+    ["coolStage2", "Cool stage 2", "DO5", "DO"],
+    ["heatStage3", "Heat stage 3", "DO6", "DO"],
+    ["coolStage3", "Cool stage 3", "DO7", "DO"],
+    ["heatStage4", "Heat stage 4", "DO8", "DO"],
+    ["coolStage4", "Cool stage 4", "", "DO"],
+    ["damper", "OA damper", "", "DO"]
+  ];
+  const inputPointFields = [
+    ["fanProof", "Fan proof", "DI1", "DI"],
+    ["filter", "Filter status", "DI2", "DI"],
+    ["freezestat", "Freezestat", "DI3", "DI"],
+    ["smoke", "Smoke shutdown", "DI4", "DI"],
+    ["occupied", "Occupied input", "DI5", "DI"],
+    ["fault", "Fault / alarm input", "DI6", "DI"]
+  ];
+  const temperaturePointFields = [
+    ["supplyTemp", "Supply temp", "AI1", "AI"],
+    ["returnTemp", "Return temp", "AI2", "AI"],
+    ["outsideTemp", "Outside temp", "AI3", "AI"],
+    ["spaceTemp", "Space temp", "AI4", "AI"]
   ];
   return `
     <form class="hvac-controller-form" data-hvac-controller-form="${escapeAttribute(controller?.id || "")}">
@@ -19647,15 +19681,15 @@ function renderHvacControllerForm(controller = null) {
         <strong>ESP32 setup values</strong>
         <span>Config: ${escapeHtml(HVAC_DEVICE_CONFIG_URL)}</span>
         <span>Heartbeat: ${escapeHtml(HVAC_DEVICE_HEARTBEAT_URL)}</span>
-        <span>I/O map: Fan command, fan proof, stages, damper, safeties, and temperatures follow the point map below.</span>
+        <span>I/O map: Fan command, stages, proof, safeties, occupied status, and temperatures follow the point map below.</span>
       </div>
       <div class="hvac-point-map">
-        <strong>Planned HVAC points</strong>
-        ${pointFields.map(([name, label, fallback]) => `
-          <label>${escapeHtml(label)}
-            <input name="${escapeAttribute(name)}" value="${escapeAttribute(controller?.points?.[name] || fallback)}">
-          </label>
-        `).join("")}
+        <strong>HVAC output mapping</strong>
+        ${outputPointFields.map(([name, label, fallback, kind]) => renderHvacPointSelect(name, label, fallback, kind, controller)).join("")}
+        <strong>HVAC input mapping</strong>
+        ${inputPointFields.map(([name, label, fallback, kind]) => renderHvacPointSelect(name, label, fallback, kind, controller)).join("")}
+        <strong>HVAC temperature mapping</strong>
+        ${temperaturePointFields.map(([name, label, fallback, kind]) => renderHvacPointSelect(name, label, fallback, kind, controller)).join("")}
       </div>
       ${equipmentPicker}
       <div class="hvac-controller-actions">
@@ -19700,6 +19734,8 @@ async function saveHvacControllerFromForm(form) {
     "filter",
     "freezestat",
     "smoke",
+    "occupied",
+    "fault",
     "supplyTemp",
     "returnTemp",
     "outsideTemp",
@@ -19819,6 +19855,11 @@ function renderAutomationHvac() {
   const liveHvac = primaryController?.data?.liveHvac && typeof primaryController.data.liveHvac === "object" ? primaryController.data.liveHvac : {};
   const fanCommandActive = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.fanCommand || "");
   const fanProofActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
+  const filterState = hvacMappedPointState(primaryController, "filter", "inputs");
+  const freezestatState = hvacMappedPointState(primaryController, "freezestat", "inputs");
+  const smokeState = hvacMappedPointState(primaryController, "smoke", "inputs");
+  const occupiedState = hvacMappedPointState(primaryController, "occupied", "inputs");
+  const faultState = hvacMappedPointState(primaryController, "fault", "inputs");
   const activeHeatStages = hvacActiveStageCount(primaryController, "heatStage", heatStageCount);
   const activeCoolStages = hvacActiveStageCount(primaryController, "coolStage", coolStageCount);
   const heatStageDots = [1, 2, 3, 4].map((stage) => {
@@ -19836,6 +19877,27 @@ function renderAutomationHvac() {
     const value = liveHvac.temperatures?.[name] ?? liveHvac.analog?.[name] ?? "";
     return value === "" || value === null || value === undefined ? "--" : `${value}`;
   };
+  const mappedPointRows = [
+    ["Fan command", primaryController?.points?.fanCommand || "", fanCommandActive ? "On" : "Off", "output"],
+    ["Fan proof", primaryController?.points?.fanProof || "", fanProofActive ? "Made" : "Open", "input"],
+    ["Heat stage 1", primaryController?.points?.heatStage1 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.heatStage1 || "") ? "On" : "Off", "output"],
+    ["Heat stage 2", primaryController?.points?.heatStage2 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.heatStage2 || "") ? "On" : "Off", "output"],
+    ["Heat stage 3", primaryController?.points?.heatStage3 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.heatStage3 || "") ? "On" : "Off", "output"],
+    ["Heat stage 4", primaryController?.points?.heatStage4 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.heatStage4 || "") ? "On" : "Off", "output"],
+    ["Cool stage 1", primaryController?.points?.coolStage1 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.coolStage1 || "") ? "On" : "Off", "output"],
+    ["Cool stage 2", primaryController?.points?.coolStage2 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.coolStage2 || "") ? "On" : "Off", "output"],
+    ["Cool stage 3", primaryController?.points?.coolStage3 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.coolStage3 || "") ? "On" : "Off", "output"],
+    ["Cool stage 4", primaryController?.points?.coolStage4 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.coolStage4 || "") ? "On" : "Off", "output"],
+    ["Occupied", occupiedState.channel, occupiedState.label, "input"],
+    ["Fault / alarm", faultState.channel, faultState.active ? "Alarm" : "Normal", "input"],
+    ["Filter", filterState.channel, filterState.label, "input"],
+    ["Freezestat", freezestatState.channel, freezestatState.active ? "Alarm" : "Normal", "input"],
+    ["Smoke shutdown", smokeState.channel, smokeState.active ? "Alarm" : "Normal", "input"],
+    ["Supply temp", primaryController?.points?.supplyTemp || "", temperatureValue("supply"), "analog"],
+    ["Return temp", primaryController?.points?.returnTemp || "", temperatureValue("return"), "analog"],
+    ["Outside temp", primaryController?.points?.outsideTemp || "", temperatureValue("outside"), "analog"],
+    ["Space temp", primaryController?.points?.spaceTemp || "", temperatureValue("space"), "analog"]
+  ].filter((row) => row[1]);
   const shouldShowForm = Boolean(editingHvacControllerId || !controllers.length);
   const editingController = editingHvacControllerId && editingHvacControllerId !== "__new__"
     ? controllers.find((controller) => controller.id === editingHvacControllerId)
@@ -19892,7 +19954,7 @@ function renderAutomationHvac() {
         <span class="hvac-scada-led" aria-hidden="true"></span>
         <div>
           <strong>${escapeHtml(status.label.toUpperCase())}</strong>
-          <span>${escapeHtml(primaryController ? "HVAC setup is configured. Live controller/API comes next." : "Add HVAC equipment and controller points to bring this view live.")}</span>
+          <span>${escapeHtml(primaryController ? "HVAC controller is mapped for live SiteWorks monitoring." : "Add HVAC equipment and controller points to bring this view live.")}</span>
         </div>
         <em>${escapeHtml(primaryController ? primaryController.uid || "HVAC" : "NO CONTROLLER")}</em>
       </section>
@@ -19950,6 +20012,8 @@ function renderAutomationHvac() {
           <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
           <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped")}</strong></div>
           <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
+          <div><span>Fault Input</span><strong class="${escapeAttribute(faultState.active ? "status-danger" : "")}">${escapeHtml(faultState.channel ? `${faultState.channel} ${faultState.active ? "Active" : "Normal"}` : faultState.label)}</strong></div>
+          <div><span>Occupied Input</span><strong>${escapeHtml(occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label)}</strong></div>
           <div><span>Heating Stages</span><strong>${escapeHtml(heatStageLabel)}</strong></div>
           <div><span>Cooling Stages</span><strong>${escapeHtml(coolStageLabel)}</strong></div>
           <div><span>Mode</span><strong>${escapeHtml(liveMode)}</strong></div>
@@ -19959,8 +20023,9 @@ function renderAutomationHvac() {
           <div><span>Supply Temp</span><strong>${escapeHtml(temperatureValue("supply"))}</strong></div>
           <div><span>Last Seen</span><strong>${escapeHtml(formatDateTime(primaryController?.lastSeenAt) || "Never")}</strong></div>
           <div><span>IP</span><strong>${escapeHtml(primaryController?.ipAddress || "Not seen")}</strong></div>
-          <div><span>Safety Chain</span><strong>Not wired</strong></div>
-          <div><span>Smoke Shutdown</span><strong>Not wired</strong></div>
+          <div><span>Filter</span><strong>${escapeHtml(filterState.channel ? `${filterState.channel} ${filterState.label}` : filterState.label)}</strong></div>
+          <div><span>Freezestat</span><strong class="${escapeAttribute(freezestatState.active ? "status-danger" : "")}">${escapeHtml(freezestatState.channel ? `${freezestatState.channel} ${freezestatState.active ? "Active" : "Normal"}` : freezestatState.label)}</strong></div>
+          <div><span>Smoke Shutdown</span><strong class="${escapeAttribute(smokeState.active ? "status-danger" : "")}">${escapeHtml(smokeState.channel ? `${smokeState.channel} ${smokeState.active ? "Active" : "Normal"}` : smokeState.label)}</strong></div>
         </aside>
       </main>
       <section class="hvac-drawer-grid" aria-label="HVAC setup drawers">
@@ -19975,9 +20040,19 @@ function renderAutomationHvac() {
           </div>
         </details>
         <details class="hvac-drawer">
-          <summary><span>Points</span><strong>${primaryController ? "Mapped" : "Planned"}</strong></summary>
+          <summary><span>Points</span><strong>${mappedPointRows.length || "Planned"}</strong></summary>
           <div>
-            <p>Fan command, fan proof, ${escapeHtml(heatStageLabel.toLowerCase())} heat, ${escapeHtml(coolStageLabel.toLowerCase())} cooling, damper, filter, freezestat, smoke shutdown, and temperature points are ready to map.</p>
+            ${mappedPointRows.length ? `
+              <div class="hvac-point-live-list">
+                ${mappedPointRows.map(([label, channel, value, type]) => `
+                  <span class="hvac-point-live ${escapeAttribute(type)}">
+                    <b>${escapeHtml(label)}</b>
+                    <i>${escapeHtml(channel)}</i>
+                    <strong>${escapeHtml(value)}</strong>
+                  </span>
+                `).join("")}
+              </div>
+            ` : `<p>Fan command, fan proof, ${escapeHtml(heatStageLabel.toLowerCase())} heat, ${escapeHtml(coolStageLabel.toLowerCase())} cooling, damper, filter, freezestat, smoke shutdown, occupancy, fault, and temperature points are ready to map.</p>`}
           </div>
         </details>
         <details class="hvac-drawer">
