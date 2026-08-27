@@ -4612,6 +4612,7 @@ textarea:disabled {
 
 .pump-scada-pit-vessel {
   position: relative;
+  grid-column: 1 / -1;
   min-height: clamp(250px, 14vw, 560px);
   border: clamp(6px, 0.42vw, 16px) solid rgba(203, 213, 225, 0.52);
   border-top: 0;
@@ -4687,7 +4688,7 @@ textarea:disabled {
 }
 
 .pump-scada-pit-labels {
-  grid-column: 2;
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: clamp(8px, 0.6vw, 18px);
