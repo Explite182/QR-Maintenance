@@ -19539,6 +19539,36 @@ function hvacCommandLabelForPoint(pointName = "") {
   return "HVAC Output";
 }
 
+function hvacCommandInterlockMessage(controller = {}, pointName = "", desiredState = "On") {
+  const pointKey = String(pointName || "");
+  if (String(desiredState || "").toLowerCase() !== "on") return "";
+  const faultState = hvacMappedPointState(controller, "fault", "inputs");
+  const smokeState = hvacMappedPointState(controller, "smoke", "inputs");
+  const freezestatState = hvacMappedPointState(controller, "freezestat", "inputs");
+  if (faultState.active) return `HVAC command blocked: fault input ${faultState.channel || ""} is active.`.trim();
+  if (smokeState.active) return `HVAC command blocked: smoke shutdown input ${smokeState.channel || ""} is active.`.trim();
+  if (pointKey.startsWith("coolStage") && freezestatState.active) {
+    return `Cooling command blocked: freezestat input ${freezestatState.channel || ""} is active.`.trim();
+  }
+  if (pointKey.startsWith("heatStage") || pointKey.startsWith("coolStage")) {
+    const fanProof = hvacMappedPointState(controller, "fanProof", "inputs");
+    if (!fanProof.active) return `Stage command blocked: fan proof ${fanProof.channel || ""} is not made.`.trim();
+  }
+  if (pointKey.startsWith("heatStage")) {
+    const coolStageCount = Math.max(0, Math.min(4, Number(controller?.coolStageCount || controller?.data?.coolStageCount || 1) || 0));
+    const coolingActive = Array.from({ length: coolStageCount }, (_, index) => controller?.points?.[`coolStage${index + 1}`] || "")
+      .some((channel) => hvacLiveChannelActive(controller, "outputs", channel));
+    if (coolingActive) return "Heating command blocked: cooling is already active.";
+  }
+  if (pointKey.startsWith("coolStage")) {
+    const heatStageCount = Math.max(0, Math.min(4, Number(controller?.heatStageCount || controller?.data?.heatStageCount || 1) || 0));
+    const heatingActive = Array.from({ length: heatStageCount }, (_, index) => controller?.points?.[`heatStage${index + 1}`] || "")
+      .some((channel) => hvacLiveChannelActive(controller, "outputs", channel));
+    if (heatingActive) return "Cooling command blocked: heating is already active.";
+  }
+  return "";
+}
+
 async function queueHvacOutputCommand(controllerId = "", action = "", pointName = "fanCommand") {
   const controller = hvacControllersForCurrentView().find((item) => item.id === controllerId) || hvacControllersForCurrentView()[0];
   if (!controller) return;
@@ -19553,6 +19583,11 @@ async function queueHvacOutputCommand(controllerId = "", action = "", pointName 
   const actionText = String(action || "").trim();
   const desiredState = /off$/i.test(actionText) || actionText.toLowerCase() === "off" ? "Off" : "On";
   const hvacCommand = `${pointLabel} ${desiredState}`;
+  const interlockMessage = hvacCommandInterlockMessage(controller, pointKey, desiredState);
+  if (interlockMessage) {
+    alert(interlockMessage);
+    return;
+  }
   try {
     const response = await siteworksApi.queueHvacCommand({
       customer_id: controller.customerId || selectedCustomerId,
@@ -19569,7 +19604,14 @@ async function queueHvacOutputCommand(controllerId = "", action = "", pointName 
         source: "hvac-hmi"
       }
     });
-    if (!response.ok) throw new Error(`HVAC command queue failed: ${response.status}`);
+    if (!response.ok) {
+      let message = `HVAC command queue failed: ${response.status}`;
+      try {
+        const errorPayload = await response.json();
+        if (errorPayload?.error) message = errorPayload.error;
+      } catch (_) {}
+      throw new Error(message);
+    }
     const payload = await response.json();
     if (payload?.command) {
       const queuedCommand = normalizeHvacCommand(payload.command);
@@ -20002,6 +20044,7 @@ function renderAutomationHvac() {
   const fanCommandStatus = latestFanCommand?.status
     ? `${latestFanCommand.hvacCommand || "Fan"} ${latestFanCommand.status}`
     : "Ready";
+  const fanOnBlockMessage = primaryController ? hvacCommandInterlockMessage(primaryController, "fanCommand", "On") : "";
   const hvacStageCommandRows = primaryController ? [
     ...Array.from({ length: heatStageCount }, (_, index) => {
       const stage = index + 1;
@@ -20015,7 +20058,8 @@ function renderAutomationHvac() {
         channel,
         outputNumber,
         active: hvacLiveChannelActive(primaryController, "outputs", channel),
-        commandStatus: latestCommand?.status ? latestCommand.status : ""
+        commandStatus: latestCommand?.status ? latestCommand.status : "",
+        onBlockMessage: hvacCommandInterlockMessage(primaryController, pointName, "On")
       };
     }),
     ...Array.from({ length: coolStageCount }, (_, index) => {
@@ -20030,7 +20074,8 @@ function renderAutomationHvac() {
         channel,
         outputNumber,
         active: hvacLiveChannelActive(primaryController, "outputs", channel),
-        commandStatus: latestCommand?.status ? latestCommand.status : ""
+        commandStatus: latestCommand?.status ? latestCommand.status : "",
+        onBlockMessage: hvacCommandInterlockMessage(primaryController, pointName, "On")
       };
     })
   ] : [];
@@ -20040,9 +20085,9 @@ function renderAutomationHvac() {
         <div class="hvac-stage-command ${stage.active ? "is-active" : ""}">
           <span>
             <b>${escapeHtml(stage.label)}</b>
-            <em>${escapeHtml(stage.channel || "Not mapped")}${stage.commandStatus ? ` | ${escapeHtml(stage.commandStatus)}` : ""}</em>
+            <em>${escapeHtml(stage.onBlockMessage || stage.channel || "Not mapped")}${!stage.onBlockMessage && stage.commandStatus ? ` | ${escapeHtml(stage.commandStatus)}` : ""}</em>
           </span>
-          <button type="button" ${primaryController && stage.outputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="On">On</button>
+          <button type="button" ${primaryController && stage.outputNumber && !stage.onBlockMessage ? "" : "disabled"} title="${escapeAttribute(stage.onBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="On">On</button>
           <button type="button" ${primaryController && stage.outputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="Off">Off</button>
         </div>
       `).join("")}
@@ -20207,7 +20252,7 @@ function renderAutomationHvac() {
           <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
           <div><span>Command</span><strong>${escapeHtml(fanCommandStatus)}</strong></div>
           <div class="hvac-command-row">
-            <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
+            <button type="button" ${primaryController && fanCommandOutputNumber && !fanOnBlockMessage ? "" : "disabled"} title="${escapeAttribute(fanOnBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
             <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
           </div>
           ${hvacStageCommandControls}
