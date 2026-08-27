@@ -9322,9 +9322,10 @@ document.addEventListener("click", async (event) => {
   const hvacCommandActionButton = event.target.closest("[data-hvac-command-action]");
   if (hvacCommandActionButton) {
     event.preventDefault();
-    await queueHvacFanCommand(
+    await queueHvacOutputCommand(
       hvacCommandActionButton.dataset.hvacControllerId || "",
-      hvacCommandActionButton.dataset.hvacCommandAction || ""
+      hvacCommandActionButton.dataset.hvacCommandAction || "",
+      hvacCommandActionButton.dataset.hvacPoint || "fanCommand"
     );
     return;
   }
@@ -19317,7 +19318,7 @@ function normalizeHvacController(controller = {}) {
       heatStage3: pointsSource.heatStage3 || controller.heatStage3Output || "DO6",
       coolStage3: pointsSource.coolStage3 || controller.coolStage3Output || "DO7",
       heatStage4: pointsSource.heatStage4 || controller.heatStage4Output || "DO8",
-      coolStage4: pointsSource.coolStage4 || controller.coolStage4Output || "DO9",
+      coolStage4: pointsSource.coolStage4 || controller.coolStage4Output || "",
       damper: pointsSource.damper || controller.damperOutput || "AO1",
       filter: pointsSource.filter || controller.filterInput || "DI2",
       freezestat: pointsSource.freezestat || controller.freezestatInput || "DI3",
@@ -19528,16 +19529,30 @@ function latestHvacCommandForOutput(controllerId = "", outputNumber = 0) {
     .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
 }
 
-async function queueHvacFanCommand(controllerId = "", action = "") {
+function hvacCommandLabelForPoint(pointName = "") {
+  const key = String(pointName || "");
+  if (key === "fanCommand") return "Fan";
+  const heatMatch = key.match(/^heatStage(\d+)$/);
+  if (heatMatch) return `Heat Stage ${heatMatch[1]}`;
+  const coolMatch = key.match(/^coolStage(\d+)$/);
+  if (coolMatch) return `Cool Stage ${coolMatch[1]}`;
+  return "HVAC Output";
+}
+
+async function queueHvacOutputCommand(controllerId = "", action = "", pointName = "fanCommand") {
   const controller = hvacControllersForCurrentView().find((item) => item.id === controllerId) || hvacControllersForCurrentView()[0];
   if (!controller) return;
-  const outputNumber = hvacOutputNumberFromChannel(controller.points?.fanCommand || "");
+  const pointKey = String(pointName || "fanCommand");
+  const pointLabel = hvacCommandLabelForPoint(pointKey);
+  const pointChannel = controller.points?.[pointKey] || "";
+  const outputNumber = hvacOutputNumberFromChannel(pointChannel);
   if (!outputNumber) {
-    alert("Map the HVAC Fan command to a DO output before sending a command.");
+    alert(`Map the HVAC ${pointLabel} command to a DO output before sending a command.`);
     return;
   }
-  const hvacCommand = action === "Fan Off" ? "Fan Off" : "Fan On";
-  const desiredState = hvacCommand === "Fan On" ? "On" : "Off";
+  const actionText = String(action || "").trim();
+  const desiredState = /off$/i.test(actionText) || actionText.toLowerCase() === "off" ? "Off" : "On";
+  const hvacCommand = `${pointLabel} ${desiredState}`;
   try {
     const response = await siteworksApi.queueHvacCommand({
       customer_id: controller.customerId || selectedCustomerId,
@@ -19545,11 +19560,12 @@ async function queueHvacFanCommand(controllerId = "", action = "") {
       controller_id: controller.id,
       equipment_asset_id: hvacControllerAssignedEquipment(controller, hvacAssetsForCurrentView())[0]?.id || "",
       output_number: outputNumber,
-      command_output: controller.points?.fanCommand || `DO${outputNumber}`,
+      command_output: pointChannel || `DO${outputNumber}`,
       hvac_command: hvacCommand,
       desired_state: desiredState,
       metadata: {
-        commandOutput: controller.points?.fanCommand || `DO${outputNumber}`,
+        commandOutput: pointChannel || `DO${outputNumber}`,
+        pointName: pointKey,
         source: "hvac-hmi"
       }
     });
@@ -19569,6 +19585,10 @@ async function queueHvacFanCommand(controllerId = "", action = "") {
     console.warn("HVAC command could not be queued.", error);
     alert(error?.message || "HVAC command could not be queued.");
   }
+}
+
+async function queueHvacFanCommand(controllerId = "", action = "") {
+  return queueHvacOutputCommand(controllerId, action, "fanCommand");
 }
 
 function hvacControllerAssignedEquipment(controller = {}, equipment = []) {
@@ -19982,6 +20002,52 @@ function renderAutomationHvac() {
   const fanCommandStatus = latestFanCommand?.status
     ? `${latestFanCommand.hvacCommand || "Fan"} ${latestFanCommand.status}`
     : "Ready";
+  const hvacStageCommandRows = primaryController ? [
+    ...Array.from({ length: heatStageCount }, (_, index) => {
+      const stage = index + 1;
+      const pointName = `heatStage${stage}`;
+      const channel = primaryController.points?.[pointName] || "";
+      const outputNumber = hvacOutputNumberFromChannel(channel);
+      const latestCommand = latestHvacCommandForOutput(primaryController.id, outputNumber);
+      return {
+        pointName,
+        label: `Heat ${stage}`,
+        channel,
+        outputNumber,
+        active: hvacLiveChannelActive(primaryController, "outputs", channel),
+        commandStatus: latestCommand?.status ? latestCommand.status : ""
+      };
+    }),
+    ...Array.from({ length: coolStageCount }, (_, index) => {
+      const stage = index + 1;
+      const pointName = `coolStage${stage}`;
+      const channel = primaryController.points?.[pointName] || "";
+      const outputNumber = hvacOutputNumberFromChannel(channel);
+      const latestCommand = latestHvacCommandForOutput(primaryController.id, outputNumber);
+      return {
+        pointName,
+        label: `Cool ${stage}`,
+        channel,
+        outputNumber,
+        active: hvacLiveChannelActive(primaryController, "outputs", channel),
+        commandStatus: latestCommand?.status ? latestCommand.status : ""
+      };
+    })
+  ] : [];
+  const hvacStageCommandControls = hvacStageCommandRows.length ? `
+    <div class="hvac-stage-command-grid">
+      ${hvacStageCommandRows.map((stage) => `
+        <div class="hvac-stage-command ${stage.active ? "is-active" : ""}">
+          <span>
+            <b>${escapeHtml(stage.label)}</b>
+            <em>${escapeHtml(stage.channel || "Not mapped")}${stage.commandStatus ? ` | ${escapeHtml(stage.commandStatus)}` : ""}</em>
+          </span>
+          <button type="button" ${primaryController && stage.outputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="On">On</button>
+          <button type="button" ${primaryController && stage.outputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="Off">Off</button>
+        </div>
+      `).join("")}
+    </div>
+  ` : "";
   const filterState = hvacMappedPointState(primaryController, "filter", "inputs");
   const freezestatState = hvacMappedPointState(primaryController, "freezestat", "inputs");
   const smokeState = hvacMappedPointState(primaryController, "smoke", "inputs");
@@ -20144,6 +20210,7 @@ function renderAutomationHvac() {
             <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
             <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
           </div>
+          ${hvacStageCommandControls}
           <div><span>Fault Input</span><strong class="${escapeAttribute(faultState.active ? "status-danger" : "")}">${escapeHtml(faultState.channel ? `${faultState.channel} ${faultState.active ? "Active" : "Normal"}` : faultState.label)}</strong></div>
           <div><span>Occupied Input</span><strong>${escapeHtml(occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label)}</strong></div>
           <div><span>Heating Stages</span><strong>${escapeHtml(heatStageLabel)}</strong></div>

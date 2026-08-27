@@ -1,19 +1,19 @@
-const SITEWORKS_SW_VERSION = "20260827-hvac-fan-command-65";
+const SITEWORKS_SW_VERSION = "20260827-hvac-stage-command-66";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260827-hvac-fan-command-65",
+  "/styles.css?v=20260827-hvac-stage-command-66",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260827-hvac-fan-command-65",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-fan-command-65",
-  "/js/panel-hmi-standard-renderer.js?v=20260827-hvac-fan-command-65",
-  "/app.js?v=20260827-hvac-fan-command-65",
-  "/manifest.webmanifest?v=20260827-hvac-fan-command-65",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260827-hvac-fan-command-65",
-  "/icons/siteworks-icon-192.png?v=20260827-hvac-fan-command-65",
-  "/icons/siteworks-icon-512.png?v=20260827-hvac-fan-command-65"
+  "/js/panel-hmi-standard-model.js?v=20260827-hvac-stage-command-66",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-stage-command-66",
+  "/js/panel-hmi-standard-renderer.js?v=20260827-hvac-stage-command-66",
+  "/app.js?v=20260827-hvac-stage-command-66",
+  "/manifest.webmanifest?v=20260827-hvac-stage-command-66",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260827-hvac-stage-command-66",
+  "/icons/siteworks-icon-192.png?v=20260827-hvac-stage-command-66",
+  "/icons/siteworks-icon-512.png?v=20260827-hvac-stage-command-66"
 ];
 
 self.addEventListener("install", (event) => {

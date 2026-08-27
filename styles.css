@@ -2028,6 +2028,76 @@ textarea:disabled {
   opacity: 0.42;
 }
 
+.hvac-status-panel .hvac-stage-command-grid {
+  display: grid;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.hvac-status-panel .hvac-stage-command {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 56px;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 7px;
+  border: 1px solid #263033;
+  background: rgba(3, 7, 10, 0.74);
+}
+
+.hvac-stage-command span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hvac-stage-command b,
+.hvac-stage-command em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.hvac-stage-command b {
+  color: #f8fafc;
+  font-size: 0.82rem;
+}
+
+.hvac-stage-command em {
+  color: #9bc9dc;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.hvac-stage-command.is-active {
+  border-color: rgba(45, 212, 191, 0.62);
+  box-shadow: inset 3px 0 0 #22c55e;
+}
+
+.hvac-stage-command button {
+  min-height: 32px;
+  border: 1px solid rgba(45, 212, 191, 0.48);
+  border-radius: 3px;
+  color: #f8fafc;
+  background: linear-gradient(180deg, #0f766e, #0b4f48);
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-stage-command button:last-child {
+  border-color: rgba(148, 163, 184, 0.42);
+  background: linear-gradient(180deg, #263033, #101619);
+}
+
+.hvac-stage-command button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .hvac-drawer-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(150px, 1fr));
