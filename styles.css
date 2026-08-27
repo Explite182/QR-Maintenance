@@ -1945,6 +1945,194 @@ textarea:disabled {
   font-weight: 750;
 }
 
+.hvac-setup-notice,
+.hvac-controller-add-row,
+.hvac-controller-card,
+.hvac-controller-form,
+.hvac-controller-equipment-picker,
+.hvac-point-map {
+  margin-top: 10px;
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  border-radius: 3px;
+  background: rgba(3, 7, 10, 0.72);
+}
+
+.hvac-setup-notice,
+.hvac-controller-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+}
+
+.hvac-setup-notice {
+  display: grid;
+  justify-content: stretch;
+}
+
+.hvac-setup-notice strong,
+.hvac-controller-equipment-picker strong,
+.hvac-point-map > strong {
+  color: #ffffff;
+  font-weight: 950;
+}
+
+.hvac-setup-notice span,
+.hvac-controller-add-row span,
+.hvac-controller-equipment-picker span {
+  color: #b7d6df;
+  font-weight: 750;
+}
+
+.hvac-controller-form {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.hvac-controller-form label,
+.hvac-point-map label {
+  display: grid;
+  gap: 6px;
+  color: #a9d7e8;
+  font-size: 0.74rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-controller-form input,
+.hvac-controller-form select,
+.hvac-controller-form textarea,
+.hvac-point-map input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #29363b;
+  border-radius: 3px;
+  color: #f8fafc;
+  background: #071113;
+  font: inherit;
+  font-weight: 850;
+}
+
+.hvac-controller-form textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.hvac-controller-form > label:nth-child(7),
+.hvac-point-map,
+.hvac-controller-equipment-picker,
+.hvac-controller-actions {
+  grid-column: 1 / -1;
+}
+
+.hvac-point-map {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.hvac-point-map > strong {
+  grid-column: 1 / -1;
+}
+
+.hvac-controller-equipment-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+
+.hvac-controller-equipment-picker legend,
+.hvac-controller-equipment-picker > strong {
+  grid-column: 1 / -1;
+  color: #ffffff;
+  font-weight: 950;
+}
+
+.hvac-controller-equipment-picker label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  color: #f8fafc;
+  text-transform: none;
+}
+
+.hvac-controller-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.hvac-controller-actions button,
+.hvac-controller-add-row button {
+  min-height: 38px;
+  border: 1px solid rgba(45, 212, 191, 0.34);
+  border-radius: 3px;
+  color: #ffffff;
+  background: linear-gradient(180deg, #0f766e, #0b4f49);
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.hvac-controller-actions button.secondary,
+.hvac-controller-add-row button.secondary {
+  color: #dffdf8;
+  background: linear-gradient(180deg, #123d38, #071614);
+}
+
+.hvac-controller-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(120px, 0.35fr));
+  gap: 8px;
+  align-items: stretch;
+  padding: 12px;
+}
+
+.hvac-controller-card > div:first-child,
+.hvac-controller-card > span,
+.hvac-controller-card .hvac-controller-actions {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #263033;
+  background: rgba(3, 7, 10, 0.72);
+}
+
+.hvac-controller-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.hvac-controller-card > div:first-child strong {
+  color: #ffffff;
+  font-weight: 950;
+}
+
+.hvac-controller-card > div:first-child span,
+.hvac-controller-card > span b {
+  color: #a9d7e8;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-controller-card > span {
+  display: grid;
+  gap: 4px;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.hvac-controller-card .hvac-controller-actions {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 1180px) {
   .hvac-scada-main,
   .hvac-scada-titlebar {
@@ -1957,6 +2145,12 @@ textarea:disabled {
   }
 
   .hvac-drawer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hvac-controller-form,
+  .hvac-point-map,
+  .hvac-controller-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1989,6 +2183,17 @@ textarea:disabled {
 
   .hvac-drawer-grid {
     grid-template-columns: 1fr;
+  }
+
+  .hvac-controller-form,
+  .hvac-point-map,
+  .hvac-controller-card {
+    grid-template-columns: 1fr;
+  }
+
+  .hvac-controller-add-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

@@ -5453,6 +5453,7 @@ let pumpAssetsLoading = false;
 let pumpLiveRefreshActive = false;
 let pumpSetupEditHoldUntil = 0;
 let editingPumpControllerId = "";
+let editingHvacControllerId = "";
 let pendingPumpApiKey = null;
 let selectedPumpHmiAssetId = "";
 let selectedPumpDiagramDeviceId = "";
@@ -8233,6 +8234,7 @@ els.customerFilter.addEventListener("change", () => {
   editingLightingZoneId = "";
   editingLightingScheduleId = "";
   editingLightingOverrideId = "";
+  editingHvacControllerId = "";
   clearSelectedAssetUrl();
   assetPage = 1;
   render();
@@ -8240,6 +8242,7 @@ els.customerFilter.addEventListener("change", () => {
   renderLightingZones();
   renderLightingSchedules();
   renderLightingOverrides();
+  renderAutomationHvac();
 });
 
 document.addEventListener("toggle", (event) => {
@@ -8298,6 +8301,7 @@ els.locationFilter.addEventListener("change", () => {
   editingLightingZoneId = "";
   editingLightingScheduleId = "";
   editingLightingOverrideId = "";
+  editingHvacControllerId = "";
   clearSelectedAssetUrl();
   assetPage = 1;
   render();
@@ -8305,6 +8309,7 @@ els.locationFilter.addEventListener("change", () => {
   renderLightingZones();
   renderLightingSchedules();
   renderLightingOverrides();
+  renderAutomationHvac();
 });
 
 els.serviceRequestCustomer?.addEventListener("change", () => {
@@ -9183,6 +9188,44 @@ document.addEventListener("click", (event) => {
   if (openAutomationTabButton) {
     event.preventDefault();
     openAutomationSidebarTab(openAutomationTabButton.dataset.openAutomationTab);
+    return;
+  }
+
+  const addHvacControllerButton = event.target.closest("[data-add-hvac-controller]");
+  if (addHvacControllerButton) {
+    event.preventDefault();
+    editingHvacControllerId = "__new__";
+    renderAutomationHvac();
+    return;
+  }
+
+  const editHvacControllerButton = event.target.closest("[data-hvac-controller-edit]");
+  if (editHvacControllerButton) {
+    event.preventDefault();
+    editingHvacControllerId = editHvacControllerButton.dataset.hvacControllerEdit || "";
+    renderAutomationHvac();
+    return;
+  }
+
+  const cancelHvacControllerButton = event.target.closest("[data-hvac-controller-cancel]");
+  if (cancelHvacControllerButton) {
+    event.preventDefault();
+    editingHvacControllerId = "";
+    renderAutomationHvac();
+    return;
+  }
+
+  const createHvacEquipmentButton = event.target.closest("[data-create-hvac-equipment]");
+  if (createHvacEquipmentButton) {
+    event.preventDefault();
+    createHvacEquipmentForController(createHvacEquipmentButton.dataset.createHvacEquipment || "");
+    return;
+  }
+
+  const deleteHvacControllerButton = event.target.closest("[data-hvac-controller-delete]");
+  if (deleteHvacControllerButton) {
+    event.preventDefault();
+    deleteHvacController(deleteHvacControllerButton.dataset.hvacControllerDelete || "");
     return;
   }
 
@@ -10078,6 +10121,11 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
+  if (form.matches("[data-hvac-controller-form]")) {
+    event.preventDefault();
+    saveHvacControllerFromForm(form);
+    return;
+  }
   if (form.matches("[data-pump-controller-form]")) {
     event.preventDefault();
     clearPumpSetupEditingActive();
@@ -10796,6 +10844,7 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
     renderLightingFirmware();
     renderLightingHistory();
   }
+  if (targetId === "automationHvacPanel") renderAutomationHvac();
   if (targetId === "automationPumpsPanel") renderAutomationPumps();
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -19082,6 +19131,445 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         </div>
       </aside>
     </div>
+  `;
+}
+
+function normalizeHvacController(controller = {}) {
+  const data = controller.data && typeof controller.data === "object" ? controller.data : {};
+  const equipmentIds = Array.isArray(controller.equipmentIds)
+    ? controller.equipmentIds
+    : Array.isArray(data.equipmentIds)
+      ? data.equipmentIds
+      : [];
+  return {
+    id: controller.id || crypto.randomUUID?.() || `hvac-controller-${Date.now()}`,
+    customerId: controller.customerId || controller.customer_id || "",
+    locationId: controller.locationId || controller.location_id || "",
+    name: controller.name || "HVAC Controller",
+    uid: controller.uid || controller.deviceUid || controller.device_uid || "",
+    type: controller.type || controller.controllerType || controller.controller_type || "RTU controller",
+    area: controller.area || "",
+    equipmentCount: String(controller.equipmentCount || controller.equipment_count || data.equipmentCount || 1),
+    equipmentIds: equipmentIds.map((id) => String(id || "").trim()).filter(Boolean),
+    mode: controller.mode || "Setup only",
+    status: controller.status || "Setup only",
+    notes: controller.notes || "",
+    points: {
+      fanCommand: data.points?.fanCommand || controller.fanCommandOutput || "DO1",
+      fanProof: data.points?.fanProof || controller.fanProofInput || "DI1",
+      heatStage1: data.points?.heatStage1 || controller.heatStage1Output || "DO2",
+      coolStage1: data.points?.coolStage1 || controller.coolStage1Output || "DO3",
+      damper: data.points?.damper || controller.damperOutput || "AO1",
+      filter: data.points?.filter || controller.filterInput || "DI2",
+      freezestat: data.points?.freezestat || controller.freezestatInput || "DI3",
+      smoke: data.points?.smoke || controller.smokeInput || "DI4",
+      supplyTemp: data.points?.supplyTemp || controller.supplyTempInput || "AI1",
+      returnTemp: data.points?.returnTemp || controller.returnTempInput || "AI2",
+      outsideTemp: data.points?.outsideTemp || controller.outsideTempInput || "AI3",
+      spaceTemp: data.points?.spaceTemp || controller.spaceTempInput || "AI4"
+    },
+    data,
+    createdAt: controller.createdAt || controller.created_at || new Date().toISOString(),
+    updatedAt: controller.updatedAt || controller.updated_at || ""
+  };
+}
+
+function getHvacControllers() {
+  state.hvacControllers = Array.isArray(state.hvacControllers) ? state.hvacControllers.map(normalizeHvacController) : [];
+  return state.hvacControllers;
+}
+
+function saveHvacControllers(controllers = []) {
+  state.hvacControllers = controllers.map(normalizeHvacController);
+  saveState();
+}
+
+function hvacControllersForCurrentView() {
+  return getHvacControllers().filter((controller) => {
+    if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && controller.customerId !== selectedCustomerId) return false;
+    if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS && controller.locationId !== selectedLocationId) return false;
+    return canSeeLocation(controller.locationId, controller.customerId);
+  });
+}
+
+function isHvacAsset(asset = {}) {
+  const text = `${asset.type || ""} ${asset.name || ""} ${asset.equipmentId || ""}`.toLowerCase();
+  return /\b(hvac|rtu|mau|make.?up air|rooftop|air handler|ahu|fan coil|fcu|heat pump)\b/.test(text);
+}
+
+function hvacAssetsForCurrentView() {
+  return state.assets.filter((asset) => isHvacAsset(asset) && canSeeAsset(asset)).filter((asset) => {
+    if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && asset.customerId !== selectedCustomerId) return false;
+    if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS && asset.locationId !== selectedLocationId) return false;
+    return true;
+  });
+}
+
+function defaultHvacTemplateId(customerId = "") {
+  return templatesForCustomer(customerId)[0]?.id || state.templates[0]?.id || "";
+}
+
+function hvacControllerStatus(controller = {}) {
+  const mode = String(controller.mode || controller.status || "Setup only").toLowerCase();
+  if (mode.includes("control")) return { label: "Control ready", className: "is-running" };
+  if (mode.includes("monitor")) return { label: "Monitoring ready", className: "is-info" };
+  return { label: "Setup only", className: "is-info" };
+}
+
+function hvacControllerAssignedEquipment(controller = {}, equipment = []) {
+  const ids = new Set((controller.equipmentIds || []).map((id) => String(id)));
+  if (!ids.size) return [];
+  return equipment.filter((asset) => ids.has(String(asset.id)));
+}
+
+function createHvacEquipmentForController(controllerId = "") {
+  if (!canAddEquipment()) {
+    alert("Your user account cannot add equipment.");
+    return;
+  }
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
+    alert("Select one customer and one location before creating HVAC equipment.");
+    return;
+  }
+  const currentLocation = getLocation(selectedLocationId);
+  const controllers = hvacControllersForCurrentView();
+  const controller = controllers.find((item) => item.id === controllerId) || controllers[0] || null;
+  const existingEquipment = hvacAssetsForCurrentView();
+  const unitCount = Math.max(1, Math.min(8, Number(controller?.equipmentCount || existingEquipment.length || 1) || 1));
+  const createdAt = new Date().toISOString();
+  const templateId = defaultHvacTemplateId(selectedCustomerId);
+  const existingEquipmentIds = new Set(existingEquipment.map((asset) => String(asset.equipmentId || "").trim().toLowerCase()).filter(Boolean));
+  const createdEquipment = [];
+  for (let index = existingEquipment.length; index < unitCount; index += 1) {
+    const unitNumber = index + 1;
+    const equipmentId = `RTU-${String(unitNumber).padStart(2, "0")}`;
+    if (existingEquipmentIds.has(equipmentId.toLowerCase())) continue;
+    createdEquipment.push({
+      id: crypto.randomUUID?.() || `hvac-${Date.now()}-${unitNumber}`,
+      customerId: selectedCustomerId,
+      locationId: selectedLocationId,
+      templateId,
+      name: `${currentLocation?.name || "HVAC"} RTU ${unitNumber}`,
+      equipmentId,
+      nextPmDate: "",
+      manufacturer: "",
+      model: "",
+      serial: "",
+      installDate: "",
+      type: "RTU",
+      criticality: unitNumber === 1 ? "High" : "Medium",
+      documentUrl: "",
+      manualFile: null,
+      notes: `Created from HVAC HMI setup for ${controller?.name || "HVAC controller"}.`,
+      photo: null,
+      frequencyDays: 90,
+      extraChecklistItems: [],
+      status: "Setup",
+      condition: "Good",
+      hvacMode: "Auto",
+      hvacOccupancy: "Unoccupied",
+      createdAt,
+      updatedAt: createdAt,
+      history: [{
+        id: crypto.randomUUID?.() || `hvac-setup-${Date.now()}-${unitNumber}`,
+        type: "HVAC setup",
+        date: createdAt,
+        result: "Created",
+        notes: "Created from HVAC automation setup.",
+        technician: currentUser?.name || currentUser?.email || "SiteWorks"
+      }]
+    });
+  }
+  if (!createdEquipment.length) {
+    alert("HVAC equipment already exists for this controller count.");
+    return;
+  }
+  state.assets.unshift(...createdEquipment);
+  if (controller) {
+    const equipmentIds = [...new Set([
+      ...(controller.equipmentIds || []),
+      ...existingEquipment.map((asset) => asset.id),
+      ...createdEquipment.map((asset) => asset.id)
+    ])].slice(0, unitCount);
+    const updatedController = normalizeHvacController({
+      ...controller,
+      equipmentIds,
+      data: { ...(controller.data || {}), equipmentIds },
+      updatedAt: createdAt
+    });
+    saveHvacControllers([
+      updatedController,
+      ...getHvacControllers().filter((item) => item.id !== updatedController.id)
+    ]);
+  }
+  addActivity("HVAC equipment created", `${createdEquipment.length} HVAC equipment record${createdEquipment.length === 1 ? "" : "s"} added.`);
+  saveState();
+  if (typeof scheduleStructuredDataSync === "function") scheduleStructuredDataSync(0);
+  renderAutomationHvac();
+}
+
+function renderHvacControllerForm(controller = null) {
+  const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
+  const equipment = hvacAssetsForCurrentView();
+  const selectedEquipmentIds = new Set((controller?.equipmentIds || []).map((id) => String(id)));
+  const defaultUidSuffix = currentLocation?.name
+    ? currentLocation.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 18)
+    : "HVAC";
+  const equipmentPicker = equipment.length ? `
+    <fieldset class="hvac-controller-equipment-picker">
+      <legend>Assign equipment to this controller</legend>
+      ${equipment.map((asset, index) => {
+        const checked = selectedEquipmentIds.size ? selectedEquipmentIds.has(String(asset.id)) : index < Number(controller?.equipmentCount || 1);
+        return `
+          <label>
+            <input type="checkbox" name="equipmentIds" value="${escapeAttribute(asset.id)}" ${checked ? "checked" : ""}>
+            <span>${escapeHtml(asset.name || asset.equipmentId || `HVAC ${index + 1}`)}</span>
+          </label>
+        `;
+      }).join("")}
+    </fieldset>
+  ` : `
+    <div class="hvac-controller-equipment-picker is-empty">
+      <strong>No HVAC equipment at this location yet.</strong>
+      <span>Create equipment now, or add equipment later and edit this controller.</span>
+    </div>
+  `;
+  const pointFields = [
+    ["fanCommand", "Fan command", "DO1"],
+    ["fanProof", "Fan proof", "DI1"],
+    ["heatStage1", "Heat stage 1", "DO2"],
+    ["coolStage1", "Cool stage 1", "DO3"],
+    ["damper", "OA damper", "AO1"],
+    ["filter", "Filter", "DI2"],
+    ["freezestat", "Freezestat", "DI3"],
+    ["smoke", "Smoke shutdown", "DI4"],
+    ["supplyTemp", "Supply temp", "AI1"],
+    ["returnTemp", "Return temp", "AI2"],
+    ["outsideTemp", "Outside temp", "AI3"],
+    ["spaceTemp", "Space temp", "AI4"]
+  ];
+  return `
+    <form class="hvac-controller-form" data-hvac-controller-form="${escapeAttribute(controller?.id || "")}">
+      <label>Controller name
+        <input name="name" value="${escapeAttribute(controller?.name || "HVAC ESP32 Controller")}" required>
+      </label>
+      <label>Device UID
+        <input name="uid" value="${escapeAttribute(controller?.uid || `ESP32-HVAC-${defaultUidSuffix || "001"}`)}" required>
+      </label>
+      <label>Controller type
+        <select name="type">
+          ${["RTU controller", "MAU controller", "Air handler controller", "Exhaust fan controller"].map((type) =>
+            `<option value="${escapeAttribute(type)}" ${type === (controller?.type || "RTU controller") ? "selected" : ""}>${escapeHtml(type)}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Assigned area
+        <input name="area" value="${escapeAttribute(controller?.area || currentLocation?.name || "")}">
+      </label>
+      <label>Units
+        <select name="equipmentCount">
+          ${[1, 2, 3, 4, 5, 6, 7, 8].map((count) =>
+            `<option value="${count}" ${String(count) === String(controller?.equipmentCount || "1") ? "selected" : ""}>${count}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Mode
+        <select name="mode">
+          ${["Setup only", "Monitoring ready", "Control ready"].map((mode) =>
+            `<option value="${escapeAttribute(mode)}" ${mode === (controller?.mode || "Setup only") ? "selected" : ""}>${escapeHtml(mode)}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Notes
+        <textarea name="notes" placeholder="RTU, MAU, thermostat, safeties, or wiring notes">${escapeHtml(controller?.notes || "")}</textarea>
+      </label>
+      <div class="hvac-point-map">
+        <strong>Planned HVAC points</strong>
+        ${pointFields.map(([name, label, fallback]) => `
+          <label>${escapeHtml(label)}
+            <input name="${escapeAttribute(name)}" value="${escapeAttribute(controller?.points?.[name] || fallback)}">
+          </label>
+        `).join("")}
+      </div>
+      ${equipmentPicker}
+      <div class="hvac-controller-actions">
+        <button type="submit">Save HVAC Controller</button>
+        <button type="button" class="secondary" data-hvac-controller-cancel>Cancel</button>
+      </div>
+    </form>
+  `;
+}
+
+function saveHvacControllerFromForm(form) {
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
+    renderAutomationHvac();
+    return;
+  }
+  const formData = new FormData(form);
+  const existingControllerId = form.dataset.hvacControllerForm || "";
+  const existing = getHvacControllers().find((controller) => controller.id === existingControllerId);
+  const equipmentIds = formData.getAll("equipmentIds").map((id) => String(id || "").trim()).filter(Boolean);
+  const now = new Date().toISOString();
+  const pointNames = ["fanCommand", "fanProof", "heatStage1", "coolStage1", "damper", "filter", "freezestat", "smoke", "supplyTemp", "returnTemp", "outsideTemp", "spaceTemp"];
+  const points = Object.fromEntries(pointNames.map((name) => [name, String(formData.get(name) || "").trim()]));
+  const controller = normalizeHvacController({
+    ...existing,
+    id: existingControllerId || crypto.randomUUID?.() || `hvac-controller-${Date.now()}`,
+    customerId: selectedCustomerId,
+    locationId: selectedLocationId,
+    name: String(formData.get("name") || "").trim() || "HVAC Controller",
+    uid: String(formData.get("uid") || "").trim() || `ESP32-HVAC-${Date.now()}`,
+    type: String(formData.get("type") || "RTU controller").trim(),
+    area: String(formData.get("area") || "").trim(),
+    equipmentCount: String(formData.get("equipmentCount") || "1").trim(),
+    equipmentIds,
+    mode: String(formData.get("mode") || "Setup only").trim(),
+    status: String(formData.get("mode") || "Setup only").trim(),
+    notes: String(formData.get("notes") || "").trim(),
+    data: {
+      ...(existing?.data || {}),
+      equipmentIds,
+      points
+    },
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  });
+  saveHvacControllers([
+    controller,
+    ...getHvacControllers().filter((item) => item.id !== controller.id)
+  ]);
+  addActivity("HVAC controller saved", controller.name);
+  editingHvacControllerId = "";
+  renderAutomationHvac();
+}
+
+function deleteHvacController(controllerId = "") {
+  if (!controllerId) return;
+  const controller = getHvacControllers().find((item) => item.id === controllerId);
+  if (!window.confirm(`Delete ${controller?.name || "this HVAC controller"}?`)) return;
+  saveHvacControllers(getHvacControllers().filter((item) => item.id !== controllerId));
+  if (editingHvacControllerId === controllerId) editingHvacControllerId = "";
+  renderAutomationHvac();
+}
+
+function renderAutomationHvac() {
+  const panel = document.querySelector("#automationHvacPanel .hvac-hmi-panel");
+  const count = document.querySelector("#automationHvacPanel .section-title span");
+  if (!panel) return;
+  const currentCustomer = selectedCustomerId === ALL_CUSTOMERS ? null : getCustomer(selectedCustomerId);
+  const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
+  const controllers = hvacControllersForCurrentView();
+  const equipment = hvacAssetsForCurrentView();
+  const primaryController = controllers[0] || null;
+  const primaryEquipment = primaryController ? hvacControllerAssignedEquipment(primaryController, equipment)[0] || equipment[0] : equipment[0];
+  const status = primaryController ? hvacControllerStatus(primaryController) : { label: "No controller", className: "is-info" };
+  const shouldShowForm = Boolean(editingHvacControllerId || !controllers.length);
+  const editingController = editingHvacControllerId && editingHvacControllerId !== "__new__"
+    ? controllers.find((controller) => controller.id === editingHvacControllerId)
+    : null;
+  const formHtml = !currentLocation ? `
+    <div class="hvac-setup-notice">
+      <strong>Select one location to add HVAC controls.</strong>
+      <span>HVAC controllers are location based.</span>
+    </div>
+  ` : shouldShowForm ? renderHvacControllerForm(editingController) : `
+    <div class="hvac-controller-add-row">
+      <button type="button" class="secondary" data-add-hvac-controller>+ Add HVAC Controller</button>
+      ${controllers.length ? `<button type="button" class="secondary" data-create-hvac-equipment="${escapeAttribute(controllers[0].id)}">Create HVAC Equipment</button>` : ""}
+    </div>
+  `;
+  const controllerCards = controllers.length ? controllers.map((controller) => {
+    const controllerStatus = hvacControllerStatus(controller);
+    const assigned = hvacControllerAssignedEquipment(controller, equipment);
+    return `
+      <article class="hvac-controller-card ${controllerStatus.className}">
+        <div>
+          <strong>${escapeHtml(controller.name)}</strong>
+          <span>${escapeHtml(controller.uid || "No UID")} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.area || currentLocation?.name || "No area")}</span>
+        </div>
+        <span><b>Units</b>${assigned.length}/${escapeHtml(controller.equipmentCount || "1")}</span>
+        <span><b>Status</b>${escapeHtml(controllerStatus.label)}</span>
+        <span><b>Mode</b>${escapeHtml(controller.mode || "Setup only")}</span>
+        <span><b>Points</b>${Object.values(controller.points || {}).filter(Boolean).length} planned</span>
+        <span><b>Assigned</b>${escapeHtml(assigned.map((asset) => asset.name || asset.equipmentId).join(", ") || "No equipment assigned")}</span>
+        <div class="hvac-controller-actions">
+          <button type="button" class="secondary" data-hvac-controller-edit="${escapeAttribute(controller.id)}">Edit</button>
+          <button type="button" class="secondary" data-hvac-controller-delete="${escapeAttribute(controller.id)}">Delete</button>
+        </div>
+      </article>
+    `;
+  }).join("") : "";
+  if (count) count.textContent = controllers.length ? String(controllers.length) : "RTU";
+  panel.innerHTML = `
+    <section class="hvac-scada-shell" aria-label="SiteWorks HVAC HMI">
+      <header class="hvac-scada-titlebar">
+        <div>
+          <strong>SITEWORKS</strong>
+          <span>HVAC AUTOMATION</span>
+        </div>
+        <h2>${escapeHtml(primaryEquipment?.name || "RTU / MAU HMI")}</h2>
+        <div>
+          <span>${escapeHtml(currentCustomer?.name || "SiteWorks")}</span>
+          <strong>${escapeHtml(currentLocation?.name || "Select Location")}</strong>
+        </div>
+      </header>
+      <section class="hvac-scada-alert ${status.className}" aria-label="HVAC status">
+        <span class="hvac-scada-led" aria-hidden="true"></span>
+        <div>
+          <strong>${escapeHtml(status.label.toUpperCase())}</strong>
+          <span>${escapeHtml(primaryController ? "HVAC setup is configured. Live controller/API comes next." : "Add HVAC equipment and controller points to bring this view live.")}</span>
+        </div>
+        <em>${escapeHtml(primaryController ? primaryController.uid || "HVAC" : "NO CONTROLLER")}</em>
+      </section>
+      <main class="hvac-scada-main">
+        <section class="hvac-equipment-view" aria-label="HVAC equipment graphic">
+          <header>Equipment Section</header>
+          <div class="hvac-rtu-graphic" aria-label="Rooftop unit graphic">
+            <div class="hvac-air-path is-return"><span>Return Air</span><strong>--</strong></div>
+            <div class="hvac-air-path is-outside"><span>Outside Air</span><strong>--</strong></div>
+            <div class="hvac-mixing-box"><span>OA Damper</span><strong>-- %</strong></div>
+            <div class="hvac-filter-bank"><span>Filter</span><strong>Normal</strong></div>
+            <div class="hvac-coil is-cooling"><span>Cool</span><strong>Stage --</strong></div>
+            <div class="hvac-coil is-heating"><span>Heat</span><strong>Stage --</strong></div>
+            <div class="hvac-fan-wheel" aria-hidden="true"><i></i></div>
+            <div class="hvac-air-path is-supply"><span>Supply Air</span><strong>--</strong></div>
+          </div>
+        </section>
+        <aside class="hvac-status-panel" aria-label="HVAC status points">
+          <header><span>Unit Status</span><strong>0 Running</strong></header>
+          <div><span>Controller</span><strong>${escapeHtml(primaryController?.name || "Not added")}</strong></div>
+          <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
+          <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand || "Not mapped")}</strong></div>
+          <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof || "Not mapped")}</strong></div>
+          <div><span>Mode</span><strong>Auto</strong></div>
+          <div><span>Occupancy</span><strong>Unoccupied</strong></div>
+          <div><span>Safety Chain</span><strong>Not wired</strong></div>
+          <div><span>Smoke Shutdown</span><strong>Not wired</strong></div>
+        </aside>
+      </main>
+      <section class="hvac-drawer-grid" aria-label="HVAC setup drawers">
+        <details class="hvac-drawer" open>
+          <summary><span>Controller Setup</span><strong>${controllers.length ? `${controllers.length} saved` : "Add"}</strong></summary>
+          <div>${formHtml}${controllerCards}</div>
+        </details>
+        <details class="hvac-drawer">
+          <summary><span>Equipment</span><strong>${equipment.length}</strong></summary>
+          <div>
+            ${equipment.length ? equipment.map((asset) => `<p>${escapeHtml(asset.equipmentId || "HVAC")} - ${escapeHtml(asset.name || "HVAC equipment")} - ${escapeHtml(asset.type || "HVAC")}</p>`).join("") : "<p>No HVAC equipment at this location yet.</p>"}
+          </div>
+        </details>
+        <details class="hvac-drawer">
+          <summary><span>Points</span><strong>${primaryController ? "Mapped" : "Planned"}</strong></summary>
+          <div>
+            <p>Fan command, fan proof, heat, cool, damper, filter, freezestat, smoke shutdown, and temperature points are ready to map.</p>
+          </div>
+        </details>
+        <details class="hvac-drawer">
+          <summary><span>Alarms</span><strong>Clear</strong></summary>
+          <div><p>No HVAC alarms are active in this setup view.</p></div>
+        </details>
+      </section>
+    </section>
   `;
 }
 
@@ -28608,6 +29096,7 @@ function normalizeState(input) {
     monitoringChannels: input.monitoringChannels || [],
     monitoringEvents: input.monitoringEvents || [],
     monitoringAlerts: input.monitoringAlerts || [],
+    hvacControllers: input.hvacControllers || [],
     users: input.users || [],
     accessRequests: input.accessRequests || [],
     activityLog: input.activityLog || [],
