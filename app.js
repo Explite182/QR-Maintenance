@@ -5532,6 +5532,9 @@ let editingHvacControllerId = "";
 let hvacControllersCache = [];
 let hvacControllersLoadedScope = "";
 let hvacControllersLoading = false;
+let hvacCommandsCache = [];
+let hvacCommandsLoadedScope = "";
+let hvacCommandsLoading = false;
 let hvacLiveRefreshActive = false;
 let pendingPumpApiKey = null;
 let pendingHvacApiKey = null;
@@ -9313,6 +9316,16 @@ document.addEventListener("click", async (event) => {
   if (deleteHvacControllerButton) {
     event.preventDefault();
     await deleteHvacController(deleteHvacControllerButton.dataset.hvacControllerDelete || "");
+    return;
+  }
+
+  const hvacCommandActionButton = event.target.closest("[data-hvac-command-action]");
+  if (hvacCommandActionButton) {
+    event.preventDefault();
+    await queueHvacFanCommand(
+      hvacCommandActionButton.dataset.hvacControllerId || "",
+      hvacCommandActionButton.dataset.hvacCommandAction || ""
+    );
     return;
   }
 
@@ -19453,6 +19466,111 @@ function hvacActiveStageCount(controller = {}, prefix = "heatStage", count = 0) 
     .length;
 }
 
+function hvacOutputNumberFromChannel(channel = "") {
+  const match = String(channel || "").trim().toUpperCase().match(/^DO(\d+)$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizeHvacCommand(command = {}) {
+  const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
+  return {
+    id: command.id || "",
+    customerId: command.customerId || command.customer_id || "",
+    locationId: command.locationId || command.location_id || "",
+    controllerId: command.controllerId || command.controller_id || "",
+    equipmentAssetId: command.equipmentAssetId || command.equipment_asset_id || "",
+    outputNumber: Number(command.outputNumber || command.output_number || 0) || 0,
+    commandType: command.commandType || command.command_type || "hvac-output",
+    hvacCommand: command.hvacCommand || command.hvac_command || command.command || "",
+    desiredState: command.desiredState || command.desired_state || "",
+    status: command.status || "pending",
+    requestedBy: command.requestedBy || command.requested_by || "",
+    acknowledgedAt: command.acknowledgedAt || command.acknowledged_at || "",
+    completedAt: command.completedAt || command.completed_at || "",
+    error: command.error || "",
+    metadata,
+    createdAt: command.createdAt || command.created_at || "",
+    updatedAt: command.updatedAt || command.updated_at || ""
+  };
+}
+
+function getHvacCommandScopeKey() {
+  return getHvacControllerScopeKey();
+}
+
+async function loadHvacCommandsForCurrentScope({ force = false } = {}) {
+  const scopeKey = getHvacCommandScopeKey();
+  if (!scopeKey || hvacCommandsLoading) return;
+  if (!force && hvacCommandsLoadedScope === scopeKey) return;
+  hvacCommandsLoading = true;
+  try {
+    const response = await siteworksApi.loadHvacCommands(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`HVAC command load failed: ${response.status}`);
+    const payload = await response.json();
+    hvacCommandsCache = Array.isArray(payload.commands) ? payload.commands.map(normalizeHvacCommand) : [];
+    hvacCommandsLoadedScope = scopeKey;
+  } catch (error) {
+    console.warn("HVAC commands could not be loaded from the server.", error);
+    hvacCommandsCache = [];
+    hvacCommandsLoadedScope = scopeKey;
+  } finally {
+    hvacCommandsLoading = false;
+    renderAutomationHvac();
+  }
+}
+
+function latestHvacCommandForOutput(controllerId = "", outputNumber = 0) {
+  return hvacCommandsCache
+    .filter((command) =>
+      String(command.controllerId || "") === String(controllerId || "") &&
+      Number(command.outputNumber || 0) === Number(outputNumber || 0)
+    )
+    .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
+}
+
+async function queueHvacFanCommand(controllerId = "", action = "") {
+  const controller = hvacControllersForCurrentView().find((item) => item.id === controllerId) || hvacControllersForCurrentView()[0];
+  if (!controller) return;
+  const outputNumber = hvacOutputNumberFromChannel(controller.points?.fanCommand || "");
+  if (!outputNumber) {
+    alert("Map the HVAC Fan command to a DO output before sending a command.");
+    return;
+  }
+  const hvacCommand = action === "Fan Off" ? "Fan Off" : "Fan On";
+  const desiredState = hvacCommand === "Fan On" ? "On" : "Off";
+  try {
+    const response = await siteworksApi.queueHvacCommand({
+      customer_id: controller.customerId || selectedCustomerId,
+      location_id: controller.locationId || selectedLocationId,
+      controller_id: controller.id,
+      equipment_asset_id: hvacControllerAssignedEquipment(controller, hvacAssetsForCurrentView())[0]?.id || "",
+      output_number: outputNumber,
+      command_output: controller.points?.fanCommand || `DO${outputNumber}`,
+      hvac_command: hvacCommand,
+      desired_state: desiredState,
+      metadata: {
+        commandOutput: controller.points?.fanCommand || `DO${outputNumber}`,
+        source: "hvac-hmi"
+      }
+    });
+    if (!response.ok) throw new Error(`HVAC command queue failed: ${response.status}`);
+    const payload = await response.json();
+    if (payload?.command) {
+      const queuedCommand = normalizeHvacCommand(payload.command);
+      hvacCommandsCache = [
+        queuedCommand,
+        ...hvacCommandsCache.filter((item) => item.id !== queuedCommand.id)
+      ];
+      hvacCommandsLoadedScope = getHvacCommandScopeKey();
+    }
+    addActivity("HVAC command queued", `${controller.name || "HVAC"}: ${hvacCommand}`);
+    renderAutomationHvac();
+  } catch (error) {
+    console.warn("HVAC command could not be queued.", error);
+    alert(error?.message || "HVAC command could not be queued.");
+  }
+}
+
 function hvacControllerAssignedEquipment(controller = {}, equipment = []) {
   const ids = new Set((controller.equipmentIds || []).map((id) => String(id)));
   if (!ids.size) return [];
@@ -19841,6 +19959,10 @@ function renderAutomationHvac() {
   if (scopeKey && hvacControllersLoadedScope !== scopeKey && !hvacControllersLoading) {
     loadHvacControllersForCurrentScope();
   }
+  const hvacCommandScopeKey = getHvacCommandScopeKey();
+  if (hvacCommandScopeKey && hvacCommandsLoadedScope !== hvacCommandScopeKey && !hvacCommandsLoading) {
+    loadHvacCommandsForCurrentScope();
+  }
   const currentCustomer = selectedCustomerId === ALL_CUSTOMERS ? null : getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
   const controllers = hvacControllersForCurrentView();
@@ -19855,6 +19977,11 @@ function renderAutomationHvac() {
   const liveHvac = primaryController?.data?.liveHvac && typeof primaryController.data.liveHvac === "object" ? primaryController.data.liveHvac : {};
   const fanCommandActive = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.fanCommand || "");
   const fanProofActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
+  const fanCommandOutputNumber = hvacOutputNumberFromChannel(primaryController?.points?.fanCommand || "");
+  const latestFanCommand = primaryController ? latestHvacCommandForOutput(primaryController.id, fanCommandOutputNumber) : null;
+  const fanCommandStatus = latestFanCommand?.status
+    ? `${latestFanCommand.hvacCommand || "Fan"} ${latestFanCommand.status}`
+    : "Ready";
   const filterState = hvacMappedPointState(primaryController, "filter", "inputs");
   const freezestatState = hvacMappedPointState(primaryController, "freezestat", "inputs");
   const smokeState = hvacMappedPointState(primaryController, "smoke", "inputs");
@@ -20012,6 +20139,11 @@ function renderAutomationHvac() {
           <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
           <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped")}</strong></div>
           <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
+          <div><span>Command</span><strong>${escapeHtml(fanCommandStatus)}</strong></div>
+          <div class="hvac-command-row">
+            <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
+            <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
+          </div>
           <div><span>Fault Input</span><strong class="${escapeAttribute(faultState.active ? "status-danger" : "")}">${escapeHtml(faultState.channel ? `${faultState.channel} ${faultState.active ? "Active" : "Normal"}` : faultState.label)}</strong></div>
           <div><span>Occupied Input</span><strong>${escapeHtml(occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label)}</strong></div>
           <div><span>Heating Stages</span><strong>${escapeHtml(heatStageLabel)}</strong></div>
@@ -28572,11 +28704,26 @@ const siteworksApi = {
     });
     return this.server(`/api/automation/hvac/controllers?${params.toString()}`);
   },
+  loadHvacCommands(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ commands: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/hvac/commands?${params.toString()}`);
+  },
   saveHvacController(controller) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, controller }), { status: 200 }));
     return this.server("/api/automation/hvac/controllers", {
       method: "POST",
       body: JSON.stringify(controller)
+    });
+  },
+  queueHvacCommand(command) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, command }), { status: 200 }));
+    return this.server("/api/automation/hvac/commands", {
+      method: "POST",
+      body: JSON.stringify(command)
     });
   },
   deleteHvacController(id) {

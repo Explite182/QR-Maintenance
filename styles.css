@@ -1999,6 +1999,35 @@ textarea:disabled {
   background: rgba(3, 7, 10, 0.74);
 }
 
+.hvac-status-panel .hvac-command-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.hvac-command-row button {
+  min-height: 38px;
+  border: 1px solid rgba(45, 212, 191, 0.48);
+  border-radius: 3px;
+  color: #f8fafc;
+  background: linear-gradient(180deg, #0f766e, #0b4f48);
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-command-row button:last-child {
+  border-color: rgba(148, 163, 184, 0.42);
+  background: linear-gradient(180deg, #263033, #101619);
+}
+
+.hvac-command-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .hvac-drawer-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(150px, 1fr));
