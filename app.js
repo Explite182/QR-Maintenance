@@ -5449,6 +5449,7 @@ let pumpCommandsLoading = false;
 let pumpEventsCache = [];
 let pumpEventsLoadedScope = "";
 let pumpEventsLoading = false;
+let pumpAssetsLoading = false;
 let pumpLiveRefreshActive = false;
 let pumpSetupEditHoldUntil = 0;
 let editingPumpControllerId = "";
@@ -16209,6 +16210,26 @@ function pumpDesiredStateForCommand(command = "") {
   return normalizePumpControlCommand(command) === "Run" ? "On" : "Off";
 }
 
+function pumpRuntimeHoursLabel(asset = null) {
+  if (!asset) return "--";
+  const runtime = asset.pumpRuntime && typeof asset.pumpRuntime === "object" ? asset.pumpRuntime : {};
+  const seconds = Number(asset.runtimeSeconds ?? runtime.runtimeSeconds);
+  const rawHours = Number(asset.runtimeHours ?? runtime.runtimeHours ?? asset.runtime);
+  const hours = Number.isFinite(seconds)
+    ? seconds / 3600
+    : Number.isFinite(rawHours)
+      ? rawHours
+      : null;
+  return hours === null ? "--" : `${hours.toFixed(2)} hr`;
+}
+
+function pumpStartsLabel(asset = null) {
+  if (!asset) return "0";
+  const runtime = asset.pumpRuntime && typeof asset.pumpRuntime === "object" ? asset.pumpRuntime : {};
+  const value = Number(asset.startsToday ?? runtime.startsToday ?? asset.starts ?? runtime.starts ?? 0);
+  return String(Number.isFinite(value) ? value : 0);
+}
+
 function pumpAutoSequenceState(controller = null) {
   const data = controller?.data && typeof controller.data === "object" ? controller.data : {};
   return data.autoSequence && typeof data.autoSequence === "object" ? data.autoSequence : {};
@@ -16575,6 +16596,35 @@ async function loadPumpControllersForCurrentScope({ force = false } = {}) {
   }
 }
 
+async function loadPumpAssetsForCurrentScope() {
+  const scopeKey = getPumpControllerScopeKey();
+  if (!scopeKey || pumpAssetsLoading || !siteworksServerEnabled()) return;
+  pumpAssetsLoading = true;
+  try {
+    const rows = await siteworksApi.loadRows("assets", "updated_at.asc");
+    const remotePumps = Array.isArray(rows)
+      ? rows.map(assetFromStructuredRow).filter((asset) =>
+          isPumpAsset(asset) &&
+          asset.customerId === selectedCustomerId &&
+          asset.locationId === selectedLocationId
+        )
+      : [];
+    if (!remotePumps.length) return;
+    const remoteById = new Map(remotePumps.map((asset) => [asset.id, asset]));
+    const existingIds = new Set((state.assets || []).map((asset) => asset.id));
+    state.assets = (state.assets || []).map((asset) => remoteById.get(asset.id) || asset);
+    remotePumps.forEach((asset) => {
+      if (!existingIds.has(asset.id)) state.assets.push(asset);
+    });
+    state.updatedAt = new Date().toISOString();
+    persistLocalStateOnly(false);
+  } catch (error) {
+    console.warn("Pump runtime equipment values could not be refreshed.", error);
+  } finally {
+    pumpAssetsLoading = false;
+  }
+}
+
 function isPumpSetupEditingActive() {
   const activeElement = document.activeElement;
   if (activeElement?.closest?.(PUMP_SETUP_FORM_SELECTOR)) return true;
@@ -16605,7 +16655,8 @@ async function refreshPumpLiveStatus() {
     await Promise.all([
       loadPumpControllersForCurrentScope({ force: true }),
       loadPumpCommandsForCurrentScope({ force: true }),
-      loadPumpEventsForCurrentScope({ force: true })
+      loadPumpEventsForCurrentScope({ force: true }),
+      loadPumpAssetsForCurrentScope()
     ]);
   } finally {
     pumpLiveRefreshActive = false;
@@ -18298,8 +18349,8 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     const label = asset?.name || `Sump Pump ${index + 1}`;
     const isSelected = asset && selectedPumpHmiAssetId === asset.id;
     const flow = asset?.flowGpm || asset?.flow || (status.className === "is-running" ? "Live" : "0 GPM");
-    const runtime = asset?.runtimeHours || asset?.runtime || "--";
-    const starts = asset?.startsToday || asset?.starts || "0";
+    const runtime = pumpRuntimeHoursLabel(asset);
+    const starts = pumpStartsLabel(asset);
     const ioMapping = asset ? normalizePumpIoMapping(asset, assignedPumpIndex) : pumpHmiPumpIoAssignment(assignedPumpIndex);
     const statusLabel = status.className === "is-alarm"
       ? "FAULT"
