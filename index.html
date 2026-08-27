@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="SiteWorks">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>SiteWorks</title>
-  <link rel="manifest" href="/manifest.webmanifest?v=20260826-pump-default-clean-57">
+  <link rel="manifest" href="/manifest.webmanifest?v=20260826-hvac-rtu-start-58">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260815-pwa-05">
-  <link rel="stylesheet" href="/styles.css?v=20260826-pump-default-clean-57">
+  <link rel="stylesheet" href="/styles.css?v=20260826-hvac-rtu-start-58">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -1411,11 +1411,110 @@
       <section id="automationHvacPanel" class="work-orders-panel automation-system-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="automationHvacPanel">
           <h2>HVAC</h2>
-          <span>0</span>
+          <span>RTU</span>
         </div>
-        <div class="automation-empty-state" data-panel-body>
-          <strong>No HVAC automation devices configured yet.</strong>
-          <p>Add rooftop units, thermostats, economizers, sensors, and controller points here later.</p>
+        <div class="hvac-hmi-panel" data-panel-body>
+          <section class="hvac-scada-shell" aria-label="SiteWorks HVAC HMI">
+            <header class="hvac-scada-titlebar">
+              <div>
+                <strong>SITEWORKS</strong>
+                <span>HVAC AUTOMATION</span>
+              </div>
+              <h2>RTU / MAU HMI</h2>
+              <div>
+                <span>FIRST EQUIPMENT VIEW</span>
+                <strong>Setup</strong>
+              </div>
+            </header>
+            <section class="hvac-scada-alert is-info" aria-label="HVAC status">
+              <span class="hvac-scada-led" aria-hidden="true"></span>
+              <div>
+                <strong>SETUP READY</strong>
+                <span>Add HVAC equipment and controller points to bring this view live.</span>
+              </div>
+              <em>NO CONTROLLER</em>
+            </section>
+            <main class="hvac-scada-main">
+              <section class="hvac-equipment-view" aria-label="HVAC equipment graphic">
+                <header>Equipment Section</header>
+                <div class="hvac-rtu-graphic" aria-label="Rooftop unit graphic">
+                  <div class="hvac-air-path is-return">
+                    <span>RETURN AIR</span>
+                    <strong>--</strong>
+                  </div>
+                  <div class="hvac-air-path is-outside">
+                    <span>OUTSIDE AIR</span>
+                    <strong>--</strong>
+                  </div>
+                  <div class="hvac-mixing-box">
+                    <span>OA DAMPER</span>
+                    <strong>-- %</strong>
+                  </div>
+                  <div class="hvac-filter-bank">
+                    <span>FILTER</span>
+                    <strong>NORMAL</strong>
+                  </div>
+                  <div class="hvac-coil is-cooling">
+                    <span>COOL</span>
+                    <strong>STG --</strong>
+                  </div>
+                  <div class="hvac-coil is-heating">
+                    <span>HEAT</span>
+                    <strong>STG --</strong>
+                  </div>
+                  <div class="hvac-fan-wheel" aria-hidden="true">
+                    <i></i>
+                  </div>
+                  <div class="hvac-air-path is-supply">
+                    <span>SUPPLY AIR</span>
+                    <strong>--</strong>
+                  </div>
+                </div>
+              </section>
+              <aside class="hvac-status-panel" aria-label="HVAC status points">
+                <header>
+                  <span>Unit Status</span>
+                  <strong>0 Running</strong>
+                </header>
+                <div><span>Fan Command</span><strong>Off</strong></div>
+                <div><span>Fan Proof</span><strong>Not wired</strong></div>
+                <div><span>Mode</span><strong>Auto</strong></div>
+                <div><span>Occupancy</span><strong>Unoccupied</strong></div>
+                <div><span>Space Temp</span><strong>--</strong></div>
+                <div><span>Supply Temp</span><strong>--</strong></div>
+                <div><span>Return Temp</span><strong>--</strong></div>
+                <div><span>Outdoor Temp</span><strong>--</strong></div>
+                <div><span>Safety Chain</span><strong>Not wired</strong></div>
+                <div><span>Smoke Shutdown</span><strong>Not wired</strong></div>
+              </aside>
+            </main>
+            <section class="hvac-drawer-grid" aria-label="HVAC setup drawers">
+              <details class="hvac-drawer">
+                <summary><span>Equipment</span><strong>RTU / MAU</strong></summary>
+                <div>
+                  <p>First HVAC equipment model: RTU or MAU with fan, heating, cooling, outside air, safeties, and temperature points.</p>
+                </div>
+              </details>
+              <details class="hvac-drawer">
+                <summary><span>Points</span><strong>Planned</strong></summary>
+                <div>
+                  <p>Fan proof, fan command, heat stages, cool stages, damper, filter, freezestat, smoke shutdown, and temperatures will map here.</p>
+                </div>
+              </details>
+              <details class="hvac-drawer">
+                <summary><span>Schedules</span><strong>Later</strong></summary>
+                <div>
+                  <p>Occupancy scheduling and setpoints will be added after the equipment model is approved.</p>
+                </div>
+              </details>
+              <details class="hvac-drawer">
+                <summary><span>Alarms</span><strong>Clear</strong></summary>
+                <div>
+                  <p>No HVAC alarms are active in this setup view.</p>
+                </div>
+              </details>
+            </section>
+          </section>
         </div>
       </section>
 
@@ -2417,14 +2516,14 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/js/panel-hmi-standard-model.js?v=20260826-pump-default-clean-57"></script>
-  <script src="/js/panel-hmi-siteworks-adapter.js?v=20260826-pump-default-clean-57"></script>
-  <script src="/js/panel-hmi-standard-renderer.js?v=20260826-pump-default-clean-57"></script>
-  <script src="/app.js?v=20260826-pump-default-clean-57"></script>
+  <script src="/js/panel-hmi-standard-model.js?v=20260826-hvac-rtu-start-58"></script>
+  <script src="/js/panel-hmi-siteworks-adapter.js?v=20260826-hvac-rtu-start-58"></script>
+  <script src="/js/panel-hmi-standard-renderer.js?v=20260826-hvac-rtu-start-58"></script>
+  <script src="/app.js?v=20260826-hvac-rtu-start-58"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-navigator.serviceWorker.register("/sw.js?v=20260826-pump-default-clean-57").catch((error) => {
+navigator.serviceWorker.register("/sw.js?v=20260826-hvac-rtu-start-58").catch((error) => {
           console.warn("SiteWorks app install support was not started.", error);
         });
       });

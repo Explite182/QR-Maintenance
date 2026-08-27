@@ -1643,6 +1643,355 @@ textarea:disabled {
   font-weight: 700;
 }
 
+.hvac-hmi-panel {
+  padding: 12px;
+  background:
+    linear-gradient(rgba(45, 212, 191, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 212, 191, 0.045) 1px, transparent 1px),
+    #061313;
+  background-size: 28px 28px;
+}
+
+.hvac-scada-shell {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 3px solid #20282b;
+  border-radius: 4px;
+  color: #f8fafc;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02) 35%, rgba(255, 255, 255, 0.08)),
+    #808981;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.14), 0 18px 40px rgba(0, 0, 0, 0.24);
+}
+
+.hvac-scada-titlebar,
+.hvac-scada-alert,
+.hvac-equipment-view > header,
+.hvac-status-panel > header,
+.hvac-drawer summary {
+  border: 1px solid #263033;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #151b1f, #070a0c);
+}
+
+.hvac-scada-titlebar {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(240px, 1.3fr) minmax(160px, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 76px;
+  padding: 12px 16px;
+}
+
+.hvac-scada-titlebar h2,
+.hvac-scada-titlebar strong,
+.hvac-status-panel strong,
+.hvac-air-path strong,
+.hvac-mixing-box strong,
+.hvac-filter-bank strong,
+.hvac-coil strong {
+  margin: 0;
+  color: #ffffff;
+  font-weight: 950;
+}
+
+.hvac-scada-titlebar h2 {
+  font-size: clamp(1.45rem, 2vw, 2.4rem);
+  text-align: center;
+}
+
+.hvac-scada-titlebar span,
+.hvac-status-panel span,
+.hvac-air-path span,
+.hvac-mixing-box span,
+.hvac-filter-bank span,
+.hvac-coil span {
+  color: #a9d7e8;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.hvac-scada-titlebar > div:last-child {
+  text-align: right;
+}
+
+.hvac-scada-alert {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 14px;
+}
+
+.hvac-scada-led {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.85);
+}
+
+.hvac-scada-alert strong,
+.hvac-scada-alert em {
+  color: #5eead4;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.hvac-scada-alert span {
+  color: #e5f6fb;
+  font-weight: 800;
+}
+
+.hvac-scada-main {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(300px, 0.34fr);
+  gap: 10px;
+}
+
+.hvac-equipment-view,
+.hvac-status-panel {
+  padding: 10px;
+  border: 2px solid #303a3d;
+  border-radius: 3px;
+  background: rgba(5, 13, 16, 0.58);
+}
+
+.hvac-equipment-view > header,
+.hvac-status-panel > header {
+  min-height: 34px;
+  padding: 8px 10px;
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-rtu-graphic {
+  display: grid;
+  grid-template-columns: 0.9fr 0.9fr 1.1fr 0.9fr 0.9fr 0.9fr 1fr 0.9fr;
+  align-items: stretch;
+  min-height: 360px;
+  margin-top: 10px;
+  border: 2px solid #161d20;
+  border-radius: 3px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, #313b3d, #222b2e);
+  background-size: 24px 24px, 24px 24px, auto;
+  overflow: hidden;
+}
+
+.hvac-air-path,
+.hvac-mixing-box,
+.hvac-filter-bank,
+.hvac-coil {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  text-align: center;
+}
+
+.hvac-air-path {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.48), rgba(2, 6, 23, 0.68));
+}
+
+.hvac-air-path::after {
+  content: "";
+  width: 78%;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #8bd9ff, transparent);
+  opacity: 0.78;
+}
+
+.hvac-mixing-box {
+  background: rgba(14, 116, 144, 0.22);
+}
+
+.hvac-filter-bank {
+  background:
+    repeating-linear-gradient(90deg, rgba(226, 232, 240, 0.22) 0 4px, rgba(15, 23, 42, 0.24) 4px 8px),
+    rgba(15, 23, 42, 0.5);
+}
+
+.hvac-coil.is-cooling {
+  background: rgba(14, 165, 233, 0.22);
+}
+
+.hvac-coil.is-heating {
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.hvac-fan-wheel {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  background: radial-gradient(circle at center, rgba(15, 23, 42, 0.2), rgba(2, 6, 23, 0.68));
+}
+
+.hvac-fan-wheel i {
+  display: block;
+  width: min(120px, 72%);
+  aspect-ratio: 1;
+  border: 12px solid #11181c;
+  border-top-color: #8ba2ad;
+  border-right-color: #43515a;
+  border-radius: 50%;
+  background: radial-gradient(circle, #0c1216 0 22%, #334047 23% 33%, transparent 34%);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.12), 0 0 22px rgba(0, 0, 0, 0.45);
+}
+
+.hvac-status-panel {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.hvac-status-panel > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hvac-status-panel div:not(header div) {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid #263033;
+  background: rgba(3, 7, 10, 0.74);
+}
+
+.hvac-drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.hvac-drawer {
+  overflow: hidden;
+  border: 2px solid #252b2d;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #1a2226, #080d10);
+}
+
+.hvac-drawer[open] {
+  grid-column: 1 / -1;
+}
+
+.hvac-drawer summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.hvac-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.hvac-drawer summary::before {
+  content: "+";
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #485257;
+  border-radius: 2px;
+  color: #5eead4;
+  background: #0b1114;
+}
+
+.hvac-drawer[open] summary::before {
+  content: "-";
+}
+
+.hvac-drawer summary span,
+.hvac-drawer summary strong {
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-drawer summary span {
+  flex: 1;
+}
+
+.hvac-drawer summary strong {
+  color: #5eead4;
+}
+
+.hvac-drawer div {
+  padding: 12px;
+}
+
+.hvac-drawer p {
+  margin: 0;
+  color: #d7edf4;
+  font-weight: 750;
+}
+
+@media (max-width: 1180px) {
+  .hvac-scada-main,
+  .hvac-scada-titlebar {
+    grid-template-columns: 1fr;
+  }
+
+  .hvac-scada-titlebar h2,
+  .hvac-scada-titlebar > div:last-child {
+    text-align: left;
+  }
+
+  .hvac-drawer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .hvac-hmi-panel {
+    padding: 6px;
+  }
+
+  .hvac-scada-shell {
+    padding: 8px;
+  }
+
+  .hvac-rtu-graphic {
+    grid-template-columns: 1fr;
+  }
+
+  .hvac-air-path,
+  .hvac-mixing-box,
+  .hvac-filter-bank,
+  .hvac-coil {
+    min-height: 88px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .hvac-fan-wheel {
+    min-height: 120px;
+  }
+
+  .hvac-drawer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .pump-automation-panel {
   display: grid;
   gap: 10px;
