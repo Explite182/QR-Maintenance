@@ -18455,6 +18455,34 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   text-align: left;
 }
 
+.pump-scada-drawer-body .pump-scada-alarm-row em {
+  grid-column: 1 / -1;
+  color: #9fc0cc;
+  font-style: normal;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.pump-scada-drawer-body .pump-scada-alarm-row button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid rgba(45, 212, 191, 0.34);
+  border-radius: 2px;
+  color: #dffdf8;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  background: linear-gradient(180deg, #123d38, #071614);
+  cursor: pointer;
+}
+
+.pump-scada-drawer-body .pump-scada-alarm-row button:hover {
+  border-color: #2dd4bf;
+  color: #ffffff;
+}
+
 @media (max-width: 1280px) {
   .pump-scada-dashboard {
     grid-template-columns: 1fr;

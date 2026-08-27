@@ -9255,6 +9255,19 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const pumpAlarmAckButton = event.target.closest("[data-pump-alarm-ack]");
+  if (pumpAlarmAckButton) {
+    event.preventDefault();
+    acknowledgePumpAlarm(
+      pumpAlarmAckButton.dataset.pumpAlarmAck || "",
+      pumpAlarmAckButton.dataset.pumpAlarmLabel || "",
+      pumpAlarmAckButton.dataset.pumpAssetId || "",
+      pumpAlarmAckButton.dataset.pumpIndex || "",
+      pumpAlarmAckButton.dataset.controllerId || ""
+    );
+    return;
+  }
+
   const pumpSimulateButton = event.target.closest("[data-pump-simulate-action]");
   if (pumpSimulateButton) {
     event.preventDefault();
@@ -16569,6 +16582,77 @@ async function loadPumpEventsForCurrentScope({ force = false } = {}) {
   }
 }
 
+function pumpAlarmAckEventForKey(alarmKey = "") {
+  const key = String(alarmKey || "");
+  if (!key) return null;
+  return pumpEventsCache.find((event) =>
+    event.eventType === "alarm-acknowledged" &&
+    String(event.metadata?.alarmKey || "") === key
+  ) || null;
+}
+
+function pumpAlarmAcknowledgedLabel(alarmKey = "") {
+  const event = pumpAlarmAckEventForKey(alarmKey);
+  if (!event) return "Unacknowledged";
+  const operator = event.metadata?.operator || "Operator";
+  const time = event.createdAt ? formatDateTime(event.createdAt) : "";
+  return `Acknowledged by ${operator}${time ? ` | ${time}` : ""}`;
+}
+
+async function acknowledgePumpAlarm(alarmKey = "", label = "", pumpAssetId = "", pumpIndex = "", controllerId = "") {
+  const key = String(alarmKey || "").trim();
+  if (!key) return;
+  const now = new Date().toISOString();
+  const event = normalizePumpEvent({
+    id: crypto.randomUUID?.() || `pump-ack-${Date.now()}`,
+    customerId: selectedCustomerId,
+    locationId: selectedLocationId,
+    controllerId,
+    pumpAssetId,
+    pumpIndex: Number(pumpIndex || 0) || "",
+    eventType: "alarm-acknowledged",
+    message: `${label || "Pump alarm"} acknowledged.`,
+    severity: "info",
+    metadata: {
+      alarmKey: key,
+      source: "pump-hmi",
+      operator: currentUser?.name || currentUser?.email || "SiteWorks"
+    },
+    createdAt: now
+  });
+  pumpEventsCache = [
+    event,
+    ...pumpEventsCache.filter((item) => item.id !== event.id)
+  ];
+  pumpEventsLoadedScope = getPumpEventScopeKey();
+  renderAutomationPumps();
+  try {
+    const response = await siteworksApi.savePumpEvent({
+      id: event.id,
+      customer_id: event.customerId,
+      location_id: event.locationId,
+      controller_id: event.controllerId,
+      pump_asset_id: event.pumpAssetId,
+      pump_index: event.pumpIndex || null,
+      event_type: event.eventType,
+      message: event.message,
+      severity: event.severity,
+      metadata: event.metadata
+    });
+    if (!response.ok) throw new Error(`Pump event save failed: ${response.status}`);
+    const payload = await response.json().catch(() => null);
+    if (payload?.event) {
+      const saved = normalizePumpEvent(payload.event);
+      pumpEventsCache = [saved, ...pumpEventsCache.filter((item) => item.id !== saved.id)];
+    }
+  } catch (error) {
+    console.warn("Pump alarm acknowledge could not be saved to the server.", error);
+    setSyncBanner("error", "Pump alarm history issue", error?.message || "Could not save pump alarm acknowledgement.", 4500);
+  } finally {
+    if (!isPumpSetupEditingActive()) renderAutomationPumps();
+  }
+}
+
 async function loadPumpControllersForCurrentScope({ force = false } = {}) {
   const scopeKey = getPumpControllerScopeKey();
   if (!scopeKey || pumpControllersLoading) return;
@@ -18056,6 +18140,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <em>High level</em>
       <div class="pump-hmi-alarm-actions">
         <button type="button" data-select-pump-asset="${escapeAttribute(leadPump?.id || "")}" ${leadPump ? "" : "disabled"}>Open Lead Pump</button>
+        <button type="button" data-pump-alarm-ack="station:high-level" data-pump-alarm-label="High level alarm" data-controller-id="${escapeAttribute(primaryController?.id || "")}">Acknowledge</button>
       </div>
     </article>
   ` : "";
@@ -18072,11 +18157,12 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <em>${escapeHtml(status.label)}</em>
         <div class="pump-hmi-alarm-actions">
           <button type="button" data-select-pump-asset="${escapeAttribute(asset.id)}">Open</button>
+          <button type="button" data-pump-alarm-ack="asset:${escapeAttribute(asset.id)}:${escapeAttribute(status.label)}" data-pump-alarm-label="${escapeAttribute(`${asset.name || "Pump"} ${status.label}`)}" data-pump-asset-id="${escapeAttribute(asset.id)}">Acknowledge</button>
           ${canCreateWorkOrders() ? `<button type="button" data-create-pump-ticket="${escapeAttribute(asset.id)}">Create Ticket</button>` : ""}
         </div>
       </article>
     `;
-  }).join("") + liveAlarmPumps.map(({ asset, status, liveStatus }) => `
+  }).join("") + liveAlarmPumps.map(({ asset, status, liveStatus, controller, pumpIndex }) => `
     <article class="pump-hmi-alarm ${status.className}">
       <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
       <div>
@@ -18087,6 +18173,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       <em>${escapeHtml(status.label)}</em>
       <div class="pump-hmi-alarm-actions">
         <button type="button" data-select-pump-asset="${escapeAttribute(asset.id)}">Open</button>
+        <button type="button" data-pump-alarm-ack="asset:${escapeAttribute(asset.id)}:${escapeAttribute(status.label)}" data-pump-alarm-label="${escapeAttribute(`${asset.name || "Pump"} ${status.label}`)}" data-pump-asset-id="${escapeAttribute(asset.id)}" data-pump-index="${escapeAttribute(String(Number(pumpIndex) + 1))}" data-controller-id="${escapeAttribute(controller?.id || "")}">Acknowledge</button>
       </div>
     </article>
   `).join("");
@@ -18103,6 +18190,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <em>${escapeHtml(status.label)}</em>
         <div class="pump-hmi-alarm-actions">
           <button type="button" data-pump-diagram-device-select="${escapeAttribute(device.id)}">Open</button>
+          <button type="button" data-pump-alarm-ack="point:${escapeAttribute(device.id)}:${escapeAttribute(status.label)}" data-pump-alarm-label="${escapeAttribute(`${device.label || "Field point"} ${status.label}`)}">Acknowledge</button>
         </div>
       </article>
     `;
@@ -18408,19 +18496,28 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     <span>P-${String(index + 1).padStart(2, "0")} <b>${escapeHtml(pumps[index] ? pumpDisplayStatus(pumps[index], index).label : "Off")}</b></span>
   `).join("");
   const scadaAlarmSourceRows = [
-    ...liveAlarmPumps.map(({ asset, status, liveStatus }) => ({
+    ...liveAlarmPumps.map(({ asset, status, liveStatus, controller, pumpIndex }) => ({
+      key: `asset:${asset?.id || ""}:${status?.label || ""}`,
       label: asset?.name || "Pump",
-      value: status?.reason || liveStatus?.reason || status?.label || "Pump alarm is active."
+      value: status?.reason || liveStatus?.reason || status?.label || "Pump alarm is active.",
+      pumpAssetId: asset?.id || "",
+      pumpIndex: Number(pumpIndex) + 1,
+      controllerId: controller?.id || ""
     })),
     ...(liveHighFloatState?.active ? [{
+      key: "station:high-level",
       label: "High level",
-      value: `${liveHighFloatState.channel || "High level input"} active`
+      value: `${liveHighFloatState.channel || "High level input"} active`,
+      controllerId: primaryController?.id || ""
     }] : []),
     ...activePumpAlarms.map(({ asset, status }) => ({
+      key: `asset:${asset?.id || ""}:${status?.label || ""}`,
       label: asset?.name || "Pump",
-      value: status?.label || "Needs attention"
+      value: status?.label || "Needs attention",
+      pumpAssetId: asset?.id || ""
     })),
     ...diagramAlarmDevices.map((device) => ({
+      key: `point:${device.id || ""}:${pumpDiagramDeviceStatus(device).label}`,
       label: device.label || "Field point",
       value: pumpDiagramDeviceStatus(device).label
     }))
@@ -18428,7 +18525,21 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   const scadaAlarmRows = totalWarningCount ? `
     <div class="pump-scada-alarm-row is-alarm"><span>Alarm active</span><strong>${totalWarningCount} item${totalWarningCount === 1 ? "" : "s"}</strong></div>
     ${scadaAlarmSourceRows.slice(0, 4).map((row) => `
-      <div class="pump-scada-alarm-row"><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(row.value)}</strong></div>
+      <div class="pump-scada-alarm-row">
+        <span>${escapeHtml(row.label)}</span>
+        <strong>${escapeHtml(row.value)}</strong>
+        <em>${escapeHtml(pumpAlarmAcknowledgedLabel(row.key))}</em>
+        ${pumpAlarmAckEventForKey(row.key) ? "" : `
+          <button
+            type="button"
+            data-pump-alarm-ack="${escapeAttribute(row.key)}"
+            data-pump-alarm-label="${escapeAttribute(row.label)}"
+            data-pump-asset-id="${escapeAttribute(row.pumpAssetId || "")}"
+            data-pump-index="${escapeAttribute(String(row.pumpIndex || ""))}"
+            data-controller-id="${escapeAttribute(row.controllerId || "")}"
+          >Acknowledge</button>
+        `}
+      </div>
     `).join("")}
   ` : `
     <div class="pump-scada-alarm-row"><span>No active alarms</span><strong>Normal</strong></div>
@@ -27431,6 +27542,13 @@ const siteworksApi = {
       location_id: locationId || ""
     });
     return this.server(`/api/automation/pumps/events?${params.toString()}`);
+  },
+  savePumpEvent(event) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, event }), { status: 200 }));
+    return this.server("/api/automation/pumps/events", {
+      method: "POST",
+      body: JSON.stringify(event)
+    });
   },
   savePumpController(controller) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, controller }), { status: 200 }));
