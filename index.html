@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="SiteWorks">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>SiteWorks</title>
-  <link rel="manifest" href="/manifest.webmanifest?v=20260827-hvac-stages-61">
+  <link rel="manifest" href="/manifest.webmanifest?v=20260827-hvac-visual-62">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260815-pwa-05">
-  <link rel="stylesheet" href="/styles.css?v=20260827-hvac-stages-61">
+  <link rel="stylesheet" href="/styles.css?v=20260827-hvac-visual-62">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -1438,36 +1438,47 @@
               <section class="hvac-equipment-view" aria-label="HVAC equipment graphic">
                 <header>Equipment Section</header>
                 <div class="hvac-rtu-graphic" aria-label="Rooftop unit graphic">
-                  <div class="hvac-air-path is-return">
+                  <div class="hvac-air-intake is-return">
                     <span>RETURN AIR</span>
                     <strong>--</strong>
+                    <b aria-hidden="true"></b>
                   </div>
-                  <div class="hvac-air-path is-outside">
+                  <div class="hvac-air-intake is-outside">
                     <span>OUTSIDE AIR</span>
                     <strong>--</strong>
+                    <b aria-hidden="true"></b>
                   </div>
-                  <div class="hvac-mixing-box">
-                    <span>OA DAMPER</span>
-                    <strong>-- %</strong>
+                  <div class="hvac-unit-body">
+                    <div class="hvac-section hvac-mixing-section">
+                      <span>MIXED AIR</span>
+                      <strong>OA DAMPER --%</strong>
+                      <div class="hvac-damper-blades" aria-hidden="true"><i></i><i></i><i></i></div>
+                    </div>
+                    <div class="hvac-section hvac-filter-section">
+                      <span>FILTER BANK</span>
+                      <strong>NORMAL</strong>
+                      <div aria-hidden="true"></div>
+                    </div>
+                    <div class="hvac-section hvac-coil-section is-cooling">
+                      <span>COOLING COIL</span>
+                      <strong>1 STAGE</strong>
+                      <div class="hvac-stage-dots" aria-label="Cooling stage configuration"><i class="is-configured">1</i><i>2</i><i>3</i><i>4</i></div>
+                    </div>
+                    <div class="hvac-section hvac-coil-section is-heating">
+                      <span>HEATING COIL</span>
+                      <strong>1 STAGE</strong>
+                      <div class="hvac-stage-dots" aria-label="Heating stage configuration"><i class="is-configured">1</i><i>2</i><i>3</i><i>4</i></div>
+                    </div>
+                    <div class="hvac-section hvac-fan-section">
+                      <span>SUPPLY FAN</span>
+                      <strong>STOPPED</strong>
+                      <div class="hvac-fan-wheel" aria-hidden="true"><i></i></div>
+                    </div>
                   </div>
-                  <div class="hvac-filter-bank">
-                    <span>FILTER</span>
-                    <strong>NORMAL</strong>
-                  </div>
-                  <div class="hvac-coil is-cooling">
-                    <span>COOL</span>
-                    <strong>STG --</strong>
-                  </div>
-                  <div class="hvac-coil is-heating">
-                    <span>HEAT</span>
-                    <strong>STG --</strong>
-                  </div>
-                  <div class="hvac-fan-wheel" aria-hidden="true">
-                    <i></i>
-                  </div>
-                  <div class="hvac-air-path is-supply">
+                  <div class="hvac-supply-discharge">
                     <span>SUPPLY AIR</span>
                     <strong>--</strong>
+                    <b aria-hidden="true"></b>
                   </div>
                 </div>
               </section>
@@ -2516,14 +2527,14 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="/monitoring-engine.js?v=20260805-monitoring-engine"></script>
-  <script src="/js/panel-hmi-standard-model.js?v=20260827-hvac-stages-61"></script>
-  <script src="/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-stages-61"></script>
-  <script src="/js/panel-hmi-standard-renderer.js?v=20260827-hvac-stages-61"></script>
-  <script src="/app.js?v=20260827-hvac-stages-61"></script>
+  <script src="/js/panel-hmi-standard-model.js?v=20260827-hvac-visual-62"></script>
+  <script src="/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-visual-62"></script>
+  <script src="/js/panel-hmi-standard-renderer.js?v=20260827-hvac-visual-62"></script>
+  <script src="/app.js?v=20260827-hvac-visual-62"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-navigator.serviceWorker.register("/sw.js?v=20260827-hvac-stages-61").catch((error) => {
+navigator.serviceWorker.register("/sw.js?v=20260827-hvac-visual-62").catch((error) => {
           console.warn("SiteWorks app install support was not started.", error);
         });
       });

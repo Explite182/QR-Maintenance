@@ -19623,6 +19623,8 @@ function renderAutomationHvac() {
   const coolStageCount = Math.max(0, Math.min(4, Number(primaryController?.coolStageCount || primaryController?.data?.coolStageCount || 1) || 0));
   const heatStageLabel = heatStageCount === 1 ? "1 Stage" : `${heatStageCount} Stages`;
   const coolStageLabel = coolStageCount === 1 ? "1 Stage" : `${coolStageCount} Stages`;
+  const heatStageDots = [1, 2, 3, 4].map((stage) => `<i class="${stage <= heatStageCount ? "is-configured" : ""}">${stage}</i>`).join("");
+  const coolStageDots = [1, 2, 3, 4].map((stage) => `<i class="${stage <= coolStageCount ? "is-configured" : ""}">${stage}</i>`).join("");
   const shouldShowForm = Boolean(editingHvacControllerId || !controllers.length);
   const editingController = editingHvacControllerId && editingHvacControllerId !== "__new__"
     ? controllers.find((controller) => controller.id === editingHvacControllerId)
@@ -19687,14 +19689,48 @@ function renderAutomationHvac() {
         <section class="hvac-equipment-view" aria-label="HVAC equipment graphic">
           <header>Equipment Section</header>
           <div class="hvac-rtu-graphic" aria-label="Rooftop unit graphic">
-            <div class="hvac-air-path is-return"><span>Return Air</span><strong>--</strong></div>
-            <div class="hvac-air-path is-outside"><span>Outside Air</span><strong>--</strong></div>
-            <div class="hvac-mixing-box"><span>OA Damper</span><strong>-- %</strong></div>
-            <div class="hvac-filter-bank"><span>Filter</span><strong>Normal</strong></div>
-            <div class="hvac-coil is-cooling"><span>Cool</span><strong>${escapeHtml(coolStageLabel)}</strong></div>
-            <div class="hvac-coil is-heating"><span>Heat</span><strong>${escapeHtml(heatStageLabel)}</strong></div>
-            <div class="hvac-fan-wheel" aria-hidden="true"><i></i></div>
-            <div class="hvac-air-path is-supply"><span>Supply Air</span><strong>--</strong></div>
+            <div class="hvac-air-intake is-return">
+              <span>Return Air</span>
+              <strong>--</strong>
+              <b aria-hidden="true"></b>
+            </div>
+            <div class="hvac-air-intake is-outside">
+              <span>Outside Air</span>
+              <strong>--</strong>
+              <b aria-hidden="true"></b>
+            </div>
+            <div class="hvac-unit-body">
+              <div class="hvac-section hvac-mixing-section">
+                <span>Mixed Air</span>
+                <strong>OA Damper --%</strong>
+                <div class="hvac-damper-blades" aria-hidden="true"><i></i><i></i><i></i></div>
+              </div>
+              <div class="hvac-section hvac-filter-section">
+                <span>Filter Bank</span>
+                <strong>Normal</strong>
+                <div aria-hidden="true"></div>
+              </div>
+              <div class="hvac-section hvac-coil-section is-cooling">
+                <span>Cooling Coil</span>
+                <strong>${escapeHtml(coolStageLabel)}</strong>
+                <div class="hvac-stage-dots" aria-label="Cooling stage configuration">${coolStageDots}</div>
+              </div>
+              <div class="hvac-section hvac-coil-section is-heating">
+                <span>Heating Coil</span>
+                <strong>${escapeHtml(heatStageLabel)}</strong>
+                <div class="hvac-stage-dots" aria-label="Heating stage configuration">${heatStageDots}</div>
+              </div>
+              <div class="hvac-section hvac-fan-section">
+                <span>Supply Fan</span>
+                <strong>Stopped</strong>
+                <div class="hvac-fan-wheel" aria-hidden="true"><i></i></div>
+              </div>
+            </div>
+            <div class="hvac-supply-discharge">
+              <span>Supply Air</span>
+              <strong>--</strong>
+              <b aria-hidden="true"></b>
+            </div>
           </div>
         </section>
         <aside class="hvac-status-panel" aria-label="HVAC status points">

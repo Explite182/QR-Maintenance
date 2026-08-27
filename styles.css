@@ -1688,6 +1688,9 @@ textarea:disabled {
 .hvac-scada-titlebar strong,
 .hvac-status-panel strong,
 .hvac-air-path strong,
+.hvac-air-intake strong,
+.hvac-supply-discharge strong,
+.hvac-section strong,
 .hvac-mixing-box strong,
 .hvac-filter-bank strong,
 .hvac-coil strong {
@@ -1704,6 +1707,9 @@ textarea:disabled {
 .hvac-scada-titlebar span,
 .hvac-status-panel span,
 .hvac-air-path span,
+.hvac-air-intake span,
+.hvac-supply-discharge span,
+.hvac-section span,
 .hvac-mixing-box span,
 .hvac-filter-bank span,
 .hvac-coil span {
@@ -1772,9 +1778,11 @@ textarea:disabled {
 
 .hvac-rtu-graphic {
   display: grid;
-  grid-template-columns: 0.9fr 0.9fr 1.1fr 0.9fr 0.9fr 0.9fr 1fr 0.9fr;
+  grid-template-columns: minmax(120px, 0.75fr) minmax(360px, 3.4fr) minmax(130px, 0.78fr);
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
   align-items: stretch;
-  min-height: 360px;
+  min-height: 430px;
   margin-top: 10px;
   border: 2px solid #161d20;
   border-radius: 3px;
@@ -1784,58 +1792,170 @@ textarea:disabled {
     linear-gradient(180deg, #313b3d, #222b2e);
   background-size: 24px 24px, 24px 24px, auto;
   overflow: hidden;
+  padding: 14px;
 }
 
-.hvac-air-path,
-.hvac-mixing-box,
-.hvac-filter-bank,
-.hvac-coil {
+.hvac-air-intake,
+.hvac-supply-discharge,
+.hvac-section {
   display: grid;
   align-content: center;
   justify-items: center;
   gap: 8px;
   min-width: 0;
   padding: 14px 8px;
-  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(10, 14, 16, 0.78);
+  border-radius: 3px;
   text-align: center;
 }
 
-.hvac-air-path {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.48), rgba(2, 6, 23, 0.68));
+.hvac-air-intake,
+.hvac-supply-discharge {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.48), rgba(2, 6, 23, 0.72)),
+    #11191c;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.06);
 }
 
-.hvac-air-path::after {
+.hvac-air-intake b,
+.hvac-supply-discharge b {
   content: "";
-  width: 78%;
+  width: 72%;
   height: 12px;
   border-radius: 999px;
   background: linear-gradient(90deg, transparent, #8bd9ff, transparent);
   opacity: 0.78;
 }
 
-.hvac-mixing-box {
-  background: rgba(14, 116, 144, 0.22);
+.hvac-air-intake.is-return {
+  grid-column: 1;
+  grid-row: 1;
 }
 
-.hvac-filter-bank {
+.hvac-air-intake.is-outside {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.hvac-supply-discharge {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+
+.hvac-unit-body {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: grid;
+  grid-template-columns: 1.05fr 0.7fr 0.9fr 0.9fr 1fr;
+  gap: 8px;
+  padding: 12px;
+  border: 3px solid #11191b;
+  border-radius: 5px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 20%, rgba(0, 0, 0, 0.16)),
+    linear-gradient(90deg, #7d8781, #56605c 48%, #8a928c);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    inset 0 -24px 42px rgba(0, 0, 0, 0.22),
+    0 14px 28px rgba(0, 0, 0, 0.28);
+}
+
+.hvac-section {
+  position: relative;
+  min-height: 330px;
+  color: #f8fafc;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.22), rgba(2, 6, 23, 0.46)),
+    rgba(29, 37, 39, 0.68);
+}
+
+.hvac-section::before {
+  content: "";
+  position: absolute;
+  inset: 10px auto 10px -10px;
+  width: 18px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, rgba(125, 211, 252, 0.5), transparent);
+  opacity: 0.82;
+}
+
+.hvac-mixing-section {
+  background: rgba(14, 116, 144, 0.18);
+}
+
+.hvac-filter-section {
   background:
     repeating-linear-gradient(90deg, rgba(226, 232, 240, 0.22) 0 4px, rgba(15, 23, 42, 0.24) 4px 8px),
     rgba(15, 23, 42, 0.5);
 }
 
-.hvac-coil.is-cooling {
+.hvac-filter-section > div {
+  width: 62%;
+  height: 56%;
+  border: 1px solid rgba(226, 232, 240, 0.38);
+  background: repeating-linear-gradient(135deg, rgba(226, 232, 240, 0.25) 0 5px, transparent 5px 12px);
+}
+
+.hvac-coil-section.is-cooling {
   background: rgba(14, 165, 233, 0.22);
 }
 
-.hvac-coil.is-heating {
+.hvac-coil-section.is-heating {
   background: rgba(239, 68, 68, 0.18);
+}
+
+.hvac-damper-blades {
+  display: grid;
+  gap: 10px;
+  width: 70%;
+}
+
+.hvac-damper-blades i {
+  display: block;
+  height: 12px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #1f2933, #d6dde0 48%, #111827);
+  transform: rotate(-18deg);
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.34);
+}
+
+.hvac-stage-dots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  width: min(120px, 100%);
+}
+
+.hvac-stage-dots i {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 1;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 50%;
+  color: #94a3b8;
+  background: #111827;
+  font-style: normal;
+  font-size: 0.74rem;
+  font-weight: 950;
+}
+
+.hvac-stage-dots i.is-configured {
+  border-color: rgba(94, 234, 212, 0.8);
+  color: #dcfce7;
+  background: #0f766e;
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.44);
+}
+
+.hvac-fan-section {
+  background: radial-gradient(circle at center, rgba(15, 23, 42, 0.2), rgba(2, 6, 23, 0.68));
 }
 
 .hvac-fan-wheel {
   display: grid;
   place-items: center;
   min-width: 0;
-  background: radial-gradient(circle at center, rgba(15, 23, 42, 0.2), rgba(2, 6, 23, 0.68));
 }
 
 .hvac-fan-wheel i {
@@ -2166,18 +2286,33 @@ textarea:disabled {
 
   .hvac-rtu-graphic {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
   }
 
-  .hvac-air-path,
-  .hvac-mixing-box,
-  .hvac-filter-bank,
-  .hvac-coil {
+  .hvac-air-intake,
+  .hvac-supply-discharge,
+  .hvac-unit-body {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .hvac-unit-body {
+    grid-template-columns: 1fr;
+  }
+
+  .hvac-air-intake,
+  .hvac-supply-discharge,
+  .hvac-section {
     min-height: 88px;
     border-right: 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   }
 
-  .hvac-fan-wheel {
+  .hvac-section {
+    min-height: 120px;
+  }
+
+  .hvac-fan-section {
     min-height: 120px;
   }
 
