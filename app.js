@@ -19139,6 +19139,9 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
 
 function normalizeHvacController(controller = {}) {
   const data = controller.data && typeof controller.data === "object" ? controller.data : {};
+  const pointsSource = data.points && typeof data.points === "object" ? data.points : {};
+  const heatStageCount = Math.max(0, Math.min(4, Number(controller.heatStageCount || controller.heat_stage_count || data.heatStageCount || 1) || 0));
+  const coolStageCount = Math.max(0, Math.min(4, Number(controller.coolStageCount || controller.cool_stage_count || data.coolStageCount || 1) || 0));
   const equipmentIds = Array.isArray(controller.equipmentIds)
     ? controller.equipmentIds
     : Array.isArray(data.equipmentIds)
@@ -19153,23 +19156,31 @@ function normalizeHvacController(controller = {}) {
     type: controller.type || controller.controllerType || controller.controller_type || "RTU controller",
     area: controller.area || "",
     equipmentCount: String(controller.equipmentCount || controller.equipment_count || data.equipmentCount || 1),
+    heatStageCount: String(heatStageCount),
+    coolStageCount: String(coolStageCount),
     equipmentIds: equipmentIds.map((id) => String(id || "").trim()).filter(Boolean),
     mode: controller.mode || "Setup only",
     status: controller.status || "Setup only",
     notes: controller.notes || "",
     points: {
-      fanCommand: data.points?.fanCommand || controller.fanCommandOutput || "DO1",
-      fanProof: data.points?.fanProof || controller.fanProofInput || "DI1",
-      heatStage1: data.points?.heatStage1 || controller.heatStage1Output || "DO2",
-      coolStage1: data.points?.coolStage1 || controller.coolStage1Output || "DO3",
-      damper: data.points?.damper || controller.damperOutput || "AO1",
-      filter: data.points?.filter || controller.filterInput || "DI2",
-      freezestat: data.points?.freezestat || controller.freezestatInput || "DI3",
-      smoke: data.points?.smoke || controller.smokeInput || "DI4",
-      supplyTemp: data.points?.supplyTemp || controller.supplyTempInput || "AI1",
-      returnTemp: data.points?.returnTemp || controller.returnTempInput || "AI2",
-      outsideTemp: data.points?.outsideTemp || controller.outsideTempInput || "AI3",
-      spaceTemp: data.points?.spaceTemp || controller.spaceTempInput || "AI4"
+      fanCommand: pointsSource.fanCommand || controller.fanCommandOutput || "DO1",
+      fanProof: pointsSource.fanProof || controller.fanProofInput || "DI1",
+      heatStage1: pointsSource.heatStage1 || controller.heatStage1Output || "DO2",
+      coolStage1: pointsSource.coolStage1 || controller.coolStage1Output || "DO3",
+      heatStage2: pointsSource.heatStage2 || controller.heatStage2Output || "DO4",
+      coolStage2: pointsSource.coolStage2 || controller.coolStage2Output || "DO5",
+      heatStage3: pointsSource.heatStage3 || controller.heatStage3Output || "DO6",
+      coolStage3: pointsSource.coolStage3 || controller.coolStage3Output || "DO7",
+      heatStage4: pointsSource.heatStage4 || controller.heatStage4Output || "DO8",
+      coolStage4: pointsSource.coolStage4 || controller.coolStage4Output || "DO9",
+      damper: pointsSource.damper || controller.damperOutput || "AO1",
+      filter: pointsSource.filter || controller.filterInput || "DI2",
+      freezestat: pointsSource.freezestat || controller.freezestatInput || "DI3",
+      smoke: pointsSource.smoke || controller.smokeInput || "DI4",
+      supplyTemp: pointsSource.supplyTemp || controller.supplyTempInput || "AI1",
+      returnTemp: pointsSource.returnTemp || controller.returnTempInput || "AI2",
+      outsideTemp: pointsSource.outsideTemp || controller.outsideTempInput || "AI3",
+      spaceTemp: pointsSource.spaceTemp || controller.spaceTempInput || "AI4"
     },
     data,
     createdAt: controller.createdAt || controller.created_at || new Date().toISOString(),
@@ -19396,6 +19407,12 @@ function renderHvacControllerForm(controller = null) {
     ["fanProof", "Fan proof", "DI1"],
     ["heatStage1", "Heat stage 1", "DO2"],
     ["coolStage1", "Cool stage 1", "DO3"],
+    ["heatStage2", "Heat stage 2", "DO4"],
+    ["coolStage2", "Cool stage 2", "DO5"],
+    ["heatStage3", "Heat stage 3", "DO6"],
+    ["coolStage3", "Cool stage 3", "DO7"],
+    ["heatStage4", "Heat stage 4", "DO8"],
+    ["coolStage4", "Cool stage 4", "DO9"],
     ["damper", "OA damper", "AO1"],
     ["filter", "Filter", "DI2"],
     ["freezestat", "Freezestat", "DI3"],
@@ -19427,6 +19444,20 @@ function renderHvacControllerForm(controller = null) {
         <select name="equipmentCount">
           ${[1, 2, 3, 4, 5, 6, 7, 8].map((count) =>
             `<option value="${count}" ${String(count) === String(controller?.equipmentCount || "1") ? "selected" : ""}>${count}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Heating stages
+        <select name="heatStageCount">
+          ${[0, 1, 2, 3, 4].map((count) =>
+            `<option value="${count}" ${String(count) === String(controller?.heatStageCount || "1") ? "selected" : ""}>${count}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Cooling stages
+        <select name="coolStageCount">
+          ${[0, 1, 2, 3, 4].map((count) =>
+            `<option value="${count}" ${String(count) === String(controller?.coolStageCount || "1") ? "selected" : ""}>${count}</option>`
           ).join("")}
         </select>
       </label>
@@ -19467,7 +19498,28 @@ async function saveHvacControllerFromForm(form) {
   const existing = getHvacControllers().find((controller) => controller.id === existingControllerId);
   const equipmentIds = formData.getAll("equipmentIds").map((id) => String(id || "").trim()).filter(Boolean);
   const now = new Date().toISOString();
-  const pointNames = ["fanCommand", "fanProof", "heatStage1", "coolStage1", "damper", "filter", "freezestat", "smoke", "supplyTemp", "returnTemp", "outsideTemp", "spaceTemp"];
+  const heatStageCount = Math.max(0, Math.min(4, Number(formData.get("heatStageCount") || 1) || 0));
+  const coolStageCount = Math.max(0, Math.min(4, Number(formData.get("coolStageCount") || 1) || 0));
+  const pointNames = [
+    "fanCommand",
+    "fanProof",
+    "heatStage1",
+    "heatStage2",
+    "heatStage3",
+    "heatStage4",
+    "coolStage1",
+    "coolStage2",
+    "coolStage3",
+    "coolStage4",
+    "damper",
+    "filter",
+    "freezestat",
+    "smoke",
+    "supplyTemp",
+    "returnTemp",
+    "outsideTemp",
+    "spaceTemp"
+  ];
   const points = Object.fromEntries(pointNames.map((name) => [name, String(formData.get(name) || "").trim()]));
   const controller = normalizeHvacController({
     ...existing,
@@ -19479,6 +19531,8 @@ async function saveHvacControllerFromForm(form) {
     type: String(formData.get("type") || "RTU controller").trim(),
     area: String(formData.get("area") || "").trim(),
     equipmentCount: String(formData.get("equipmentCount") || "1").trim(),
+    heatStageCount: String(heatStageCount),
+    coolStageCount: String(coolStageCount),
     equipmentIds,
     mode: String(formData.get("mode") || "Setup only").trim(),
     status: String(formData.get("mode") || "Setup only").trim(),
@@ -19486,6 +19540,8 @@ async function saveHvacControllerFromForm(form) {
     data: {
       ...(existing?.data || {}),
       equipmentIds,
+      heatStageCount,
+      coolStageCount,
       points
     },
     createdAt: existing?.createdAt || now,
@@ -19515,6 +19571,8 @@ async function saveHvacControllerFromForm(form) {
       data: {
         ...(controller.data || {}),
         equipmentIds: controller.equipmentIds,
+        heatStageCount: controller.heatStageCount,
+        coolStageCount: controller.coolStageCount,
         points: controller.points
       }
     });
@@ -19561,6 +19619,10 @@ function renderAutomationHvac() {
   const primaryController = controllers[0] || null;
   const primaryEquipment = primaryController ? hvacControllerAssignedEquipment(primaryController, equipment)[0] || equipment[0] : equipment[0];
   const status = primaryController ? hvacControllerStatus(primaryController) : { label: "No controller", className: "is-info" };
+  const heatStageCount = Math.max(0, Math.min(4, Number(primaryController?.heatStageCount || primaryController?.data?.heatStageCount || 1) || 0));
+  const coolStageCount = Math.max(0, Math.min(4, Number(primaryController?.coolStageCount || primaryController?.data?.coolStageCount || 1) || 0));
+  const heatStageLabel = heatStageCount === 1 ? "1 Stage" : `${heatStageCount} Stages`;
+  const coolStageLabel = coolStageCount === 1 ? "1 Stage" : `${coolStageCount} Stages`;
   const shouldShowForm = Boolean(editingHvacControllerId || !controllers.length);
   const editingController = editingHvacControllerId && editingHvacControllerId !== "__new__"
     ? controllers.find((controller) => controller.id === editingHvacControllerId)
@@ -19588,6 +19650,8 @@ function renderAutomationHvac() {
         <span><b>Units</b>${assigned.length}/${escapeHtml(controller.equipmentCount || "1")}</span>
         <span><b>Status</b>${escapeHtml(controllerStatus.label)}</span>
         <span><b>Mode</b>${escapeHtml(controller.mode || "Setup only")}</span>
+        <span><b>Heat</b>${escapeHtml(controller.heatStageCount || "1")} stage${String(controller.heatStageCount || "1") === "1" ? "" : "s"}</span>
+        <span><b>Cool</b>${escapeHtml(controller.coolStageCount || "1")} stage${String(controller.coolStageCount || "1") === "1" ? "" : "s"}</span>
         <span><b>Points</b>${Object.values(controller.points || {}).filter(Boolean).length} planned</span>
         <span><b>Assigned</b>${escapeHtml(assigned.map((asset) => asset.name || asset.equipmentId).join(", ") || "No equipment assigned")}</span>
         <div class="hvac-controller-actions">
@@ -19627,8 +19691,8 @@ function renderAutomationHvac() {
             <div class="hvac-air-path is-outside"><span>Outside Air</span><strong>--</strong></div>
             <div class="hvac-mixing-box"><span>OA Damper</span><strong>-- %</strong></div>
             <div class="hvac-filter-bank"><span>Filter</span><strong>Normal</strong></div>
-            <div class="hvac-coil is-cooling"><span>Cool</span><strong>Stage --</strong></div>
-            <div class="hvac-coil is-heating"><span>Heat</span><strong>Stage --</strong></div>
+            <div class="hvac-coil is-cooling"><span>Cool</span><strong>${escapeHtml(coolStageLabel)}</strong></div>
+            <div class="hvac-coil is-heating"><span>Heat</span><strong>${escapeHtml(heatStageLabel)}</strong></div>
             <div class="hvac-fan-wheel" aria-hidden="true"><i></i></div>
             <div class="hvac-air-path is-supply"><span>Supply Air</span><strong>--</strong></div>
           </div>
@@ -19639,6 +19703,8 @@ function renderAutomationHvac() {
           <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
           <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand || "Not mapped")}</strong></div>
           <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof || "Not mapped")}</strong></div>
+          <div><span>Heating Stages</span><strong>${escapeHtml(heatStageLabel)}</strong></div>
+          <div><span>Cooling Stages</span><strong>${escapeHtml(coolStageLabel)}</strong></div>
           <div><span>Mode</span><strong>Auto</strong></div>
           <div><span>Occupancy</span><strong>Unoccupied</strong></div>
           <div><span>Safety Chain</span><strong>Not wired</strong></div>
@@ -19659,7 +19725,7 @@ function renderAutomationHvac() {
         <details class="hvac-drawer">
           <summary><span>Points</span><strong>${primaryController ? "Mapped" : "Planned"}</strong></summary>
           <div>
-            <p>Fan command, fan proof, heat, cool, damper, filter, freezestat, smoke shutdown, and temperature points are ready to map.</p>
+            <p>Fan command, fan proof, ${escapeHtml(heatStageLabel.toLowerCase())} heat, ${escapeHtml(coolStageLabel.toLowerCase())} cooling, damper, filter, freezestat, smoke shutdown, and temperature points are ready to map.</p>
           </div>
         </details>
         <details class="hvac-drawer">

@@ -2021,7 +2021,7 @@ textarea:disabled {
   resize: vertical;
 }
 
-.hvac-controller-form > label:nth-child(7),
+.hvac-controller-form > label:nth-child(9),
 .hvac-point-map,
 .hvac-controller-equipment-picker,
 .hvac-controller-actions {
