@@ -1,19 +1,19 @@
-const SITEWORKS_SW_VERSION = "20260826-hvac-setup-59";
+const SITEWORKS_SW_VERSION = "20260826-hvac-server-storage-60";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260826-hvac-setup-59",
+  "/styles.css?v=20260826-hvac-server-storage-60",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260826-hvac-setup-59",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260826-hvac-setup-59",
-  "/js/panel-hmi-standard-renderer.js?v=20260826-hvac-setup-59",
-  "/app.js?v=20260826-hvac-setup-59",
-  "/manifest.webmanifest?v=20260826-hvac-setup-59",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260826-hvac-setup-59",
-  "/icons/siteworks-icon-192.png?v=20260826-hvac-setup-59",
-  "/icons/siteworks-icon-512.png?v=20260826-hvac-setup-59"
+  "/js/panel-hmi-standard-model.js?v=20260826-hvac-server-storage-60",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260826-hvac-server-storage-60",
+  "/js/panel-hmi-standard-renderer.js?v=20260826-hvac-server-storage-60",
+  "/app.js?v=20260826-hvac-server-storage-60",
+  "/manifest.webmanifest?v=20260826-hvac-server-storage-60",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260826-hvac-server-storage-60",
+  "/icons/siteworks-icon-192.png?v=20260826-hvac-server-storage-60",
+  "/icons/siteworks-icon-512.png?v=20260826-hvac-server-storage-60"
 ];
 
 self.addEventListener("install", (event) => {

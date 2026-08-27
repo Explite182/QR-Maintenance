@@ -5454,6 +5454,9 @@ let pumpLiveRefreshActive = false;
 let pumpSetupEditHoldUntil = 0;
 let editingPumpControllerId = "";
 let editingHvacControllerId = "";
+let hvacControllersCache = [];
+let hvacControllersLoadedScope = "";
+let hvacControllersLoading = false;
 let pendingPumpApiKey = null;
 let selectedPumpHmiAssetId = "";
 let selectedPumpDiagramDeviceId = "";
@@ -7795,7 +7798,7 @@ els.commandPalette?.addEventListener("click", (event) => {
   if (event.target === els.commandPalette) closeCommandPalette();
 });
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const result = event.target.closest("[data-dashboard-result-type]");
   if (!result) return;
   event.stopPropagation();
@@ -7813,7 +7816,7 @@ function closeOpenTicketActionMenus(exceptMenu = null) {
   });
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   closeOpenTicketActionMenus(event.target.closest(".ticket-action-menu"));
 });
 
@@ -9028,7 +9031,7 @@ els.refreshCloudNowBtn?.addEventListener("click", async () => {
   render();
 });
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const ticketMenuSummary = event.target.closest(".work-order-drawer > summary .ticket-action-menu > summary");
   if (ticketMenuSummary) {
     event.stopPropagation();
@@ -9218,14 +9221,14 @@ document.addEventListener("click", (event) => {
   const createHvacEquipmentButton = event.target.closest("[data-create-hvac-equipment]");
   if (createHvacEquipmentButton) {
     event.preventDefault();
-    createHvacEquipmentForController(createHvacEquipmentButton.dataset.createHvacEquipment || "");
+    await createHvacEquipmentForController(createHvacEquipmentButton.dataset.createHvacEquipment || "");
     return;
   }
 
   const deleteHvacControllerButton = event.target.closest("[data-hvac-controller-delete]");
   if (deleteHvacControllerButton) {
     event.preventDefault();
-    deleteHvacController(deleteHvacControllerButton.dataset.hvacControllerDelete || "");
+    await deleteHvacController(deleteHvacControllerButton.dataset.hvacControllerDelete || "");
     return;
   }
 
@@ -10123,7 +10126,7 @@ document.addEventListener("submit", async (event) => {
   if (!(form instanceof HTMLFormElement)) return;
   if (form.matches("[data-hvac-controller-form]")) {
     event.preventDefault();
-    saveHvacControllerFromForm(form);
+    await saveHvacControllerFromForm(form);
     return;
   }
   if (form.matches("[data-pump-controller-form]")) {
@@ -19184,8 +19187,40 @@ function saveHvacControllers(controllers = []) {
   saveState();
 }
 
+function getHvacControllerScopeKey() {
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) return "";
+  return `${selectedCustomerId}:${selectedLocationId}`;
+}
+
+async function loadHvacControllersForCurrentScope(force = false) {
+  const scopeKey = getHvacControllerScopeKey();
+  if (!scopeKey || hvacControllersLoading) return;
+  if (!force && hvacControllersLoadedScope === scopeKey) return;
+  hvacControllersLoading = true;
+  try {
+    const response = await siteworksApi.loadHvacControllers(selectedCustomerId, selectedLocationId);
+    if (!response.ok) throw new Error(`HVAC controller load failed: ${response.status}`);
+    const payload = await response.json();
+    hvacControllersCache = Array.isArray(payload.controllers) ? payload.controllers.map(normalizeHvacController) : [];
+    hvacControllersLoadedScope = scopeKey;
+    const localOtherScopes = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` !== scopeKey);
+    saveHvacControllers([...hvacControllersCache, ...localOtherScopes]);
+  } catch (error) {
+    console.warn("HVAC controllers could not be loaded from the server.", error);
+    hvacControllersCache = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` === scopeKey);
+    hvacControllersLoadedScope = scopeKey;
+  } finally {
+    hvacControllersLoading = false;
+    renderAutomationHvac();
+  }
+}
+
 function hvacControllersForCurrentView() {
-  return getHvacControllers().filter((controller) => {
+  const scopeKey = getHvacControllerScopeKey();
+  const controllers = scopeKey && hvacControllersLoadedScope === scopeKey
+    ? hvacControllersCache.map(normalizeHvacController)
+    : getHvacControllers();
+  return controllers.filter((controller) => {
     if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && controller.customerId !== selectedCustomerId) return false;
     if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS && controller.locationId !== selectedLocationId) return false;
     return canSeeLocation(controller.locationId, controller.customerId);
@@ -19222,7 +19257,7 @@ function hvacControllerAssignedEquipment(controller = {}, equipment = []) {
   return equipment.filter((asset) => ids.has(String(asset.id)));
 }
 
-function createHvacEquipmentForController(controllerId = "") {
+async function createHvacEquipmentForController(controllerId = "") {
   if (!canAddEquipment()) {
     alert("Your user account cannot add equipment.");
     return;
@@ -19301,6 +19336,28 @@ function createHvacEquipmentForController(controllerId = "") {
       updatedController,
       ...getHvacControllers().filter((item) => item.id !== updatedController.id)
     ]);
+    hvacControllersCache = [
+      updatedController,
+      ...hvacControllersCache.filter((item) => item.id !== updatedController.id)
+    ];
+    try {
+      await siteworksApi.saveHvacController({
+        ...updatedController,
+        customer_id: updatedController.customerId,
+        location_id: updatedController.locationId,
+        device_uid: updatedController.uid,
+        controller_type: updatedController.type,
+        equipment_count: updatedController.equipmentCount,
+        equipment_ids: updatedController.equipmentIds,
+        data: {
+          ...(updatedController.data || {}),
+          equipmentIds: updatedController.equipmentIds,
+          points: updatedController.points
+        }
+      });
+    } catch (error) {
+      console.warn("HVAC controller equipment assignment could not be saved to the server.", error);
+    }
   }
   addActivity("HVAC equipment created", `${createdEquipment.length} HVAC equipment record${createdEquipment.length === 1 ? "" : "s"} added.`);
   saveState();
@@ -19400,7 +19457,7 @@ function renderHvacControllerForm(controller = null) {
   `;
 }
 
-function saveHvacControllerFromForm(form) {
+async function saveHvacControllerFromForm(form) {
   if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS || !selectedLocationId || selectedLocationId === ALL_LOCATIONS) {
     renderAutomationHvac();
     return;
@@ -19434,20 +19491,57 @@ function saveHvacControllerFromForm(form) {
     createdAt: existing?.createdAt || now,
     updatedAt: now
   });
-  saveHvacControllers([
-    controller,
-    ...getHvacControllers().filter((item) => item.id !== controller.id)
-  ]);
+  const saveLocalHvacController = (savedController) => {
+    const normalizedController = normalizeHvacController(savedController);
+    saveHvacControllers([
+      normalizedController,
+      ...getHvacControllers().filter((item) => item.id !== normalizedController.id)
+    ]);
+    hvacControllersCache = [
+      normalizedController,
+      ...hvacControllersCache.filter((item) => item.id !== normalizedController.id)
+    ];
+    hvacControllersLoadedScope = getHvacControllerScopeKey();
+  };
+  try {
+    const response = await siteworksApi.saveHvacController({
+      ...controller,
+      customer_id: controller.customerId,
+      location_id: controller.locationId,
+      device_uid: controller.uid,
+      controller_type: controller.type,
+      equipment_count: controller.equipmentCount,
+      equipment_ids: controller.equipmentIds,
+      data: {
+        ...(controller.data || {}),
+        equipmentIds: controller.equipmentIds,
+        points: controller.points
+      }
+    });
+    if (!response.ok) throw new Error(`HVAC controller save failed: ${response.status}`);
+    const payload = await response.json();
+    saveLocalHvacController(payload.controller || controller);
+  } catch (error) {
+    console.warn("HVAC controller could not be saved to the server.", error);
+    saveLocalHvacController(controller);
+  }
   addActivity("HVAC controller saved", controller.name);
   editingHvacControllerId = "";
   renderAutomationHvac();
 }
 
-function deleteHvacController(controllerId = "") {
+async function deleteHvacController(controllerId = "") {
   if (!controllerId) return;
   const controller = getHvacControllers().find((item) => item.id === controllerId);
   if (!window.confirm(`Delete ${controller?.name || "this HVAC controller"}?`)) return;
+  try {
+    const response = await siteworksApi.deleteHvacController(controllerId);
+    if (!response.ok) throw new Error(`HVAC controller delete failed: ${response.status}`);
+  } catch (error) {
+    console.warn("HVAC controller could not be deleted from the server.", error);
+  }
   saveHvacControllers(getHvacControllers().filter((item) => item.id !== controllerId));
+  hvacControllersCache = hvacControllersCache.filter((item) => item.id !== controllerId);
   if (editingHvacControllerId === controllerId) editingHvacControllerId = "";
   renderAutomationHvac();
 }
@@ -19456,6 +19550,10 @@ function renderAutomationHvac() {
   const panel = document.querySelector("#automationHvacPanel .hvac-hmi-panel");
   const count = document.querySelector("#automationHvacPanel .section-title span");
   if (!panel) return;
+  const scopeKey = getHvacControllerScopeKey();
+  if (scopeKey && hvacControllersLoadedScope !== scopeKey && !hvacControllersLoading) {
+    loadHvacControllersForCurrentScope();
+  }
   const currentCustomer = selectedCustomerId === ALL_CUSTOMERS ? null : getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
   const controllers = hvacControllersForCurrentView();
@@ -28063,6 +28161,27 @@ const siteworksApi = {
   deletePumpController(id) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     return this.server(`/api/automation/pumps/controllers/${encodeURIComponent(id)}`, {
+      method: "DELETE"
+    });
+  },
+  loadHvacControllers(customerId, locationId) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ controllers: [] }), { status: 200 }));
+    const params = new URLSearchParams({
+      customer_id: customerId || "",
+      location_id: locationId || ""
+    });
+    return this.server(`/api/automation/hvac/controllers?${params.toString()}`);
+  },
+  saveHvacController(controller) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, controller }), { status: 200 }));
+    return this.server("/api/automation/hvac/controllers", {
+      method: "POST",
+      body: JSON.stringify(controller)
+    });
+  },
+  deleteHvacController(id) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    return this.server(`/api/automation/hvac/controllers/${encodeURIComponent(id)}`, {
       method: "DELETE"
     });
   },
