@@ -18768,6 +18768,187 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
     autoSequence?.proofFailedPumpIndexes?.length ||
     autoSequence?.unavailablePumpIndexes?.length
   );
+  const stationDetailsBody = `
+    <section class="pump-station-topbar ${alarmOn ? "is-alarm" : ""}" aria-label="Pump station operating status">
+      <div>
+        <span>Location</span>
+        <strong>${escapeHtml(customerName)} - ${escapeHtml(locationName)}</strong>
+      </div>
+      <div>
+        <span>System mode</span>
+        <strong>${escapeHtml(primaryController?.mode || "Setup")}</strong>
+      </div>
+      <div>
+        <span>Controller</span>
+        <strong>${escapeHtml(primaryControllerStatus.label)}</strong>
+      </div>
+      <div>
+        <span>High level</span>
+        <strong>${escapeHtml(floatStateLabel("high", highFloat))}</strong>
+      </div>
+      <div>
+        <span>Pressure</span>
+        <strong>${escapeHtml(pressurePoint ? pumpDiagramDeviceStatus(pressurePoint).label : "Not wired")}</strong>
+      </div>
+    </section>
+    ${alarmOn ? `
+      <section class="pump-station-alarm-banner" aria-label="Active pump alarm">
+        <strong>Alarm active</strong>
+        <span>${escapeHtml(stationAlarmMessage)}</span>
+      </section>
+    ` : ""}
+    <section class="pump-station-live-grid" aria-label="Live pump station overview">
+      <aside class="pump-station-floats" aria-label="Float status">
+        <header>
+          <span>Floats</span>
+          <strong>Level Inputs</strong>
+        </header>
+        <div class="pump-station-float-stack">
+          ${floatRows}
+        </div>
+      </aside>
+      <section class="pump-station-pump-cards" aria-label="Pump status">
+        ${pumpStationCards}
+      </section>
+      <aside class="pump-station-summary" aria-label="System summary">
+        <header>
+          <span>System Summary</span>
+          <strong>${alarmOn ? "Alarm" : "Normal"}</strong>
+        </header>
+        <div><span>Total pumps</span><b>${pumps.length}</b></div>
+        <div><span>Running</span><b>${runningCount}</b></div>
+        <div><span>Controllers online</span><b>${controllerOnlineCount}/${controllers.length || 0}</b></div>
+        <div><span>Lead pump</span><b>${escapeHtml(leadPump?.name || "Not assigned")}</b></div>
+        <div><span>Pressure</span><b>${escapeHtml(pressurePoint ? pumpDiagramDeviceStatus(pressurePoint).label : "Not wired")}</b></div>
+      </aside>
+    </section>
+    <section class="pump-hmi-metrics" aria-label="Pump station status">
+      <div>
+        <span>Total pumps</span>
+        <strong>${pumps.length}</strong>
+      </div>
+      <div>
+        <span>Controllers</span>
+        <strong>${controllers.length}</strong>
+      </div>
+      <div>
+        <span>Lead pump</span>
+        <strong>${escapeHtml(leadPump?.name || "Not assigned")}</strong>
+      </div>
+      <div class="${alarmOn ? "is-warning" : ""}">
+        <span>Alarms</span>
+        <strong>${totalWarningCount}</strong>
+      </div>
+    </section>
+    <section class="pump-hmi-control-strip" aria-label="Pump controller setup status">
+      <div>
+        <span>Controller</span>
+        <strong>${escapeHtml(primaryController?.name || "Not added")}</strong>
+      </div>
+      <div>
+        <span>Mode</span>
+        <strong>${escapeHtml(primaryController?.mode || "Setup only")}</strong>
+      </div>
+      <div>
+        <span>Status</span>
+        <strong>${escapeHtml(primaryControllerStatus.label)}</strong>
+      </div>
+      <div>
+        <span>Planned pumps</span>
+        <strong>${escapeHtml(primaryController?.pumpCount || pumps.length || "1")}</strong>
+      </div>
+    </section>
+    <section class="pump-hmi-state-key" aria-label="Pump status legend">
+      ${[
+        ["Normal", "is-listed"],
+        ["Running", "is-running"],
+        ["Off", "is-off"],
+        ["Fault", "is-alarm"],
+        ["High level", "is-alarm"],
+        ["Maintenance", "is-maintenance"],
+        ["Offline / no controller", "is-warning"]
+      ].map(([label, className]) => `
+        <span class="${className}"><i aria-hidden="true"></i>${escapeHtml(label)}</span>
+      `).join("")}
+    </section>
+    ${simulationEnabled ? `
+      <section class="pump-hmi-simulation-panel" aria-label="Pump simulation controls">
+        <header>
+          <div>
+            <span>Commissioning Mode</span>
+            <strong>SiteWorks pump test controls active</strong>
+          </div>
+          <em>Setup only</em>
+        </header>
+        <div class="pump-hmi-demo-grid">
+          ${demoPumpRows || `<div class="pump-hmi-empty"><strong>No pump equipment available for simulation.</strong></div>`}
+        </div>
+      </section>
+    ` : ""}
+    ${totalWarningCount ? `
+      <section class="pump-hmi-alarms" aria-label="Active pump alarms">
+        <header>
+          <span>Active SiteWorks Pump Alarms</span>
+          <strong>${totalWarningCount}</strong>
+        </header>
+        <div class="pump-hmi-alarm-list">
+          ${activeAlarmTiles}
+        </div>
+      </section>
+    ` : ""}
+    <section class="pump-hmi-leadlag" aria-label="Pump operating summary">
+      <div>
+        <span>Running</span>
+        <strong>${runningCount}</strong>
+      </div>
+      <div>
+        <span>Off / Listed</span>
+        <strong>${offCount}</strong>
+      </div>
+      <div class="${totalWarningCount ? "is-warning" : ""}">
+        <span>Attention</span>
+        <strong>${totalWarningCount}</strong>
+      </div>
+      <div>
+        <span>Lead / Lag / Backup</span>
+        <strong>${roleCounts.Lead || 0} / ${roleCounts.Lag || 0} / ${roleCounts.Backup || 0}</strong>
+      </div>
+      <div>
+        <span>Maintenance</span>
+        <strong>${maintenanceCount}</strong>
+      </div>
+    </section>
+    <section class="pump-hmi-mimic" aria-label="Pump mimic diagram">
+      <div class="pump-pipe is-supply"></div>
+      <div class="pump-tank">
+        <span>System</span>
+        <strong>${escapeHtml(leadStatus.label)}</strong>
+      </div>
+      <div class="pump-pipe is-discharge"></div>
+      <div class="pump-gauge">
+        <span>Pressure</span>
+        <strong>${diagramDevices.some((device) => String(device.type || "").toLowerCase().includes("pressure")) ? "Wired" : "Not wired"}</strong>
+      </div>
+      <div class="pump-hmi-ddc-layer">
+        ${diagramDeviceTiles}
+      </div>
+    </section>
+  `;
+  const pumpEquipmentBody = `
+    <section class="pump-hmi-pump-workspace ${selectedPump || selectedDiagramDevice ? "has-drawer" : ""}" aria-label="Pump equipment and details">
+      <div class="pump-hmi-pumps" aria-label="Pump equipment">
+        ${pumpTiles || `
+          <div class="pump-hmi-empty">
+            <strong>No pump equipment at this location.</strong>
+            <span>Add pump equipment or select all locations for the overview.</span>
+            ${primaryController ? `<button type="button" class="secondary" data-create-pump-equipment="${escapeAttribute(primaryController.id)}">Create Pump Equipment</button>` : ""}
+          </div>
+        `}
+      </div>
+      ${pumpDrawer}
+      ${!pumpDrawer ? diagramDeviceDrawer : ""}
+    </section>
+  `;
 
   return `
     <div class="pump-hmi-controller ${alarmOn ? "is-alarm" : ""}">
@@ -18877,186 +19058,11 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
               <strong>${controllerOnlineCount > 0 ? "Live" : "Setup"}</strong>
             </footer>
           </section>
-          <section class="pump-station-topbar ${alarmOn ? "is-alarm" : ""}" aria-label="Pump station operating status">
-            <div>
-              <span>Location</span>
-              <strong>${escapeHtml(customerName)} - ${escapeHtml(locationName)}</strong>
-            </div>
-            <div>
-              <span>System mode</span>
-              <strong>${escapeHtml(primaryController?.mode || "Setup")}</strong>
-            </div>
-            <div>
-              <span>Controller</span>
-              <strong>${escapeHtml(primaryControllerStatus.label)}</strong>
-            </div>
-            <div>
-              <span>High level</span>
-              <strong>${escapeHtml(floatStateLabel("high", highFloat))}</strong>
-            </div>
-            <div>
-              <span>Pressure</span>
-              <strong>${escapeHtml(pressurePoint ? pumpDiagramDeviceStatus(pressurePoint).label : "Not wired")}</strong>
-            </div>
-          </section>
-          ${alarmOn ? `
-            <section class="pump-station-alarm-banner" aria-label="Active pump alarm">
-              <strong>Alarm active</strong>
-              <span>${escapeHtml(stationAlarmMessage)}</span>
-            </section>
-          ` : ""}
-          <section class="pump-station-live-grid" aria-label="Live pump station overview">
-            <aside class="pump-station-floats" aria-label="Float status">
-              <header>
-                <span>Floats</span>
-                <strong>Level Inputs</strong>
-              </header>
-              <div class="pump-station-float-stack">
-                ${floatRows}
-              </div>
-            </aside>
-            <section class="pump-station-pump-cards" aria-label="Pump status">
-              ${pumpStationCards}
-            </section>
-            <aside class="pump-station-summary" aria-label="System summary">
-              <header>
-                <span>System Summary</span>
-                <strong>${alarmOn ? "Alarm" : "Normal"}</strong>
-              </header>
-              <div><span>Total pumps</span><b>${pumps.length}</b></div>
-              <div><span>Running</span><b>${runningCount}</b></div>
-              <div><span>Controllers online</span><b>${controllerOnlineCount}/${controllers.length || 0}</b></div>
-              <div><span>Lead pump</span><b>${escapeHtml(leadPump?.name || "Not assigned")}</b></div>
-              <div><span>Pressure</span><b>${escapeHtml(pressurePoint ? pumpDiagramDeviceStatus(pressurePoint).label : "Not wired")}</b></div>
-            </aside>
-          </section>
-          <section class="pump-hmi-metrics" aria-label="Pump station status">
-            <div>
-              <span>Total pumps</span>
-              <strong>${pumps.length}</strong>
-            </div>
-            <div>
-              <span>Controllers</span>
-              <strong>${controllers.length}</strong>
-            </div>
-            <div>
-              <span>Lead pump</span>
-              <strong>${escapeHtml(leadPump?.name || "Not assigned")}</strong>
-            </div>
-            <div class="${alarmOn ? "is-warning" : ""}">
-              <span>Alarms</span>
-              <strong>${totalWarningCount}</strong>
-            </div>
-          </section>
-          <section class="pump-hmi-control-strip" aria-label="Pump controller setup status">
-            <div>
-              <span>Controller</span>
-              <strong>${escapeHtml(primaryController?.name || "Not added")}</strong>
-            </div>
-            <div>
-              <span>Mode</span>
-              <strong>${escapeHtml(primaryController?.mode || "Setup only")}</strong>
-            </div>
-            <div>
-              <span>Status</span>
-              <strong>${escapeHtml(primaryControllerStatus.label)}</strong>
-            </div>
-            <div>
-              <span>Planned pumps</span>
-              <strong>${escapeHtml(primaryController?.pumpCount || pumps.length || "1")}</strong>
-            </div>
-          </section>
-          <section class="pump-hmi-state-key" aria-label="Pump status legend">
-            ${[
-              ["Normal", "is-listed"],
-              ["Running", "is-running"],
-              ["Off", "is-off"],
-              ["Fault", "is-alarm"],
-              ["High level", "is-alarm"],
-              ["Maintenance", "is-maintenance"],
-              ["Offline / no controller", "is-warning"]
-            ].map(([label, className]) => `
-              <span class="${className}"><i aria-hidden="true"></i>${escapeHtml(label)}</span>
-            `).join("")}
-          </section>
-          ${simulationEnabled ? `
-            <section class="pump-hmi-simulation-panel" aria-label="Pump simulation controls">
-              <header>
-                <div>
-                  <span>Commissioning Mode</span>
-                  <strong>SiteWorks pump test controls active</strong>
-                </div>
-                <em>Setup only</em>
-              </header>
-              <div class="pump-hmi-demo-grid">
-                ${demoPumpRows || `<div class="pump-hmi-empty"><strong>No pump equipment available for simulation.</strong></div>`}
-              </div>
-            </section>
-          ` : ""}
-          ${totalWarningCount ? `
-            <section class="pump-hmi-alarms" aria-label="Active pump alarms">
-              <header>
-                <span>Active SiteWorks Pump Alarms</span>
-                <strong>${totalWarningCount}</strong>
-              </header>
-              <div class="pump-hmi-alarm-list">
-                ${activeAlarmTiles}
-              </div>
-            </section>
-          ` : ""}
-          <section class="pump-hmi-leadlag" aria-label="Pump operating summary">
-            <div>
-              <span>Running</span>
-              <strong>${runningCount}</strong>
-            </div>
-            <div>
-              <span>Off / Listed</span>
-              <strong>${offCount}</strong>
-            </div>
-            <div class="${totalWarningCount ? "is-warning" : ""}">
-              <span>Attention</span>
-              <strong>${totalWarningCount}</strong>
-            </div>
-            <div>
-              <span>Lead / Lag / Backup</span>
-              <strong>${roleCounts.Lead || 0} / ${roleCounts.Lag || 0} / ${roleCounts.Backup || 0}</strong>
-            </div>
-            <div>
-              <span>Maintenance</span>
-              <strong>${maintenanceCount}</strong>
-            </div>
-          </section>
-          <section class="pump-hmi-mimic" aria-label="Pump mimic diagram">
-            <div class="pump-pipe is-supply"></div>
-            <div class="pump-tank">
-              <span>System</span>
-              <strong>${escapeHtml(leadStatus.label)}</strong>
-            </div>
-            <div class="pump-pipe is-discharge"></div>
-            <div class="pump-gauge">
-              <span>Pressure</span>
-              <strong>${diagramDevices.some((device) => String(device.type || "").toLowerCase().includes("pressure")) ? "Wired" : "Not wired"}</strong>
-            </div>
-            <div class="pump-hmi-ddc-layer">
-              ${diagramDeviceTiles}
-            </div>
-          </section>
+          ${scadaDrawer("Station Details", stationDetailsBody, { key: "Pump station details", badge: alarmOn ? "Alarm" : "Normal", className: "is-wide is-secondary" })}
+          ${scadaDrawer("Equipment", pumpEquipmentBody, { key: "Pump equipment details", badge: `${pumps.length} pumps`, open: Boolean(selectedPump || selectedDiagramDevice), className: "is-wide is-secondary" })}
+          ${scadaDrawer("Live I/O", liveIoPanel, { key: "Pump live I/O", badge: primaryController ? primaryControllerStatus.label : "No controller", className: "is-wide is-secondary" })}
           ${diagramDeviceSetup}
-          ${liveIoPanel}
-          <section class="pump-hmi-pump-workspace ${selectedPump || selectedDiagramDevice ? "has-drawer" : ""}" aria-label="Pump equipment and details">
-            <div class="pump-hmi-pumps" aria-label="Pump equipment">
-              ${pumpTiles || `
-                <div class="pump-hmi-empty">
-                  <strong>No pump equipment at this location.</strong>
-                  <span>Add pump equipment or select all locations for the overview.</span>
-                  ${primaryController ? `<button type="button" class="secondary" data-create-pump-equipment="${escapeAttribute(primaryController.id)}">Create Pump Equipment</button>` : ""}
-                </div>
-              `}
-            </div>
-            ${pumpDrawer}
-            ${!pumpDrawer ? diagramDeviceDrawer : ""}
-          </section>
-          ${controllerSetup}
+          ${scadaDrawer("Controller Setup", controllerSetup, { key: "Pump controller setup", badge: controllers.length ? `${controllers.length} controller${controllers.length === 1 ? "" : "s"}` : "Add controller", open: Boolean(editingPumpControllerId || !controllers.length), className: "is-wide is-secondary" })}
         </main>
       </div>
       <aside class="pump-hmi-side">

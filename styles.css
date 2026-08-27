@@ -18376,6 +18376,10 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   min-height: 120px;
 }
 
+.pump-scada-drawer.is-secondary {
+  margin-top: 12px;
+}
+
 .pump-scada-drawer summary {
   display: flex;
   align-items: center;
@@ -18435,6 +18439,10 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 6px;
   padding: 10px;
+}
+
+.pump-scada-drawer.is-wide .pump-scada-drawer-body {
+  display: block;
 }
 
 .pump-scada-drawer-body > div,
