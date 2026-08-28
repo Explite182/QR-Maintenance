@@ -9330,6 +9330,13 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const hvacLockoutResetButton = event.target.closest("[data-hvac-lockout-reset]");
+  if (hvacLockoutResetButton) {
+    event.preventDefault();
+    await queueHvacLockoutReset(hvacLockoutResetButton.dataset.hvacLockoutReset || "");
+    return;
+  }
+
   const selectPumpAssetButton = event.target.closest("[data-select-pump-asset]");
   if (selectPumpAssetButton) {
     event.preventDefault();
@@ -19542,6 +19549,9 @@ function hvacCommandLabelForPoint(pointName = "") {
 function hvacCommandInterlockMessage(controller = {}, pointName = "", desiredState = "On") {
   const pointKey = String(pointName || "");
   if (String(desiredState || "").toLowerCase() !== "on") return "";
+  const liveHvac = controller?.data?.liveHvac && typeof controller.data.liveHvac === "object" ? controller.data.liveHvac : {};
+  const lockout = liveHvac.lockout && typeof liveHvac.lockout === "object" ? liveHvac.lockout : {};
+  if (lockout.active) return `HVAC command blocked: ${lockout.reason || "lockout active"}.`;
   const faultState = hvacMappedPointState(controller, "fault", "inputs");
   const smokeState = hvacMappedPointState(controller, "smoke", "inputs");
   const freezestatState = hvacMappedPointState(controller, "freezestat", "inputs");
@@ -19567,6 +19577,50 @@ function hvacCommandInterlockMessage(controller = {}, pointName = "", desiredSta
     if (heatingActive) return "Cooling command blocked: heating is already active.";
   }
   return "";
+}
+
+async function queueHvacLockoutReset(controllerId = "") {
+  const controller = hvacControllersForCurrentView().find((item) => item.id === controllerId) || hvacControllersForCurrentView()[0];
+  if (!controller) return;
+  try {
+    const response = await siteworksApi.queueHvacCommand({
+      customer_id: controller.customerId || selectedCustomerId,
+      location_id: controller.locationId || selectedLocationId,
+      controller_id: controller.id,
+      equipment_asset_id: hvacControllerAssignedEquipment(controller, hvacAssetsForCurrentView())[0]?.id || "",
+      output_number: 0,
+      command_output: "LOCKOUT",
+      command_type: "hvac-reset",
+      hvac_command: "Reset Lockout",
+      desired_state: "Off",
+      metadata: {
+        pointName: "lockoutReset",
+        source: "hvac-hmi"
+      }
+    });
+    if (!response.ok) {
+      let message = `HVAC reset queue failed: ${response.status}`;
+      try {
+        const errorPayload = await response.json();
+        if (errorPayload?.error) message = errorPayload.error;
+      } catch (_) {}
+      throw new Error(message);
+    }
+    const payload = await response.json();
+    if (payload?.command) {
+      const queuedCommand = normalizeHvacCommand(payload.command);
+      hvacCommandsCache = [
+        queuedCommand,
+        ...hvacCommandsCache.filter((item) => item.id !== queuedCommand.id)
+      ];
+      hvacCommandsLoadedScope = getHvacCommandScopeKey();
+    }
+    addActivity("HVAC lockout reset queued", controller.name || "HVAC");
+    renderAutomationHvac();
+  } catch (error) {
+    console.warn("HVAC lockout reset could not be queued.", error);
+    alert(error?.message || "HVAC lockout reset could not be queued.");
+  }
 }
 
 async function queueHvacOutputCommand(controllerId = "", action = "", pointName = "fanCommand") {
@@ -20037,6 +20091,9 @@ function renderAutomationHvac() {
   const heatStageLabel = heatStageCount === 1 ? "1 Stage" : `${heatStageCount} Stages`;
   const coolStageLabel = coolStageCount === 1 ? "1 Stage" : `${coolStageCount} Stages`;
   const liveHvac = primaryController?.data?.liveHvac && typeof primaryController.data.liveHvac === "object" ? primaryController.data.liveHvac : {};
+  const hvacLockout = liveHvac.lockout && typeof liveHvac.lockout === "object" ? liveHvac.lockout : {};
+  const hvacLockoutActive = Boolean(hvacLockout.active);
+  const hvacLockoutReason = String(hvacLockout.reason || "").trim();
   const fanCommandActive = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.fanCommand || "");
   const fanProofActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
   const fanCommandOutputNumber = hvacOutputNumberFromChannel(primaryController?.points?.fanCommand || "");
@@ -20248,6 +20305,12 @@ function renderAutomationHvac() {
           <header><span>Unit Status</span><strong>${runningUnits} Running</strong></header>
           <div><span>Controller</span><strong>${escapeHtml(primaryController?.name || "Not added")}</strong></div>
           <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
+          <div class="${escapeAttribute(hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")}"><span>Lockout</span><strong>${escapeHtml(hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear")}</strong></div>
+          ${hvacLockoutActive ? `
+            <div class="hvac-command-row">
+              <button type="button" data-hvac-lockout-reset="${escapeAttribute(primaryController?.id || "")}">Reset Lockout</button>
+            </div>
+          ` : ""}
           <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped")}</strong></div>
           <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
           <div><span>Command</span><strong>${escapeHtml(fanCommandStatus)}</strong></div>

@@ -2008,6 +2008,16 @@ textarea:disabled {
   background: transparent;
 }
 
+.hvac-status-panel .hvac-lockout-row.is-active {
+  border-color: rgba(248, 113, 113, 0.72);
+  background: rgba(69, 10, 10, 0.68);
+  box-shadow: inset 3px 0 0 #ef4444;
+}
+
+.hvac-status-panel .hvac-lockout-row.is-active strong {
+  color: #fecaca;
+}
+
 .hvac-command-row button {
   min-height: 38px;
   border: 1px solid rgba(45, 212, 191, 0.48);
