@@ -2268,6 +2268,7 @@ textarea:disabled {
 .hvac-controller-form,
 .hvac-controller-equipment-picker,
 .hvac-schedule-editor,
+.hvac-temp-simulator,
 .hvac-point-map {
   margin-top: 10px;
   border: 1px solid rgba(45, 212, 191, 0.24);
@@ -2342,6 +2343,7 @@ textarea:disabled {
 
 .hvac-controller-form > label:nth-child(9),
 .hvac-schedule-editor,
+.hvac-temp-simulator,
 .hvac-point-map,
 .hvac-controller-equipment-picker,
 .hvac-controller-actions {
@@ -2419,6 +2421,50 @@ textarea:disabled {
 .hvac-schedule-list strong {
   color: #ffffff;
   font-weight: 950;
+}
+
+.hvac-temp-simulator {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.6fr) repeat(4, minmax(110px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.hvac-temp-simulator legend {
+  padding: 0 6px;
+  color: #ffffff;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-temp-simulator label {
+  display: grid;
+  gap: 6px;
+  color: #a9d7e8;
+  font-size: 0.74rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-temp-simulator-toggle {
+  align-content: center;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 3px;
+  background: rgba(14, 116, 144, 0.14);
+}
+
+.hvac-temp-simulator-toggle input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+}
+
+.hvac-temp-simulator-toggle span {
+  color: #dff9ff;
+  font-weight: 950;
+  text-transform: none;
 }
 
 .hvac-event-list {
@@ -2642,6 +2688,7 @@ textarea:disabled {
 
   .hvac-controller-form,
   .hvac-point-map,
+  .hvac-temp-simulator,
   .hvac-controller-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2746,6 +2793,7 @@ textarea:disabled {
 
   .hvac-controller-form,
   .hvac-point-map,
+  .hvac-temp-simulator,
   .hvac-controller-card {
     grid-template-columns: 1fr;
   }

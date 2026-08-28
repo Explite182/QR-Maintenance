@@ -19403,6 +19403,69 @@ function renderHvacScheduleSummary(schedule = {}) {
   `;
 }
 
+function normalizeHvacTempSimulator(source = {}) {
+  const simulator = source && typeof source === "object" ? source : {};
+  const numberValue = (value, fallback) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  };
+  return {
+    enabled: Boolean(simulator.enabled),
+    space: numberValue(simulator.space, 72),
+    supply: numberValue(simulator.supply, 55),
+    return: numberValue(simulator.return, 74),
+    outside: numberValue(simulator.outside, 65)
+  };
+}
+
+function renderHvacTempSimulatorEditor(simulator = {}) {
+  const normalized = normalizeHvacTempSimulator(simulator);
+  return `
+    <fieldset class="hvac-temp-simulator">
+      <legend>Commissioning temp simulator</legend>
+      <label class="hvac-temp-simulator-toggle">
+        <input type="checkbox" name="tempSimulatorEnabled" ${normalized.enabled ? "checked" : ""}>
+        <span>Use simulated temperatures for Auto testing</span>
+      </label>
+      <label>Space temp
+        <input name="tempSimulatorSpace" type="number" step="0.5" value="${escapeAttribute(String(normalized.space))}">
+      </label>
+      <label>Supply temp
+        <input name="tempSimulatorSupply" type="number" step="0.5" value="${escapeAttribute(String(normalized.supply))}">
+      </label>
+      <label>Return temp
+        <input name="tempSimulatorReturn" type="number" step="0.5" value="${escapeAttribute(String(normalized.return))}">
+      </label>
+      <label>Outside temp
+        <input name="tempSimulatorOutside" type="number" step="0.5" value="${escapeAttribute(String(normalized.outside))}">
+      </label>
+    </fieldset>
+  `;
+}
+
+function readHvacTempSimulatorFromForm(formData) {
+  const numberValue = (name, fallback) => {
+    const value = Number(formData.get(name));
+    return Number.isFinite(value) ? value : fallback;
+  };
+  return {
+    enabled: formData.get("tempSimulatorEnabled") === "on",
+    space: numberValue("tempSimulatorSpace", 72),
+    supply: numberValue("tempSimulatorSupply", 55),
+    return: numberValue("tempSimulatorReturn", 74),
+    outside: numberValue("tempSimulatorOutside", 65)
+  };
+}
+
+function hvacTemperatureFromController(controller = {}, liveHvac = {}, name = "") {
+  const simulator = normalizeHvacTempSimulator(controller.tempSimulator || controller.data?.tempSimulator || controller.data?.commissioningTempSimulator || {});
+  if (simulator.enabled && simulator[name] !== undefined) {
+    return { value: simulator[name], simulated: true };
+  }
+  const liveValue = liveHvac.temperatures?.[name] ?? liveHvac.analog?.[name];
+  return { value: liveValue, simulated: false };
+}
+
 function normalizeHvacController(controller = {}) {
   const data = controller.data && typeof controller.data === "object" ? controller.data : {};
   const pointsSource = data.points && typeof data.points === "object" ? data.points : {};
@@ -19412,6 +19475,7 @@ function normalizeHvacController(controller = {}) {
   const scheduleSource = controller.schedule || data.schedule || autoConfig.schedule || {};
   const scheduleConfigured = Boolean(controller.schedule || data.schedule || autoConfig.schedule);
   const schedule = normalizeHvacSchedule(scheduleSource);
+  const tempSimulator = normalizeHvacTempSimulator(controller.tempSimulator || data.tempSimulator || data.commissioningTempSimulator || {});
   const equipmentIds = Array.isArray(controller.equipmentIds)
     ? controller.equipmentIds
     : Array.isArray(data.equipmentIds)
@@ -19438,6 +19502,7 @@ function normalizeHvacController(controller = {}) {
     startDelaySeconds: String(controller.startDelaySeconds || data.startDelaySeconds || autoConfig.startDelaySeconds || 60),
     schedule,
     scheduleConfigured,
+    tempSimulator,
     equipmentIds: equipmentIds.map((id) => String(id || "").trim()).filter(Boolean),
     mode: controller.mode || "Setup only",
     status: controller.status || "Setup only",
@@ -19774,8 +19839,7 @@ function numberOrNull(value) {
 }
 
 function hvacTemperatureCallState(controller = {}, liveHvac = {}) {
-  const temperatureValue = liveHvac.temperatures?.space ?? liveHvac.analog?.space ?? "";
-  const spaceTemp = numberOrNull(temperatureValue);
+  const spaceTemp = numberOrNull(hvacTemperatureFromController(controller, liveHvac, "space").value);
   const occupied = String(controller.occupancyMode || controller.data?.occupancyMode || "Occupied").toLowerCase() !== "unoccupied";
   const heatSetpoint = numberOrNull(occupied ? controller.occupiedHeatSetpoint : controller.unoccupiedHeatSetpoint);
   const coolSetpoint = numberOrNull(occupied ? controller.occupiedCoolSetpoint : controller.unoccupiedCoolSetpoint);
@@ -20141,6 +20205,7 @@ function renderHvacControllerForm(controller = null) {
         <input name="startDelaySeconds" type="number" min="0" step="5" value="${escapeAttribute(controller?.startDelaySeconds || "60")}">
       </label>
       ${renderHvacScheduleEditor(controller?.schedule || controller?.data?.schedule || {})}
+      ${renderHvacTempSimulatorEditor(controller?.tempSimulator || controller?.data?.tempSimulator || {})}
       <label>Notes
         <textarea name="notes" placeholder="RTU, MAU, thermostat, safeties, or wiring notes">${escapeHtml(controller?.notes || "")}</textarea>
       </label>
@@ -20233,6 +20298,7 @@ async function saveHvacControllerFromForm(form) {
     "outsideTemp",
     "spaceTemp"
   ];
+  const tempSimulator = readHvacTempSimulatorFromForm(formData);
   const points = Object.fromEntries(pointNames.map((name) => [name, String(formData.get(name) || "").trim()]));
   const controller = normalizeHvacController({
     ...existing,
@@ -20255,6 +20321,7 @@ async function saveHvacControllerFromForm(form) {
     setpointDeadband: String(autoConfig.deadband),
     startDelaySeconds: String(autoConfig.startDelaySeconds),
     schedule,
+    tempSimulator,
     equipmentIds,
     mode: String(formData.get("mode") || "Setup only").trim(),
     status: String(formData.get("mode") || "Setup only").trim(),
@@ -20274,6 +20341,7 @@ async function saveHvacControllerFromForm(form) {
       setpointDeadband: autoConfig.deadband,
       startDelaySeconds: autoConfig.startDelaySeconds,
       schedule,
+      tempSimulator,
       autoConfig,
       ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: apiKey.slice(-4) } : {}),
       points
@@ -20316,6 +20384,7 @@ async function saveHvacControllerFromForm(form) {
         setpointDeadband: controller.setpointDeadband,
         startDelaySeconds: controller.startDelaySeconds,
         schedule,
+        tempSimulator,
         autoConfig,
         ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: controller.apiKeyLast4 } : {}),
         points: controller.points
@@ -20384,6 +20453,7 @@ function renderAutomationHvac() {
   const hvacTiming = liveHvac.timing && typeof liveHvac.timing === "object" ? liveHvac.timing : {};
   const hvacCallState = primaryController ? hvacTemperatureCallState(primaryController, liveHvac) : { label: "No controller", className: "is-info" };
   const hvacScheduleStatus = primaryController ? currentHvacScheduleStatus(primaryController) : { label: "No schedule", occupancyMode: "--" };
+  const tempSimulator = normalizeHvacTempSimulator(primaryController?.tempSimulator || primaryController?.data?.tempSimulator || {});
   const fanCommandActive = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.fanCommand || "");
   const fanProofActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
   const fanCommandOutputNumber = hvacOutputNumberFromChannel(primaryController?.points?.fanCommand || "");
@@ -20475,10 +20545,12 @@ function renderAutomationHvac() {
   const liveMode = liveHvac.mode || primaryEquipment?.hvacMode || "Auto";
   const liveOccupancy = liveHvac.occupancy || primaryEquipment?.hvacOccupancy || "Unoccupied";
   const temperatureValue = (name) => {
-    const value = liveHvac.temperatures?.[name];
+    const temperature = hvacTemperatureFromController(primaryController, liveHvac, name);
+    const value = temperature.value;
     if (value === "" || value === null || value === undefined) return "Not wired";
     const numericValue = Number(value);
-    return Number.isFinite(numericValue) ? `${numericValue.toFixed(1)} F` : `${value}`;
+    const label = Number.isFinite(numericValue) ? `${numericValue.toFixed(1)} F` : `${value}`;
+    return temperature.simulated ? `${label} sim` : label;
   };
   const mappedPointRows = [
     ["Fan command", primaryController?.points?.fanCommand || "", fanCommandActive ? "On" : "Off", "output"],
@@ -20617,6 +20689,7 @@ function renderAutomationHvac() {
           <div><span>Controller</span><strong>${escapeHtml(primaryController?.name || "Not added")}</strong></div>
           <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
           <div><span>Control Mode</span><strong>${escapeHtml(primaryController?.hvacControlMode || "Manual")}</strong></div>
+          <div><span>Temp Source</span><strong>${escapeHtml(tempSimulator.enabled ? "Simulator" : "Field inputs")}</strong></div>
           <div><span>Schedule</span><strong>${escapeHtml(hvacScheduleStatus.label)}</strong></div>
           <div class="${escapeAttribute(`hvac-call-row ${hvacCallState.className}`)}"><span>Auto Call</span><strong>${escapeHtml(hvacCallState.label)}</strong></div>
           <div><span>Active Setpoints</span><strong>${escapeHtml(`${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`)}</strong></div>
@@ -20658,6 +20731,20 @@ function renderAutomationHvac() {
         <details class="hvac-drawer" open>
           <summary><span>Controller Setup</span><strong>${controllers.length ? `${controllers.length} saved` : "Add"}</strong></summary>
           <div>${formHtml}${controllerCards}</div>
+        </details>
+        <details class="hvac-drawer">
+          <summary><span>Temp Simulator</span><strong>${escapeHtml(tempSimulator.enabled ? "Enabled" : "Off")}</strong></summary>
+          <div>
+            <div class="hvac-point-live-list">
+              ${["space", "supply", "return", "outside"].map((name) => `
+                <span class="hvac-point-live analog">
+                  <b>${escapeHtml(`${name.charAt(0).toUpperCase()}${name.slice(1)} temp`)}</b>
+                  <i>${escapeHtml(tempSimulator.enabled ? "Simulated" : "Field")}</i>
+                  <strong>${escapeHtml(temperatureValue(name))}</strong>
+                </span>
+              `).join("")}
+            </div>
+          </div>
         </details>
         <details class="hvac-drawer">
           <summary><span>Recent Events</span><strong>${escapeHtml(String(recentHvacCommands.length || 0))}</strong></summary>
