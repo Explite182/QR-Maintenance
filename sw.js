@@ -1,20 +1,20 @@
-const SITEWORKS_SW_VERSION = "20260828-hvac-command-nullguard-101";
+const SITEWORKS_SW_VERSION = "20260828-hvac-event-summary-102";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260828-hvac-command-nullguard-101",
+  "/styles.css?v=20260828-hvac-event-summary-102",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260828-hvac-command-nullguard-101",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260828-hvac-command-nullguard-101",
-  "/js/panel-hmi-standard-renderer.js?v=20260828-hvac-command-nullguard-101",
-  "/app.js?v=20260828-hvac-command-nullguard-101",
-  "/manifest.webmanifest?v=20260828-hvac-command-nullguard-101",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260828-hvac-command-nullguard-101",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260828-hvac-command-nullguard-101",
-  "/icons/siteworks-icon-192.png?v=20260828-hvac-command-nullguard-101",
-  "/icons/siteworks-icon-512.png?v=20260828-hvac-command-nullguard-101"
+  "/js/panel-hmi-standard-model.js?v=20260828-hvac-event-summary-102",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260828-hvac-event-summary-102",
+  "/js/panel-hmi-standard-renderer.js?v=20260828-hvac-event-summary-102",
+  "/app.js?v=20260828-hvac-event-summary-102",
+  "/manifest.webmanifest?v=20260828-hvac-event-summary-102",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260828-hvac-event-summary-102",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260828-hvac-event-summary-102",
+  "/icons/siteworks-icon-192.png?v=20260828-hvac-event-summary-102",
+  "/icons/siteworks-icon-512.png?v=20260828-hvac-event-summary-102"
 ];
 
 self.addEventListener("install", (event) => {

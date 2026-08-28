@@ -20051,26 +20051,67 @@ function hvacCommandEventMessage(command = {}) {
   return `${commandText} ${command.status || "recorded"}.`;
 }
 
+function hvacCommandEventSource(command = {}) {
+  const metadata = command?.metadata && typeof command.metadata === "object" ? command.metadata : {};
+  if (metadata.source === "live-input") return "Live I/O";
+  if (metadata.source === "auto-temperature" || metadata.source === "auto-sequence" || command.requestedBy === "siteworks-auto") return "Auto";
+  return "Manual";
+}
+
+function summarizeHvacCommandEvents(commands = []) {
+  const visibleCommands = commands
+    .filter((command) => command && typeof command === "object")
+    .sort((a, b) => hvacCommandTimeMs(b) - hvacCommandTimeMs(a));
+  const priorityRows = [];
+  const groupedRows = [];
+  const grouped = new Map();
+  visibleCommands.forEach((command) => {
+    const severity = hvacCommandEventSeverity(command);
+    const message = hvacCommandEventMessage(command);
+    const source = hvacCommandEventSource(command);
+    const row = {
+      command,
+      severity,
+      message,
+      source,
+      count: 1,
+      timeMs: hvacCommandTimeMs(command)
+    };
+    if (severity === "is-warning") {
+      priorityRows.push(row);
+      return;
+    }
+    const key = `${source}|${severity}|${message}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.timeMs = Math.max(existing.timeMs, row.timeMs);
+      if (row.timeMs >= hvacCommandTimeMs(existing.command)) existing.command = command;
+    } else {
+      grouped.set(key, row);
+      groupedRows.push(row);
+    }
+  });
+  return [
+    ...priorityRows.slice(0, 4),
+    ...groupedRows.sort((a, b) => b.timeMs - a.timeMs)
+  ].slice(0, 8);
+}
+
 function hvacCommandEventRows(controllerId = "") {
   const rows = hvacCommandsCache
     .filter((command) => command && typeof command === "object")
     .filter((command) => !controllerId || String(command.controllerId || command.controller_id || "") === String(controllerId || ""))
-    .sort((a, b) => hvacCommandTimeMs(b) - hvacCommandTimeMs(a))
-    .slice(0, 8);
+    .sort((a, b) => hvacCommandTimeMs(b) - hvacCommandTimeMs(a));
   if (!rows.length) {
     return `<div class="hvac-event-row"><span>No HVAC events yet</span><strong>Waiting</strong></div>`;
   }
-  return rows.map((command) => {
-    const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
-    const source = metadata.source === "live-input"
-      ? "Live I/O"
-      : metadata.source === "auto-temperature" || command.requestedBy === "siteworks-auto"
-        ? "Auto"
-        : "Manual";
+  return summarizeHvacCommandEvents(rows).map((row) => {
+    const repeatBadge = row.count > 1 ? `<em>${row.count}x</em>` : "";
     return `
-      <div class="hvac-event-row ${escapeAttribute(hvacCommandEventSeverity(command))}">
-        <span>${escapeHtml(`${formatDateTime(command.createdAt)} | ${source}`)}</span>
-        <strong>${escapeHtml(hvacCommandEventMessage(command))}</strong>
+      <div class="hvac-event-row ${escapeAttribute(row.severity)}">
+        <span>${escapeHtml(`${formatDateTime(row.command.createdAt || row.command.updatedAt || row.command.completedAt)} | ${row.source}`)}</span>
+        <strong>${escapeHtml(row.message)}${repeatBadge}</strong>
       </div>
     `;
   }).join("");

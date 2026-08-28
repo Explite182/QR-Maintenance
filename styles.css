@@ -2511,8 +2511,26 @@ textarea:disabled {
 }
 
 .hvac-event-row strong {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   color: #ffffff;
   font-weight: 950;
+}
+
+.hvac-event-row strong em {
+  display: inline-grid;
+  min-width: 34px;
+  min-height: 22px;
+  place-items: center;
+  border: 1px solid rgba(94, 234, 212, 0.32);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.86);
+  color: #5eead4;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1;
 }
 
 .hvac-event-row.is-normal {
