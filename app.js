@@ -19633,6 +19633,7 @@ function hvacControllersForCurrentView() {
   return controllers.filter((controller) => {
     if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && controller.customerId !== selectedCustomerId) return false;
     if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS && controller.locationId !== selectedLocationId) return false;
+    if (scopeKey && hvacControllersLoadedScope === scopeKey) return true;
     return canSeeLocation(controller.locationId, controller.customerId);
   });
 }
