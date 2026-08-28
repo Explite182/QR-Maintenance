@@ -20283,8 +20283,10 @@ function renderAutomationHvac() {
   const liveMode = liveHvac.mode || primaryEquipment?.hvacMode || "Auto";
   const liveOccupancy = liveHvac.occupancy || primaryEquipment?.hvacOccupancy || "Unoccupied";
   const temperatureValue = (name) => {
-    const value = liveHvac.temperatures?.[name] ?? liveHvac.analog?.[name] ?? "";
-    return value === "" || value === null || value === undefined ? "--" : `${value}`;
+    const value = liveHvac.temperatures?.[name];
+    if (value === "" || value === null || value === undefined) return "Not wired";
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? `${numericValue.toFixed(1)} F` : `${value}`;
   };
   const mappedPointRows = [
     ["Fan command", primaryController?.points?.fanCommand || "", fanCommandActive ? "On" : "Off", "output"],
