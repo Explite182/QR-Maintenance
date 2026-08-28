@@ -20738,6 +20738,8 @@ async function saveHvacControllerFromForm(form) {
         unoccupiedCoolSetpoint: controller.unoccupiedCoolSetpoint,
         setpointDeadband: controller.setpointDeadband,
         startDelaySeconds: controller.startDelaySeconds,
+        fanProofTimeoutSeconds: controller.fanProofTimeoutSeconds,
+        fanOffDelaySeconds: controller.fanOffDelaySeconds,
         schedule,
         tempSimulator,
         autoConfig,
