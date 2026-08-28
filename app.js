@@ -19671,6 +19671,48 @@ function latestHvacCommandForOutput(controllerId = "", outputNumber = 0) {
     .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
 }
 
+function hvacCommandEventSeverity(command = {}) {
+  const status = String(command.status || "").toLowerCase();
+  if (status === "blocked" || status === "failed") return "is-warning";
+  if (status === "completed") return "is-normal";
+  if (status === "pending" || status === "acknowledged") return "is-info";
+  return "";
+}
+
+function hvacCommandEventMessage(command = {}) {
+  const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
+  const commandText = command.hvacCommand || "HVAC command";
+  const status = String(command.status || "").toLowerCase();
+  const reason = String(metadata.reason || "").trim();
+  const blockReason = String(metadata.blockReason || command.error || "").trim();
+  if (status === "blocked") return `${commandText} blocked: ${blockReason || "interlock active"}.`;
+  if (status === "failed") return `${commandText} failed${blockReason ? `: ${blockReason}` : ""}.`;
+  if (status === "completed") return `${commandText} completed${reason ? ` (${reason})` : ""}.`;
+  if (status === "pending") return `${commandText} queued${reason ? ` (${reason})` : ""}.`;
+  if (status === "acknowledged") return `${commandText} acknowledged by ESP32.`;
+  return `${commandText} ${command.status || "recorded"}.`;
+}
+
+function hvacCommandEventRows(controllerId = "") {
+  const rows = hvacCommandsCache
+    .filter((command) => !controllerId || String(command.controllerId || "") === String(controllerId || ""))
+    .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))
+    .slice(0, 8);
+  if (!rows.length) {
+    return `<div class="hvac-event-row"><span>No HVAC events yet</span><strong>Waiting</strong></div>`;
+  }
+  return rows.map((command) => {
+    const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
+    const source = metadata.source === "auto-temperature" ? "Auto" : command.requestedBy === "siteworks-auto" ? "Auto" : "Manual";
+    return `
+      <div class="hvac-event-row ${escapeAttribute(hvacCommandEventSeverity(command))}">
+        <span>${escapeHtml(`${formatDateTime(command.createdAt)} | ${source}`)}</span>
+        <strong>${escapeHtml(hvacCommandEventMessage(command))}</strong>
+      </div>
+    `;
+  }).join("");
+}
+
 function hvacCommandLabelForPoint(pointName = "") {
   const key = String(pointName || "");
   if (key === "fanCommand") return "Fan";
@@ -20344,6 +20386,13 @@ function renderAutomationHvac() {
   const fanCommandStatus = latestFanCommand?.status
     ? `${latestFanCommand.hvacCommand || "Fan"} ${latestFanCommand.status}`
     : "Ready";
+  const recentHvacCommands = primaryController
+    ? hvacCommandsCache.filter((command) => String(command.controllerId || "") === String(primaryController.id || ""))
+    : hvacCommandsCache;
+  const latestHvacEvent = recentHvacCommands
+    .slice()
+    .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
+  const hvacEventRows = hvacCommandEventRows(primaryController?.id || "");
   const fanOnBlockMessage = primaryController ? hvacCommandInterlockMessage(primaryController, "fanCommand", "On") : "";
   const hvacStageCommandRows = primaryController ? [
     ...Array.from({ length: heatStageCount }, (_, index) => {
@@ -20559,6 +20608,7 @@ function renderAutomationHvac() {
           <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped")}</strong></div>
           <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
           <div><span>Command</span><strong>${escapeHtml(fanCommandStatus)}</strong></div>
+          <div><span>Last Event</span><strong>${escapeHtml(latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events")}</strong></div>
           <div class="hvac-command-row">
             <button type="button" ${primaryController && fanCommandOutputNumber && !fanOnBlockMessage ? "" : "disabled"} title="${escapeAttribute(fanOnBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
             <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
@@ -20586,6 +20636,10 @@ function renderAutomationHvac() {
         <details class="hvac-drawer" open>
           <summary><span>Controller Setup</span><strong>${controllers.length ? `${controllers.length} saved` : "Add"}</strong></summary>
           <div>${formHtml}${controllerCards}</div>
+        </details>
+        <details class="hvac-drawer">
+          <summary><span>Recent Events</span><strong>${escapeHtml(String(recentHvacCommands.length || 0))}</strong></summary>
+          <div class="hvac-event-list">${hvacEventRows}</div>
         </details>
         <details class="hvac-drawer">
           <summary><span>Occupied Schedule</span><strong>${escapeHtml(hvacScheduleStatus.label)}</strong></summary>
