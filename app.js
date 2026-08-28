@@ -19570,7 +19570,11 @@ async function loadHvacControllersForCurrentScope(force = false) {
     const response = await siteworksApi.loadHvacControllers(selectedCustomerId, selectedLocationId);
     if (!response.ok) throw new Error(`HVAC controller load failed: ${response.status}`);
     const payload = await response.json();
-    hvacControllersCache = Array.isArray(payload.controllers) ? payload.controllers.map(normalizeHvacController) : [];
+    const localScopeControllers = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` === scopeKey);
+    const serverControllers = Array.isArray(payload.controllers) ? payload.controllers.map(normalizeHvacController) : [];
+    hvacControllersCache = serverControllers.length || !localScopeControllers.length
+      ? serverControllers
+      : localScopeControllers;
     hvacControllersLoadedScope = scopeKey;
     const localOtherScopes = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` !== scopeKey);
     saveHvacControllers([...hvacControllersCache, ...localOtherScopes]);
