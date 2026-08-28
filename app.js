@@ -19459,11 +19459,14 @@ function readHvacTempSimulatorFromForm(formData) {
 }
 
 function hvacTemperatureFromController(controller = {}, liveHvac = {}, name = "") {
-  const simulator = normalizeHvacTempSimulator(controller.tempSimulator || controller.data?.tempSimulator || controller.data?.commissioningTempSimulator || {});
+  const safeController = controller && typeof controller === "object" ? controller : {};
+  const data = safeController.data && typeof safeController.data === "object" ? safeController.data : {};
+  const simulator = normalizeHvacTempSimulator(safeController.tempSimulator || data.tempSimulator || data.commissioningTempSimulator || {});
   if (simulator.enabled && simulator[name] !== undefined) {
     return { value: simulator[name], simulated: true };
   }
-  const liveValue = liveHvac.temperatures?.[name] ?? liveHvac.analog?.[name];
+  const safeLiveHvac = liveHvac && typeof liveHvac === "object" ? liveHvac : {};
+  const liveValue = safeLiveHvac.temperatures?.[name] ?? safeLiveHvac.analog?.[name];
   return { value: liveValue, simulated: false };
 }
 

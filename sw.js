@@ -1,20 +1,20 @@
-const SITEWORKS_SW_VERSION = "20260828-hvac-controller-retain-94";
+const SITEWORKS_SW_VERSION = "20260828-hvac-null-startup-95";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260828-hvac-controller-retain-94",
+  "/styles.css?v=20260828-hvac-null-startup-95",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260828-hvac-controller-retain-94",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260828-hvac-controller-retain-94",
-  "/js/panel-hmi-standard-renderer.js?v=20260828-hvac-controller-retain-94",
-  "/app.js?v=20260828-hvac-controller-retain-94",
-  "/manifest.webmanifest?v=20260828-hvac-controller-retain-94",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260828-hvac-controller-retain-94",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260828-hvac-controller-retain-94",
-  "/icons/siteworks-icon-192.png?v=20260828-hvac-controller-retain-94",
-  "/icons/siteworks-icon-512.png?v=20260828-hvac-controller-retain-94"
+  "/js/panel-hmi-standard-model.js?v=20260828-hvac-null-startup-95",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260828-hvac-null-startup-95",
+  "/js/panel-hmi-standard-renderer.js?v=20260828-hvac-null-startup-95",
+  "/app.js?v=20260828-hvac-null-startup-95",
+  "/manifest.webmanifest?v=20260828-hvac-null-startup-95",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260828-hvac-null-startup-95",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260828-hvac-null-startup-95",
+  "/icons/siteworks-icon-192.png?v=20260828-hvac-null-startup-95",
+  "/icons/siteworks-icon-512.png?v=20260828-hvac-null-startup-95"
 ];
 
 self.addEventListener("install", (event) => {
