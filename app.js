@@ -19714,25 +19714,27 @@ function hvacOutputNumberFromChannel(channel = "") {
 }
 
 function normalizeHvacCommand(command = {}) {
-  const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
+  const source = command && typeof command === "object" ? command : {};
+  if (!source.id && !source.commandId && !source.command_id && !source.hvacCommand && !source.hvac_command && !source.command) return null;
+  const metadata = source.metadata && typeof source.metadata === "object" ? source.metadata : {};
   return {
-    id: command.id || "",
-    customerId: command.customerId || command.customer_id || "",
-    locationId: command.locationId || command.location_id || "",
-    controllerId: command.controllerId || command.controller_id || "",
-    equipmentAssetId: command.equipmentAssetId || command.equipment_asset_id || "",
-    outputNumber: Number(command.outputNumber || command.output_number || 0) || 0,
-    commandType: command.commandType || command.command_type || "hvac-output",
-    hvacCommand: command.hvacCommand || command.hvac_command || command.command || "",
-    desiredState: command.desiredState || command.desired_state || "",
-    status: command.status || "pending",
-    requestedBy: command.requestedBy || command.requested_by || "",
-    acknowledgedAt: command.acknowledgedAt || command.acknowledged_at || "",
-    completedAt: command.completedAt || command.completed_at || "",
-    error: command.error || "",
+    id: source.id || source.commandId || source.command_id || "",
+    customerId: source.customerId || source.customer_id || "",
+    locationId: source.locationId || source.location_id || "",
+    controllerId: source.controllerId || source.controller_id || "",
+    equipmentAssetId: source.equipmentAssetId || source.equipment_asset_id || "",
+    outputNumber: Number(source.outputNumber || source.output_number || 0) || 0,
+    commandType: source.commandType || source.command_type || "hvac-output",
+    hvacCommand: source.hvacCommand || source.hvac_command || source.command || "",
+    desiredState: source.desiredState || source.desired_state || "",
+    status: source.status || "pending",
+    requestedBy: source.requestedBy || source.requested_by || "",
+    acknowledgedAt: source.acknowledgedAt || source.acknowledged_at || "",
+    completedAt: source.completedAt || source.completed_at || "",
+    error: source.error || "",
     metadata,
-    createdAt: command.createdAt || command.created_at || "",
-    updatedAt: command.updatedAt || command.updated_at || ""
+    createdAt: source.createdAt || source.created_at || "",
+    updatedAt: source.updatedAt || source.updated_at || ""
   };
 }
 
@@ -19749,7 +19751,7 @@ async function loadHvacCommandsForCurrentScope({ force = false } = {}) {
     const response = await siteworksApi.loadHvacCommands(selectedCustomerId, selectedLocationId);
     if (!response.ok) throw new Error(`HVAC command load failed: ${response.status}`);
     const payload = await response.json();
-    hvacCommandsCache = Array.isArray(payload.commands) ? payload.commands.map(normalizeHvacCommand) : [];
+    hvacCommandsCache = Array.isArray(payload.commands) ? payload.commands.map(normalizeHvacCommand).filter(Boolean) : [];
     hvacCommandsLoadedScope = scopeKey;
   } catch (error) {
     console.warn("HVAC commands could not be loaded from the server.", error);
@@ -19902,13 +19904,14 @@ function hvacTimerLabel(remainingSeconds = 0, setSeconds = 0) {
 }
 
 function hvacCommandTimeMs(command = {}) {
-  const time = new Date(command.completedAt || command.acknowledgedAt || command.createdAt || command.updatedAt || 0).getTime();
+  const source = command && typeof command === "object" ? command : {};
+  const time = new Date(source.completedAt || source.completed_at || source.acknowledgedAt || source.acknowledged_at || source.createdAt || source.created_at || source.updatedAt || source.updated_at || 0).getTime();
   return Number.isFinite(time) ? time : 0;
 }
 
 function latestHvacCommandMatching(controllerId = "", matcher = () => false) {
   return hvacCommandsCache
-    .filter((command) => String(command.controllerId || "") === String(controllerId || "") && matcher(command))
+    .filter((command) => command && typeof command === "object" && String(command.controllerId || command.controller_id || "") === String(controllerId || "") && matcher(command))
     .sort((a, b) => hvacCommandTimeMs(b) - hvacCommandTimeMs(a))[0] || null;
 }
 
@@ -20050,8 +20053,9 @@ function hvacCommandEventMessage(command = {}) {
 
 function hvacCommandEventRows(controllerId = "") {
   const rows = hvacCommandsCache
-    .filter((command) => !controllerId || String(command.controllerId || "") === String(controllerId || ""))
-    .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))
+    .filter((command) => command && typeof command === "object")
+    .filter((command) => !controllerId || String(command.controllerId || command.controller_id || "") === String(controllerId || ""))
+    .sort((a, b) => hvacCommandTimeMs(b) - hvacCommandTimeMs(a))
     .slice(0, 8);
   if (!rows.length) {
     return `<div class="hvac-event-row"><span>No HVAC events yet</span><strong>Waiting</strong></div>`;
