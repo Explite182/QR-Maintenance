@@ -1,20 +1,20 @@
-const SITEWORKS_SW_VERSION = "20260827-hvac-countdown-row-85";
+const SITEWORKS_SW_VERSION = "20260827-hvac-fan-start-trace-86";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260827-hvac-countdown-row-85",
+  "/styles.css?v=20260827-hvac-fan-start-trace-86",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260827-hvac-countdown-row-85",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-countdown-row-85",
-  "/js/panel-hmi-standard-renderer.js?v=20260827-hvac-countdown-row-85",
-  "/app.js?v=20260827-hvac-countdown-row-85",
-  "/manifest.webmanifest?v=20260827-hvac-countdown-row-85",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260827-hvac-countdown-row-85",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260827-hvac-countdown-row-85",
-  "/icons/siteworks-icon-192.png?v=20260827-hvac-countdown-row-85",
-  "/icons/siteworks-icon-512.png?v=20260827-hvac-countdown-row-85"
+  "/js/panel-hmi-standard-model.js?v=20260827-hvac-fan-start-trace-86",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-fan-start-trace-86",
+  "/js/panel-hmi-standard-renderer.js?v=20260827-hvac-fan-start-trace-86",
+  "/app.js?v=20260827-hvac-fan-start-trace-86",
+  "/manifest.webmanifest?v=20260827-hvac-fan-start-trace-86",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260827-hvac-fan-start-trace-86",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260827-hvac-fan-start-trace-86",
+  "/icons/siteworks-icon-192.png?v=20260827-hvac-fan-start-trace-86",
+  "/icons/siteworks-icon-512.png?v=20260827-hvac-fan-start-trace-86"
 ];
 
 self.addEventListener("install", (event) => {

@@ -20624,6 +20624,9 @@ function renderAutomationHvac() {
   const runningUnits = fanCommandActive || fanProofActive ? 1 : 0;
   const heatCallWaitingForFan = hvacCallState.className === "is-heating" && !fanProofActive;
   const coolCallWaitingForFan = hvacCallState.className === "is-cooling" && !fanProofActive;
+  const fanStartPending = String(latestFanCommand?.hvacCommand || "") === "Fan On" &&
+    ["pending", "acknowledged"].includes(String(latestFanCommand?.status || "").toLowerCase());
+  const fanHoldLabel = fanCommandActive || fanStartPending ? "Waiting for fan proof" : "Waiting for fan command";
   const liveMode = liveHvac.mode || primaryEquipment?.hvacMode || "Auto";
   const liveOccupancy = liveHvac.occupancy || primaryEquipment?.hvacOccupancy || "Unoccupied";
   const temperatureValue = (name) => {
@@ -20743,12 +20746,12 @@ function renderAutomationHvac() {
               </div>
               <div class="hvac-equipment-callout is-cooling ${activeCoolStages ? "is-active" : coolCallWaitingForFan ? "is-commanded" : ""}">
                 <span>Cooling</span>
-                <strong>${escapeHtml(activeCoolStages ? `${activeCoolStages} Active` : coolCallWaitingForFan ? "Waiting Fan Proof" : coolStageLabel)}</strong>
+                <strong>${escapeHtml(activeCoolStages ? `${activeCoolStages} Active` : coolCallWaitingForFan ? fanHoldLabel : coolStageLabel)}</strong>
                 <div class="hvac-stage-dots" aria-label="Cooling stage configuration">${coolStageDots}</div>
               </div>
               <div class="hvac-equipment-callout is-heating ${activeHeatStages ? "is-active" : heatCallWaitingForFan ? "is-commanded" : ""}">
                 <span>Heating</span>
-                <strong>${escapeHtml(activeHeatStages ? `${activeHeatStages} Active` : heatCallWaitingForFan ? "Waiting Fan Proof" : heatStageLabel)}</strong>
+                <strong>${escapeHtml(activeHeatStages ? `${activeHeatStages} Active` : heatCallWaitingForFan ? fanHoldLabel : heatStageLabel)}</strong>
                 <div class="hvac-stage-dots" aria-label="Heating stage configuration">${heatStageDots}</div>
               </div>
               <div class="hvac-equipment-callout is-fan ${fanProofActive ? "is-active" : fanCommandActive ? "is-commanded" : ""}">
@@ -20785,7 +20788,7 @@ function renderAutomationHvac() {
           ` : ""}
           <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped")}</strong></div>
           <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
-          ${heatCallWaitingForFan || coolCallWaitingForFan ? `<div class="hvac-start-delay-row is-active"><span>Stage Hold</span><strong>Waiting for fan proof</strong></div>` : ""}
+          ${heatCallWaitingForFan || coolCallWaitingForFan ? `<div class="hvac-start-delay-row is-active"><span>Stage Hold</span><strong>${escapeHtml(fanHoldLabel)}</strong></div>` : ""}
           <div><span>Command</span><strong>${escapeHtml(fanCommandStatus)}</strong></div>
           <div><span>Last Event</span><strong>${escapeHtml(latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events")}</strong></div>
           <div class="hvac-command-row">
