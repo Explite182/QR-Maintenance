@@ -20452,6 +20452,15 @@ function renderAutomationHvac() {
   const smokeState = hvacMappedPointState(primaryController, "smoke", "inputs");
   const occupiedState = hvacMappedPointState(primaryController, "occupied", "inputs");
   const faultState = hvacMappedPointState(primaryController, "fault", "inputs");
+  const autoReady = primaryController && String(primaryController.hvacControlMode || "").toLowerCase() === "auto" && !hvacLockoutActive && !faultState.active && !smokeState.active;
+  const autoStatusLabel = !primaryController
+    ? "No controller"
+    : String(primaryController.hvacControlMode || "").toLowerCase() !== "auto"
+      ? "Manual"
+      : autoReady
+        ? "Auto ready"
+        : "Auto blocked";
+  const autoStatusClass = autoStatusLabel === "Auto ready" ? "is-normal" : autoStatusLabel === "Manual" ? "is-info" : "is-warning";
   const activeHeatStages = hvacActiveStageCount(primaryController, "heatStage", heatStageCount);
   const activeCoolStages = hvacActiveStageCount(primaryController, "coolStage", coolStageCount);
   const heatStageDots = [1, 2, 3, 4].map((stage) => {
@@ -20591,6 +20600,14 @@ function renderAutomationHvac() {
               <div class="hvac-equipment-callout is-fan ${fanProofActive ? "is-active" : fanCommandActive ? "is-commanded" : ""}">
                 <span>Supply Fan</span>
                 <strong>${escapeHtml(fanProofActive ? "Running" : fanCommandActive ? "Commanded" : "Stopped")}</strong>
+              </div>
+              <div class="hvac-interlock-strip" aria-label="HVAC interlock status">
+                <span class="${escapeAttribute(fanProofActive ? "is-normal" : "is-idle")}"><i></i><b>Fan Proof</b><strong>${escapeHtml(fanProofActive ? "Proven" : "Not Proven")}</strong></span>
+                <span class="${escapeAttribute(smokeState.active ? "is-alarm" : "is-normal")}"><i></i><b>Smoke</b><strong>${escapeHtml(smokeState.active ? "Active" : "Normal")}</strong></span>
+                <span class="${escapeAttribute(faultState.active ? "is-alarm" : "is-normal")}"><i></i><b>Fault</b><strong>${escapeHtml(faultState.active ? "Active" : "Normal")}</strong></span>
+                <span class="${escapeAttribute(freezestatState.active ? "is-warning" : "is-normal")}"><i></i><b>Freezestat</b><strong>${escapeHtml(freezestatState.active ? "Active" : "Normal")}</strong></span>
+                <span class="${escapeAttribute(filterState.active ? "is-warning" : "is-normal")}"><i></i><b>Filter</b><strong>${escapeHtml(filterState.active ? "Active" : "Normal")}</strong></span>
+                <span class="${escapeAttribute(autoStatusClass)}"><i></i><b>Auto</b><strong>${escapeHtml(autoStatusLabel)}</strong></span>
               </div>
             </div>
           </div>
