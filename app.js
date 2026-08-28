@@ -5480,6 +5480,7 @@ const HVAC_DEVICE_HEARTBEAT_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
+const PUMP_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_LIVE_REFRESH_INTERVAL_MS = 5000;
 const PUMP_LIVE_REFRESH_INTERVAL_MS = 2000;
 const HVAC_LIVE_REFRESH_INTERVAL_MS = 5000;
@@ -16959,7 +16960,11 @@ function pumpControllersForCurrentView() {
 function pumpControllerStatus(controller = {}) {
   const status = String(controller.onlineStatus || controller.online_status || controller.status || controller.mode || "Setup only").toLowerCase();
   if (status.includes("simulation") || String(controller.type || "").toLowerCase().includes("simulation")) return { label: "Simulation", className: "is-simulation" };
-  if (status.includes("online") || status.includes("run")) return { label: "Online", className: "is-running" };
+  if (status.includes("online") || status.includes("run")) {
+    return isPumpControllerFresh(controller)
+      ? { label: "Online", className: "is-running" }
+      : { label: "Offline", className: "is-warning" };
+  }
   if (status.includes("alarm") || status.includes("fault") || status.includes("offline")) return { label: "Needs attention", className: "is-warning" };
   return { label: "Setup only", className: "is-listed" };
 }
@@ -16984,6 +16989,12 @@ function pumpControllerForPump(controllers = [], pump = {}) {
   if (!pump?.id) return controllers[0] || null;
   const assignedController = controllers.find((controller) => normalizePumpControllerPumpIds(controller).includes(pump.id));
   return assignedController || controllers.find((controller) => !normalizePumpControllerPumpIds(controller).length) || controllers[0] || null;
+}
+
+function isPumpControllerFresh(controller = {}, nowMs = Date.now()) {
+  const lastSeenAt = controller.lastSeenAt || controller.last_seen_at || "";
+  const lastSeenMs = Date.parse(lastSeenAt);
+  return Number.isFinite(lastSeenMs) && nowMs - lastSeenMs <= PUMP_CONTROLLER_ONLINE_WINDOW_MS;
 }
 
 function preloadPumpEquipmentImage() {
@@ -17946,7 +17957,7 @@ function pumpMappingMissingItems(asset = {}, index = 0) {
 
 function pumpControllerSetupItems(pumps = [], controllers = []) {
   const onlineControllers = controllers.filter((controller) => pumpControllerStatus(controller).className === "is-running");
-  const liveControllers = controllers.filter((controller) => getPumpControllerLiveInputs(controller)?.updatedAt);
+  const liveControllers = controllers.filter((controller) => pumpControllerStatus(controller).className === "is-running" && getPumpControllerLiveInputs(controller)?.updatedAt);
   const assignedPumpIds = new Set(controllers.flatMap((controller) => normalizePumpControllerPumpIds(controller)));
   const assignedCount = assignedPumpIds.size ? pumps.filter((pump) => assignedPumpIds.has(pump.id)).length : Math.min(pumps.length, Number(controllers[0]?.pumpCount || pumps.length || 0) || 0);
   const expectedCount = controllers.reduce((total, controller) => total + (Number(controller.pumpCount) || 0), 0) || pumps.length;
