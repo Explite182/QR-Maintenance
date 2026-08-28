@@ -1,19 +1,19 @@
-const SITEWORKS_SW_VERSION = "20260827-hvac-proof-lockout-68";
+const SITEWORKS_SW_VERSION = "20260827-hvac-stage-timers-69";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260827-hvac-proof-lockout-68",
+  "/styles.css?v=20260827-hvac-stage-timers-69",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260827-hvac-proof-lockout-68",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-proof-lockout-68",
-  "/js/panel-hmi-standard-renderer.js?v=20260827-hvac-proof-lockout-68",
-  "/app.js?v=20260827-hvac-proof-lockout-68",
-  "/manifest.webmanifest?v=20260827-hvac-proof-lockout-68",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260827-hvac-proof-lockout-68",
-  "/icons/siteworks-icon-192.png?v=20260827-hvac-proof-lockout-68",
-  "/icons/siteworks-icon-512.png?v=20260827-hvac-proof-lockout-68"
+  "/js/panel-hmi-standard-model.js?v=20260827-hvac-stage-timers-69",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-stage-timers-69",
+  "/js/panel-hmi-standard-renderer.js?v=20260827-hvac-stage-timers-69",
+  "/app.js?v=20260827-hvac-stage-timers-69",
+  "/manifest.webmanifest?v=20260827-hvac-stage-timers-69",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260827-hvac-stage-timers-69",
+  "/icons/siteworks-icon-192.png?v=20260827-hvac-stage-timers-69",
+  "/icons/siteworks-icon-512.png?v=20260827-hvac-stage-timers-69"
 ];
 
 self.addEventListener("install", (event) => {

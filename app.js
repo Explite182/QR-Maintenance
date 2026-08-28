@@ -19579,6 +19579,13 @@ function hvacCommandInterlockMessage(controller = {}, pointName = "", desiredSta
   return "";
 }
 
+function formatHvacTimerMs(value = 0) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number <= 0) return "--";
+  if (number < 60000) return `${Math.round(number / 1000)} sec`;
+  return `${Math.round(number / 60000)} min`;
+}
+
 async function queueHvacLockoutReset(controllerId = "") {
   const controller = hvacControllersForCurrentView().find((item) => item.id === controllerId) || hvacControllersForCurrentView()[0];
   if (!controller) return;
@@ -20094,6 +20101,7 @@ function renderAutomationHvac() {
   const hvacLockout = liveHvac.lockout && typeof liveHvac.lockout === "object" ? liveHvac.lockout : {};
   const hvacLockoutActive = Boolean(hvacLockout.active);
   const hvacLockoutReason = String(hvacLockout.reason || "").trim();
+  const hvacTiming = liveHvac.timing && typeof liveHvac.timing === "object" ? liveHvac.timing : {};
   const fanCommandActive = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.fanCommand || "");
   const fanProofActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
   const fanCommandOutputNumber = hvacOutputNumberFromChannel(primaryController?.points?.fanCommand || "");
@@ -20323,6 +20331,7 @@ function renderAutomationHvac() {
           <div><span>Occupied Input</span><strong>${escapeHtml(occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label)}</strong></div>
           <div><span>Heating Stages</span><strong>${escapeHtml(heatStageLabel)}</strong></div>
           <div><span>Cooling Stages</span><strong>${escapeHtml(coolStageLabel)}</strong></div>
+          <div><span>Stage Timers</span><strong>${escapeHtml(`Off ${formatHvacTimerMs(hvacTiming.coolingMinOffMs)} / On ${formatHvacTimerMs(hvacTiming.coolingMinOnMs)}`)}</strong></div>
           <div><span>Mode</span><strong>${escapeHtml(liveMode)}</strong></div>
           <div><span>Occupancy</span><strong>${escapeHtml(liveOccupancy)}</strong></div>
           <div><span>Live I/O</span><strong>${escapeHtml(liveHvac.inputMaskHex || "--")} / ${escapeHtml(liveHvac.outputMaskHex || "--")}</strong></div>
