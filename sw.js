@@ -1,20 +1,20 @@
-const SITEWORKS_SW_VERSION = "20260828-hvac-four-stage-auto-104";
+const SITEWORKS_SW_VERSION = "20260828-hvac-demand-trace-105";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260828-hvac-four-stage-auto-104",
+  "/styles.css?v=20260828-hvac-demand-trace-105",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260828-hvac-four-stage-auto-104",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260828-hvac-four-stage-auto-104",
-  "/js/panel-hmi-standard-renderer.js?v=20260828-hvac-four-stage-auto-104",
-  "/app.js?v=20260828-hvac-four-stage-auto-104",
-  "/manifest.webmanifest?v=20260828-hvac-four-stage-auto-104",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260828-hvac-four-stage-auto-104",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260828-hvac-four-stage-auto-104",
-  "/icons/siteworks-icon-192.png?v=20260828-hvac-four-stage-auto-104",
-  "/icons/siteworks-icon-512.png?v=20260828-hvac-four-stage-auto-104"
+  "/js/panel-hmi-standard-model.js?v=20260828-hvac-demand-trace-105",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260828-hvac-demand-trace-105",
+  "/js/panel-hmi-standard-renderer.js?v=20260828-hvac-demand-trace-105",
+  "/app.js?v=20260828-hvac-demand-trace-105",
+  "/manifest.webmanifest?v=20260828-hvac-demand-trace-105",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260828-hvac-demand-trace-105",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260828-hvac-demand-trace-105",
+  "/icons/siteworks-icon-192.png?v=20260828-hvac-demand-trace-105",
+  "/icons/siteworks-icon-512.png?v=20260828-hvac-demand-trace-105"
 ];
 
 self.addEventListener("install", (event) => {
