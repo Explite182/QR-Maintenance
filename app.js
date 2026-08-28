@@ -19323,6 +19323,7 @@ function normalizeHvacController(controller = {}) {
     unoccupiedHeatSetpoint: String(controller.unoccupiedHeatSetpoint || data.unoccupiedHeatSetpoint || autoConfig.unoccupiedHeatSetpoint || 60),
     unoccupiedCoolSetpoint: String(controller.unoccupiedCoolSetpoint || data.unoccupiedCoolSetpoint || autoConfig.unoccupiedCoolSetpoint || 82),
     setpointDeadband: String(controller.setpointDeadband || data.setpointDeadband || autoConfig.deadband || 1),
+    startDelaySeconds: String(controller.startDelaySeconds || data.startDelaySeconds || autoConfig.startDelaySeconds || 60),
     equipmentIds: equipmentIds.map((id) => String(id || "").trim()).filter(Boolean),
     mode: controller.mode || "Setup only",
     status: controller.status || "Setup only",
@@ -19975,6 +19976,9 @@ function renderHvacControllerForm(controller = null) {
       <label>Deadband
         <input name="setpointDeadband" type="number" min="0.5" step="0.5" value="${escapeAttribute(controller?.setpointDeadband || "1")}">
       </label>
+      <label>Start delay sec
+        <input name="startDelaySeconds" type="number" min="0" step="5" value="${escapeAttribute(controller?.startDelaySeconds || "60")}">
+      </label>
       <label>Notes
         <textarea name="notes" placeholder="RTU, MAU, thermostat, safeties, or wiring notes">${escapeHtml(controller?.notes || "")}</textarea>
       </label>
@@ -20040,7 +20044,8 @@ async function saveHvacControllerFromForm(form) {
     occupiedCoolSetpoint: numberField("occupiedCoolSetpoint", 74),
     unoccupiedHeatSetpoint: numberField("unoccupiedHeatSetpoint", 60),
     unoccupiedCoolSetpoint: numberField("unoccupiedCoolSetpoint", 82),
-    deadband: Math.max(0.5, numberField("setpointDeadband", 1))
+    deadband: Math.max(0.5, numberField("setpointDeadband", 1)),
+    startDelaySeconds: Math.max(0, Math.round(numberField("startDelaySeconds", 60)))
   };
   const pointNames = [
     "fanCommand",
@@ -20084,6 +20089,7 @@ async function saveHvacControllerFromForm(form) {
     unoccupiedHeatSetpoint: String(autoConfig.unoccupiedHeatSetpoint),
     unoccupiedCoolSetpoint: String(autoConfig.unoccupiedCoolSetpoint),
     setpointDeadband: String(autoConfig.deadband),
+    startDelaySeconds: String(autoConfig.startDelaySeconds),
     equipmentIds,
     mode: String(formData.get("mode") || "Setup only").trim(),
     status: String(formData.get("mode") || "Setup only").trim(),
@@ -20101,6 +20107,7 @@ async function saveHvacControllerFromForm(form) {
       unoccupiedHeatSetpoint: autoConfig.unoccupiedHeatSetpoint,
       unoccupiedCoolSetpoint: autoConfig.unoccupiedCoolSetpoint,
       setpointDeadband: autoConfig.deadband,
+      startDelaySeconds: autoConfig.startDelaySeconds,
       autoConfig,
       ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: apiKey.slice(-4) } : {}),
       points
@@ -20141,6 +20148,7 @@ async function saveHvacControllerFromForm(form) {
         unoccupiedHeatSetpoint: controller.unoccupiedHeatSetpoint,
         unoccupiedCoolSetpoint: controller.unoccupiedCoolSetpoint,
         setpointDeadband: controller.setpointDeadband,
+        startDelaySeconds: controller.startDelaySeconds,
         autoConfig,
         ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: controller.apiKeyLast4 } : {}),
         points: controller.points
@@ -20419,6 +20427,7 @@ function renderAutomationHvac() {
           <div><span>Control Mode</span><strong>${escapeHtml(primaryController?.hvacControlMode || "Manual")}</strong></div>
           <div class="${escapeAttribute(`hvac-call-row ${hvacCallState.className}`)}"><span>Auto Call</span><strong>${escapeHtml(hvacCallState.label)}</strong></div>
           <div><span>Active Setpoints</span><strong>${escapeHtml(`${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`)}</strong></div>
+          <div><span>Start Delay</span><strong>${escapeHtml(primaryController?.startDelaySeconds ? `${primaryController.startDelaySeconds} sec` : "Off")}</strong></div>
           <div class="${escapeAttribute(hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")}"><span>Lockout</span><strong>${escapeHtml(hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear")}</strong></div>
           ${hvacLockoutActive ? `
             <div class="hvac-command-row">
