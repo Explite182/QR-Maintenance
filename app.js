@@ -5478,6 +5478,24 @@ const HVAC_PENDING_API_KEY_STORAGE_KEY = "siteworks_hvac_pending_api_key_v1";
 const HVAC_DEVICE_CONFIG_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/hvac/device/config`;
 const HVAC_DEVICE_HEARTBEAT_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/hvac/device/heartbeat`;
 const HVAC_EQUIPMENT_IMAGE_SRC = "/assets/equipment/rtu-rooftop-unit.png";
+const HVAC_SCHEDULE_DAYS = [
+  ["mon", "Mon"],
+  ["tue", "Tue"],
+  ["wed", "Wed"],
+  ["thu", "Thu"],
+  ["fri", "Fri"],
+  ["sat", "Sat"],
+  ["sun", "Sun"]
+];
+const DEFAULT_HVAC_SCHEDULE = Object.freeze({
+  mon: { enabled: true, start: "08:00", end: "17:00" },
+  tue: { enabled: true, start: "08:00", end: "17:00" },
+  wed: { enabled: true, start: "08:00", end: "17:00" },
+  thu: { enabled: true, start: "08:00", end: "17:00" },
+  fri: { enabled: true, start: "08:00", end: "17:00" },
+  sat: { enabled: false, start: "08:00", end: "17:00" },
+  sun: { enabled: false, start: "08:00", end: "17:00" }
+});
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
@@ -19294,12 +19312,106 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
   `;
 }
 
+function normalizeHvacSchedule(source = {}) {
+  const sourceSchedule = source && typeof source === "object" ? source : {};
+  return Object.fromEntries(HVAC_SCHEDULE_DAYS.map(([key]) => {
+    const day = sourceSchedule[key] && typeof sourceSchedule[key] === "object" ? sourceSchedule[key] : {};
+    const fallback = DEFAULT_HVAC_SCHEDULE[key];
+    return [key, {
+      enabled: Boolean(day.enabled ?? fallback.enabled),
+      start: String(day.start || fallback.start),
+      end: String(day.end || fallback.end)
+    }];
+  }));
+}
+
+function hvacTimeToMinutes(value = "") {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Math.max(0, Math.min(23, Number(match[1]) || 0));
+  const minutes = Math.max(0, Math.min(59, Number(match[2]) || 0));
+  return hours * 60 + minutes;
+}
+
+function currentHvacScheduleStatus(controller = {}, date = new Date()) {
+  const schedule = normalizeHvacSchedule(controller.schedule || controller.data?.schedule || controller.data?.autoConfig?.schedule || {});
+  if (!controller.scheduleConfigured && !controller.data?.schedule && !controller.data?.autoConfig?.schedule) {
+    return { label: "Manual occupancy", occupancyMode: controller.occupancyMode || "Occupied", active: false, today: null };
+  }
+  const hasEnabledDays = HVAC_SCHEDULE_DAYS.some(([key]) => schedule[key]?.enabled);
+  if (!hasEnabledDays) return { label: "Manual occupancy", occupancyMode: controller.occupancyMode || "Occupied", active: false, today: null };
+  const dayKey = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][date.getDay()];
+  const today = schedule[dayKey];
+  const nowMinutes = date.getHours() * 60 + date.getMinutes();
+  const startMinutes = hvacTimeToMinutes(today?.start);
+  const endMinutes = hvacTimeToMinutes(today?.end);
+  const active = Boolean(today?.enabled) && startMinutes !== null && endMinutes !== null && (
+    startMinutes <= endMinutes
+      ? nowMinutes >= startMinutes && nowMinutes < endMinutes
+      : nowMinutes >= startMinutes || nowMinutes < endMinutes
+  );
+  return {
+    label: active ? "Occupied" : "Unoccupied",
+    occupancyMode: active ? "Occupied" : "Unoccupied",
+    active,
+    today: today ? { key: dayKey, ...today } : null
+  };
+}
+
+function renderHvacScheduleEditor(schedule = {}) {
+  const normalizedSchedule = normalizeHvacSchedule(schedule);
+  return `
+    <fieldset class="hvac-schedule-editor">
+      <legend>Occupied schedule</legend>
+      ${HVAC_SCHEDULE_DAYS.map(([key, label]) => {
+        const day = normalizedSchedule[key];
+        return `
+          <label class="hvac-schedule-row">
+            <span>${escapeHtml(label)}</span>
+            <input type="checkbox" name="schedule_${escapeAttribute(key)}_enabled" ${day.enabled ? "checked" : ""}>
+            <input type="time" name="schedule_${escapeAttribute(key)}_start" value="${escapeAttribute(day.start)}">
+            <input type="time" name="schedule_${escapeAttribute(key)}_end" value="${escapeAttribute(day.end)}">
+          </label>
+        `;
+      }).join("")}
+    </fieldset>
+  `;
+}
+
+function readHvacScheduleFromForm(formData) {
+  return Object.fromEntries(HVAC_SCHEDULE_DAYS.map(([key]) => [key, {
+    enabled: formData.get(`schedule_${key}_enabled`) === "on",
+    start: String(formData.get(`schedule_${key}_start`) || DEFAULT_HVAC_SCHEDULE[key].start).trim(),
+    end: String(formData.get(`schedule_${key}_end`) || DEFAULT_HVAC_SCHEDULE[key].end).trim()
+  }]));
+}
+
+function renderHvacScheduleSummary(schedule = {}) {
+  const normalizedSchedule = normalizeHvacSchedule(schedule);
+  return `
+    <div class="hvac-schedule-list">
+      ${HVAC_SCHEDULE_DAYS.map(([key, label]) => {
+        const day = normalizedSchedule[key];
+        return `
+          <span class="${day.enabled ? "is-enabled" : ""}">
+            <b>${escapeHtml(label)}</b>
+            <strong>${escapeHtml(day.enabled ? `${day.start} - ${day.end}` : "Unoccupied")}</strong>
+          </span>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function normalizeHvacController(controller = {}) {
   const data = controller.data && typeof controller.data === "object" ? controller.data : {};
   const pointsSource = data.points && typeof data.points === "object" ? data.points : {};
   const heatStageCount = Math.max(0, Math.min(4, Number(controller.heatStageCount || controller.heat_stage_count || data.heatStageCount || 1) || 0));
   const coolStageCount = Math.max(0, Math.min(4, Number(controller.coolStageCount || controller.cool_stage_count || data.coolStageCount || 1) || 0));
   const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
+  const scheduleSource = controller.schedule || data.schedule || autoConfig.schedule || {};
+  const scheduleConfigured = Boolean(controller.schedule || data.schedule || autoConfig.schedule);
+  const schedule = normalizeHvacSchedule(scheduleSource);
   const equipmentIds = Array.isArray(controller.equipmentIds)
     ? controller.equipmentIds
     : Array.isArray(data.equipmentIds)
@@ -19324,6 +19436,8 @@ function normalizeHvacController(controller = {}) {
     unoccupiedCoolSetpoint: String(controller.unoccupiedCoolSetpoint || data.unoccupiedCoolSetpoint || autoConfig.unoccupiedCoolSetpoint || 82),
     setpointDeadband: String(controller.setpointDeadband || data.setpointDeadband || autoConfig.deadband || 1),
     startDelaySeconds: String(controller.startDelaySeconds || data.startDelaySeconds || autoConfig.startDelaySeconds || 60),
+    schedule,
+    scheduleConfigured,
     equipmentIds: equipmentIds.map((id) => String(id || "").trim()).filter(Boolean),
     mode: controller.mode || "Setup only",
     status: controller.status || "Setup only",
@@ -19979,6 +20093,7 @@ function renderHvacControllerForm(controller = null) {
       <label>Start delay sec
         <input name="startDelaySeconds" type="number" min="0" step="5" value="${escapeAttribute(controller?.startDelaySeconds || "60")}">
       </label>
+      ${renderHvacScheduleEditor(controller?.schedule || controller?.data?.schedule || {})}
       <label>Notes
         <textarea name="notes" placeholder="RTU, MAU, thermostat, safeties, or wiring notes">${escapeHtml(controller?.notes || "")}</textarea>
       </label>
@@ -20037,6 +20152,7 @@ async function saveHvacControllerFromForm(form) {
     const value = Number(formData.get(name));
     return Number.isFinite(value) ? value : fallback;
   };
+  const schedule = readHvacScheduleFromForm(formData);
   const autoConfig = {
     mode: String(formData.get("hvacControlMode") || "Manual").trim(),
     occupancyMode: String(formData.get("occupancyMode") || "Occupied").trim(),
@@ -20045,7 +20161,8 @@ async function saveHvacControllerFromForm(form) {
     unoccupiedHeatSetpoint: numberField("unoccupiedHeatSetpoint", 60),
     unoccupiedCoolSetpoint: numberField("unoccupiedCoolSetpoint", 82),
     deadband: Math.max(0.5, numberField("setpointDeadband", 1)),
-    startDelaySeconds: Math.max(0, Math.round(numberField("startDelaySeconds", 60)))
+    startDelaySeconds: Math.max(0, Math.round(numberField("startDelaySeconds", 60))),
+    schedule
   };
   const pointNames = [
     "fanCommand",
@@ -20090,6 +20207,7 @@ async function saveHvacControllerFromForm(form) {
     unoccupiedCoolSetpoint: String(autoConfig.unoccupiedCoolSetpoint),
     setpointDeadband: String(autoConfig.deadband),
     startDelaySeconds: String(autoConfig.startDelaySeconds),
+    schedule,
     equipmentIds,
     mode: String(formData.get("mode") || "Setup only").trim(),
     status: String(formData.get("mode") || "Setup only").trim(),
@@ -20108,6 +20226,7 @@ async function saveHvacControllerFromForm(form) {
       unoccupiedCoolSetpoint: autoConfig.unoccupiedCoolSetpoint,
       setpointDeadband: autoConfig.deadband,
       startDelaySeconds: autoConfig.startDelaySeconds,
+      schedule,
       autoConfig,
       ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: apiKey.slice(-4) } : {}),
       points
@@ -20149,6 +20268,7 @@ async function saveHvacControllerFromForm(form) {
         unoccupiedCoolSetpoint: controller.unoccupiedCoolSetpoint,
         setpointDeadband: controller.setpointDeadband,
         startDelaySeconds: controller.startDelaySeconds,
+        schedule,
         autoConfig,
         ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: controller.apiKeyLast4 } : {}),
         points: controller.points
@@ -20216,6 +20336,7 @@ function renderAutomationHvac() {
   const hvacLockoutReason = String(hvacLockout.reason || "").trim();
   const hvacTiming = liveHvac.timing && typeof liveHvac.timing === "object" ? liveHvac.timing : {};
   const hvacCallState = primaryController ? hvacTemperatureCallState(primaryController, liveHvac) : { label: "No controller", className: "is-info" };
+  const hvacScheduleStatus = primaryController ? currentHvacScheduleStatus(primaryController) : { label: "No schedule", occupancyMode: "--" };
   const fanCommandActive = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.fanCommand || "");
   const fanProofActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
   const fanCommandOutputNumber = hvacOutputNumberFromChannel(primaryController?.points?.fanCommand || "");
@@ -20425,6 +20546,7 @@ function renderAutomationHvac() {
           <div><span>Controller</span><strong>${escapeHtml(primaryController?.name || "Not added")}</strong></div>
           <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
           <div><span>Control Mode</span><strong>${escapeHtml(primaryController?.hvacControlMode || "Manual")}</strong></div>
+          <div><span>Schedule</span><strong>${escapeHtml(hvacScheduleStatus.label)}</strong></div>
           <div class="${escapeAttribute(`hvac-call-row ${hvacCallState.className}`)}"><span>Auto Call</span><strong>${escapeHtml(hvacCallState.label)}</strong></div>
           <div><span>Active Setpoints</span><strong>${escapeHtml(`${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`)}</strong></div>
           <div><span>Start Delay</span><strong>${escapeHtml(primaryController?.startDelaySeconds ? `${primaryController.startDelaySeconds} sec` : "Off")}</strong></div>
@@ -20464,6 +20586,10 @@ function renderAutomationHvac() {
         <details class="hvac-drawer" open>
           <summary><span>Controller Setup</span><strong>${controllers.length ? `${controllers.length} saved` : "Add"}</strong></summary>
           <div>${formHtml}${controllerCards}</div>
+        </details>
+        <details class="hvac-drawer">
+          <summary><span>Occupied Schedule</span><strong>${escapeHtml(hvacScheduleStatus.label)}</strong></summary>
+          <div>${renderHvacScheduleSummary(primaryController?.schedule || {})}</div>
         </details>
         <details class="hvac-drawer">
           <summary><span>Equipment</span><strong>${equipment.length}</strong></summary>
