@@ -1,20 +1,20 @@
-const SITEWORKS_SW_VERSION = "20260827-hvac-fan-auto-87";
+const SITEWORKS_SW_VERSION = "20260827-hvac-button-state-88";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260827-hvac-fan-auto-87",
+  "/styles.css?v=20260827-hvac-button-state-88",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260827-hvac-fan-auto-87",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-fan-auto-87",
-  "/js/panel-hmi-standard-renderer.js?v=20260827-hvac-fan-auto-87",
-  "/app.js?v=20260827-hvac-fan-auto-87",
-  "/manifest.webmanifest?v=20260827-hvac-fan-auto-87",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260827-hvac-fan-auto-87",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260827-hvac-fan-auto-87",
-  "/icons/siteworks-icon-192.png?v=20260827-hvac-fan-auto-87",
-  "/icons/siteworks-icon-512.png?v=20260827-hvac-fan-auto-87"
+  "/js/panel-hmi-standard-model.js?v=20260827-hvac-button-state-88",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260827-hvac-button-state-88",
+  "/js/panel-hmi-standard-renderer.js?v=20260827-hvac-button-state-88",
+  "/app.js?v=20260827-hvac-button-state-88",
+  "/manifest.webmanifest?v=20260827-hvac-button-state-88",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260827-hvac-button-state-88",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260827-hvac-button-state-88",
+  "/icons/siteworks-icon-192.png?v=20260827-hvac-button-state-88",
+  "/icons/siteworks-icon-512.png?v=20260827-hvac-button-state-88"
 ];
 
 self.addEventListener("install", (event) => {

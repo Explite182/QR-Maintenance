@@ -20592,8 +20592,8 @@ function renderAutomationHvac() {
             <b>${escapeHtml(stage.label)}</b>
             <em>${escapeHtml(stage.onBlockMessage || stage.channel || "Not mapped")}${!stage.onBlockMessage && stage.commandStatus ? ` | ${escapeHtml(stage.commandStatus)}` : ""}</em>
           </span>
-          <button type="button" ${primaryController && stage.outputNumber && !stage.onBlockMessage ? "" : "disabled"} title="${escapeAttribute(stage.onBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="On">On</button>
-          <button type="button" ${primaryController && stage.outputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="Off">Off</button>
+          <button type="button" class="${stage.active ? "is-active" : ""}" ${primaryController && stage.outputNumber && !stage.onBlockMessage ? "" : "disabled"} title="${escapeAttribute(stage.onBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="On">On</button>
+          <button type="button" class="${!stage.active && stage.outputNumber ? "is-selected" : ""}" ${primaryController && stage.outputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="Off">Off</button>
         </div>
       `).join("")}
     </div>
@@ -20629,6 +20629,10 @@ function renderAutomationHvac() {
   const coolCallWaitingForFan = hvacCallState.className === "is-cooling" && !fanProofActive;
   const fanStartPending = String(latestFanCommand?.hvacCommand || "") === "Fan On" &&
     ["pending", "acknowledged"].includes(String(latestFanCommand?.status || "").toLowerCase());
+  const fanAutoSelected = String(latestFanCommand?.hvacCommand || "") === "Fan Auto" ||
+    String(latestFanCommand?.desiredState || "").toLowerCase() === "auto";
+  const fanOnSelected = fanCommandActive && !fanAutoSelected;
+  const fanOffSelected = !fanCommandActive && !fanAutoSelected;
   const fanHoldLabel = fanCommandActive || fanStartPending ? "Waiting for fan proof" : "Waiting for fan command";
   const liveMode = liveHvac.mode || primaryEquipment?.hvacMode || "Auto";
   const liveOccupancy = liveHvac.occupancy || primaryEquipment?.hvacOccupancy || "Unoccupied";
@@ -20795,9 +20799,9 @@ function renderAutomationHvac() {
           <div><span>Command</span><strong>${escapeHtml(fanCommandStatus)}</strong></div>
           <div><span>Last Event</span><strong>${escapeHtml(latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events")}</strong></div>
           <div class="hvac-command-row">
-            <button type="button" ${primaryController && fanCommandOutputNumber && !fanOnBlockMessage ? "" : "disabled"} title="${escapeAttribute(fanOnBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
-            <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Auto">Auto</button>
-            <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
+            <button type="button" class="${fanOnSelected ? "is-active" : ""}" ${primaryController && fanCommandOutputNumber && !fanOnBlockMessage ? "" : "disabled"} title="${escapeAttribute(fanOnBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
+            <button type="button" class="${fanAutoSelected ? "is-selected" : ""}" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Auto">Auto</button>
+            <button type="button" class="${fanOffSelected ? "is-selected" : ""}" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
           </div>
           ${hvacStageCommandControls}
           <div><span>Fault Input</span><strong class="${escapeAttribute(faultState.active ? "status-danger" : "")}">${escapeHtml(faultState.channel ? `${faultState.channel} ${faultState.active ? "Active" : "Normal"}` : faultState.label)}</strong></div>
