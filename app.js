@@ -19501,6 +19501,7 @@ function normalizeHvacController(controller = {}) {
     unoccupiedCoolSetpoint: String(controller.unoccupiedCoolSetpoint || data.unoccupiedCoolSetpoint || autoConfig.unoccupiedCoolSetpoint || 82),
     setpointDeadband: String(controller.setpointDeadband || data.setpointDeadband || autoConfig.deadband || 1),
     startDelaySeconds: String(controller.startDelaySeconds || data.startDelaySeconds || autoConfig.startDelaySeconds || 60),
+    fanProofTimeoutSeconds: String(controller.fanProofTimeoutSeconds || data.fanProofTimeoutSeconds || autoConfig.fanProofTimeoutSeconds || 15),
     schedule,
     scheduleConfigured,
     tempSimulator,
@@ -20284,6 +20285,9 @@ function renderHvacControllerForm(controller = null) {
       <label>Start delay sec
         <input name="startDelaySeconds" type="number" min="0" step="5" value="${escapeAttribute(controller?.startDelaySeconds || "60")}">
       </label>
+      <label>Fan proof timeout sec
+        <input name="fanProofTimeoutSeconds" type="number" min="5" max="300" step="5" value="${escapeAttribute(controller?.fanProofTimeoutSeconds || "15")}">
+      </label>
       ${renderHvacScheduleEditor(controller?.schedule || controller?.data?.schedule || {})}
       ${renderHvacTempSimulatorEditor(controller?.tempSimulator || controller?.data?.tempSimulator || {})}
       <label>Notes
@@ -20354,6 +20358,7 @@ async function saveHvacControllerFromForm(form) {
     unoccupiedCoolSetpoint: numberField("unoccupiedCoolSetpoint", 82),
     deadband: Math.max(0.5, numberField("setpointDeadband", 1)),
     startDelaySeconds: Math.max(0, Math.round(numberField("startDelaySeconds", 60))),
+    fanProofTimeoutSeconds: Math.max(5, Math.min(300, Math.round(numberField("fanProofTimeoutSeconds", 15)))),
     schedule
   };
   const pointNames = [
@@ -20400,6 +20405,7 @@ async function saveHvacControllerFromForm(form) {
     unoccupiedCoolSetpoint: String(autoConfig.unoccupiedCoolSetpoint),
     setpointDeadband: String(autoConfig.deadband),
     startDelaySeconds: String(autoConfig.startDelaySeconds),
+    fanProofTimeoutSeconds: String(autoConfig.fanProofTimeoutSeconds),
     schedule,
     tempSimulator,
     equipmentIds,
@@ -20420,6 +20426,7 @@ async function saveHvacControllerFromForm(form) {
       unoccupiedCoolSetpoint: autoConfig.unoccupiedCoolSetpoint,
       setpointDeadband: autoConfig.deadband,
       startDelaySeconds: autoConfig.startDelaySeconds,
+      fanProofTimeoutSeconds: autoConfig.fanProofTimeoutSeconds,
       schedule,
       tempSimulator,
       autoConfig,
@@ -20795,6 +20802,7 @@ function renderAutomationHvac() {
           ` : ""}
           <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped")}</strong></div>
           <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
+          <div><span>Fan Proof Timeout</span><strong>${escapeHtml(`${primaryController?.fanProofTimeoutSeconds || "15"} sec`)}</strong></div>
           ${heatCallWaitingForFan || coolCallWaitingForFan ? `<div class="hvac-start-delay-row is-active"><span>Stage Hold</span><strong>${escapeHtml(fanHoldLabel)}</strong></div>` : ""}
           <div><span>Command</span><strong>${escapeHtml(fanCommandStatus)}</strong></div>
           <div><span>Last Event</span><strong>${escapeHtml(latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events")}</strong></div>
