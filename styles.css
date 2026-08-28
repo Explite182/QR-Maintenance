@@ -1794,9 +1794,9 @@ textarea:disabled {
 .hvac-rtu-image-stage {
   position: relative;
   display: grid;
-  min-height: 398px;
+  min-height: 360px;
   align-items: center;
-  padding: 78px 18px 118px;
+  padding: 78px 18px 92px;
   border: 1px solid rgba(203, 213, 225, 0.18);
   background:
     radial-gradient(circle at 46% 38%, rgba(125, 211, 252, 0.16), transparent 36%),
@@ -1950,10 +1950,7 @@ textarea:disabled {
 }
 
 .hvac-interlock-strip {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 14px;
+  margin-top: 10px;
   display: grid;
   grid-template-columns: repeat(6, minmax(94px, 1fr));
   gap: 7px;
@@ -2082,6 +2079,16 @@ textarea:disabled {
 
 .hvac-status-panel .hvac-lockout-row.is-active strong {
   color: #fecaca;
+}
+
+.hvac-status-panel .hvac-start-delay-row.is-active {
+  border-color: rgba(56, 189, 248, 0.64);
+  background: rgba(8, 47, 73, 0.58);
+  box-shadow: inset 3px 0 0 #38bdf8;
+}
+
+.hvac-status-panel .hvac-start-delay-row.is-active strong {
+  color: #7dd3fc;
 }
 
 .hvac-status-panel .hvac-call-row.is-heating {
@@ -2708,12 +2715,12 @@ textarea:disabled {
   }
 
   .hvac-rtu-graphic {
-    min-height: 610px;
+    min-height: 0;
   }
 
   .hvac-rtu-image-stage {
-    min-height: 580px;
-    padding: 150px 10px 210px;
+    min-height: 500px;
+    padding: 150px 10px 126px;
   }
 
   .hvac-rtu-image-stage img {
@@ -2779,7 +2786,6 @@ textarea:disabled {
 
   .hvac-interlock-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    bottom: 10px;
     gap: 6px;
   }
 

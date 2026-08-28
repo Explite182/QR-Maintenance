@@ -6472,6 +6472,7 @@ window.setInterval(renderLightingScheduleClock, 1000);
 window.setInterval(refreshLightingLiveStatus, LIGHTING_LIVE_REFRESH_INTERVAL_MS);
 window.setInterval(refreshPumpLiveStatus, PUMP_LIVE_REFRESH_INTERVAL_MS);
 window.setInterval(refreshHvacLiveStatus, HVAC_LIVE_REFRESH_INTERVAL_MS);
+window.setInterval(refreshHvacStartDelayCountdowns, 1000);
 window.setTimeout(syncMonitoringStatusFromApi, 1500);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
@@ -19736,6 +19737,56 @@ function latestHvacCommandForOutput(controllerId = "", outputNumber = 0) {
     .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
 }
 
+function hvacStartDelayStatus(controller = {}, commands = hvacCommandsCache, now = Date.now()) {
+  const data = controller?.data && typeof controller.data === "object" ? controller.data : {};
+  const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
+  const delaySeconds = Math.max(0, Math.min(3600, Math.round(Number(controller?.startDelaySeconds ?? data.startDelaySeconds ?? autoConfig.startDelaySeconds ?? 0) || 0)));
+  if (!controller || !delaySeconds) return { active: false, delaySeconds: 0, remainingSeconds: 0, label: "Off" };
+  const controllerId = String(controller.id || "");
+  const customerId = String(controller.customerId || controller.customer_id || "");
+  const locationId = String(controller.locationId || controller.location_id || "");
+  const latestOtherFanStart = commands
+    .filter((command) => {
+      const status = String(command.status || "").toLowerCase();
+      if (status === "blocked" || status === "failed") return false;
+      return String(command.commandType || "") === "hvac-auto" &&
+        String(command.hvacCommand || "") === "Fan On" &&
+        String(command.controllerId || "") !== controllerId &&
+        (!customerId || String(command.customerId || "") === customerId) &&
+        (!locationId || String(command.locationId || "") === locationId);
+    })
+    .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
+  if (!latestOtherFanStart?.createdAt) {
+    return { active: false, delaySeconds, remainingSeconds: 0, label: `${delaySeconds} sec` };
+  }
+  const startedAt = new Date(latestOtherFanStart.createdAt).getTime();
+  if (!Number.isFinite(startedAt)) {
+    return { active: false, delaySeconds, remainingSeconds: 0, label: `${delaySeconds} sec` };
+  }
+  const elapsedSeconds = Math.max(0, Math.floor((Number(now) - startedAt) / 1000));
+  const remainingSeconds = Math.max(0, delaySeconds - elapsedSeconds);
+  return {
+    active: remainingSeconds > 0,
+    delaySeconds,
+    remainingSeconds,
+    label: remainingSeconds > 0 ? `${remainingSeconds} sec remaining` : `${delaySeconds} sec`
+  };
+}
+
+function refreshHvacStartDelayCountdowns() {
+  const rows = document.querySelectorAll("[data-hvac-start-delay-controller]");
+  if (!rows.length) return;
+  const controllers = hvacControllersForCurrentView();
+  rows.forEach((row) => {
+    const controller = controllers.find((item) => String(item.id || "") === String(row.dataset.hvacStartDelayController || ""));
+    const label = row.querySelector("strong");
+    if (!controller || !label) return;
+    const status = hvacStartDelayStatus(controller);
+    row.classList.toggle("is-active", status.active);
+    label.textContent = status.label;
+  });
+}
+
 function hvacCommandEventSeverity(command = {}) {
   const status = String(command.status || "").toLowerCase();
   if (status === "blocked" || status === "failed") return "is-warning";
@@ -20464,6 +20515,7 @@ function renderAutomationHvac() {
   const recentHvacCommands = primaryController
     ? hvacCommandsCache.filter((command) => String(command.controllerId || "") === String(primaryController.id || ""))
     : hvacCommandsCache;
+  const startDelayStatus = hvacStartDelayStatus(primaryController, hvacCommandsCache);
   const latestHvacEvent = recentHvacCommands
     .slice()
     .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
@@ -20527,6 +20579,8 @@ function renderAutomationHvac() {
     ? "No controller"
     : String(primaryController.hvacControlMode || "").toLowerCase() !== "auto"
       ? "Manual"
+      : startDelayStatus.active
+        ? "Start delay"
       : autoReady
         ? "Auto ready"
         : "Auto blocked";
@@ -20673,14 +20727,14 @@ function renderAutomationHvac() {
                 <span>Supply Fan</span>
                 <strong>${escapeHtml(fanProofActive ? "Running" : fanCommandActive ? "Commanded" : "Stopped")}</strong>
               </div>
-              <div class="hvac-interlock-strip" aria-label="HVAC interlock status">
-                <span class="${escapeAttribute(fanProofActive ? "is-normal" : "is-idle")}"><i></i><b>Fan Proof</b><strong>${escapeHtml(fanProofActive ? "Proven" : "Not Proven")}</strong></span>
-                <span class="${escapeAttribute(smokeState.active ? "is-alarm" : "is-normal")}"><i></i><b>Smoke</b><strong>${escapeHtml(smokeState.active ? "Active" : "Normal")}</strong></span>
-                <span class="${escapeAttribute(faultState.active ? "is-alarm" : "is-normal")}"><i></i><b>Fault</b><strong>${escapeHtml(faultState.active ? "Active" : "Normal")}</strong></span>
-                <span class="${escapeAttribute(freezestatState.active ? "is-warning" : "is-normal")}"><i></i><b>Freezestat</b><strong>${escapeHtml(freezestatState.active ? "Active" : "Normal")}</strong></span>
-                <span class="${escapeAttribute(filterState.active ? "is-warning" : "is-normal")}"><i></i><b>Filter</b><strong>${escapeHtml(filterState.active ? "Active" : "Normal")}</strong></span>
-                <span class="${escapeAttribute(autoStatusClass)}"><i></i><b>Auto</b><strong>${escapeHtml(autoStatusLabel)}</strong></span>
-              </div>
+            </div>
+            <div class="hvac-interlock-strip" aria-label="HVAC interlock status">
+              <span class="${escapeAttribute(fanProofActive ? "is-normal" : "is-idle")}"><i></i><b>Fan Proof</b><strong>${escapeHtml(fanProofActive ? "Proven" : "Not Proven")}</strong></span>
+              <span class="${escapeAttribute(smokeState.active ? "is-alarm" : "is-normal")}"><i></i><b>Smoke</b><strong>${escapeHtml(smokeState.active ? "Active" : "Normal")}</strong></span>
+              <span class="${escapeAttribute(faultState.active ? "is-alarm" : "is-normal")}"><i></i><b>Fault</b><strong>${escapeHtml(faultState.active ? "Active" : "Normal")}</strong></span>
+              <span class="${escapeAttribute(freezestatState.active ? "is-warning" : "is-normal")}"><i></i><b>Freezestat</b><strong>${escapeHtml(freezestatState.active ? "Active" : "Normal")}</strong></span>
+              <span class="${escapeAttribute(filterState.active ? "is-warning" : "is-normal")}"><i></i><b>Filter</b><strong>${escapeHtml(filterState.active ? "Active" : "Normal")}</strong></span>
+              <span class="${escapeAttribute(autoStatusClass)}"><i></i><b>Auto</b><strong>${escapeHtml(autoStatusLabel)}</strong></span>
             </div>
           </div>
         </section>
@@ -20693,7 +20747,7 @@ function renderAutomationHvac() {
           <div><span>Schedule</span><strong>${escapeHtml(hvacScheduleStatus.label)}</strong></div>
           <div class="${escapeAttribute(`hvac-call-row ${hvacCallState.className}`)}"><span>Auto Call</span><strong>${escapeHtml(hvacCallState.label)}</strong></div>
           <div><span>Active Setpoints</span><strong>${escapeHtml(`${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`)}</strong></div>
-          <div><span>Start Delay</span><strong>${escapeHtml(primaryController?.startDelaySeconds ? `${primaryController.startDelaySeconds} sec` : "Off")}</strong></div>
+          <div class="${escapeAttribute(startDelayStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>
           <div class="${escapeAttribute(hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")}"><span>Lockout</span><strong>${escapeHtml(hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear")}</strong></div>
           ${hvacLockoutActive ? `
             <div class="hvac-command-row">
