@@ -5500,6 +5500,7 @@ const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
 const PUMP_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
+const HVAC_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_LIVE_REFRESH_INTERVAL_MS = 5000;
 const PUMP_LIVE_REFRESH_INTERVAL_MS = 2000;
 const HVAC_LIVE_REFRESH_INTERVAL_MS = 5000;
@@ -5551,7 +5552,9 @@ let editingPumpControllerId = "";
 let editingHvacControllerId = "";
 let hvacControllersCache = [];
 let hvacControllersLoadedScope = "";
+let hvacControllersLoadedAt = 0;
 let hvacControllersLoading = false;
+let hvacControllerEmptyRetryTimer = 0;
 let hvacCommandsCache = [];
 let hvacCommandsLoadedScope = "";
 let hvacCommandsLoading = false;
@@ -19472,6 +19475,8 @@ function hvacTemperatureFromController(controller = {}, liveHvac = {}, name = ""
 
 function normalizeHvacController(controller = {}) {
   const data = controller.data && typeof controller.data === "object" ? controller.data : {};
+  const diagnostics = data.diagnostics && typeof data.diagnostics === "object" ? data.diagnostics : {};
+  const lastHeartbeat = diagnostics.lastHeartbeat && typeof diagnostics.lastHeartbeat === "object" ? diagnostics.lastHeartbeat : {};
   const pointsSource = data.points && typeof data.points === "object" ? data.points : {};
   const heatStageCount = Math.max(0, Math.min(4, Number(controller.heatStageCount || controller.heat_stage_count || data.heatStageCount || 1) || 0));
   const coolStageCount = Math.max(0, Math.min(4, Number(controller.coolStageCount || controller.cool_stage_count || data.coolStageCount || 1) || 0));
@@ -19514,7 +19519,7 @@ function normalizeHvacController(controller = {}) {
     status: controller.status || "Setup only",
     onlineStatus: controller.onlineStatus || controller.online_status || data.onlineStatus || data.online_status || "setup",
     firmwareVersion: controller.firmwareVersion || controller.firmware_version || data.firmwareVersion || data.firmware_version || "",
-    lastSeenAt: controller.lastSeenAt || controller.last_seen_at || data.lastSeenAt || data.last_seen_at || "",
+    lastSeenAt: controller.lastSeenAt || controller.last_seen_at || data.lastSeenAt || data.last_seen_at || data.lastNetwork?.seenAt || lastHeartbeat.checkedAt || "",
     ipAddress: controller.ipAddress || controller.ip_address || data.ipAddress || data.ip_address || data.ip || data.lastNetwork?.ip || "",
     macAddress: controller.macAddress || controller.mac_address || data.macAddress || data.mac_address || data.mac || data.lastNetwork?.mac || "",
     networkType: controller.networkType || controller.network_type || data.networkType || data.network_type || data.lastNetwork?.type || "",
@@ -19554,9 +19559,14 @@ function getHvacControllers() {
   return state.hvacControllers;
 }
 
-function saveHvacControllers(controllers = []) {
+function saveHvacControllers(controllers = [], { sync = true } = {}) {
   state.hvacControllers = controllers.map(normalizeHvacController);
-  saveState();
+  if (sync) {
+    saveState();
+  } else {
+    state.updatedAt = new Date().toISOString();
+    persistLocalStateOnly();
+  }
 }
 
 function getHvacControllerScopeKey() {
@@ -19579,16 +19589,29 @@ async function loadHvacControllersForCurrentScope(force = false) {
       ? serverControllers
       : localScopeControllers;
     hvacControllersLoadedScope = scopeKey;
+    hvacControllersLoadedAt = Date.now();
     const localOtherScopes = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` !== scopeKey);
-    saveHvacControllers([...hvacControllersCache, ...localOtherScopes]);
+    saveHvacControllers([...hvacControllersCache, ...localOtherScopes], { sync: false });
   } catch (error) {
     console.warn("HVAC controllers could not be loaded from the server.", error);
     hvacControllersCache = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` === scopeKey);
     hvacControllersLoadedScope = scopeKey;
+    hvacControllersLoadedAt = Date.now();
   } finally {
     hvacControllersLoading = false;
     renderAutomationHvac();
   }
+}
+
+function scheduleHvacControllerEmptyRetry(scopeKey = "") {
+  if (!scopeKey || hvacControllersLoading || hvacControllerEmptyRetryTimer) return;
+  const retryDelayMs = hvacControllersLoadedAt ? Math.max(1500, 5000 - (Date.now() - hvacControllersLoadedAt)) : 1500;
+  hvacControllerEmptyRetryTimer = window.setTimeout(() => {
+    hvacControllerEmptyRetryTimer = 0;
+    if (getHvacControllerScopeKey() === scopeKey) {
+      loadHvacControllersForCurrentScope(true);
+    }
+  }, retryDelayMs);
 }
 
 async function refreshHvacLiveStatus() {
@@ -19634,7 +19657,7 @@ function defaultHvacTemplateId(customerId = "") {
 function hvacControllerStatus(controller = {}) {
   const onlineStatus = String(controller.onlineStatus || controller.online_status || "").toLowerCase();
   const lastSeenMs = Date.parse(controller.lastSeenAt || controller.last_seen_at || "");
-  if (onlineStatus === "online" && Number.isFinite(lastSeenMs) && Date.now() - lastSeenMs <= LIGHTING_CONTROLLER_ONLINE_WINDOW_MS) {
+  if (onlineStatus === "online" && Number.isFinite(lastSeenMs) && Date.now() - lastSeenMs <= HVAC_CONTROLLER_ONLINE_WINDOW_MS) {
     return { label: "Online", className: "is-running" };
   }
   if (onlineStatus === "online") return { label: "Last seen", className: "is-info" };
@@ -20721,6 +20744,9 @@ function renderAutomationHvac() {
   const currentCustomer = selectedCustomerId === ALL_CUSTOMERS ? null : getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
   const controllers = hvacControllersForCurrentView();
+  if (scopeKey && hvacControllersLoadedScope === scopeKey && !controllers.length) {
+    scheduleHvacControllerEmptyRetry(scopeKey);
+  }
   const equipment = hvacAssetsForCurrentView();
   const primaryController = controllers[0] || null;
   const primaryEquipment = primaryController ? hvacControllerAssignedEquipment(primaryController, equipment)[0] || equipment[0] : equipment[0];
