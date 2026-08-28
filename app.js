@@ -19685,6 +19685,7 @@ function hvacCommandEventMessage(command = {}) {
   const status = String(command.status || "").toLowerCase();
   const reason = String(metadata.reason || "").trim();
   const blockReason = String(metadata.blockReason || command.error || "").trim();
+  if (command.commandType === "hvac-event") return reason || `${commandText}.`;
   if (status === "blocked") return `${commandText} blocked: ${blockReason || "interlock active"}.`;
   if (status === "failed") return `${commandText} failed${blockReason ? `: ${blockReason}` : ""}.`;
   if (status === "completed") return `${commandText} completed${reason ? ` (${reason})` : ""}.`;
@@ -19703,7 +19704,11 @@ function hvacCommandEventRows(controllerId = "") {
   }
   return rows.map((command) => {
     const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
-    const source = metadata.source === "auto-temperature" ? "Auto" : command.requestedBy === "siteworks-auto" ? "Auto" : "Manual";
+    const source = metadata.source === "live-input"
+      ? "Live I/O"
+      : metadata.source === "auto-temperature" || command.requestedBy === "siteworks-auto"
+        ? "Auto"
+        : "Manual";
     return `
       <div class="hvac-event-row ${escapeAttribute(hvacCommandEventSeverity(command))}">
         <span>${escapeHtml(`${formatDateTime(command.createdAt)} | ${source}`)}</span>
