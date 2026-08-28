@@ -19985,7 +19985,9 @@ async function queueHvacOutputCommand(controllerId = "", action = "", pointName 
     return;
   }
   const actionText = String(action || "").trim();
-  const desiredState = /off$/i.test(actionText) || actionText.toLowerCase() === "off" ? "Off" : "On";
+  const desiredState = actionText.toLowerCase() === "auto"
+    ? "Auto"
+    : /off$/i.test(actionText) || actionText.toLowerCase() === "off" ? "Off" : "On";
   const hvacCommand = `${pointLabel} ${desiredState}`;
   const interlockMessage = hvacCommandInterlockMessage(controller, pointKey, desiredState);
   if (interlockMessage) {
@@ -20002,6 +20004,7 @@ async function queueHvacOutputCommand(controllerId = "", action = "", pointName 
       command_output: pointChannel || `DO${outputNumber}`,
       hvac_command: hvacCommand,
       desired_state: desiredState,
+      command_type: desiredState === "Auto" ? "hvac-mode" : "hvac-output",
       metadata: {
         commandOutput: pointChannel || `DO${outputNumber}`,
         pointName: pointKey,
@@ -20793,6 +20796,7 @@ function renderAutomationHvac() {
           <div><span>Last Event</span><strong>${escapeHtml(latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events")}</strong></div>
           <div class="hvac-command-row">
             <button type="button" ${primaryController && fanCommandOutputNumber && !fanOnBlockMessage ? "" : "disabled"} title="${escapeAttribute(fanOnBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
+            <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Auto">Auto</button>
             <button type="button" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
           </div>
           ${hvacStageCommandControls}
