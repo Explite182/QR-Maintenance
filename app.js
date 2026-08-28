@@ -5477,6 +5477,7 @@ const PUMP_DEVICE_COMMANDS_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/
 const HVAC_PENDING_API_KEY_STORAGE_KEY = "siteworks_hvac_pending_api_key_v1";
 const HVAC_DEVICE_CONFIG_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/hvac/device/config`;
 const HVAC_DEVICE_HEARTBEAT_URL = `${SITEWORKS_API_BASE_URL.replace(/\/+$/, "")}/api/automation/hvac/device/heartbeat`;
+const HVAC_EQUIPMENT_IMAGE_SRC = "/assets/equipment/rtu-rooftop-unit.png";
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
 const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
@@ -20370,47 +20371,42 @@ function renderAutomationHvac() {
         <section class="hvac-equipment-view" aria-label="HVAC equipment graphic">
           <header>Equipment Section</header>
           <div class="hvac-rtu-graphic" aria-label="Rooftop unit graphic">
-            <div class="hvac-air-intake is-return">
-              <span>Return Air</span>
-              <strong>--</strong>
-              <b aria-hidden="true"></b>
-            </div>
-            <div class="hvac-air-intake is-outside">
-              <span>Outside Air</span>
-              <strong>--</strong>
-              <b aria-hidden="true"></b>
-            </div>
-            <div class="hvac-unit-body">
-              <div class="hvac-section hvac-mixing-section">
-                <span>Mixed Air</span>
-                <strong>OA Damper --%</strong>
-                <div class="hvac-damper-blades" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="hvac-rtu-image-stage">
+              <img src="${escapeAttribute(HVAC_EQUIPMENT_IMAGE_SRC)}" alt="" width="2048" height="803" loading="eager" decoding="sync" fetchpriority="high">
+              <div class="hvac-ribbon is-return">
+                <span>Return Air</span>
+                <strong>${escapeHtml(temperatureValue("return"))}</strong>
               </div>
-              <div class="hvac-section hvac-filter-section">
-                <span>Filter Bank</span>
-                <strong>Normal</strong>
-                <div aria-hidden="true"></div>
+              <div class="hvac-ribbon is-outside">
+                <span>Outside Air</span>
+                <strong>${escapeHtml(temperatureValue("outside"))}</strong>
               </div>
-              <div class="hvac-section hvac-coil-section is-cooling">
-                <span>Cooling Coil</span>
+              <div class="hvac-ribbon is-supply">
+                <span>Supply Air</span>
+                <strong>${escapeHtml(temperatureValue("supply"))}</strong>
+              </div>
+              <div class="hvac-equipment-callout is-damper">
+                <span>OA Damper</span>
+                <strong>--%</strong>
+              </div>
+              <div class="hvac-equipment-callout is-filter ${filterState.active ? "is-warning" : "is-normal"}">
+                <span>Filter</span>
+                <strong>${escapeHtml(filterState.channel ? filterState.label : "Normal")}</strong>
+              </div>
+              <div class="hvac-equipment-callout is-cooling ${activeCoolStages ? "is-active" : ""}">
+                <span>Cooling</span>
                 <strong>${escapeHtml(activeCoolStages ? `${activeCoolStages} Active` : coolStageLabel)}</strong>
                 <div class="hvac-stage-dots" aria-label="Cooling stage configuration">${coolStageDots}</div>
               </div>
-              <div class="hvac-section hvac-coil-section is-heating">
-                <span>Heating Coil</span>
+              <div class="hvac-equipment-callout is-heating ${activeHeatStages ? "is-active" : ""}">
+                <span>Heating</span>
                 <strong>${escapeHtml(activeHeatStages ? `${activeHeatStages} Active` : heatStageLabel)}</strong>
                 <div class="hvac-stage-dots" aria-label="Heating stage configuration">${heatStageDots}</div>
               </div>
-              <div class="hvac-section hvac-fan-section">
+              <div class="hvac-equipment-callout is-fan ${fanProofActive ? "is-active" : fanCommandActive ? "is-commanded" : ""}">
                 <span>Supply Fan</span>
                 <strong>${escapeHtml(fanProofActive ? "Running" : fanCommandActive ? "Commanded" : "Stopped")}</strong>
-                <div class="hvac-fan-wheel" aria-hidden="true"><i></i></div>
               </div>
-            </div>
-            <div class="hvac-supply-discharge">
-              <span>Supply Air</span>
-              <strong>--</strong>
-              <b aria-hidden="true"></b>
             </div>
           </div>
         </section>
