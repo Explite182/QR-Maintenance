@@ -19287,6 +19287,7 @@ function normalizeHvacController(controller = {}) {
   const pointsSource = data.points && typeof data.points === "object" ? data.points : {};
   const heatStageCount = Math.max(0, Math.min(4, Number(controller.heatStageCount || controller.heat_stage_count || data.heatStageCount || 1) || 0));
   const coolStageCount = Math.max(0, Math.min(4, Number(controller.coolStageCount || controller.cool_stage_count || data.coolStageCount || 1) || 0));
+  const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
   const equipmentIds = Array.isArray(controller.equipmentIds)
     ? controller.equipmentIds
     : Array.isArray(data.equipmentIds)
@@ -19303,6 +19304,13 @@ function normalizeHvacController(controller = {}) {
     equipmentCount: String(controller.equipmentCount || controller.equipment_count || data.equipmentCount || 1),
     heatStageCount: String(heatStageCount),
     coolStageCount: String(coolStageCount),
+    hvacControlMode: controller.hvacControlMode || data.hvacControlMode || data.hvac_control_mode || autoConfig.mode || "Manual",
+    occupancyMode: controller.occupancyMode || data.occupancyMode || data.occupancy_mode || autoConfig.occupancyMode || "Occupied",
+    occupiedHeatSetpoint: String(controller.occupiedHeatSetpoint || data.occupiedHeatSetpoint || autoConfig.occupiedHeatSetpoint || 68),
+    occupiedCoolSetpoint: String(controller.occupiedCoolSetpoint || data.occupiedCoolSetpoint || autoConfig.occupiedCoolSetpoint || 74),
+    unoccupiedHeatSetpoint: String(controller.unoccupiedHeatSetpoint || data.unoccupiedHeatSetpoint || autoConfig.unoccupiedHeatSetpoint || 60),
+    unoccupiedCoolSetpoint: String(controller.unoccupiedCoolSetpoint || data.unoccupiedCoolSetpoint || autoConfig.unoccupiedCoolSetpoint || 82),
+    setpointDeadband: String(controller.setpointDeadband || data.setpointDeadband || autoConfig.deadband || 1),
     equipmentIds: equipmentIds.map((id) => String(id || "").trim()).filter(Boolean),
     mode: controller.mode || "Setup only",
     status: controller.status || "Setup only",
@@ -19584,6 +19592,26 @@ function formatHvacTimerMs(value = 0) {
   if (!Number.isFinite(number) || number <= 0) return "--";
   if (number < 60000) return `${Math.round(number / 1000)} sec`;
   return `${Math.round(number / 60000)} min`;
+}
+
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function hvacTemperatureCallState(controller = {}, liveHvac = {}) {
+  const temperatureValue = liveHvac.temperatures?.space ?? liveHvac.analog?.space ?? "";
+  const spaceTemp = numberOrNull(temperatureValue);
+  const occupied = String(controller.occupancyMode || controller.data?.occupancyMode || "Occupied").toLowerCase() !== "unoccupied";
+  const heatSetpoint = numberOrNull(occupied ? controller.occupiedHeatSetpoint : controller.unoccupiedHeatSetpoint);
+  const coolSetpoint = numberOrNull(occupied ? controller.occupiedCoolSetpoint : controller.unoccupiedCoolSetpoint);
+  const deadband = Math.max(0.5, numberOrNull(controller.setpointDeadband) ?? 1);
+  if (spaceTemp === null || heatSetpoint === null || coolSetpoint === null) {
+    return { label: "Waiting for space temp", className: "is-info", spaceTemp, heatSetpoint, coolSetpoint };
+  }
+  if (spaceTemp <= heatSetpoint - deadband) return { label: "Heating call", className: "is-heating", spaceTemp, heatSetpoint, coolSetpoint };
+  if (spaceTemp >= coolSetpoint + deadband) return { label: "Cooling call", className: "is-cooling", spaceTemp, heatSetpoint, coolSetpoint };
+  return { label: "Satisfied", className: "is-normal", spaceTemp, heatSetpoint, coolSetpoint };
 }
 
 async function queueHvacLockoutReset(controllerId = "") {
@@ -19906,6 +19934,35 @@ function renderHvacControllerForm(controller = null) {
           ).join("")}
         </select>
       </label>
+      <label>Control
+        <select name="hvacControlMode">
+          ${["Manual", "Auto"].map((mode) =>
+            `<option value="${escapeAttribute(mode)}" ${mode === (controller?.hvacControlMode || "Manual") ? "selected" : ""}>${escapeHtml(mode)}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Occupancy
+        <select name="occupancyMode">
+          ${["Occupied", "Unoccupied"].map((mode) =>
+            `<option value="${escapeAttribute(mode)}" ${mode === (controller?.occupancyMode || "Occupied") ? "selected" : ""}>${escapeHtml(mode)}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <label>Occ heat setpoint
+        <input name="occupiedHeatSetpoint" type="number" step="0.5" value="${escapeAttribute(controller?.occupiedHeatSetpoint || "68")}">
+      </label>
+      <label>Occ cool setpoint
+        <input name="occupiedCoolSetpoint" type="number" step="0.5" value="${escapeAttribute(controller?.occupiedCoolSetpoint || "74")}">
+      </label>
+      <label>Unocc heat setpoint
+        <input name="unoccupiedHeatSetpoint" type="number" step="0.5" value="${escapeAttribute(controller?.unoccupiedHeatSetpoint || "60")}">
+      </label>
+      <label>Unocc cool setpoint
+        <input name="unoccupiedCoolSetpoint" type="number" step="0.5" value="${escapeAttribute(controller?.unoccupiedCoolSetpoint || "82")}">
+      </label>
+      <label>Deadband
+        <input name="setpointDeadband" type="number" min="0.5" step="0.5" value="${escapeAttribute(controller?.setpointDeadband || "1")}">
+      </label>
       <label>Notes
         <textarea name="notes" placeholder="RTU, MAU, thermostat, safeties, or wiring notes">${escapeHtml(controller?.notes || "")}</textarea>
       </label>
@@ -19960,6 +20017,19 @@ async function saveHvacControllerFromForm(form) {
   const now = new Date().toISOString();
   const heatStageCount = Math.max(0, Math.min(4, Number(formData.get("heatStageCount") || 1) || 0));
   const coolStageCount = Math.max(0, Math.min(4, Number(formData.get("coolStageCount") || 1) || 0));
+  const numberField = (name, fallback) => {
+    const value = Number(formData.get(name));
+    return Number.isFinite(value) ? value : fallback;
+  };
+  const autoConfig = {
+    mode: String(formData.get("hvacControlMode") || "Manual").trim(),
+    occupancyMode: String(formData.get("occupancyMode") || "Occupied").trim(),
+    occupiedHeatSetpoint: numberField("occupiedHeatSetpoint", 68),
+    occupiedCoolSetpoint: numberField("occupiedCoolSetpoint", 74),
+    unoccupiedHeatSetpoint: numberField("unoccupiedHeatSetpoint", 60),
+    unoccupiedCoolSetpoint: numberField("unoccupiedCoolSetpoint", 82),
+    deadband: Math.max(0.5, numberField("setpointDeadband", 1))
+  };
   const pointNames = [
     "fanCommand",
     "fanProof",
@@ -19995,6 +20065,13 @@ async function saveHvacControllerFromForm(form) {
     equipmentCount: String(formData.get("equipmentCount") || "1").trim(),
     heatStageCount: String(heatStageCount),
     coolStageCount: String(coolStageCount),
+    hvacControlMode: autoConfig.mode,
+    occupancyMode: autoConfig.occupancyMode,
+    occupiedHeatSetpoint: String(autoConfig.occupiedHeatSetpoint),
+    occupiedCoolSetpoint: String(autoConfig.occupiedCoolSetpoint),
+    unoccupiedHeatSetpoint: String(autoConfig.unoccupiedHeatSetpoint),
+    unoccupiedCoolSetpoint: String(autoConfig.unoccupiedCoolSetpoint),
+    setpointDeadband: String(autoConfig.deadband),
     equipmentIds,
     mode: String(formData.get("mode") || "Setup only").trim(),
     status: String(formData.get("mode") || "Setup only").trim(),
@@ -20005,6 +20082,14 @@ async function saveHvacControllerFromForm(form) {
       equipmentIds,
       heatStageCount,
       coolStageCount,
+      hvacControlMode: autoConfig.mode,
+      occupancyMode: autoConfig.occupancyMode,
+      occupiedHeatSetpoint: autoConfig.occupiedHeatSetpoint,
+      occupiedCoolSetpoint: autoConfig.occupiedCoolSetpoint,
+      unoccupiedHeatSetpoint: autoConfig.unoccupiedHeatSetpoint,
+      unoccupiedCoolSetpoint: autoConfig.unoccupiedCoolSetpoint,
+      setpointDeadband: autoConfig.deadband,
+      autoConfig,
       ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: apiKey.slice(-4) } : {}),
       points
     },
@@ -20037,6 +20122,14 @@ async function saveHvacControllerFromForm(form) {
         equipmentIds: controller.equipmentIds,
         heatStageCount: controller.heatStageCount,
         coolStageCount: controller.coolStageCount,
+        hvacControlMode: controller.hvacControlMode,
+        occupancyMode: controller.occupancyMode,
+        occupiedHeatSetpoint: controller.occupiedHeatSetpoint,
+        occupiedCoolSetpoint: controller.occupiedCoolSetpoint,
+        unoccupiedHeatSetpoint: controller.unoccupiedHeatSetpoint,
+        unoccupiedCoolSetpoint: controller.unoccupiedCoolSetpoint,
+        setpointDeadband: controller.setpointDeadband,
+        autoConfig,
         ...(apiKeyHash ? { apiKeyHash, apiKeyLast4: controller.apiKeyLast4 } : {}),
         points: controller.points
       }
@@ -20102,6 +20195,7 @@ function renderAutomationHvac() {
   const hvacLockoutActive = Boolean(hvacLockout.active);
   const hvacLockoutReason = String(hvacLockout.reason || "").trim();
   const hvacTiming = liveHvac.timing && typeof liveHvac.timing === "object" ? liveHvac.timing : {};
+  const hvacCallState = primaryController ? hvacTemperatureCallState(primaryController, liveHvac) : { label: "No controller", className: "is-info" };
   const fanCommandActive = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.fanCommand || "");
   const fanProofActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
   const fanCommandOutputNumber = hvacOutputNumberFromChannel(primaryController?.points?.fanCommand || "");
@@ -20313,6 +20407,9 @@ function renderAutomationHvac() {
           <header><span>Unit Status</span><strong>${runningUnits} Running</strong></header>
           <div><span>Controller</span><strong>${escapeHtml(primaryController?.name || "Not added")}</strong></div>
           <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
+          <div><span>Control Mode</span><strong>${escapeHtml(primaryController?.hvacControlMode || "Manual")}</strong></div>
+          <div class="${escapeAttribute(`hvac-call-row ${hvacCallState.className}`)}"><span>Auto Call</span><strong>${escapeHtml(hvacCallState.label)}</strong></div>
+          <div><span>Active Setpoints</span><strong>${escapeHtml(`${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`)}</strong></div>
           <div class="${escapeAttribute(hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")}"><span>Lockout</span><strong>${escapeHtml(hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear")}</strong></div>
           ${hvacLockoutActive ? `
             <div class="hvac-command-row">
@@ -20331,7 +20428,8 @@ function renderAutomationHvac() {
           <div><span>Occupied Input</span><strong>${escapeHtml(occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label)}</strong></div>
           <div><span>Heating Stages</span><strong>${escapeHtml(heatStageLabel)}</strong></div>
           <div><span>Cooling Stages</span><strong>${escapeHtml(coolStageLabel)}</strong></div>
-          <div><span>Stage Timers</span><strong>${escapeHtml(`Off ${formatHvacTimerMs(hvacTiming.coolingMinOffMs)} / On ${formatHvacTimerMs(hvacTiming.coolingMinOnMs)}`)}</strong></div>
+          <div><span>Heat Timers</span><strong>${escapeHtml(`Off ${formatHvacTimerMs(hvacTiming.heatingMinOffMs)} / On ${formatHvacTimerMs(hvacTiming.heatingMinOnMs)}`)}</strong></div>
+          <div><span>Cool Timers</span><strong>${escapeHtml(`Off ${formatHvacTimerMs(hvacTiming.coolingMinOffMs)} / On ${formatHvacTimerMs(hvacTiming.coolingMinOnMs)}`)}</strong></div>
           <div><span>Mode</span><strong>${escapeHtml(liveMode)}</strong></div>
           <div><span>Occupancy</span><strong>${escapeHtml(liveOccupancy)}</strong></div>
           <div><span>Live I/O</span><strong>${escapeHtml(liveHvac.inputMaskHex || "--")} / ${escapeHtml(liveHvac.outputMaskHex || "--")}</strong></div>
