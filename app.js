@@ -19745,6 +19745,29 @@ function hvacStartDelayStatus(controller = {}, commands = hvacCommandsCache, now
   const controllerId = String(controller.id || "");
   const customerId = String(controller.customerId || controller.customer_id || "");
   const locationId = String(controller.locationId || controller.location_id || "");
+  const latestOwnStartDelayBlock = commands
+    .filter((command) => {
+      const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
+      const blockReason = String(metadata.blockReason || command.error || "").toLowerCase();
+      return String(command.controllerId || "") === controllerId &&
+        String(command.commandType || "") === "hvac-auto" &&
+        String(command.hvacCommand || "") === "Fan On" &&
+        String(command.status || "").toLowerCase() === "blocked" &&
+        blockReason.includes("start delay");
+    })
+    .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
+  if (latestOwnStartDelayBlock?.createdAt) {
+    const metadata = latestOwnStartDelayBlock.metadata && typeof latestOwnStartDelayBlock.metadata === "object" ? latestOwnStartDelayBlock.metadata : {};
+    const eventDelay = Math.max(0, Math.min(3600, Math.round(Number(metadata.remainingSeconds || metadata.startDelaySeconds || delaySeconds) || delaySeconds)));
+    const createdAt = new Date(latestOwnStartDelayBlock.createdAt).getTime();
+    if (Number.isFinite(createdAt)) {
+      const elapsedSeconds = Math.max(0, Math.floor((Number(now) - createdAt) / 1000));
+      const remainingSeconds = Math.max(0, eventDelay - elapsedSeconds);
+      if (remainingSeconds > 0) {
+        return { active: true, delaySeconds, remainingSeconds, label: `${remainingSeconds} sec remaining` };
+      }
+    }
+  }
   const latestOtherFanStart = commands
     .filter((command) => {
       const status = String(command.status || "").toLowerCase();
