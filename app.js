@@ -19891,16 +19891,19 @@ function numberOrNull(value) {
 
 function hvacTemperatureCallState(controller = {}, liveHvac = {}) {
   const spaceTemp = numberOrNull(hvacTemperatureFromController(controller, liveHvac, "space").value);
-  const occupied = String(controller.occupancyMode || controller.data?.occupancyMode || "Occupied").toLowerCase() !== "unoccupied";
+  const scheduleStatus = currentHvacScheduleStatus(controller);
+  const occupied = scheduleStatus.hasSchedule
+    ? scheduleStatus.occupied
+    : String(controller.occupancyMode || controller.data?.occupancyMode || "Occupied").toLowerCase() !== "unoccupied";
   const heatSetpoint = numberOrNull(occupied ? controller.occupiedHeatSetpoint : controller.unoccupiedHeatSetpoint);
   const coolSetpoint = numberOrNull(occupied ? controller.occupiedCoolSetpoint : controller.unoccupiedCoolSetpoint);
   const deadband = Math.max(0.5, numberOrNull(controller.setpointDeadband) ?? 1);
   if (spaceTemp === null || heatSetpoint === null || coolSetpoint === null) {
-    return { label: "Waiting for space temp", className: "is-info", spaceTemp, heatSetpoint, coolSetpoint };
+    return { label: "Waiting for space temp", className: "is-info", spaceTemp, heatSetpoint, coolSetpoint, occupancyMode: occupied ? "Occupied" : "Unoccupied" };
   }
-  if (spaceTemp <= heatSetpoint - deadband) return { label: "Heating call", className: "is-heating", spaceTemp, heatSetpoint, coolSetpoint };
-  if (spaceTemp >= coolSetpoint + deadband) return { label: "Cooling call", className: "is-cooling", spaceTemp, heatSetpoint, coolSetpoint };
-  return { label: "Satisfied", className: "is-normal", spaceTemp, heatSetpoint, coolSetpoint };
+  if (spaceTemp <= heatSetpoint - deadband) return { label: "Heating call", className: "is-heating", spaceTemp, heatSetpoint, coolSetpoint, occupancyMode: occupied ? "Occupied" : "Unoccupied" };
+  if (spaceTemp >= coolSetpoint + deadband) return { label: "Cooling call", className: "is-cooling", spaceTemp, heatSetpoint, coolSetpoint, occupancyMode: occupied ? "Occupied" : "Unoccupied" };
+  return { label: "Satisfied", className: "is-normal", spaceTemp, heatSetpoint, coolSetpoint, occupancyMode: occupied ? "Occupied" : "Unoccupied" };
 }
 
 async function queueHvacLockoutReset(controllerId = "") {
@@ -20596,6 +20599,8 @@ function renderAutomationHvac() {
     return `<i class="${[stage <= coolStageCount ? "is-configured" : "", active ? "is-active" : ""].filter(Boolean).join(" ")}">${stage}</i>`;
   }).join("");
   const runningUnits = fanCommandActive || fanProofActive ? 1 : 0;
+  const heatCallWaitingForFan = hvacCallState.className === "is-heating" && !fanProofActive;
+  const coolCallWaitingForFan = hvacCallState.className === "is-cooling" && !fanProofActive;
   const liveMode = liveHvac.mode || primaryEquipment?.hvacMode || "Auto";
   const liveOccupancy = liveHvac.occupancy || primaryEquipment?.hvacOccupancy || "Unoccupied";
   const temperatureValue = (name) => {
@@ -20713,14 +20718,14 @@ function renderAutomationHvac() {
                 <span>Filter</span>
                 <strong>${escapeHtml(filterState.channel ? filterState.label : "Normal")}</strong>
               </div>
-              <div class="hvac-equipment-callout is-cooling ${activeCoolStages ? "is-active" : ""}">
+              <div class="hvac-equipment-callout is-cooling ${activeCoolStages ? "is-active" : coolCallWaitingForFan ? "is-commanded" : ""}">
                 <span>Cooling</span>
-                <strong>${escapeHtml(activeCoolStages ? `${activeCoolStages} Active` : coolStageLabel)}</strong>
+                <strong>${escapeHtml(activeCoolStages ? `${activeCoolStages} Active` : coolCallWaitingForFan ? "Waiting Fan Proof" : coolStageLabel)}</strong>
                 <div class="hvac-stage-dots" aria-label="Cooling stage configuration">${coolStageDots}</div>
               </div>
-              <div class="hvac-equipment-callout is-heating ${activeHeatStages ? "is-active" : ""}">
+              <div class="hvac-equipment-callout is-heating ${activeHeatStages ? "is-active" : heatCallWaitingForFan ? "is-commanded" : ""}">
                 <span>Heating</span>
-                <strong>${escapeHtml(activeHeatStages ? `${activeHeatStages} Active` : heatStageLabel)}</strong>
+                <strong>${escapeHtml(activeHeatStages ? `${activeHeatStages} Active` : heatCallWaitingForFan ? "Waiting Fan Proof" : heatStageLabel)}</strong>
                 <div class="hvac-stage-dots" aria-label="Heating stage configuration">${heatStageDots}</div>
               </div>
               <div class="hvac-equipment-callout is-fan ${fanProofActive ? "is-active" : fanCommandActive ? "is-commanded" : ""}">
@@ -20745,6 +20750,7 @@ function renderAutomationHvac() {
           <div><span>Control Mode</span><strong>${escapeHtml(primaryController?.hvacControlMode || "Manual")}</strong></div>
           <div><span>Temp Source</span><strong>${escapeHtml(tempSimulator.enabled ? "Simulator" : "Field inputs")}</strong></div>
           <div><span>Schedule</span><strong>${escapeHtml(hvacScheduleStatus.label)}</strong></div>
+          <div><span>Setpoint Mode</span><strong>${escapeHtml(hvacCallState.occupancyMode || hvacScheduleStatus.occupancyMode || "--")}</strong></div>
           <div class="${escapeAttribute(`hvac-call-row ${hvacCallState.className}`)}"><span>Auto Call</span><strong>${escapeHtml(hvacCallState.label)}</strong></div>
           <div><span>Active Setpoints</span><strong>${escapeHtml(`${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`)}</strong></div>
           <div class="${escapeAttribute(startDelayStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>
@@ -20756,6 +20762,7 @@ function renderAutomationHvac() {
           ` : ""}
           <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped")}</strong></div>
           <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
+          ${heatCallWaitingForFan || coolCallWaitingForFan ? `<div class="hvac-start-delay-row is-active"><span>Stage Hold</span><strong>Waiting for fan proof</strong></div>` : ""}
           <div><span>Command</span><strong>${escapeHtml(fanCommandStatus)}</strong></div>
           <div><span>Last Event</span><strong>${escapeHtml(latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events")}</strong></div>
           <div class="hvac-command-row">
