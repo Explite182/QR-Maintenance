@@ -20364,11 +20364,9 @@ async function createHvacEquipmentForController(controllerId = "") {
       }]
     });
   }
-  if (!createdEquipment.length) {
-    alert("HVAC equipment already exists for this controller count.");
-    return;
+  if (createdEquipment.length) {
+    state.assets.unshift(...createdEquipment);
   }
-  state.assets.unshift(...createdEquipment);
   if (controller) {
     const equipmentIds = [...new Set([
       ...(controller.equipmentIds || []),
@@ -20408,7 +20406,12 @@ async function createHvacEquipmentForController(controllerId = "") {
       console.warn("HVAC controller equipment assignment could not be saved to the server.", error);
     }
   }
-  addActivity("HVAC equipment created", `${createdEquipment.length} HVAC equipment record${createdEquipment.length === 1 ? "" : "s"} added.`);
+  addActivity(
+    createdEquipment.length ? "HVAC equipment created" : "HVAC equipment assigned",
+    createdEquipment.length
+      ? `${createdEquipment.length} HVAC equipment record${createdEquipment.length === 1 ? "" : "s"} added.`
+      : "Existing HVAC equipment assigned to the controller."
+  );
   saveState();
   if (typeof scheduleStructuredDataSync === "function") scheduleStructuredDataSync(0);
   renderAutomationHvac();
@@ -20796,6 +20799,19 @@ function renderAutomationHvac() {
   const equipment = hvacAssetsForCurrentView();
   const primaryController = controllers[0] || null;
   const primaryEquipment = primaryController ? hvacControllerAssignedEquipment(primaryController, equipment)[0] || equipment[0] : equipment[0];
+  const assignedEquipment = primaryController ? hvacControllerAssignedEquipment(primaryController, equipment) : [];
+  const unassignedEquipment = primaryController
+    ? equipment.filter((asset) => !assignedEquipment.some((assignedAsset) => String(assignedAsset.id || "") === String(asset.id || "")))
+    : equipment;
+  const targetEquipmentCount = Math.max(1, Math.min(64, Number(primaryController?.equipmentCount || 1) || 1));
+  const equipmentReady = Boolean(primaryController && assignedEquipment.length >= Math.min(targetEquipmentCount, Math.max(1, equipment.length || targetEquipmentCount)));
+  const equipmentStatusLabel = !primaryController
+    ? "No controller"
+    : assignedEquipment.length
+      ? `${assignedEquipment.length}/${targetEquipmentCount} assigned`
+      : equipment.length
+        ? "Available to assign"
+        : "Create equipment";
   const status = primaryController ? hvacControllerStatus(primaryController) : { label: "No controller", className: "is-info" };
   const heatStageCount = Math.max(0, Math.min(4, Number(primaryController?.heatStageCount || primaryController?.data?.heatStageCount || 1) || 0));
   const coolStageCount = Math.max(0, Math.min(4, Number(primaryController?.coolStageCount || primaryController?.data?.coolStageCount || 1) || 0));
@@ -20946,6 +20962,47 @@ function renderAutomationHvac() {
     ["Outside temp", primaryController?.points?.outsideTemp || "", temperatureValue("outside"), "analog"],
     ["Space temp", primaryController?.points?.spaceTemp || "", temperatureValue("space"), "analog"]
   ].filter((row) => row[1]);
+  const equipmentDrawerBody = `
+    <div class="hvac-equipment-commissioning">
+      <section>
+        <span>Equipment status</span>
+        <strong>${escapeHtml(equipmentStatusLabel)}</strong>
+        <em>${escapeHtml(primaryController ? primaryController.name : "Add a controller first")}</em>
+      </section>
+      <section>
+        <span>Primary view</span>
+        <strong>${escapeHtml(primaryEquipment?.equipmentId || "Setup")}</strong>
+        <em>${escapeHtml(primaryEquipment?.name || currentLocation?.name || "No equipment selected")}</em>
+      </section>
+      <section>
+        <span>Location</span>
+        <strong>${escapeHtml(currentLocation?.name || "Select location")}</strong>
+        <em>${escapeHtml(currentCustomer?.name || "SiteWorks")}</em>
+      </section>
+      ${primaryController ? `
+        <button type="button" class="secondary" data-create-hvac-equipment="${escapeAttribute(primaryController.id)}">
+          ${assignedEquipment.length ? "Sync HVAC Equipment Assignment" : equipment.length ? "Assign / Create HVAC Equipment" : "Create HVAC Equipment"}
+        </button>
+      ` : ""}
+    </div>
+    ${equipment.length ? `
+      <div class="hvac-equipment-list">
+        ${equipment.map((asset) => {
+          const assigned = assignedEquipment.some((assignedAsset) => String(assignedAsset.id || "") === String(asset.id || ""));
+          return `
+            <article class="${assigned ? "is-assigned" : ""}">
+              <span>${escapeHtml(asset.equipmentId || "HVAC")}</span>
+              <strong>${escapeHtml(asset.name || "HVAC equipment")}</strong>
+              <em>${escapeHtml(assigned ? "Assigned to controller" : "At location")}</em>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    ` : `
+      <p>No HVAC equipment record exists here yet. Use Create HVAC Equipment to add the RTU/MAU record and link it to the controller.</p>
+    `}
+    ${unassignedEquipment.length && assignedEquipment.length ? `<p>${unassignedEquipment.length} HVAC equipment record${unassignedEquipment.length === 1 ? "" : "s"} at this location ${unassignedEquipment.length === 1 ? "is" : "are"} not assigned to this controller.</p>` : ""}
+  `;
   const shouldShowForm = Boolean(editingHvacControllerId || !controllers.length);
   const editingController = editingHvacControllerId && editingHvacControllerId !== "__new__"
     ? controllers.find((controller) => controller.id === editingHvacControllerId)
@@ -21060,7 +21117,7 @@ function renderAutomationHvac() {
         <aside class="hvac-status-panel" aria-label="HVAC status points">
           <header><span>Unit Status</span><strong>${runningUnits} Running</strong></header>
           <div><span>Controller</span><strong>${escapeHtml(primaryController?.name || "Not added")}</strong></div>
-          <div><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId || "Not added")}</strong></div>
+          <div class="${escapeAttribute(equipmentReady ? "is-ready" : "is-warning")}"><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId ? `${primaryEquipment.equipmentId} assigned` : equipmentStatusLabel)}</strong></div>
           <div><span>Control Mode</span><strong>${escapeHtml(primaryController?.hvacControlMode || "Manual")}</strong></div>
           <div><span>Temp Source</span><strong>${escapeHtml(tempSimulator.enabled ? "Simulator" : "Field inputs")}</strong></div>
           <div><span>Schedule</span><strong>${escapeHtml(hvacScheduleStatus.label)}</strong></div>
@@ -21135,10 +21192,8 @@ function renderAutomationHvac() {
           <div>${renderHvacScheduleSummary(primaryController?.schedule || {})}</div>
         </details>
         <details class="hvac-drawer">
-          <summary><span>Equipment</span><strong>${equipment.length}</strong></summary>
-          <div>
-            ${equipment.length ? equipment.map((asset) => `<p>${escapeHtml(asset.equipmentId || "HVAC")} - ${escapeHtml(asset.name || "HVAC equipment")} - ${escapeHtml(asset.type || "HVAC")}</p>`).join("") : "<p>No HVAC equipment at this location yet.</p>"}
-          </div>
+          <summary><span>Equipment</span><strong>${escapeHtml(equipmentStatusLabel)}</strong></summary>
+          <div>${equipmentDrawerBody}</div>
         </details>
         <details class="hvac-drawer">
           <summary><span>Points</span><strong>${mappedPointRows.length || "Planned"}</strong></summary>
