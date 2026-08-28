@@ -19826,7 +19826,7 @@ function hvacFanPurgeStatus(controller = {}, commands = hvacCommandsCache, now =
     active: remainingSeconds > 0,
     delaySeconds,
     remainingSeconds,
-    label: remainingSeconds > 0 ? `${remainingSeconds} sec remaining` : `${delaySeconds} sec`
+    label: remainingSeconds > 0 ? `Countdown: ${remainingSeconds} sec / Set: ${delaySeconds} sec` : `Countdown: idle / Set: ${delaySeconds} sec`
   };
 }
 
@@ -19844,8 +19844,10 @@ function refreshHvacStartDelayCountdowns() {
       const fanActive = hvacLiveChannelActive(controller, "outputs", controller?.points?.fanCommand || "");
       const name = row.querySelector("span");
       row.classList.toggle("is-active", status.active && fanActive);
-      if (name) name.textContent = status.active && fanActive ? "Fan Purge" : "Fan Off Delay";
-      label.textContent = status.active && fanActive ? status.label : `${controller?.fanOffDelaySeconds || "60"} sec`;
+      if (name) name.textContent = "Fan Off Delay";
+      label.textContent = status.active && fanActive
+        ? status.label
+        : `Countdown: idle / Set: ${controller?.fanOffDelaySeconds || "60"} sec`;
       return;
     }
     const status = hvacStartDelayStatus(controller);
@@ -20844,7 +20846,7 @@ function renderAutomationHvac() {
           <div class="${escapeAttribute(`hvac-call-row ${hvacCallState.className}`)}"><span>Auto Call</span><strong>${escapeHtml(hvacCallState.label)}</strong></div>
           <div><span>Active Setpoints</span><strong>${escapeHtml(`${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`)}</strong></div>
           <div class="${escapeAttribute(startDelayStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>
-          <div class="${escapeAttribute(fanPurgeStatus.active && fanCommandActive ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>${fanPurgeStatus.active && fanCommandActive ? "Fan Purge" : "Fan Off Delay"}</span><strong>${escapeHtml(fanPurgeStatus.active && fanCommandActive ? fanPurgeStatus.label : `${primaryController?.fanOffDelaySeconds || "60"} sec`)}</strong></div>
+          <div class="${escapeAttribute(fanPurgeStatus.active && fanCommandActive ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active && fanCommandActive ? fanPurgeStatus.label : `Countdown: idle / Set: ${primaryController?.fanOffDelaySeconds || "60"} sec`)}</strong></div>
           <div class="${escapeAttribute(hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")}"><span>Lockout</span><strong>${escapeHtml(hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear")}</strong></div>
           ${hvacLockoutActive ? `
             <div class="hvac-command-row">
