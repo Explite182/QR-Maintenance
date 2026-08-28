@@ -20370,7 +20370,7 @@ async function createHvacEquipmentForController(controllerId = "") {
 }
 
 function renderHvacControllerForm(controller = null) {
-  const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
+  const currentLocation = getSelectedLocationForDisplay();
   const equipment = hvacAssetsForCurrentView();
   const selectedEquipmentIds = new Set((controller?.equipmentIds || []).map((id) => String(id)));
   const defaultUidSuffix = currentLocation?.name
@@ -20743,7 +20743,7 @@ function renderAutomationHvac() {
     loadHvacCommandsForCurrentScope();
   }
   const currentCustomer = selectedCustomerId === ALL_CUSTOMERS ? null : getCustomer(selectedCustomerId);
-  const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
+  const currentLocation = getSelectedLocationForDisplay();
   const controllers = hvacControllersForCurrentView();
   if (scopeKey && hvacControllersLoadedScope === scopeKey && !controllers.length) {
     scheduleHvacControllerEmptyRetry(scopeKey);
@@ -27830,6 +27830,19 @@ function getCustomer(id) {
 
 function getLocation(id) {
   return state.locations.find((locationRecord) => locationRecord.id === id) || null;
+}
+
+function getSelectedLocationForDisplay() {
+  if (!selectedLocationId || selectedLocationId === ALL_LOCATIONS) return null;
+  const existingLocation = getLocation(selectedLocationId);
+  if (existingLocation) return existingLocation;
+  const selectedOption = els.locationFilter?.selectedOptions?.[0] || null;
+  const optionName = String(selectedOption?.textContent || "").trim();
+  return {
+    id: selectedLocationId,
+    customerId: selectedCustomerId || "",
+    name: optionName && optionName.toLowerCase() !== "all locations" ? optionName : "Selected location"
+  };
 }
 
 function getTemplate(id) {
