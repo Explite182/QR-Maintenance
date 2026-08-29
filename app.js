@@ -5562,6 +5562,7 @@ let hvacFirmwareCache = { firmware: [], assignments: [] };
 let hvacFirmwareLoadedScope = "";
 let hvacFirmwareLoading = false;
 let hvacFirmwareStatusMessage = "";
+let hvacFirmwareRefreshTimer = null;
 let hvacLiveRefreshActive = false;
 let pendingPumpApiKey = null;
 let pendingHvacApiKey = null;
@@ -5576,6 +5577,7 @@ const PUMP_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
 let hvacSetupEditHoldUntil = 0;
 const HVAC_SETUP_FORM_SELECTOR = "[data-hvac-controller-form], [data-hvac-firmware-form], [data-hvac-firmware-assignment-form]";
 const HVAC_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
+const HVAC_FIRMWARE_REFRESH_MS = 5000;
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8383,6 +8385,11 @@ els.customerFilter.addEventListener("change", () => {
 });
 
 document.addEventListener("toggle", (event) => {
+  const hvacDrawer = event.target.closest?.(".hvac-drawer");
+  if (hvacDrawer) {
+    updateHvacFirmwareAutoRefresh();
+  }
+
   const pumpScadaDrawer = event.target.closest?.("[data-pump-scada-drawer]");
   if (pumpScadaDrawer) {
     const drawerKey = pumpScadaDrawer.dataset.pumpScadaDrawer || "";
@@ -13121,6 +13128,34 @@ function renderHvacFirmwareStatusLists() {
   if (assignmentList) assignmentList.innerHTML = renderHvacFirmwareAssignmentList();
   const versionList = document.querySelector("[data-hvac-firmware-version-list]");
   if (versionList) versionList.innerHTML = renderHvacFirmwareVersionList();
+}
+
+function isHvacFirmwareDrawerOpen() {
+  const root = document.querySelector("[data-hvac-firmware-root]");
+  const drawer = root?.closest?.(".hvac-drawer");
+  const panel = root?.closest?.("#automationHvacPanel");
+  return Boolean(root && drawer?.open && panel && !panel.classList.contains("hidden") && !panel.classList.contains("is-collapsed"));
+}
+
+function stopHvacFirmwareAutoRefresh() {
+  if (!hvacFirmwareRefreshTimer) return;
+  window.clearInterval(hvacFirmwareRefreshTimer);
+  hvacFirmwareRefreshTimer = null;
+}
+
+function updateHvacFirmwareAutoRefresh() {
+  if (!isHvacFirmwareDrawerOpen()) {
+    stopHvacFirmwareAutoRefresh();
+    return;
+  }
+  if (hvacFirmwareRefreshTimer) return;
+  hvacFirmwareRefreshTimer = window.setInterval(() => {
+    if (!isHvacFirmwareDrawerOpen()) {
+      stopHvacFirmwareAutoRefresh();
+      return;
+    }
+    loadHvacFirmwareForCurrentScope({ force: true, firmwareOnly: true, silent: true });
+  }, HVAC_FIRMWARE_REFRESH_MS);
 }
 
 function renderHvacFirmwareMarkup(controllers = hvacControllersForCurrentView()) {
@@ -20058,13 +20093,13 @@ function getHvacFirmwareScopeDetails() {
   };
 }
 
-async function loadHvacFirmwareForCurrentScope({ force = false, firmwareOnly = false } = {}) {
+async function loadHvacFirmwareForCurrentScope({ force = false, firmwareOnly = false, silent = false } = {}) {
   const { canUseLocation, scopeKey } = getHvacFirmwareScopeDetails();
   if (!canUseLocation || hvacFirmwareLoading) return;
   if (!force && hvacFirmwareLoadedScope === scopeKey) return;
   hvacFirmwareLoading = true;
   const status = document.querySelector("[data-hvac-firmware-status]");
-  if (status) status.textContent = "Loading HVAC firmware registry...";
+  if (status && !silent) status.textContent = "Loading HVAC firmware registry...";
   try {
     const response = await siteworksApi.loadHvacFirmware(selectedCustomerId, selectedLocationId);
     if (!response.ok) throw new Error(`HVAC firmware load failed: ${response.status}`);
@@ -20074,12 +20109,12 @@ async function loadHvacFirmwareForCurrentScope({ force = false, firmwareOnly = f
       assignments: Array.isArray(payload.assignments) ? payload.assignments : []
     };
     hvacFirmwareLoadedScope = scopeKey;
-    if (status) status.textContent = "";
+    if (status && !silent) status.textContent = "";
   } catch (error) {
     console.warn("HVAC firmware could not be loaded from the server.", error);
     hvacFirmwareCache = { firmware: [], assignments: [] };
     hvacFirmwareLoadedScope = scopeKey;
-    if (status) status.textContent = "HVAC firmware registry is not available yet.";
+    if (status && !silent) status.textContent = "HVAC firmware registry is not available yet.";
   } finally {
     hvacFirmwareLoading = false;
     if (firmwareOnly) {
@@ -21279,7 +21314,10 @@ async function deleteHvacController(controllerId = "") {
 function renderAutomationHvac() {
   const panel = document.querySelector("#automationHvacPanel .hvac-hmi-panel");
   const count = document.querySelector("#automationHvacPanel .section-title span");
-  if (!panel) return;
+  if (!panel) {
+    stopHvacFirmwareAutoRefresh();
+    return;
+  }
   const openHvacDrawers = new Set(Array.from(panel.querySelectorAll(".hvac-drawer[open] summary span"))
     .map((item) => String(item.textContent || "").trim())
     .filter(Boolean));
@@ -21817,6 +21855,7 @@ function renderAutomationHvac() {
   }
   restorePendingHvacApiKeyForms();
   renderHvacFirmwareOptions();
+  updateHvacFirmwareAutoRefresh();
 }
 
 function renderAutomationPumps() {
