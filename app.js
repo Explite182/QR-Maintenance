@@ -5561,6 +5561,7 @@ let hvacCommandsLoading = false;
 let hvacFirmwareCache = { firmware: [], assignments: [] };
 let hvacFirmwareLoadedScope = "";
 let hvacFirmwareLoading = false;
+let hvacFirmwareStatusMessage = "";
 let hvacLiveRefreshActive = false;
 let pendingPumpApiKey = null;
 let pendingHvacApiKey = null;
@@ -13061,6 +13062,13 @@ function renderHvacFirmwareOptions() {
   });
 }
 
+function setHvacFirmwareStatus(message = "") {
+  hvacFirmwareStatusMessage = String(message || "");
+  document.querySelectorAll("[data-hvac-firmware-status]").forEach((status) => {
+    status.textContent = hvacFirmwareStatusMessage;
+  });
+}
+
 function renderHvacFirmwareMarkup(controllers = hvacControllersForCurrentView()) {
   const { canUseLocation, scopeKey, currentCustomer, currentLocation } = getHvacFirmwareScopeDetails();
   if (!canUseLocation) {
@@ -13121,7 +13129,7 @@ function renderHvacFirmwareMarkup(controllers = hvacControllersForCurrentView())
         </label>
         <label>Release notes <textarea name="releaseNotes" placeholder="What changed in this HVAC build"></textarea></label>
         <button type="submit">Upload HVAC Firmware</button>
-        <p data-hvac-firmware-status class="lighting-controller-status"></p>
+        <p data-hvac-firmware-status class="lighting-controller-status">${escapeHtml(hvacFirmwareStatusMessage)}</p>
       </form>
       <form data-hvac-firmware-assignment-form class="lighting-controller-form">
         <label>Controller <select name="controllerId" data-hvac-firmware-controller></select></label>
@@ -13148,7 +13156,8 @@ function inferHvacFirmwareVersionFromFileName(fileName = "") {
 }
 
 async function saveHvacFirmwareFromForm(form) {
-  const status = document.querySelector("[data-hvac-firmware-status]");
+  markHvacSetupEditingActive(form);
+  const submitButton = form.querySelector("button[type='submit']");
   const formData = new FormData(form);
   const firmwareFile = formData.get("firmwareFile");
   const firmware = {
@@ -13163,8 +13172,9 @@ async function saveHvacFirmwareFromForm(form) {
     status: String(formData.get("status") || "available").trim()
   };
   try {
+    if (submitButton) submitButton.disabled = true;
     if (firmwareFile && firmwareFile.size > 0) {
-      if (status) status.textContent = `Uploading ${firmwareFile.name}...`;
+      setHvacFirmwareStatus(`Uploading ${firmwareFile.name}...`);
       const uploadPayload = await siteworksApi.uploadHvacFirmware(firmwareFile);
       const uploadedFile = uploadPayload.file || uploadPayload;
       firmware.fileName = uploadedFile.name || firmwareFile.name || firmware.fileName;
@@ -13174,21 +13184,29 @@ async function saveHvacFirmwareFromForm(form) {
       if (!firmware.version) firmware.version = inferHvacFirmwareVersionFromFileName(firmware.fileName);
     }
     if (!firmware.version) {
-      if (status) status.textContent = "Firmware version is required.";
+      setHvacFirmwareStatus("Firmware version is required.");
       return;
     }
-    if (status) status.textContent = `Registering HVAC firmware ${firmware.version}...`;
+    if (!firmware.fileUrl) {
+      setHvacFirmwareStatus("Choose the built HVAC firmware .bin file before uploading.");
+      return;
+    }
+    setHvacFirmwareStatus(`Registering HVAC firmware ${firmware.version}...`);
     const response = await siteworksApi.saveHvacFirmware(firmware);
-    if (!response.ok) throw new Error(`HVAC firmware save failed: ${response.status}`);
+    if (!response.ok) throw new Error(await response.text() || `HVAC firmware save failed: ${response.status}`);
     const payload = await response.json();
     const savedFirmware = payload.firmware || firmware;
     hvacFirmwareCache.firmware = [savedFirmware, ...hvacFirmwareCache.firmware.filter((item) => item.id !== savedFirmware.id)];
     hvacFirmwareLoadedScope = getHvacControllerScopeKey();
     form.reset();
-    if (status) status.textContent = `Registered HVAC firmware ${savedFirmware.version}.`;
+    setHvacFirmwareStatus(`Registered HVAC firmware ${savedFirmware.version}. Now choose it in the firmware dropdown and assign it.`);
+    await loadHvacFirmwareForCurrentScope({ force: true });
   } catch (error) {
     console.warn("HVAC firmware could not be saved.", error);
-    if (status) status.textContent = "HVAC firmware could not be registered on the SiteWorks server.";
+    const detail = String(error?.message || "").trim();
+    setHvacFirmwareStatus(detail ? `HVAC firmware upload failed: ${detail.slice(0, 180)}` : "HVAC firmware could not be registered on the SiteWorks server.");
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
   renderAutomationHvac();
 }

@@ -1,20 +1,20 @@
-const SITEWORKS_SW_VERSION = "20260829-hvac-firmware-ui-02";
+const SITEWORKS_SW_VERSION = "20260829-hvac-firmware-ui-03";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260829-hvac-firmware-ui-02",
+  "/styles.css?v=20260829-hvac-firmware-ui-03",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260829-hvac-firmware-ui-02",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260829-hvac-firmware-ui-02",
-  "/js/panel-hmi-standard-renderer.js?v=20260829-hvac-firmware-ui-02",
-  "/app.js?v=20260829-hvac-firmware-ui-02",
-  "/manifest.webmanifest?v=20260829-hvac-firmware-ui-02",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260829-hvac-firmware-ui-02",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260829-hvac-firmware-ui-02",
-  "/icons/siteworks-icon-192.png?v=20260829-hvac-firmware-ui-02",
-  "/icons/siteworks-icon-512.png?v=20260829-hvac-firmware-ui-02"
+  "/js/panel-hmi-standard-model.js?v=20260829-hvac-firmware-ui-03",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260829-hvac-firmware-ui-03",
+  "/js/panel-hmi-standard-renderer.js?v=20260829-hvac-firmware-ui-03",
+  "/app.js?v=20260829-hvac-firmware-ui-03",
+  "/manifest.webmanifest?v=20260829-hvac-firmware-ui-03",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260829-hvac-firmware-ui-03",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260829-hvac-firmware-ui-03",
+  "/icons/siteworks-icon-192.png?v=20260829-hvac-firmware-ui-03",
+  "/icons/siteworks-icon-512.png?v=20260829-hvac-firmware-ui-03"
 ];
 
 self.addEventListener("install", (event) => {
@@ -83,5 +83,6 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(networkFirst(request));
   }
 });
+
 
 
