@@ -10435,6 +10435,13 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (event.target.closest("[data-hvac-firmware-refresh]")) {
+    event.preventDefault();
+    setHvacFirmwareStatus("Refreshing HVAC firmware status...");
+    await loadHvacFirmwareForCurrentScope({ force: true, firmwareOnly: true });
+    return;
+  }
+
   const openNotification = event.target.closest("[data-notification-open]");
   if (openNotification) {
     event.preventDefault();
@@ -13069,6 +13076,53 @@ function setHvacFirmwareStatus(message = "") {
   });
 }
 
+function renderHvacFirmwareAssignmentList() {
+  const { scopeKey } = getHvacFirmwareScopeDetails();
+  const assignments = Array.isArray(hvacFirmwareCache.assignments) ? hvacFirmwareCache.assignments : [];
+  if (hvacFirmwareLoading && hvacFirmwareLoadedScope !== scopeKey) {
+    return `<div class="lighting-list-row"><strong>Loading firmware</strong><span>Checking SiteWorks server for HVAC firmware assignments.</span></div>`;
+  }
+  if (!assignments.length) {
+    return `<div class="lighting-list-row"><strong>No firmware assigned yet</strong><span>Assign a registered firmware version to an HVAC controller when you are ready to test OTA.</span></div>`;
+  }
+  return assignments.map((assignment) => `
+    <div class="lighting-list-row lighting-firmware-assignment ${getLightingFirmwareStatusClass(assignment.status)}">
+      <div class="lighting-firmware-row-header">
+        <strong>${escapeHtml(assignment.controllerName || "HVAC controller")}</strong>
+        ${renderLightingFirmwareStatusBadge(assignment.status)}
+      </div>
+      <span>${escapeHtml(assignment.deviceUid || "No UID")} | ${escapeHtml(assignment.version || "Firmware")} ${assignment.reportedVersion ? `| running ${escapeHtml(assignment.reportedVersion)}` : ""}</span>
+      <div class="lighting-firmware-details">
+        <span>Assigned <strong>${assignment.assignedAt ? escapeHtml(formatDateTime(assignment.assignedAt)) : "Not reported"}</strong></span>
+        <span>Started <strong>${assignment.startedAt ? escapeHtml(formatDateTime(assignment.startedAt)) : "Not started"}</strong></span>
+        <span>${String(assignment.status || "").toLowerCase() === "failed" ? "Failed" : "Completed"} <strong>${assignment.completedAt || assignment.failedAt ? escapeHtml(formatDateTime(assignment.completedAt || assignment.failedAt)) : "Not reported"}</strong></span>
+      </div>
+      ${assignment.error ? `<span class="lighting-firmware-error">${escapeHtml(assignment.error)}</span>` : ""}
+    </div>
+  `).join("");
+}
+
+function renderHvacFirmwareVersionList() {
+  const firmware = Array.isArray(hvacFirmwareCache.firmware) ? hvacFirmwareCache.firmware : [];
+  if (!firmware.length) {
+    return `<div class="lighting-list-row"><strong>No HVAC firmware registered yet</strong><span>Upload the built HVAC controller firmware, then assign it to the ESP32.</span></div>`;
+  }
+  return firmware.map((item) => `
+    <div class="lighting-list-row">
+      <strong>${escapeHtml(item.version || "Firmware version")}</strong>
+      <span>${escapeHtml(item.deviceFamily || "ESP32")} | ${escapeHtml(item.status || "available")} | ${escapeHtml(item.fileName || "No file registered yet")}</span>
+      ${item.releaseNotes ? `<span>${escapeHtml(item.releaseNotes)}</span>` : ""}
+    </div>
+  `).join("");
+}
+
+function renderHvacFirmwareStatusLists() {
+  const assignmentList = document.querySelector("[data-hvac-firmware-assignment-list]");
+  if (assignmentList) assignmentList.innerHTML = renderHvacFirmwareAssignmentList();
+  const versionList = document.querySelector("[data-hvac-firmware-version-list]");
+  if (versionList) versionList.innerHTML = renderHvacFirmwareVersionList();
+}
+
 function renderHvacFirmwareMarkup(controllers = hvacControllersForCurrentView()) {
   const { canUseLocation, scopeKey, currentCustomer, currentLocation } = getHvacFirmwareScopeDetails();
   if (!canUseLocation) {
@@ -13079,40 +13133,14 @@ function renderHvacFirmwareMarkup(controllers = hvacControllersForCurrentView())
   if (hvacFirmwareLoadedScope !== scopeKey && !hvacFirmwareLoading) {
     loadHvacFirmwareForCurrentScope();
   }
-  const assignments = Array.isArray(hvacFirmwareCache.assignments) ? hvacFirmwareCache.assignments : [];
   const firmware = Array.isArray(hvacFirmwareCache.firmware) ? hvacFirmwareCache.firmware : [];
   const assignmentDisabled = !controllers.length || !firmware.length;
-  const assignmentList = hvacFirmwareLoading && hvacFirmwareLoadedScope !== scopeKey
-    ? `<div class="lighting-list-row"><strong>Loading firmware</strong><span>Checking SiteWorks server for HVAC firmware assignments.</span></div>`
-    : assignments.length
-      ? assignments.map((assignment) => `
-        <div class="lighting-list-row lighting-firmware-assignment ${getLightingFirmwareStatusClass(assignment.status)}">
-          <div class="lighting-firmware-row-header">
-            <strong>${escapeHtml(assignment.controllerName || "HVAC controller")}</strong>
-            ${renderLightingFirmwareStatusBadge(assignment.status)}
-          </div>
-          <span>${escapeHtml(assignment.deviceUid || "No UID")} | ${escapeHtml(assignment.version || "Firmware")} ${assignment.reportedVersion ? `| running ${escapeHtml(assignment.reportedVersion)}` : ""}</span>
-          <div class="lighting-firmware-details">
-            <span>Assigned <strong>${assignment.assignedAt ? escapeHtml(formatDateTime(assignment.assignedAt)) : "Not reported"}</strong></span>
-            <span>Started <strong>${assignment.startedAt ? escapeHtml(formatDateTime(assignment.startedAt)) : "Not started"}</strong></span>
-            <span>${String(assignment.status || "").toLowerCase() === "failed" ? "Failed" : "Completed"} <strong>${assignment.completedAt || assignment.failedAt ? escapeHtml(formatDateTime(assignment.completedAt || assignment.failedAt)) : "Not reported"}</strong></span>
-          </div>
-          ${assignment.error ? `<span class="lighting-firmware-error">${escapeHtml(assignment.error)}</span>` : ""}
-        </div>
-      `).join("")
-      : `<div class="lighting-list-row"><strong>No firmware assigned yet</strong><span>Assign a registered firmware version to an HVAC controller when you are ready to test OTA.</span></div>`;
-  const versionList = firmware.length
-    ? firmware.map((item) => `
-      <div class="lighting-list-row">
-        <strong>${escapeHtml(item.version || "Firmware version")}</strong>
-        <span>${escapeHtml(item.deviceFamily || "ESP32")} | ${escapeHtml(item.status || "available")} | ${escapeHtml(item.fileName || "No file registered yet")}</span>
-        ${item.releaseNotes ? `<span>${escapeHtml(item.releaseNotes)}</span>` : ""}
-      </div>
-    `).join("")
-    : `<div class="lighting-list-row"><strong>No HVAC firmware registered yet</strong><span>Upload the built HVAC controller firmware, then assign it to the ESP32.</span></div>`;
   return `
     <div data-hvac-firmware-root>
-      <p class="muted">Scope: ${escapeHtml(currentCustomer?.name || "Selected customer")} | ${escapeHtml(currentLocation?.name || "Selected location")}</p>
+      <div class="lighting-firmware-row-header">
+        <p class="muted">Scope: ${escapeHtml(currentCustomer?.name || "Selected customer")} | ${escapeHtml(currentLocation?.name || "Selected location")}</p>
+        <button type="button" class="secondary" data-hvac-firmware-refresh ${hvacFirmwareLoading ? "disabled" : ""}>Refresh Firmware Status</button>
+      </div>
       <form data-hvac-firmware-form class="lighting-controller-form">
         <label>Version <input name="version" placeholder="0.9.4-hvac"></label>
         <label>Device family <input name="deviceFamily" value="waveshare-esp32-s3-poe-8di-8ro"></label>
@@ -13138,8 +13166,8 @@ function renderHvacFirmwareMarkup(controllers = hvacControllersForCurrentView())
         <button type="submit" ${assignmentDisabled ? "disabled" : ""}>Assign Firmware</button>
         <p data-hvac-firmware-assignment-status class="lighting-controller-status"></p>
       </form>
-      <div class="lighting-controller-list">${assignmentList}</div>
-      <div class="lighting-controller-list">${versionList}</div>
+      <div class="lighting-controller-list" data-hvac-firmware-assignment-list>${renderHvacFirmwareAssignmentList()}</div>
+      <div class="lighting-controller-list" data-hvac-firmware-version-list>${renderHvacFirmwareVersionList()}</div>
     </div>
   `;
 }
@@ -20030,7 +20058,7 @@ function getHvacFirmwareScopeDetails() {
   };
 }
 
-async function loadHvacFirmwareForCurrentScope({ force = false } = {}) {
+async function loadHvacFirmwareForCurrentScope({ force = false, firmwareOnly = false } = {}) {
   const { canUseLocation, scopeKey } = getHvacFirmwareScopeDetails();
   if (!canUseLocation || hvacFirmwareLoading) return;
   if (!force && hvacFirmwareLoadedScope === scopeKey) return;
@@ -20054,7 +20082,9 @@ async function loadHvacFirmwareForCurrentScope({ force = false } = {}) {
     if (status) status.textContent = "HVAC firmware registry is not available yet.";
   } finally {
     hvacFirmwareLoading = false;
-    if (!isHvacSetupEditingActive()) {
+    if (firmwareOnly) {
+      renderHvacFirmwareStatusLists();
+    } else if (!isHvacSetupEditingActive()) {
       renderAutomationHvac();
     } else {
       renderHvacFirmwareOptions();
