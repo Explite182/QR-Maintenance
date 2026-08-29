@@ -1,20 +1,20 @@
-const SITEWORKS_SW_VERSION = "20260829-hvac-expansion-plan-08";
+const SITEWORKS_SW_VERSION = "20260829-hvac-start-delay-fix-09";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260829-hvac-expansion-plan-08",
+  "/styles.css?v=20260829-hvac-start-delay-fix-09",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260829-hvac-expansion-plan-08",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260829-hvac-expansion-plan-08",
-  "/js/panel-hmi-standard-renderer.js?v=20260829-hvac-expansion-plan-08",
-  "/app.js?v=20260829-hvac-expansion-plan-08",
-  "/manifest.webmanifest?v=20260829-hvac-expansion-plan-08",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260829-hvac-expansion-plan-08",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260829-hvac-expansion-plan-08",
-  "/icons/siteworks-icon-192.png?v=20260829-hvac-expansion-plan-08",
-  "/icons/siteworks-icon-512.png?v=20260829-hvac-expansion-plan-08"
+  "/js/panel-hmi-standard-model.js?v=20260829-hvac-start-delay-fix-09",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260829-hvac-start-delay-fix-09",
+  "/js/panel-hmi-standard-renderer.js?v=20260829-hvac-start-delay-fix-09",
+  "/app.js?v=20260829-hvac-start-delay-fix-09",
+  "/manifest.webmanifest?v=20260829-hvac-start-delay-fix-09",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260829-hvac-start-delay-fix-09",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260829-hvac-start-delay-fix-09",
+  "/icons/siteworks-icon-192.png?v=20260829-hvac-start-delay-fix-09",
+  "/icons/siteworks-icon-512.png?v=20260829-hvac-start-delay-fix-09"
 ];
 
 self.addEventListener("install", (event) => {

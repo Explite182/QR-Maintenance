@@ -20156,9 +20156,10 @@ function hvacStartDelayStatus(controller = {}, commands = hvacCommandsCache, now
   const latestOwnStartDelayEvent = commands
     .filter((command) => {
       const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
+      const eventReason = String(metadata.reason || command.error || "").toLowerCase();
       return String(command.controllerId || "") === controllerId &&
         String(command.commandType || "") === "hvac-event" &&
-        String(metadata.source || "") === "fan-start-delay";
+        (String(metadata.source || "") === "fan-start-delay" || eventReason.includes("fan start delay"));
     })
     .sort((a, b) => hvacCommandTimeMs(b) - hvacCommandTimeMs(a))[0] || null;
   if (latestOwnStartDelayEvent) {
