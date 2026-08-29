@@ -2563,6 +2563,29 @@ textarea:disabled {
   text-transform: uppercase;
 }
 
+.hvac-point-map label span {
+  min-height: 12px;
+  color: #7dd3fc;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.hvac-point-map label.is-reserve {
+  color: #94a3b8;
+}
+
+.hvac-point-map label.is-reserve select {
+  border-style: dashed;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.hvac-point-map label.is-reserve span {
+  color: #fbbf24;
+}
+
 .hvac-controller-form input,
 .hvac-controller-form select,
 .hvac-controller-form textarea,

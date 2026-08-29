@@ -19682,15 +19682,18 @@ function hvacChannelOptions(kind = "DI") {
   return ["", ...Array.from({ length: count }, (_, index) => `${type}${index + 1}`)];
 }
 
-function renderHvacPointSelect(name, label, fallback, kind, controller = null) {
+function renderHvacPointSelect(name, label, fallback, kind, controller = null, options = {}) {
   const current = String(controller?.points?.[name] || fallback || "").trim().toUpperCase();
+  const active = options.active !== false;
+  const hint = String(options.hint || (active ? "" : "Reserve stage")).trim();
   return `
-    <label>${escapeHtml(label)}
+    <label class="${active ? "" : "is-reserve"}">${escapeHtml(label)}
       <select name="${escapeAttribute(name)}">
         ${hvacChannelOptions(kind).map((channel) => `
           <option value="${escapeAttribute(channel)}" ${channel === current ? "selected" : ""}>${escapeHtml(channel || "Not mapped")}</option>
         `).join("")}
       </select>
+      ${hint ? `<span>${escapeHtml(hint)}</span>` : ""}
     </label>
   `;
 }
@@ -20575,6 +20578,8 @@ function renderHvacControllerForm(controller = null) {
   const defaultUidSuffix = currentLocation?.name
     ? currentLocation.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 18)
     : "HVAC";
+  const selectedHeatStageCount = Math.max(0, Math.min(4, Number(controller?.heatStageCount || controller?.data?.heatStageCount || 1) || 0));
+  const selectedCoolStageCount = Math.max(0, Math.min(4, Number(controller?.coolStageCount || controller?.data?.coolStageCount || 1) || 0));
   const equipmentPicker = equipment.length ? `
     <fieldset class="hvac-controller-equipment-picker">
       <legend>Assign equipment to this controller</legend>
@@ -20595,16 +20600,16 @@ function renderHvacControllerForm(controller = null) {
     </div>
   `;
   const outputPointFields = [
-    ["fanCommand", "Fan command", "DO1", "DO"],
-    ["heatStage1", "Heat stage 1", "DO2", "DO"],
-    ["coolStage1", "Cool stage 1", "DO3", "DO"],
-    ["heatStage2", "Heat stage 2", "DO4", "DO"],
-    ["coolStage2", "Cool stage 2", "DO5", "DO"],
-    ["heatStage3", "Heat stage 3", "DO6", "DO"],
-    ["coolStage3", "Cool stage 3", "DO7", "DO"],
-    ["heatStage4", "Heat stage 4", "DO8", "DO"],
-    ["coolStage4", "Cool stage 4", "", "DO"],
-    ["damper", "OA damper", "", "DO"]
+    ["fanCommand", "Fan command", "DO1", "DO", true, "Required before auto heat/cool can start the fan"],
+    ["heatStage1", "Heat stage 1", "DO2", "DO", selectedHeatStageCount >= 1, selectedHeatStageCount >= 1 ? "Active heating stage" : "Reserve heating stage"],
+    ["heatStage2", "Heat stage 2", "DO4", "DO", selectedHeatStageCount >= 2, selectedHeatStageCount >= 2 ? "Active heating stage" : "Reserve heating stage"],
+    ["heatStage3", "Heat stage 3", "DO6", "DO", selectedHeatStageCount >= 3, selectedHeatStageCount >= 3 ? "Active heating stage" : "Reserve heating stage"],
+    ["heatStage4", "Heat stage 4", "DO8", "DO", selectedHeatStageCount >= 4, selectedHeatStageCount >= 4 ? "Active heating stage" : "Reserve heating stage"],
+    ["coolStage1", "Cool stage 1", "DO3", "DO", selectedCoolStageCount >= 1, selectedCoolStageCount >= 1 ? "Active cooling stage" : "Reserve cooling stage"],
+    ["coolStage2", "Cool stage 2", "DO5", "DO", selectedCoolStageCount >= 2, selectedCoolStageCount >= 2 ? "Active cooling stage" : "Reserve cooling stage"],
+    ["coolStage3", "Cool stage 3", "DO7", "DO", selectedCoolStageCount >= 3, selectedCoolStageCount >= 3 ? "Active cooling stage" : "Reserve cooling stage"],
+    ["coolStage4", "Cool stage 4", "", "DO", selectedCoolStageCount >= 4, selectedCoolStageCount >= 4 ? "Active cooling stage; usually needs expansion I/O" : "Reserve cooling stage"],
+    ["damper", "OA damper", "", "DO", true, "Optional"]
   ];
   const inputPointFields = [
     ["fanProof", "Fan proof", "DI1", "DI"],
@@ -20726,7 +20731,7 @@ function renderHvacControllerForm(controller = null) {
       </div>
       <div class="hvac-point-map">
         <strong>HVAC output mapping</strong>
-        ${outputPointFields.map(([name, label, fallback, kind]) => renderHvacPointSelect(name, label, fallback, kind, controller)).join("")}
+        ${outputPointFields.map(([name, label, fallback, kind, active, hint]) => renderHvacPointSelect(name, label, fallback, kind, controller, { active, hint })).join("")}
         <strong>HVAC input mapping</strong>
         ${inputPointFields.map(([name, label, fallback, kind]) => renderHvacPointSelect(name, label, fallback, kind, controller)).join("")}
         <strong>HVAC temperature mapping</strong>
@@ -20802,6 +20807,23 @@ async function saveHvacControllerFromForm(form) {
   ];
   const tempSimulator = readHvacTempSimulatorFromForm(formData);
   const points = Object.fromEntries(pointNames.map((name) => [name, String(formData.get(name) || "").trim()]));
+  const activeOutputPointNames = [
+    ["fanCommand", "Fan command"],
+    ...Array.from({ length: heatStageCount }, (_, index) => [`heatStage${index + 1}`, `Heat stage ${index + 1}`]),
+    ...Array.from({ length: coolStageCount }, (_, index) => [`coolStage${index + 1}`, `Cool stage ${index + 1}`]),
+    ["damper", "OA damper"]
+  ];
+  const mappedOutputs = new Map();
+  for (const [pointName, label] of activeOutputPointNames) {
+    const channel = String(points[pointName] || "").trim().toUpperCase();
+    if (!channel) continue;
+    if (!/^DO\d+$/i.test(channel)) continue;
+    if (mappedOutputs.has(channel)) {
+      if (keyStatus) keyStatus.textContent = `${label} and ${mappedOutputs.get(channel)} are both mapped to ${channel}. Pick separate outputs before saving.`;
+      return;
+    }
+    mappedOutputs.set(channel, label);
+  }
   const controller = normalizeHvacController({
     ...existing,
     id: existingControllerId || crypto.randomUUID?.() || `hvac-controller-${Date.now()}`,
