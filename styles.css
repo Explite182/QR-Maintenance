@@ -2069,6 +2069,17 @@ textarea:disabled {
   background: rgba(24, 31, 34, 0.72);
 }
 
+.hvac-status-drawer {
+  display: grid;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 3px;
+  background: rgba(24, 31, 34, 0.6);
+}
+
+.hvac-status-drawer[open] {
+  padding-bottom: 8px;
+}
+
 .hvac-status-group > header {
   display: flex;
   justify-content: space-between;
@@ -2078,8 +2089,43 @@ textarea:disabled {
   border-color: rgba(45, 212, 191, 0.18);
 }
 
+.hvac-status-drawer > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid rgba(45, 212, 191, 0.18);
+  border-radius: 3px;
+  background: linear-gradient(180deg, #11191d, #060a0c);
+  cursor: pointer;
+  list-style: none;
+}
+
+.hvac-status-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.hvac-status-drawer > summary::before {
+  content: "+";
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(45, 212, 191, 0.5);
+  color: #5eead4;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.hvac-status-drawer[open] > summary::before {
+  content: "-";
+}
+
 .hvac-status-group > header span,
-.hvac-status-panel > header span {
+.hvac-status-panel > header span,
+.hvac-status-drawer > summary span {
   color: #9ee7ff;
   font-size: 0.76rem;
   font-weight: 950;
@@ -2087,11 +2133,18 @@ textarea:disabled {
 }
 
 .hvac-status-group > header strong,
-.hvac-status-panel > header strong {
+.hvac-status-panel > header strong,
+.hvac-status-drawer > summary strong {
   color: #5eead4;
   font-size: 0.82rem;
   font-weight: 950;
   text-transform: uppercase;
+}
+
+.hvac-status-drawer-body {
+  display: grid;
+  gap: 6px;
+  padding: 8px 8px 0;
 }
 
 .hvac-status-row {

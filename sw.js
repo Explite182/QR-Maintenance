@@ -1,20 +1,20 @@
-const SITEWORKS_SW_VERSION = "20260828-hvac-stage-map-109";
+const SITEWORKS_SW_VERSION = "20260828-hvac-compact-status-110";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260828-hvac-stage-map-109",
+  "/styles.css?v=20260828-hvac-compact-status-110",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260828-hvac-stage-map-109",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260828-hvac-stage-map-109",
-  "/js/panel-hmi-standard-renderer.js?v=20260828-hvac-stage-map-109",
-  "/app.js?v=20260828-hvac-stage-map-109",
-  "/manifest.webmanifest?v=20260828-hvac-stage-map-109",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260828-hvac-stage-map-109",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260828-hvac-stage-map-109",
-  "/icons/siteworks-icon-192.png?v=20260828-hvac-stage-map-109",
-  "/icons/siteworks-icon-512.png?v=20260828-hvac-stage-map-109"
+  "/js/panel-hmi-standard-model.js?v=20260828-hvac-compact-status-110",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260828-hvac-compact-status-110",
+  "/js/panel-hmi-standard-renderer.js?v=20260828-hvac-compact-status-110",
+  "/app.js?v=20260828-hvac-compact-status-110",
+  "/manifest.webmanifest?v=20260828-hvac-compact-status-110",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260828-hvac-compact-status-110",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260828-hvac-compact-status-110",
+  "/icons/siteworks-icon-192.png?v=20260828-hvac-compact-status-110",
+  "/icons/siteworks-icon-512.png?v=20260828-hvac-compact-status-110"
 ];
 
 self.addEventListener("install", (event) => {
