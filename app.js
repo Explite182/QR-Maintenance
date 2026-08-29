@@ -5572,6 +5572,9 @@ const PUMP_EQUIPMENT_IMAGE_SRC = "/assets/equipment/pump-centrifugal-blue.png";
 let pumpEquipmentImagePreloaded = false;
 const PUMP_SETUP_FORM_SELECTOR = "[data-pump-controller-form], [data-pump-io-mapping-form], [data-pump-diagram-device-form]";
 const PUMP_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
+let hvacSetupEditHoldUntil = 0;
+const HVAC_SETUP_FORM_SELECTOR = "[data-hvac-controller-form], [data-hvac-firmware-form], [data-hvac-firmware-assignment-form]";
+const HVAC_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
 const MONITORING_SOURCE_PHASES = ["A", "B", "C"];
@@ -8043,10 +8046,26 @@ document.addEventListener("pointerdown", (event) => {
   }
 }, true);
 
+document.addEventListener("pointerdown", (event) => {
+  const form = event.target?.closest?.(HVAC_SETUP_FORM_SELECTOR);
+  if (form) {
+    markHvacSetupEditingActive(form);
+  } else if (!event.target?.closest?.(".hvac-drawer")) {
+    clearHvacSetupEditingActive();
+  }
+}, true);
+
 ["focusin", "input", "change", "keydown"].forEach((eventName) => {
   document.addEventListener(eventName, (event) => {
     const form = event.target?.closest?.(PUMP_SETUP_FORM_SELECTOR);
     if (form) markPumpSetupEditingActive(form);
+  }, true);
+});
+
+["focusin", "input", "change", "keydown"].forEach((eventName) => {
+  document.addEventListener(eventName, (event) => {
+    const form = event.target?.closest?.(HVAC_SETUP_FORM_SELECTOR);
+    if (form) markHvacSetupEditingActive(form);
   }, true);
 });
 
@@ -17146,6 +17165,27 @@ function clearPumpSetupEditingActive() {
   });
 }
 
+function isHvacSetupEditingActive() {
+  const activeElement = document.activeElement;
+  if (activeElement?.closest?.(HVAC_SETUP_FORM_SELECTOR)) return true;
+  const now = Date.now();
+  if (hvacSetupEditHoldUntil && now < hvacSetupEditHoldUntil) return true;
+  if (hvacSetupEditHoldUntil && now >= hvacSetupEditHoldUntil) clearHvacSetupEditingActive();
+  return Boolean(document.querySelector(`${HVAC_SETUP_FORM_SELECTOR}[data-hvac-editing-active="true"]`));
+}
+
+function markHvacSetupEditingActive(form = null) {
+  hvacSetupEditHoldUntil = Date.now() + HVAC_SETUP_EDIT_HOLD_MS;
+  if (form) form.dataset.hvacEditingActive = "true";
+}
+
+function clearHvacSetupEditingActive() {
+  hvacSetupEditHoldUntil = 0;
+  document.querySelectorAll(`${HVAC_SETUP_FORM_SELECTOR}[data-hvac-editing-active="true"]`).forEach((form) => {
+    delete form.dataset.hvacEditingActive;
+  });
+}
+
 async function refreshPumpLiveStatus() {
   const scopeKey = getPumpControllerScopeKey();
   if (!scopeKey || editingPumpControllerId) return;
@@ -19794,7 +19834,7 @@ async function loadHvacControllersForCurrentScope(force = false) {
     hvacControllersLoadedAt = Date.now();
   } finally {
     hvacControllersLoading = false;
-    renderAutomationHvac();
+    if (!isHvacSetupEditingActive()) renderAutomationHvac();
   }
 }
 
@@ -19812,6 +19852,7 @@ function scheduleHvacControllerEmptyRetry(scopeKey = "") {
 async function refreshHvacLiveStatus() {
   const scopeKey = getHvacControllerScopeKey();
   if (!scopeKey || editingHvacControllerId || hvacControllersLoading) return;
+  if (isHvacSetupEditingActive()) return;
   hvacLiveRefreshActive = true;
   try {
     await loadHvacControllersForCurrentScope(true);
@@ -19957,7 +19998,7 @@ async function loadHvacCommandsForCurrentScope({ force = false } = {}) {
     hvacCommandsLoadedScope = scopeKey;
   } finally {
     hvacCommandsLoading = false;
-    renderAutomationHvac();
+    if (!isHvacSetupEditingActive()) renderAutomationHvac();
   }
 }
 
@@ -19995,7 +20036,11 @@ async function loadHvacFirmwareForCurrentScope({ force = false } = {}) {
     if (status) status.textContent = "HVAC firmware registry is not available yet.";
   } finally {
     hvacFirmwareLoading = false;
-    renderAutomationHvac();
+    if (!isHvacSetupEditingActive()) {
+      renderAutomationHvac();
+    } else {
+      renderHvacFirmwareOptions();
+    }
   }
 }
 
