@@ -6753,6 +6753,38 @@ textarea:disabled {
   font-weight: 900;
 }
 
+.hvac-stage-capacity {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(45, 212, 191, 0.26);
+  border-radius: 7px;
+  background: rgba(6, 78, 59, 0.18);
+  color: #dffdf8;
+}
+
+.hvac-stage-capacity.needs-expansion {
+  border-color: rgba(245, 158, 11, 0.6);
+  background: rgba(120, 53, 15, 0.2);
+}
+
+.hvac-stage-capacity strong {
+  color: #f8fafc;
+}
+
+.hvac-stage-capacity span {
+  color: #bae6fd;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.hvac-stage-capacity.needs-expansion span {
+  color: #fde68a;
+}
+
 .pump-controller-pump-picker {
   display: grid;
   grid-column: 1 / -2;

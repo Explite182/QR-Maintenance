@@ -20941,6 +20941,13 @@ function renderHvacControllerForm(controller = null) {
     : "HVAC";
   const selectedHeatStageCount = Math.max(0, Math.min(4, Number(controller?.heatStageCount || controller?.data?.heatStageCount || 1) || 0));
   const selectedCoolStageCount = Math.max(0, Math.min(4, Number(controller?.coolStageCount || controller?.data?.coolStageCount || 1) || 0));
+  const onboardOutputCapacity = 8;
+  const selectedStageOutputCount = 1 + selectedHeatStageCount + selectedCoolStageCount;
+  const optionalDamperMapped = Boolean(String(controller?.points?.damper || "").trim());
+  const selectedOutputCountWithDamper = selectedStageOutputCount + (optionalDamperMapped ? 1 : 0);
+  const onboardOutputsRemaining = Math.max(0, onboardOutputCapacity - selectedStageOutputCount);
+  const needsExpansionOutput = selectedStageOutputCount > onboardOutputCapacity || selectedOutputCountWithDamper > onboardOutputCapacity;
+  const activeStageSummary = `${selectedHeatStageCount} heat / ${selectedCoolStageCount} cool`;
   const equipmentPicker = equipment.length ? `
     <fieldset class="hvac-controller-equipment-picker">
       <legend>Assign equipment to this controller</legend>
@@ -20969,8 +20976,8 @@ function renderHvacControllerForm(controller = null) {
     ["coolStage1", "Cool stage 1", "DO3", "DO", selectedCoolStageCount >= 1, selectedCoolStageCount >= 1 ? "Active cooling stage" : "Reserve cooling stage"],
     ["coolStage2", "Cool stage 2", "DO5", "DO", selectedCoolStageCount >= 2, selectedCoolStageCount >= 2 ? "Active cooling stage" : "Reserve cooling stage"],
     ["coolStage3", "Cool stage 3", "DO7", "DO", selectedCoolStageCount >= 3, selectedCoolStageCount >= 3 ? "Active cooling stage" : "Reserve cooling stage"],
-    ["coolStage4", "Cool stage 4", "", "DO", selectedCoolStageCount >= 4, selectedCoolStageCount >= 4 ? "Active cooling stage; usually needs expansion I/O" : "Reserve cooling stage"],
-    ["damper", "OA damper", "", "DO", true, "Optional"]
+    ["coolStage4", "Cool stage 4", "", "DO", selectedCoolStageCount >= 4, selectedCoolStageCount >= 4 ? "Active cooling stage; expansion I/O required on an 8-output ESP32" : "Reserve cooling stage"],
+    ["damper", "OA damper", "", "DO", true, optionalDamperMapped ? "Optional output mapped; count it in output capacity" : "Optional output; leave unmapped unless wired"]
   ];
   const inputPointFields = [
     ["fanProof", "Fan proof", "DI1", "DI"],
@@ -21089,6 +21096,13 @@ function renderHvacControllerForm(controller = null) {
         <span>Config: ${escapeHtml(HVAC_DEVICE_CONFIG_URL)}</span>
         <span>Heartbeat: ${escapeHtml(HVAC_DEVICE_HEARTBEAT_URL)}</span>
         <span>I/O map: Fan command, stages, proof, safeties, occupied status, and temperatures follow the point map below.</span>
+      </div>
+      <div class="hvac-stage-capacity ${needsExpansionOutput ? "needs-expansion" : ""}">
+        <strong>HVAC stage output plan</strong>
+        <span>${escapeHtml(activeStageSummary)} stages selected.</span>
+        <span>Onboard outputs required: ${selectedStageOutputCount} of ${onboardOutputCapacity} for fan plus active heat/cool stages.</span>
+        <span>${needsExpansionOutput ? "Expansion I/O or a second ESP32 is required before every selected stage can be physically controlled." : `${onboardOutputsRemaining} onboard output${onboardOutputsRemaining === 1 ? "" : "s"} still available for optional points.`}</span>
+        <span>Current default map: DO1 fan, DO2/DO4/DO6/DO8 heat, DO3/DO5/DO7 cool. Cool stage 4 is intentionally left unmapped for expansion.</span>
       </div>
       <div class="hvac-point-map">
         <strong>HVAC output mapping</strong>
