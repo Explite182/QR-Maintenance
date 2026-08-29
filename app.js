@@ -19801,6 +19801,7 @@ function normalizeHvacController(controller = {}) {
   const scheduleConfigured = Boolean(controller.schedule || data.schedule || autoConfig.schedule);
   const schedule = normalizeHvacSchedule(scheduleSource);
   const tempSimulator = normalizeHvacTempSimulator(controller.tempSimulator || data.tempSimulator || data.commissioningTempSimulator || {});
+  const outputExpansionMode = String(controller.outputExpansionMode || controller.output_expansion_mode || data.outputExpansionMode || data.output_expansion_mode || "Onboard 8 outputs").trim() || "Onboard 8 outputs";
   const equipmentIds = Array.isArray(controller.equipmentIds)
     ? controller.equipmentIds
     : Array.isArray(data.equipmentIds)
@@ -19827,6 +19828,7 @@ function normalizeHvacController(controller = {}) {
     startDelaySeconds: String(controller.startDelaySeconds || data.startDelaySeconds || autoConfig.startDelaySeconds || 60),
     fanProofTimeoutSeconds: String(controller.fanProofTimeoutSeconds || data.fanProofTimeoutSeconds || autoConfig.fanProofTimeoutSeconds || 15),
     fanOffDelaySeconds: String(controller.fanOffDelaySeconds || data.fanOffDelaySeconds || autoConfig.fanOffDelaySeconds || 60),
+    outputExpansionMode,
     schedule,
     scheduleConfigured,
     tempSimulator,
@@ -20941,6 +20943,7 @@ function renderHvacControllerForm(controller = null) {
     : "HVAC";
   const selectedHeatStageCount = Math.max(0, Math.min(4, Number(controller?.heatStageCount || controller?.data?.heatStageCount || 1) || 0));
   const selectedCoolStageCount = Math.max(0, Math.min(4, Number(controller?.coolStageCount || controller?.data?.coolStageCount || 1) || 0));
+  const selectedExpansionMode = String(controller?.outputExpansionMode || controller?.data?.outputExpansionMode || "Onboard 8 outputs").trim() || "Onboard 8 outputs";
   const onboardOutputCapacity = 8;
   const selectedStageOutputCount = 1 + selectedHeatStageCount + selectedCoolStageCount;
   const optionalDamperMapped = Boolean(String(controller?.points?.damper || "").trim());
@@ -21032,6 +21035,13 @@ function renderHvacControllerForm(controller = null) {
           ).join("")}
         </select>
       </label>
+      <label>Output hardware
+        <select name="outputExpansionMode">
+          ${["Onboard 8 outputs", "Expansion I/O planned", "Second ESP32 planned"].map((mode) =>
+            `<option value="${escapeAttribute(mode)}" ${mode === selectedExpansionMode ? "selected" : ""}>${escapeHtml(mode)}</option>`
+          ).join("")}
+        </select>
+      </label>
       <label>Mode
         <select name="mode">
           ${["Setup only", "Monitoring ready", "Control ready"].map((mode) =>
@@ -21100,6 +21110,7 @@ function renderHvacControllerForm(controller = null) {
       <div class="hvac-stage-capacity ${needsExpansionOutput ? "needs-expansion" : ""}">
         <strong>HVAC stage output plan</strong>
         <span>${escapeHtml(activeStageSummary)} stages selected.</span>
+        <span>Hardware plan: ${escapeHtml(selectedExpansionMode)}.</span>
         <span>Onboard outputs required: ${selectedStageOutputCount} of ${onboardOutputCapacity} for fan plus active heat/cool stages.</span>
         <span>${needsExpansionOutput ? "Expansion I/O or a second ESP32 is required before every selected stage can be physically controlled." : `${onboardOutputsRemaining} onboard output${onboardOutputsRemaining === 1 ? "" : "s"} still available for optional points.`}</span>
         <span>Current default map: DO1 fan, DO2/DO4/DO6/DO8 heat, DO3/DO5/DO7 cool. Cool stage 4 is intentionally left unmapped for expansion.</span>
@@ -21181,6 +21192,7 @@ async function saveHvacControllerFromForm(form) {
     "spaceTemp"
   ];
   const tempSimulator = readHvacTempSimulatorFromForm(formData);
+  const outputExpansionMode = String(formData.get("outputExpansionMode") || "Onboard 8 outputs").trim() || "Onboard 8 outputs";
   const points = Object.fromEntries(pointNames.map((name) => [name, String(formData.get(name) || "").trim()]));
   const activeOutputPointNames = [
     ["fanCommand", "Fan command"],
@@ -21221,6 +21233,7 @@ async function saveHvacControllerFromForm(form) {
     startDelaySeconds: String(autoConfig.startDelaySeconds),
     fanProofTimeoutSeconds: String(autoConfig.fanProofTimeoutSeconds),
     fanOffDelaySeconds: String(autoConfig.fanOffDelaySeconds),
+    outputExpansionMode,
     schedule,
     tempSimulator,
     equipmentIds,
@@ -21243,6 +21256,7 @@ async function saveHvacControllerFromForm(form) {
       startDelaySeconds: autoConfig.startDelaySeconds,
       fanProofTimeoutSeconds: autoConfig.fanProofTimeoutSeconds,
       fanOffDelaySeconds: autoConfig.fanOffDelaySeconds,
+      outputExpansionMode,
       schedule,
       tempSimulator,
       autoConfig,
@@ -21611,6 +21625,7 @@ function renderAutomationHvac() {
         <span><b>Mode</b>${escapeHtml(controller.mode || "Setup only")}</span>
         <span><b>Heat</b>${escapeHtml(controller.heatStageCount || "1")} stage${String(controller.heatStageCount || "1") === "1" ? "" : "s"}</span>
         <span><b>Cool</b>${escapeHtml(controller.coolStageCount || "1")} stage${String(controller.coolStageCount || "1") === "1" ? "" : "s"}</span>
+        <span><b>Hardware</b>${escapeHtml(controller.outputExpansionMode || "Onboard 8 outputs")}</span>
         <span><b>Points</b>${Object.values(controller.points || {}).filter(Boolean).length} planned</span>
         <span><b>Assigned</b>${escapeHtml(assigned.map((asset) => asset.name || asset.equipmentId).join(", ") || "No equipment assigned")}</span>
         <div class="hvac-controller-actions">
