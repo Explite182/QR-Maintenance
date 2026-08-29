@@ -19777,9 +19777,36 @@ function hvacStartDelayStatus(controller = {}, commands = hvacCommandsCache, now
   const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
   const delaySeconds = Math.max(0, Math.min(3600, Math.round(Number(controller?.startDelaySeconds ?? data.startDelaySeconds ?? autoConfig.startDelaySeconds ?? 0) || 0)));
   if (!controller || !delaySeconds) return { active: false, delaySeconds: 0, remainingSeconds: 0, label: hvacTimerLabel(0, 0) };
+  const liveHvac = data.liveHvac && typeof data.liveHvac === "object" ? data.liveHvac : {};
+  const timers = liveHvac.timers && typeof liveHvac.timers === "object" ? liveHvac.timers : {};
+  const liveStartDelay = timers.startDelay && typeof timers.startDelay === "object" ? timers.startDelay : {};
+  const liveStatus = hvacLiveTimerStatus(liveStartDelay, delaySeconds, now);
+  if (liveStatus.active) {
+    return liveStatus;
+  }
   const controllerId = String(controller.id || "");
   const customerId = String(controller.customerId || controller.customer_id || "");
   const locationId = String(controller.locationId || controller.location_id || "");
+  const latestOwnStartDelayEvent = commands
+    .filter((command) => {
+      const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
+      return String(command.controllerId || "") === controllerId &&
+        String(command.commandType || "") === "hvac-event" &&
+        String(metadata.source || "") === "fan-start-delay";
+    })
+    .sort((a, b) => hvacCommandTimeMs(b) - hvacCommandTimeMs(a))[0] || null;
+  if (latestOwnStartDelayEvent) {
+    const metadata = latestOwnStartDelayEvent.metadata && typeof latestOwnStartDelayEvent.metadata === "object" ? latestOwnStartDelayEvent.metadata : {};
+    const eventDelay = Math.max(0, Math.min(3600, Math.round(Number(metadata.startDelaySeconds || delaySeconds) || delaySeconds)));
+    const startedAt = hvacCommandTimeMs(latestOwnStartDelayEvent);
+    if (startedAt) {
+      const elapsedSeconds = Math.max(0, Math.floor((Number(now) - startedAt) / 1000));
+      const remainingSeconds = Math.max(0, eventDelay - elapsedSeconds);
+      if (remainingSeconds > 0) {
+        return { active: true, delaySeconds: eventDelay, remainingSeconds, label: hvacTimerLabel(remainingSeconds, eventDelay) };
+      }
+    }
+  }
   const latestOwnStartDelayBlock = commands
     .filter((command) => {
       const metadata = command.metadata && typeof command.metadata === "object" ? command.metadata : {};
@@ -19836,6 +19863,13 @@ function hvacFanPurgeStatus(controller = {}, commands = hvacCommandsCache, now =
   const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
   const delaySeconds = Math.max(0, Math.min(3600, Math.round(Number(controller?.fanOffDelaySeconds ?? data.fanOffDelaySeconds ?? autoConfig.fanOffDelaySeconds ?? 0) || 0)));
   if (!controller || !delaySeconds) return { active: false, delaySeconds: 0, remainingSeconds: 0, label: hvacTimerLabel(0, 0) };
+  const liveHvac = data.liveHvac && typeof data.liveHvac === "object" ? data.liveHvac : {};
+  const timers = liveHvac.timers && typeof liveHvac.timers === "object" ? liveHvac.timers : {};
+  const liveFanOffDelay = timers.fanOffDelay && typeof timers.fanOffDelay === "object" ? timers.fanOffDelay : {};
+  const liveStatus = hvacLiveTimerStatus(liveFanOffDelay, delaySeconds, now);
+  if (liveStatus.active) {
+    return liveStatus;
+  }
   const controllerId = String(controller.id || "");
   const latestPurgeEvent = commands
     .filter((command) => {
@@ -19901,6 +19935,23 @@ function hvacTimerLabel(remainingSeconds = 0, setSeconds = 0) {
   return remaining > 0
     ? `Countdown: ${remaining} sec / Set: ${setLabel}`
     : `Countdown: idle / Set: ${setLabel}`;
+}
+
+function hvacLiveTimerStatus(timer = {}, fallbackSetSeconds = 0, now = Date.now()) {
+  const source = timer && typeof timer === "object" ? timer : {};
+  const setSeconds = Math.max(0, Math.min(3600, Math.round(Number(source.setSeconds || fallbackSetSeconds) || 0)));
+  const sourceRemaining = Math.max(0, Math.ceil(Number(source.remainingSeconds || 0) || 0));
+  const updatedAt = new Date(source.updatedAt || source.updated_at || 0).getTime();
+  const elapsedSeconds = Number.isFinite(updatedAt) && updatedAt > 0
+    ? Math.max(0, Math.floor((Number(now) - updatedAt) / 1000))
+    : 0;
+  const remainingSeconds = Math.max(0, sourceRemaining - elapsedSeconds);
+  return {
+    active: Boolean(source.active) && remainingSeconds > 0,
+    delaySeconds: setSeconds,
+    remainingSeconds,
+    label: hvacTimerLabel(remainingSeconds, setSeconds)
+  };
 }
 
 function hvacCommandTimeMs(command = {}) {
@@ -19994,11 +20045,10 @@ function refreshHvacStartDelayCountdowns() {
     if (!controller || !label) return;
     if (row.dataset.hvacFanPurgeController) {
       const status = hvacFanPurgeStatus(controller);
-      const fanActive = hvacLiveChannelActive(controller, "outputs", controller?.points?.fanCommand || "");
       const name = row.querySelector("span");
-      row.classList.toggle("is-active", status.active && fanActive);
+      row.classList.toggle("is-active", status.active);
       if (name) name.textContent = "Fan Off Delay";
-      label.textContent = status.active && fanActive
+      label.textContent = status.active
         ? status.label
         : hvacTimerLabel(0, controller?.fanOffDelaySeconds || 60);
       return;
@@ -21255,7 +21305,7 @@ function renderAutomationHvac() {
           <div class="${escapeAttribute(`hvac-demand-row ${hvacDemandInfo.className}`)}"><span>Requested Stage</span><strong>${escapeHtml(hvacDemandInfo.label)}</strong></div>
           <div><span>Active Setpoints</span><strong>${escapeHtml(`${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`)}</strong></div>
           <div class="${escapeAttribute(startDelayStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>
-          <div class="${escapeAttribute(fanPurgeStatus.active && fanCommandActive ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active && fanCommandActive ? fanPurgeStatus.label : hvacTimerLabel(0, primaryController?.fanOffDelaySeconds || 60))}</strong></div>
+          <div class="${escapeAttribute(fanPurgeStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active ? fanPurgeStatus.label : hvacTimerLabel(0, primaryController?.fanOffDelaySeconds || 60))}</strong></div>
           <div class="${escapeAttribute(hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")}"><span>Lockout</span><strong>${escapeHtml(hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear")}</strong></div>
           ${hvacLockoutActive ? `
             <div class="hvac-command-row">
