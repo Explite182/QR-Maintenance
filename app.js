@@ -21220,6 +21220,93 @@ function renderAutomationHvac() {
       </article>
     `;
   }).join("") : "";
+  const hvacStatusRow = (label, value, className = "") => `
+    <div class="${escapeAttribute(["hvac-status-row", className].filter(Boolean).join(" "))}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+  const hvacStatusSection = (title, badge, rows, className = "") => `
+    <section class="${escapeAttribute(["hvac-status-group", className].filter(Boolean).join(" "))}">
+      <header><span>${escapeHtml(title)}</span><strong>${escapeHtml(badge)}</strong></header>
+      ${rows}
+    </section>
+  `;
+  const hvacFanCommandButtons = `
+    <div class="hvac-command-row">
+      <button type="button" class="${fanOnSelected ? "is-active" : ""}" ${primaryController && fanCommandOutputNumber && !fanOnBlockMessage ? "" : "disabled"} title="${escapeAttribute(fanOnBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
+      <button type="button" class="${fanAutoSelected ? "is-selected" : ""}" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Auto">Auto</button>
+      <button type="button" class="${fanOffSelected ? "is-selected" : ""}" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
+    </div>
+  `;
+  const hvacStatusPanelHtml = `
+    <aside class="hvac-status-panel" aria-label="HVAC status points">
+      <header><span>Unit Status</span><strong>${runningUnits} Running</strong></header>
+      ${hvacStatusSection("Setup", primaryController ? "Mapped" : "Setup", [
+        hvacStatusRow("Controller", primaryController?.name || "Not added"),
+        hvacStatusRow("Equipment", primaryEquipment?.equipmentId ? `${primaryEquipment.equipmentId} assigned` : equipmentStatusLabel, equipmentReady ? "is-ready" : "is-warning"),
+        hvacStatusRow("Control Mode", primaryController?.hvacControlMode || "Manual"),
+        hvacStatusRow("Temp Source", tempSimulator.enabled ? "Simulator" : "Field inputs"),
+        hvacStatusRow("Schedule", hvacScheduleStatus.label),
+        hvacStatusRow("Setpoint Mode", hvacCallState.occupancyMode || hvacScheduleStatus.occupancyMode || "--")
+      ].join(""))}
+      ${hvacStatusSection("Auto Sequence", autoStatusLabel, [
+        hvacStatusRow("Auto Call", hvacCallState.label, `hvac-call-row ${hvacCallState.className}`),
+        hvacStatusRow("Requested Stage", hvacDemandInfo.label, `hvac-demand-row ${hvacDemandInfo.className}`),
+        hvacStatusRow("Active Setpoints", `${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`),
+        hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active") : "",
+        hvacStatusRow("Lockout", hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear", hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")
+      ].join(""))}
+      ${hvacLockoutActive ? `
+        <section class="hvac-status-group">
+          <header><span>Lockout Reset</span><strong>Required</strong></header>
+          <div class="hvac-command-row">
+            <button type="button" data-hvac-lockout-reset="${escapeAttribute(primaryController?.id || "")}">Reset Lockout</button>
+          </div>
+        </section>
+      ` : ""}
+      ${hvacStatusSection("Timers", startDelayStatus.active || fanPurgeStatus.active || fanProofTimerStatus.active ? "Active" : "Idle", [
+        `<div class="${escapeAttribute(startDelayStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(fanPurgeStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active ? fanPurgeStatus.label : hvacTimerLabel(0, primaryController?.fanOffDelaySeconds || 60))}</strong></div>`,
+        `<div class="${escapeAttribute(fanProofTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="fanProof" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Proof Timeout</span><strong>${escapeHtml(fanProofTimerStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(heatMinOnTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="heatMinOn" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Min On</span><strong>${escapeHtml(heatMinOnTimerStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(heatMinOffTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="heatMinOff" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Min Off</span><strong>${escapeHtml(heatMinOffTimerStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(coolMinOnTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="coolMinOn" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Min On</span><strong>${escapeHtml(coolMinOnTimerStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(coolMinOffTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="coolMinOff" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Min Off</span><strong>${escapeHtml(coolMinOffTimerStatus.label)}</strong></div>`
+      ].join(""))}
+      ${hvacStatusSection("Fan", fanProofActive ? "Proven" : fanCommandActive ? "Commanded" : "Stopped", [
+        hvacStatusRow("Fan Command", primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped"),
+        hvacStatusRow("Fan Proof", primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped"),
+        hvacStatusRow("Command", fanCommandStatus),
+        hvacStatusRow("Last Event", latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events"),
+        hvacFanCommandButtons
+      ].join(""))}
+      ${hvacStageCommandControls ? `
+        <section class="hvac-status-group">
+          <header><span>Stage Commands</span><strong>${heatStageLabel} / ${coolStageLabel}</strong></header>
+          ${hvacStageCommandControls}
+        </section>
+      ` : ""}
+      ${hvacStatusSection("Live I/O", liveHvac.inputMaskHex || "--", [
+        hvacStatusRow("Fault Input", faultState.channel ? `${faultState.channel} ${faultState.active ? "Active" : "Normal"}` : faultState.label, faultState.active ? "is-alarm" : ""),
+        hvacStatusRow("Occupied Input", occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label),
+        hvacStatusRow("Live I/O", `${liveHvac.inputMaskHex || "--"} / ${liveHvac.outputMaskHex || "--"}`),
+        hvacStatusRow("Space Temp", temperatureValue("space")),
+        hvacStatusRow("Supply Temp", temperatureValue("supply")),
+        hvacStatusRow("Last Seen", formatDateTime(primaryController?.lastSeenAt) || "Never"),
+        hvacStatusRow("IP", primaryController?.ipAddress || "Not seen")
+      ].join(""))}
+      ${hvacStatusSection("Safety", faultState.active || smokeState.active || freezestatState.active ? "Check" : "Normal", [
+        hvacStatusRow("Filter", filterState.channel ? `${filterState.channel} ${filterState.label}` : filterState.label, filterState.active ? "is-warning" : ""),
+        hvacStatusRow("Freezestat", freezestatState.channel ? `${freezestatState.channel} ${freezestatState.active ? "Active" : "Normal"}` : freezestatState.label, freezestatState.active ? "is-alarm" : ""),
+        hvacStatusRow("Smoke Shutdown", smokeState.channel ? `${smokeState.channel} ${smokeState.active ? "Active" : "Normal"}` : smokeState.label, smokeState.active ? "is-alarm" : ""),
+        hvacStatusRow("Heating Stages", heatStageLabel),
+        hvacStatusRow("Cooling Stages", coolStageLabel),
+        hvacStatusRow("Mode", liveMode),
+        hvacStatusRow("Occupancy", liveOccupancy)
+      ].join(""))}
+    </aside>
+  `;
   if (count) count.textContent = controllers.length ? String(controllers.length) : "RTU";
   panel.innerHTML = `
     <section class="hvac-scada-shell" aria-label="SiteWorks HVAC HMI">
@@ -21293,56 +21380,7 @@ function renderAutomationHvac() {
             </div>
           </div>
         </section>
-        <aside class="hvac-status-panel" aria-label="HVAC status points">
-          <header><span>Unit Status</span><strong>${runningUnits} Running</strong></header>
-          <div><span>Controller</span><strong>${escapeHtml(primaryController?.name || "Not added")}</strong></div>
-          <div class="${escapeAttribute(equipmentReady ? "is-ready" : "is-warning")}"><span>Equipment</span><strong>${escapeHtml(primaryEquipment?.equipmentId ? `${primaryEquipment.equipmentId} assigned` : equipmentStatusLabel)}</strong></div>
-          <div><span>Control Mode</span><strong>${escapeHtml(primaryController?.hvacControlMode || "Manual")}</strong></div>
-          <div><span>Temp Source</span><strong>${escapeHtml(tempSimulator.enabled ? "Simulator" : "Field inputs")}</strong></div>
-          <div><span>Schedule</span><strong>${escapeHtml(hvacScheduleStatus.label)}</strong></div>
-          <div><span>Setpoint Mode</span><strong>${escapeHtml(hvacCallState.occupancyMode || hvacScheduleStatus.occupancyMode || "--")}</strong></div>
-          <div class="${escapeAttribute(`hvac-call-row ${hvacCallState.className}`)}"><span>Auto Call</span><strong>${escapeHtml(hvacCallState.label)}</strong></div>
-          <div class="${escapeAttribute(`hvac-demand-row ${hvacDemandInfo.className}`)}"><span>Requested Stage</span><strong>${escapeHtml(hvacDemandInfo.label)}</strong></div>
-          <div><span>Active Setpoints</span><strong>${escapeHtml(`${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`)}</strong></div>
-          <div class="${escapeAttribute(startDelayStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>
-          <div class="${escapeAttribute(fanPurgeStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active ? fanPurgeStatus.label : hvacTimerLabel(0, primaryController?.fanOffDelaySeconds || 60))}</strong></div>
-          <div class="${escapeAttribute(hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")}"><span>Lockout</span><strong>${escapeHtml(hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear")}</strong></div>
-          ${hvacLockoutActive ? `
-            <div class="hvac-command-row">
-              <button type="button" data-hvac-lockout-reset="${escapeAttribute(primaryController?.id || "")}">Reset Lockout</button>
-            </div>
-          ` : ""}
-          <div><span>Fan Command</span><strong>${escapeHtml(primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped")}</strong></div>
-          <div><span>Fan Proof</span><strong>${escapeHtml(primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped")}</strong></div>
-          <div class="${escapeAttribute(fanProofTimerStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-timer-kind="fanProof" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Proof Timeout</span><strong>${escapeHtml(fanProofTimerStatus.label)}</strong></div>
-          ${hvacDemandInfo.family ? `<div class="hvac-stage-hold-row is-active"><span>Stage Hold</span><strong>${escapeHtml(hvacHoldReason)}</strong></div>` : ""}
-          <div><span>Command</span><strong>${escapeHtml(fanCommandStatus)}</strong></div>
-          <div><span>Last Event</span><strong>${escapeHtml(latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events")}</strong></div>
-          <div class="hvac-command-row">
-            <button type="button" class="${fanOnSelected ? "is-active" : ""}" ${primaryController && fanCommandOutputNumber && !fanOnBlockMessage ? "" : "disabled"} title="${escapeAttribute(fanOnBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan On">Fan On</button>
-            <button type="button" class="${fanAutoSelected ? "is-selected" : ""}" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Auto">Auto</button>
-            <button type="button" class="${fanOffSelected ? "is-selected" : ""}" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
-          </div>
-          ${hvacStageCommandControls}
-          <div><span>Fault Input</span><strong class="${escapeAttribute(faultState.active ? "status-danger" : "")}">${escapeHtml(faultState.channel ? `${faultState.channel} ${faultState.active ? "Active" : "Normal"}` : faultState.label)}</strong></div>
-          <div><span>Occupied Input</span><strong>${escapeHtml(occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label)}</strong></div>
-          <div><span>Heating Stages</span><strong>${escapeHtml(heatStageLabel)}</strong></div>
-          <div><span>Cooling Stages</span><strong>${escapeHtml(coolStageLabel)}</strong></div>
-          <div class="${escapeAttribute(heatMinOnTimerStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-timer-kind="heatMinOn" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Min On</span><strong>${escapeHtml(heatMinOnTimerStatus.label)}</strong></div>
-          <div class="${escapeAttribute(heatMinOffTimerStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-timer-kind="heatMinOff" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Min Off</span><strong>${escapeHtml(heatMinOffTimerStatus.label)}</strong></div>
-          <div class="${escapeAttribute(coolMinOnTimerStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-timer-kind="coolMinOn" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Min On</span><strong>${escapeHtml(coolMinOnTimerStatus.label)}</strong></div>
-          <div class="${escapeAttribute(coolMinOffTimerStatus.active ? "hvac-start-delay-row is-active" : "hvac-start-delay-row")}" data-hvac-timer-kind="coolMinOff" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Min Off</span><strong>${escapeHtml(coolMinOffTimerStatus.label)}</strong></div>
-          <div><span>Mode</span><strong>${escapeHtml(liveMode)}</strong></div>
-          <div><span>Occupancy</span><strong>${escapeHtml(liveOccupancy)}</strong></div>
-          <div><span>Live I/O</span><strong>${escapeHtml(liveHvac.inputMaskHex || "--")} / ${escapeHtml(liveHvac.outputMaskHex || "--")}</strong></div>
-          <div><span>Space Temp</span><strong>${escapeHtml(temperatureValue("space"))}</strong></div>
-          <div><span>Supply Temp</span><strong>${escapeHtml(temperatureValue("supply"))}</strong></div>
-          <div><span>Last Seen</span><strong>${escapeHtml(formatDateTime(primaryController?.lastSeenAt) || "Never")}</strong></div>
-          <div><span>IP</span><strong>${escapeHtml(primaryController?.ipAddress || "Not seen")}</strong></div>
-          <div><span>Filter</span><strong>${escapeHtml(filterState.channel ? `${filterState.channel} ${filterState.label}` : filterState.label)}</strong></div>
-          <div><span>Freezestat</span><strong class="${escapeAttribute(freezestatState.active ? "status-danger" : "")}">${escapeHtml(freezestatState.channel ? `${freezestatState.channel} ${freezestatState.active ? "Active" : "Normal"}` : freezestatState.label)}</strong></div>
-          <div><span>Smoke Shutdown</span><strong class="${escapeAttribute(smokeState.active ? "status-danger" : "")}">${escapeHtml(smokeState.channel ? `${smokeState.channel} ${smokeState.active ? "Active" : "Normal"}` : smokeState.label)}</strong></div>
-        </aside>
+        ${hvacStatusPanelHtml}
       </main>
       <section class="hvac-drawer-grid" aria-label="HVAC setup drawers">
         <details class="hvac-drawer" open>

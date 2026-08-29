@@ -2052,14 +2052,92 @@ textarea:disabled {
   gap: 12px;
 }
 
-.hvac-status-panel div:not(header div) {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+.hvac-status-panel > header,
+.hvac-status-group > header {
   min-height: 42px;
   padding: 9px 10px;
   border: 1px solid #263033;
+  background: linear-gradient(180deg, #11191d, #060a0c);
+}
+
+.hvac-status-group {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 3px;
+  background: rgba(24, 31, 34, 0.72);
+}
+
+.hvac-status-group > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  padding: 7px 8px;
+  border-color: rgba(45, 212, 191, 0.18);
+}
+
+.hvac-status-group > header span,
+.hvac-status-panel > header span {
+  color: #9ee7ff;
+  font-size: 0.76rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-status-group > header strong,
+.hvac-status-panel > header strong {
+  color: #5eead4;
+  font-size: 0.82rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid #263033;
   background: rgba(3, 7, 10, 0.74);
+}
+
+.hvac-status-row span {
+  flex: 0 0 auto;
+  color: #9ee7ff;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-status-row strong {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 950;
+  line-height: 1.12;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.hvac-status-row.is-warning {
+  border-color: rgba(245, 158, 11, 0.42);
+}
+
+.hvac-status-row.is-alarm {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(69, 10, 10, 0.62);
+}
+
+.hvac-status-row.is-alarm strong {
+  color: #fecaca;
+}
+
+.hvac-status-row.is-ready strong {
+  color: #5eead4;
 }
 
 .hvac-status-panel .hvac-command-row {
