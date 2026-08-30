@@ -21526,6 +21526,14 @@ function renderAutomationHvac() {
     : hvacDemandInfo.family === "cool" ? hvacDemandInfo.label.replace(/^Cooling\s+/i, "") : coolStageLabel;
   const liveMode = liveHvac.mode || primaryEquipment?.hvacMode || "Auto";
   const liveOccupancy = liveHvac.occupancy || primaryEquipment?.hvacOccupancy || "Unoccupied";
+  const roomDisplay = liveHvac.roomDisplay && typeof liveHvac.roomDisplay === "object" ? liveHvac.roomDisplay : {};
+  const roomDisplayLastSeenMs = roomDisplay.lastSeenAt ? new Date(roomDisplay.lastSeenAt).getTime() : 0;
+  const roomDisplayOnline = roomDisplayLastSeenMs && Number.isFinite(roomDisplayLastSeenMs) && Date.now() - roomDisplayLastSeenMs < 5 * 60 * 1000;
+  const roomDisplayTemp = Number(roomDisplay.temperatureF);
+  const roomDisplayHumidity = Number(roomDisplay.humidityPercent);
+  const roomDisplaySetpoints = Number.isFinite(Number(roomDisplay.heatSetpointF)) && Number.isFinite(Number(roomDisplay.coolSetpointF))
+    ? `${Number(roomDisplay.heatSetpointF).toFixed(0)} / ${Number(roomDisplay.coolSetpointF).toFixed(0)}`
+    : "--";
   const temperatureValue = (name) => {
     const temperature = hvacTemperatureFromController(primaryController, liveHvac, name);
     const value = temperature.value;
@@ -21671,6 +21679,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Requested Stage", hvacDemandInfo.label, `hvac-demand-row ${hvacDemandInfo.className}`),
         hvacStatusRow("Fan Command", primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped"),
         hvacStatusRow("Fan Proof", primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped"),
+        hvacStatusRow("Room Temp", Number.isFinite(roomDisplayTemp) ? `${roomDisplayTemp.toFixed(1)} F` : temperatureValue("space")),
         hvacStatusRow("Active Setpoints", `${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`),
         hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active") : "",
         hvacStatusRow("Lockout", hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear", hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")
@@ -21697,7 +21706,8 @@ function renderAutomationHvac() {
         hvacStatusRow("Controller", primaryController?.name || "Not added"),
         hvacStatusRow("Equipment", primaryEquipment?.equipmentId ? `${primaryEquipment.equipmentId} assigned` : equipmentStatusLabel, equipmentReady ? "is-ready" : "is-warning"),
         hvacStatusRow("Control Mode", primaryController?.hvacControlMode || "Manual"),
-        hvacStatusRow("Temp Source", tempSimulator.enabled ? "Simulator" : "Field inputs"),
+        hvacStatusRow("Temp Source", tempSimulator.enabled ? "Simulator" : roomDisplay.lastSeenAt ? "Room display" : "Field inputs"),
+        hvacStatusRow("Room Display", roomDisplay.lastSeenAt ? roomDisplayOnline ? "Online" : "Stale" : "Not seen", roomDisplay.lastSeenAt && !roomDisplayOnline ? "is-warning" : ""),
         hvacStatusRow("Schedule", hvacScheduleStatus.label),
         hvacStatusRow("Setpoint Mode", hvacCallState.occupancyMode || hvacScheduleStatus.occupancyMode || "--")
       ].join(""))}
@@ -21719,6 +21729,10 @@ function renderAutomationHvac() {
         hvacStatusRow("Occupied Input", occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label),
         hvacStatusRow("Live I/O", `${liveHvac.inputMaskHex || "--"} / ${liveHvac.outputMaskHex || "--"}`),
         hvacStatusRow("Space Temp", temperatureValue("space")),
+        hvacStatusRow("Room Display Temp", Number.isFinite(roomDisplayTemp) ? `${roomDisplayTemp.toFixed(1)} F` : "Not seen"),
+        hvacStatusRow("Room Humidity", Number.isFinite(roomDisplayHumidity) ? `${roomDisplayHumidity.toFixed(1)}%` : "Not seen"),
+        hvacStatusRow("Display Setpoints", `${roomDisplaySetpoints} report only`),
+        hvacStatusRow("Display Seen", roomDisplay.lastSeenAt ? formatDateTime(roomDisplay.lastSeenAt) : "Never"),
         hvacStatusRow("Supply Temp", temperatureValue("supply")),
         hvacStatusRow("Last Seen", formatDateTime(primaryController?.lastSeenAt) || "Never"),
         hvacStatusRow("IP", primaryController?.ipAddress || "Not seen")
