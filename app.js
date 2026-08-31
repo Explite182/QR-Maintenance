@@ -30624,7 +30624,8 @@ const siteworksApi = {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ controllers: [] }), { status: 200 }));
     const params = new URLSearchParams({
       customer_id: customerId || "",
-      location_id: locationId || ""
+      location_id: locationId || "",
+      live: String(Date.now())
     });
     return this.server(`/api/automation/hvac/controllers?${params.toString()}`);
   },
@@ -30632,7 +30633,8 @@ const siteworksApi = {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ commands: [] }), { status: 200 }));
     const params = new URLSearchParams({
       customer_id: customerId || "",
-      location_id: locationId || ""
+      location_id: locationId || "",
+      live: String(Date.now())
     });
     return this.server(`/api/automation/hvac/commands?${params.toString()}`);
   },
