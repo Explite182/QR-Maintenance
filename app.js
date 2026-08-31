@@ -19790,11 +19790,22 @@ function readHvacTempSimulatorFromForm(formData) {
 function hvacTemperatureFromController(controller = {}, liveHvac = {}, name = "") {
   const safeController = controller && typeof controller === "object" ? controller : {};
   const data = safeController.data && typeof safeController.data === "object" ? safeController.data : {};
+  const safeLiveHvac = liveHvac && typeof liveHvac === "object" ? liveHvac : {};
+  const roomDisplay = safeLiveHvac.roomDisplay && typeof safeLiveHvac.roomDisplay === "object" ? safeLiveHvac.roomDisplay : {};
+  const roomDisplaySeenMs = roomDisplay.lastSeenAt ? new Date(roomDisplay.lastSeenAt).getTime() : 0;
+  const roomDisplayOnline = roomDisplaySeenMs && Number.isFinite(roomDisplaySeenMs) && Date.now() - roomDisplaySeenMs < 5 * 60 * 1000;
+  const roomDisplayTemp = numberOrNull(roomDisplay.temperatureF);
+  const useRoomDisplaySetpoints = roomDisplayOnline &&
+    roomDisplayTemp !== null &&
+    data.useRoomDisplaySetpoints !== false &&
+    data.roomDisplaySetpointMode !== "report_only";
+  if (name === "space" && useRoomDisplaySetpoints) {
+    return { value: roomDisplayTemp, simulated: false, source: "room-display" };
+  }
   const simulator = normalizeHvacTempSimulator(safeController.tempSimulator || data.tempSimulator || data.commissioningTempSimulator || {});
   if (simulator.enabled && simulator[name] !== undefined) {
     return { value: simulator[name], simulated: true };
   }
-  const safeLiveHvac = liveHvac && typeof liveHvac === "object" ? liveHvac : {};
   const liveValue = safeLiveHvac.temperatures?.[name] ?? safeLiveHvac.analog?.[name];
   return { value: liveValue, simulated: false };
 }
