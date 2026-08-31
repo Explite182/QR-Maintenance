@@ -21438,17 +21438,22 @@ async function adjustHvacControllerSetpoint(controllerId = "", action = "") {
   const controller = getHvacControllers().find((item) => String(item.id || "") === String(controllerId || ""));
   if (!controller) return;
   const liveHvac = controller.data?.liveHvac && typeof controller.data.liveHvac === "object" ? controller.data.liveHvac : {};
+  const roomDisplay = liveHvac.roomDisplay && typeof liveHvac.roomDisplay === "object" ? liveHvac.roomDisplay : {};
   const callState = hvacTemperatureCallState(controller, liveHvac);
   const occupied = String(callState.occupancyMode || "Occupied").toLowerCase() !== "unoccupied";
   const heatKey = occupied ? "occupiedHeatSetpoint" : "unoccupiedHeatSetpoint";
   const coolKey = occupied ? "occupiedCoolSetpoint" : "unoccupiedCoolSetpoint";
-  const currentHeat = numberOrNull(controller[heatKey] ?? controller.data?.[heatKey] ?? callState.heatSetpoint) ?? (occupied ? 68 : 60);
-  const currentCool = numberOrNull(controller[coolKey] ?? controller.data?.[coolKey] ?? callState.coolSetpoint) ?? (occupied ? 74 : 82);
+  const currentHeat = callState.setpointSource === "room-display"
+    ? numberOrNull(roomDisplay.heatSetpointF ?? callState.heatSetpoint) ?? (occupied ? 68 : 60)
+    : numberOrNull(controller[heatKey] ?? controller.data?.[heatKey] ?? callState.heatSetpoint) ?? (occupied ? 68 : 60);
+  const currentCool = callState.setpointSource === "room-display"
+    ? numberOrNull(roomDisplay.coolSetpointF ?? callState.coolSetpoint) ?? (occupied ? 74 : 82)
+    : numberOrNull(controller[coolKey] ?? controller.data?.[coolKey] ?? callState.coolSetpoint) ?? (occupied ? 74 : 82);
   const step = 0.5;
   let nextHeat = currentHeat;
   let nextCool = currentCool;
-  let useRoomDisplaySetpoints = false;
-  let roomDisplaySetpointMode = "report_only";
+  let useRoomDisplaySetpoints = callState.setpointSource === "room-display";
+  let roomDisplaySetpointMode = useRoomDisplaySetpoints ? "active" : "report_only";
   if (action === "heat-down") nextHeat -= step;
   if (action === "heat-up") nextHeat += step;
   if (action === "cool-down") nextCool -= step;
@@ -21468,6 +21473,14 @@ async function adjustHvacControllerSetpoint(controllerId = "", action = "") {
     if (action.startsWith("cool")) nextCool = nextHeat + 1;
   }
   const now = new Date().toISOString();
+  const roomDisplayDesiredSetpoints = roomDisplaySetpointMode === "active"
+    ? {
+        heatSetpointF: nextHeat,
+        coolSetpointF: nextCool,
+        source: "siteworks",
+        updatedAt: now
+      }
+    : controller.data?.roomDisplayDesiredSetpoints;
   const nextAutoConfig = {
     ...(controller.data?.autoConfig || {}),
     [heatKey]: nextHeat,
@@ -21479,12 +21492,13 @@ async function adjustHvacControllerSetpoint(controllerId = "", action = "") {
     [coolKey]: String(nextCool),
     data: {
       ...(controller.data || {}),
-      [heatKey]: nextHeat,
-      [coolKey]: nextCool,
-      useRoomDisplaySetpoints,
-      roomDisplaySetpointMode,
-      autoConfig: nextAutoConfig
-    },
+        [heatKey]: nextHeat,
+        [coolKey]: nextCool,
+        useRoomDisplaySetpoints,
+        roomDisplaySetpointMode,
+        roomDisplayDesiredSetpoints,
+        autoConfig: nextAutoConfig
+      },
     updatedAt: now
   });
   const saveLocalHvacController = (savedController) => {
@@ -21519,6 +21533,8 @@ async function adjustHvacControllerSetpoint(controllerId = "", action = "") {
         occupiedCoolSetpoint: updatedController.occupiedCoolSetpoint,
         unoccupiedHeatSetpoint: updatedController.unoccupiedHeatSetpoint,
         unoccupiedCoolSetpoint: updatedController.unoccupiedCoolSetpoint,
+        roomDisplaySetpointMode: updatedController.data?.roomDisplaySetpointMode,
+        roomDisplayDesiredSetpoints: updatedController.data?.roomDisplayDesiredSetpoints,
         setpointDeadband: updatedController.setpointDeadband,
         startDelaySeconds: updatedController.startDelaySeconds,
         fanProofTimeoutSeconds: updatedController.fanProofTimeoutSeconds,
