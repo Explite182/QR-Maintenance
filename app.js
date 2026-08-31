@@ -19957,7 +19957,7 @@ function scheduleHvacControllerEmptyRetry(scopeKey = "") {
 
 async function refreshHvacLiveStatus() {
   const scopeKey = getHvacControllerScopeKey();
-  if (!scopeKey || editingHvacControllerId || hvacControllersLoading) return;
+  if (!scopeKey || hvacControllersLoading) return;
   hvacLiveRefreshActive = true;
   try {
     const refreshes = [loadHvacControllersForCurrentScope(true)];
