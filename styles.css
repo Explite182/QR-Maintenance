@@ -2202,6 +2202,64 @@ textarea:disabled {
   background: transparent;
 }
 
+.hvac-setpoint-control {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.26);
+  background: rgba(3, 7, 10, 0.5);
+}
+
+.hvac-setpoint-control > div {
+  display: grid;
+  grid-template-columns: 48px 38px minmax(54px, 1fr) 38px;
+  align-items: center;
+  gap: 6px;
+}
+
+.hvac-setpoint-control span {
+  color: #9ee7ff;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-setpoint-control strong {
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(7, 14, 18, 0.8);
+  color: #ffffff;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.hvac-setpoint-control button {
+  min-height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 3px;
+  color: #f8fafc;
+  background: linear-gradient(180deg, #263033, #101619);
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hvac-setpoint-control button.is-selected {
+  border-color: rgba(45, 212, 191, 0.6);
+  background: linear-gradient(180deg, #0f766e, #0b4f48);
+  color: #ecfeff;
+}
+
+.hvac-setpoint-control button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.hvac-setpoint-control .hvac-setpoint-source {
+  grid-template-columns: 1fr 1fr;
+}
+
 .hvac-status-panel .hvac-lockout-row.is-active {
   border-color: rgba(248, 113, 113, 0.72);
   background: rgba(69, 10, 10, 0.68);

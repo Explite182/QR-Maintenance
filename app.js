@@ -9384,6 +9384,16 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const hvacSetpointActionButton = event.target.closest("[data-hvac-setpoint-action]");
+  if (hvacSetpointActionButton) {
+    event.preventDefault();
+    await adjustHvacControllerSetpoint(
+      hvacSetpointActionButton.dataset.hvacControllerId || "",
+      hvacSetpointActionButton.dataset.hvacSetpointAction || ""
+    );
+    return;
+  }
+
   const hvacLockoutResetButton = event.target.closest("[data-hvac-lockout-reset]");
   if (hvacLockoutResetButton) {
     event.preventDefault();
@@ -21346,6 +21356,110 @@ async function saveHvacControllerFromForm(form) {
   renderAutomationHvac();
 }
 
+async function adjustHvacControllerSetpoint(controllerId = "", action = "") {
+  const controller = getHvacControllers().find((item) => String(item.id || "") === String(controllerId || ""));
+  if (!controller) return;
+  const liveHvac = controller.data?.liveHvac && typeof controller.data.liveHvac === "object" ? controller.data.liveHvac : {};
+  const callState = hvacTemperatureCallState(controller, liveHvac);
+  const occupied = String(callState.occupancyMode || "Occupied").toLowerCase() !== "unoccupied";
+  const heatKey = occupied ? "occupiedHeatSetpoint" : "unoccupiedHeatSetpoint";
+  const coolKey = occupied ? "occupiedCoolSetpoint" : "unoccupiedCoolSetpoint";
+  const currentHeat = numberOrNull(controller[heatKey] ?? controller.data?.[heatKey] ?? callState.heatSetpoint) ?? (occupied ? 68 : 60);
+  const currentCool = numberOrNull(controller[coolKey] ?? controller.data?.[coolKey] ?? callState.coolSetpoint) ?? (occupied ? 74 : 82);
+  const step = 0.5;
+  let nextHeat = currentHeat;
+  let nextCool = currentCool;
+  let useRoomDisplaySetpoints = false;
+  let roomDisplaySetpointMode = "report_only";
+  if (action === "heat-down") nextHeat -= step;
+  if (action === "heat-up") nextHeat += step;
+  if (action === "cool-down") nextCool -= step;
+  if (action === "cool-up") nextCool += step;
+  if (action === "use-display") {
+    useRoomDisplaySetpoints = true;
+    roomDisplaySetpointMode = "active";
+  }
+  if (action === "use-siteworks") {
+    useRoomDisplaySetpoints = false;
+    roomDisplaySetpointMode = "report_only";
+  }
+  nextHeat = Math.round(nextHeat * 2) / 2;
+  nextCool = Math.round(nextCool * 2) / 2;
+  if (nextHeat > nextCool - 1) {
+    if (action.startsWith("heat")) nextHeat = nextCool - 1;
+    if (action.startsWith("cool")) nextCool = nextHeat + 1;
+  }
+  const now = new Date().toISOString();
+  const nextAutoConfig = {
+    ...(controller.data?.autoConfig || {}),
+    [heatKey]: nextHeat,
+    [coolKey]: nextCool
+  };
+  const updatedController = normalizeHvacController({
+    ...controller,
+    [heatKey]: String(nextHeat),
+    [coolKey]: String(nextCool),
+    data: {
+      ...(controller.data || {}),
+      [heatKey]: nextHeat,
+      [coolKey]: nextCool,
+      useRoomDisplaySetpoints,
+      roomDisplaySetpointMode,
+      autoConfig: nextAutoConfig
+    },
+    updatedAt: now
+  });
+  const saveLocalHvacController = (savedController) => {
+    const normalizedController = normalizeHvacController(savedController);
+    saveHvacControllers([
+      normalizedController,
+      ...getHvacControllers().filter((item) => item.id !== normalizedController.id)
+    ]);
+    hvacControllersCache = [
+      normalizedController,
+      ...hvacControllersCache.filter((item) => item.id !== normalizedController.id)
+    ];
+    hvacControllersLoadedScope = getHvacControllerScopeKey();
+  };
+  try {
+    const response = await siteworksApi.saveHvacController({
+      ...updatedController,
+      customer_id: updatedController.customerId,
+      location_id: updatedController.locationId,
+      device_uid: updatedController.uid,
+      controller_type: updatedController.type,
+      equipment_count: updatedController.equipmentCount,
+      equipment_ids: updatedController.equipmentIds,
+      data: {
+        ...(updatedController.data || {}),
+        equipmentIds: updatedController.equipmentIds,
+        heatStageCount: updatedController.heatStageCount,
+        coolStageCount: updatedController.coolStageCount,
+        hvacControlMode: updatedController.hvacControlMode,
+        occupancyMode: updatedController.occupancyMode,
+        occupiedHeatSetpoint: updatedController.occupiedHeatSetpoint,
+        occupiedCoolSetpoint: updatedController.occupiedCoolSetpoint,
+        unoccupiedHeatSetpoint: updatedController.unoccupiedHeatSetpoint,
+        unoccupiedCoolSetpoint: updatedController.unoccupiedCoolSetpoint,
+        setpointDeadband: updatedController.setpointDeadband,
+        startDelaySeconds: updatedController.startDelaySeconds,
+        fanProofTimeoutSeconds: updatedController.fanProofTimeoutSeconds,
+        fanOffDelaySeconds: updatedController.fanOffDelaySeconds,
+        points: updatedController.points
+      }
+    });
+    if (!response.ok) throw new Error(`HVAC setpoint save failed: ${response.status}`);
+    const payload = await response.json();
+    saveLocalHvacController(payload.controller || updatedController);
+    addActivity("HVAC setpoints updated", `${updatedController.name}: ${useRoomDisplaySetpoints ? "room display active" : "SiteWorks active"}`);
+  } catch (error) {
+    console.warn("HVAC setpoint update could not be saved to the server.", error);
+    saveLocalHvacController(updatedController);
+    addActivity("HVAC setpoint save failed", `${updatedController.name}: saved locally only`);
+  }
+  renderAutomationHvac();
+}
+
 async function deleteHvacController(controllerId = "") {
   if (!controllerId) return;
   const controller = getHvacControllers().find((item) => item.id === controllerId);
@@ -21557,6 +21671,28 @@ function renderAutomationHvac() {
     ? `${Number(roomDisplay.heatSetpointF).toFixed(0)} / ${Number(roomDisplay.coolSetpointF).toFixed(0)}`
     : "--";
   const setpointSourceLabel = hvacCallState.setpointSource === "room-display" ? "room display" : "controller";
+  const activeHeatSetpointLabel = numberOrNull(hvacCallState.heatSetpoint) !== null ? Number(hvacCallState.heatSetpoint).toFixed(1) : "--";
+  const activeCoolSetpointLabel = numberOrNull(hvacCallState.coolSetpoint) !== null ? Number(hvacCallState.coolSetpoint).toFixed(1) : "--";
+  const hvacSetpointControls = primaryController ? `
+    <div class="hvac-setpoint-control" aria-label="HVAC setpoint controls">
+      <div>
+        <span>Heat</span>
+        <button type="button" data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="heat-down" aria-label="Lower heat setpoint">-</button>
+        <strong>${escapeHtml(activeHeatSetpointLabel)}</strong>
+        <button type="button" data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="heat-up" aria-label="Raise heat setpoint">+</button>
+      </div>
+      <div>
+        <span>Cool</span>
+        <button type="button" data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="cool-down" aria-label="Lower cool setpoint">-</button>
+        <strong>${escapeHtml(activeCoolSetpointLabel)}</strong>
+        <button type="button" data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="cool-up" aria-label="Raise cool setpoint">+</button>
+      </div>
+      <div class="hvac-setpoint-source">
+        <button type="button" class="${hvacCallState.setpointSource === "controller" ? "is-selected" : ""}" data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="use-siteworks">SiteWorks</button>
+        <button type="button" class="${hvacCallState.setpointSource === "room-display" ? "is-selected" : ""}" ${roomDisplayOnline ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="use-display">Room Display</button>
+      </div>
+    </div>
+  ` : "";
   const temperatureValue = (name) => {
     const temperature = hvacTemperatureFromController(primaryController, liveHvac, name);
     const value = temperature.value;
@@ -21704,6 +21840,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Fan Proof", primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped"),
         hvacStatusRow("Room Temp", Number.isFinite(roomDisplayTemp) ? `${roomDisplayTemp.toFixed(1)} F` : temperatureValue("space")),
         hvacStatusRow("Active Setpoints", `${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"} (${setpointSourceLabel})`),
+        hvacSetpointControls,
         hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active") : "",
         hvacStatusRow("Lockout", hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear", hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")
       ].join(""))}
