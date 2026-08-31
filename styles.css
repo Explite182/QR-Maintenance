@@ -2235,6 +2235,22 @@ textarea:disabled {
   line-height: 1;
 }
 
+.hvac-setpoint-control strong.is-pending {
+  border-color: rgba(245, 158, 11, 0.52);
+  background: rgba(69, 45, 7, 0.42);
+  color: #fef3c7;
+}
+
+.hvac-setpoint-control strong small {
+  display: block;
+  margin-top: 3px;
+  color: #fbbf24;
+  font-size: 0.58rem;
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .hvac-setpoint-control button {
   min-height: 34px;
   border: 1px solid rgba(148, 163, 184, 0.42);

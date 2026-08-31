@@ -21485,11 +21485,17 @@ async function adjustHvacControllerSetpoint(controllerId = "", action = "") {
   const occupied = String(callState.occupancyMode || "Occupied").toLowerCase() !== "unoccupied";
   const heatKey = occupied ? "occupiedHeatSetpoint" : "unoccupiedHeatSetpoint";
   const coolKey = occupied ? "occupiedCoolSetpoint" : "unoccupiedCoolSetpoint";
+  const desiredRoomSetpoints = controller.data?.roomDisplayDesiredSetpoints && typeof controller.data.roomDisplayDesiredSetpoints === "object"
+    ? controller.data.roomDisplayDesiredSetpoints
+    : {};
+  const desiredRoomHeat = numberOrNull(desiredRoomSetpoints.heatSetpointF);
+  const desiredRoomCool = numberOrNull(desiredRoomSetpoints.coolSetpointF);
+  const hasDesiredRoomSetpoints = desiredRoomHeat !== null && desiredRoomCool !== null && desiredRoomCool > desiredRoomHeat;
   const currentHeat = callState.setpointSource === "room-display"
-    ? numberOrNull(roomDisplay.heatSetpointF ?? callState.heatSetpoint) ?? (occupied ? 68 : 60)
+    ? (hasDesiredRoomSetpoints ? desiredRoomHeat : numberOrNull(roomDisplay.heatSetpointF ?? callState.heatSetpoint)) ?? (occupied ? 68 : 60)
     : numberOrNull(controller[heatKey] ?? controller.data?.[heatKey] ?? callState.heatSetpoint) ?? (occupied ? 68 : 60);
   const currentCool = callState.setpointSource === "room-display"
-    ? numberOrNull(roomDisplay.coolSetpointF ?? callState.coolSetpoint) ?? (occupied ? 74 : 82)
+    ? (hasDesiredRoomSetpoints ? desiredRoomCool : numberOrNull(roomDisplay.coolSetpointF ?? callState.coolSetpoint)) ?? (occupied ? 74 : 82)
     : numberOrNull(controller[coolKey] ?? controller.data?.[coolKey] ?? callState.coolSetpoint) ?? (occupied ? 74 : 82);
   const step = 0.5;
   let nextHeat = currentHeat;
@@ -21830,18 +21836,34 @@ function renderAutomationHvac() {
     : "report only";
   const activeHeatSetpointLabel = hvacTemperatureLabel(hvacCallState.heatSetpoint);
   const activeCoolSetpointLabel = hvacTemperatureLabel(hvacCallState.coolSetpoint);
+  const desiredRoomSetpoints = primaryController?.data?.roomDisplayDesiredSetpoints && typeof primaryController.data.roomDisplayDesiredSetpoints === "object"
+    ? primaryController.data.roomDisplayDesiredSetpoints
+    : {};
+  const desiredRoomHeat = numberOrNull(desiredRoomSetpoints.heatSetpointF);
+  const desiredRoomCool = numberOrNull(desiredRoomSetpoints.coolSetpointF);
+  const usePendingRoomTargets = hvacCallState.setpointSource === "room-display" &&
+    hvacCallState.roomSetpointPending &&
+    desiredRoomHeat !== null &&
+    desiredRoomCool !== null &&
+    desiredRoomCool > desiredRoomHeat;
+  const setpointControlLabel = (actualF, desiredF) => {
+    if (usePendingRoomTargets && desiredF !== null && Math.abs((numberOrNull(actualF) ?? desiredF) - desiredF) >= 0.05) {
+      return `${hvacTemperatureLabel(desiredF)}<small>waiting for room display</small>`;
+    }
+    return escapeHtml(hvacTemperatureLabel(actualF));
+  };
   const hvacSetpointControls = primaryController ? `
     <div class="hvac-setpoint-control" aria-label="HVAC setpoint controls">
       <div>
         <span>Heat</span>
         <button type="button" data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="heat-down" aria-label="Lower heat setpoint">-</button>
-        <strong>${escapeHtml(activeHeatSetpointLabel)}</strong>
+        <strong class="${usePendingRoomTargets && desiredRoomHeat !== null ? "is-pending" : ""}">${setpointControlLabel(hvacCallState.heatSetpoint, desiredRoomHeat)}</strong>
         <button type="button" data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="heat-up" aria-label="Raise heat setpoint">+</button>
       </div>
       <div>
         <span>Cool</span>
         <button type="button" data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="cool-down" aria-label="Lower cool setpoint">-</button>
-        <strong>${escapeHtml(activeCoolSetpointLabel)}</strong>
+        <strong class="${usePendingRoomTargets && desiredRoomCool !== null ? "is-pending" : ""}">${setpointControlLabel(hvacCallState.coolSetpoint, desiredRoomCool)}</strong>
         <button type="button" data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-setpoint-action="cool-up" aria-label="Raise cool setpoint">+</button>
       </div>
       <div class="hvac-setpoint-source">
