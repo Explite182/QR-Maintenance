@@ -20435,6 +20435,23 @@ function hvacFanProofTimerStatus(controller = {}, fanCommandActive = false, fanP
   return { ...status, active: status.active && fanCommandActive && !fanProofActive };
 }
 
+function hvacFanProofStuckTimerStatus(controller = {}, fanCommandActive = false, fanProofActive = false, liveHvac = {}) {
+  const timing = liveHvac && typeof liveHvac === "object" && liveHvac.timing && typeof liveHvac.timing === "object" ? liveHvac.timing : {};
+  const setMs = Number(timing.fanProofStuckTimeoutMs);
+  const elapsedMs = Number(timing.fanProofStuckElapsedMs);
+  const setSeconds = Math.max(5, Math.round((Number.isFinite(setMs) && setMs > 0 ? setMs : 15000) / 1000));
+  if (!controller || fanCommandActive || !fanProofActive || !Number.isFinite(elapsedMs) || elapsedMs <= 0) {
+    return { active: false, remainingSeconds: 0, setSeconds, label: hvacTimerLabel(0, setSeconds) };
+  }
+  const remainingSeconds = Math.max(0, setSeconds - Math.floor(elapsedMs / 1000));
+  return {
+    active: remainingSeconds > 0,
+    remainingSeconds,
+    setSeconds,
+    label: hvacTimerLabel(remainingSeconds, setSeconds)
+  };
+}
+
 function hvacStageTimerStatus(controller = {}, family = "heat", timerType = "minOn", timingMs = 0, now = Date.now()) {
   const setSeconds = Math.max(0, Math.round(hvacStageTimerSetMs(controller, family, timerType, timingMs) / 1000));
   const labelPrefix = family === "cool" ? "Cool Stage" : "Heat Stage";
@@ -20527,13 +20544,15 @@ function refreshHvacStartDelayCountdowns() {
       const kind = row.dataset.hvacTimerKind;
       const timerStatus = kind === "fanProof"
         ? hvacFanProofTimerStatus(controller, fanCommandActive, fanProofActive)
-        : kind === "heatMinOn"
-          ? hvacStageTimerStatus(controller, "heat", "minOn", timing.heatingMinOnMs)
-          : kind === "heatMinOff"
-            ? hvacStageTimerStatus(controller, "heat", "minOff", timing.heatingMinOffMs)
-            : kind === "coolMinOn"
-              ? hvacStageTimerStatus(controller, "cool", "minOn", timing.coolingMinOnMs)
-              : hvacStageTimerStatus(controller, "cool", "minOff", timing.coolingMinOffMs);
+        : kind === "fanProofStuck"
+          ? hvacFanProofStuckTimerStatus(controller, fanCommandActive, fanProofActive, liveHvac)
+          : kind === "heatMinOn"
+            ? hvacStageTimerStatus(controller, "heat", "minOn", timing.heatingMinOnMs)
+            : kind === "heatMinOff"
+              ? hvacStageTimerStatus(controller, "heat", "minOff", timing.heatingMinOffMs)
+              : kind === "coolMinOn"
+                ? hvacStageTimerStatus(controller, "cool", "minOn", timing.coolingMinOnMs)
+                : hvacStageTimerStatus(controller, "cool", "minOff", timing.coolingMinOffMs);
       row.classList.toggle("is-active", timerStatus.active);
       label.textContent = timerStatus.label;
       return;
@@ -20707,14 +20726,17 @@ function hvacTemperatureCallState(controller = {}, liveHvac = {}) {
   const hasDesiredRoomSetpoints = desiredRoomHeatSetpoint !== null &&
     desiredRoomCoolSetpoint !== null &&
     desiredRoomCoolSetpoint > desiredRoomHeatSetpoint;
+  const hasRoomDisplaySetpoints = roomHeatSetpoint !== null &&
+    roomCoolSetpoint !== null &&
+    roomCoolSetpoint > roomHeatSetpoint;
   const useRoomDisplaySetpoints = roomDisplayOnline &&
-    ((roomHeatSetpoint !== null && roomCoolSetpoint !== null) || hasDesiredRoomSetpoints) &&
+    hasRoomDisplaySetpoints &&
     data.useRoomDisplaySetpoints !== false &&
     data.roomDisplaySetpointMode !== "report_only";
   const configuredHeatSetpoint = numberOrNull(occupied ? controller.occupiedHeatSetpoint : controller.unoccupiedHeatSetpoint);
   const configuredCoolSetpoint = numberOrNull(occupied ? controller.occupiedCoolSetpoint : controller.unoccupiedCoolSetpoint);
-  const heatSetpoint = useRoomDisplaySetpoints ? desiredRoomHeatSetpoint ?? roomHeatSetpoint : configuredHeatSetpoint;
-  const coolSetpoint = useRoomDisplaySetpoints ? desiredRoomCoolSetpoint ?? roomCoolSetpoint : configuredCoolSetpoint;
+  const heatSetpoint = useRoomDisplaySetpoints ? roomHeatSetpoint : configuredHeatSetpoint;
+  const coolSetpoint = useRoomDisplaySetpoints ? roomCoolSetpoint : configuredCoolSetpoint;
   const roomSetpointPending = useRoomDisplaySetpoints && hasDesiredRoomSetpoints && (
     Math.abs((roomHeatSetpoint ?? desiredRoomHeatSetpoint) - desiredRoomHeatSetpoint) >= 0.05 ||
     Math.abs((roomCoolSetpoint ?? desiredRoomCoolSetpoint) - desiredRoomCoolSetpoint) >= 0.05
@@ -21667,6 +21689,7 @@ function renderAutomationHvac() {
   const startDelayStatus = hvacStartDelayStatus(primaryController, hvacCommandsCache);
   const fanPurgeStatus = hvacFanPurgeStatus(primaryController, hvacCommandsCache);
   const fanProofTimerStatus = hvacFanProofTimerStatus(primaryController, fanCommandActive, fanProofActive);
+  const fanProofStuckTimerStatus = hvacFanProofStuckTimerStatus(primaryController, fanCommandActive, fanProofActive, liveHvac);
   const heatMinOnTimerStatus = hvacStageTimerStatus(primaryController, "heat", "minOn", hvacTiming.heatingMinOnMs);
   const heatMinOffTimerStatus = hvacStageTimerStatus(primaryController, "heat", "minOff", hvacTiming.heatingMinOffMs);
   const coolMinOnTimerStatus = hvacStageTimerStatus(primaryController, "cool", "minOn", hvacTiming.coolingMinOnMs);
@@ -21800,8 +21823,11 @@ function renderAutomationHvac() {
     ? hvacSetpointPairLabel(roomDisplay.heatSetpointF, roomDisplay.coolSetpointF)
     : "--";
   const setpointSourceLabel = hvacCallState.setpointSource === "room-display"
-    ? `room display${hvacCallState.roomSetpointPending ? " syncing" : ""}`
+    ? "room display"
     : "controller";
+  const roomDisplaySetpointStatus = hvacCallState.setpointSource === "room-display"
+    ? hvacCallState.roomSetpointPending ? "command pending" : "active"
+    : "report only";
   const activeHeatSetpointLabel = hvacTemperatureLabel(hvacCallState.heatSetpoint);
   const activeCoolSetpointLabel = hvacTemperatureLabel(hvacCallState.coolSetpoint);
   const hvacSetpointControls = primaryController ? `
@@ -22002,10 +22028,11 @@ function renderAutomationHvac() {
         hvacStatusRow("Schedule", hvacScheduleStatus.label),
         hvacStatusRow("Setpoint Mode", hvacCallState.occupancyMode || hvacScheduleStatus.occupancyMode || "--")
       ].join(""))}
-      ${hvacStatusDrawer("Timers", startDelayStatus.active || fanPurgeStatus.active || fanProofTimerStatus.active ? "Active" : "Idle", [
+      ${hvacStatusDrawer("Timers", startDelayStatus.active || fanPurgeStatus.active || fanProofTimerStatus.active || fanProofStuckTimerStatus.active ? "Active" : "Idle", [
         `<div class="${escapeAttribute(startDelayStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(fanPurgeStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active ? fanPurgeStatus.label : hvacTimerLabel(0, primaryController?.fanOffDelaySeconds || 60))}</strong></div>`,
         `<div class="${escapeAttribute(fanProofTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="fanProof" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Proof Timeout</span><strong>${escapeHtml(fanProofTimerStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(fanProofStuckTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="fanProofStuck" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Proof Stuck</span><strong>${escapeHtml(fanProofStuckTimerStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(heatMinOnTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="heatMinOn" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Min On</span><strong>${escapeHtml(heatMinOnTimerStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(heatMinOffTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="heatMinOff" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Min Off</span><strong>${escapeHtml(heatMinOffTimerStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(coolMinOnTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="coolMinOn" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Min On</span><strong>${escapeHtml(coolMinOnTimerStatus.label)}</strong></div>`,
@@ -22022,7 +22049,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Space Temp", temperatureValue("space")),
         hvacStatusRow("Room Display Temp", Number.isFinite(roomDisplayTemp) ? hvacTemperatureLabel(roomDisplayTemp) : "Not seen"),
         hvacStatusRow("Room Humidity", Number.isFinite(roomDisplayHumidity) ? `${roomDisplayHumidity.toFixed(1)}%` : "Not seen"),
-        hvacStatusRow("Display Setpoints", `${roomDisplaySetpoints} ${hvacCallState.setpointSource === "room-display" ? hvacCallState.roomSetpointPending ? "syncing" : "active" : "report only"}`),
+        hvacStatusRow("Display Setpoints", `${roomDisplaySetpoints} ${roomDisplaySetpointStatus}`),
         hvacStatusRow("Display Seen", roomDisplay.lastSeenAt ? formatDateTime(roomDisplay.lastSeenAt) : "Never"),
         hvacStatusRow("Supply Temp", temperatureValue("supply")),
         hvacStatusRow("Last Seen", formatDateTime(primaryController?.lastSeenAt) || "Never"),
