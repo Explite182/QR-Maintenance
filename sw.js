@@ -1,20 +1,18 @@
-const SITEWORKS_SW_VERSION = "20260831-hvac-live-refresh-focus-1";
+const SITEWORKS_SW_VERSION = "20260831-icon-cache-cleanup-1";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260831-hvac-live-refresh-focus-1",
+  "/styles.css?v=20260831-icon-cache-cleanup-1",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260831-hvac-live-refresh-focus-1",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260831-hvac-live-refresh-focus-1",
-  "/js/panel-hmi-standard-renderer.js?v=20260831-hvac-live-refresh-focus-1",
-  "/app.js?v=20260831-hvac-live-refresh-focus-1",
-  "/manifest.webmanifest?v=20260831-hvac-live-refresh-focus-1",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260831-hvac-live-refresh-focus-1",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260831-hvac-live-refresh-focus-1",
-  "/icons/siteworks-icon-192.png?v=20260831-hvac-live-refresh-focus-1",
-  "/icons/siteworks-icon-512.png?v=20260831-hvac-live-refresh-focus-1"
+  "/js/panel-hmi-standard-model.js?v=20260831-icon-cache-cleanup-1",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260831-icon-cache-cleanup-1",
+  "/js/panel-hmi-standard-renderer.js?v=20260831-icon-cache-cleanup-1",
+  "/app.js?v=20260831-icon-cache-cleanup-1",
+  "/manifest.webmanifest?v=20260831-icon-cache-cleanup-1",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260831-icon-cache-cleanup-1",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260831-icon-cache-cleanup-1"
 ];
 
 self.addEventListener("install", (event) => {
