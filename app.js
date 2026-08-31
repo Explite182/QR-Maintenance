@@ -20356,6 +20356,17 @@ function hvacTimerLabel(remainingSeconds = 0, setSeconds = 0) {
     : `Countdown: idle / Set: ${setLabel}`;
 }
 
+function hvacStageTimerSetMs(controller = {}, family = "heat", timerType = "minOn", timingMs = 0) {
+  const directValue = Number(timingMs);
+  if (Number.isFinite(directValue) && directValue > 0) return directValue;
+  const data = controller?.data && typeof controller.data === "object" ? controller.data : {};
+  const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
+  const key = `${family === "cool" ? "cooling" : "heating"}${timerType === "minOn" ? "MinOn" : "MinOff"}Ms`;
+  const configuredValue = Number(data[key] ?? autoConfig[key]);
+  if (Number.isFinite(configuredValue) && configuredValue > 0) return configuredValue;
+  return timerType === "minOn" ? 10000 : 15000;
+}
+
 function hvacLiveTimerStatus(timer = {}, fallbackSetSeconds = 0, now = Date.now()) {
   const source = timer && typeof timer === "object" ? timer : {};
   const setSeconds = Math.max(0, Math.min(3600, Math.round(Number(source.setSeconds || fallbackSetSeconds) || 0)));
@@ -20425,7 +20436,7 @@ function hvacFanProofTimerStatus(controller = {}, fanCommandActive = false, fanP
 }
 
 function hvacStageTimerStatus(controller = {}, family = "heat", timerType = "minOn", timingMs = 0, now = Date.now()) {
-  const setSeconds = Math.max(0, Math.round(Number(timingMs || 0) / 1000));
+  const setSeconds = Math.max(0, Math.round(hvacStageTimerSetMs(controller, family, timerType, timingMs) / 1000));
   const labelPrefix = family === "cool" ? "Cool Stage" : "Heat Stage";
   const countKey = family === "cool" ? "coolStageCount" : "heatStageCount";
   const pointPrefix = family === "cool" ? "coolStage" : "heatStage";
