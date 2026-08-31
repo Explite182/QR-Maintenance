@@ -5577,6 +5577,12 @@ const PUMP_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
 let hvacSetupEditHoldUntil = 0;
 const HVAC_SETUP_FORM_SELECTOR = "[data-hvac-controller-form], [data-hvac-firmware-form], [data-hvac-firmware-assignment-form]";
 const HVAC_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
+
+function isEditableFormControl(element = null) {
+  const tagName = String(element?.tagName || "").toLowerCase();
+  const inputType = String(element?.type || "").toLowerCase();
+  return ["input", "select", "textarea"].includes(tagName) && !["button", "submit", "reset"].includes(inputType);
+}
 const HVAC_FIRMWARE_REFRESH_MS = 5000;
 const ALL_CUSTOMERS = "all";
 const ALL_LOCATIONS = "all";
@@ -8051,10 +8057,7 @@ document.addEventListener("pointerdown", (event) => {
 
 document.addEventListener("pointerdown", (event) => {
   const form = event.target?.closest?.(HVAC_SETUP_FORM_SELECTOR);
-  const tagName = String(event.target?.tagName || "").toLowerCase();
-  const inputType = String(event.target?.type || "").toLowerCase();
-  const isEditableControl = ["input", "select", "textarea"].includes(tagName) && !["button", "submit", "reset"].includes(inputType);
-  if (form && isEditableControl) {
+  if (form && isEditableFormControl(event.target)) {
     markHvacSetupEditingActive(form);
   } else if (!event.target?.closest?.(".hvac-drawer")) {
     clearHvacSetupEditingActive();
@@ -8071,7 +8074,7 @@ document.addEventListener("pointerdown", (event) => {
 ["focusin", "input", "change", "keydown"].forEach((eventName) => {
   document.addEventListener(eventName, (event) => {
     const form = event.target?.closest?.(HVAC_SETUP_FORM_SELECTOR);
-    if (form) markHvacSetupEditingActive(form);
+    if (form && isEditableFormControl(event.target)) markHvacSetupEditingActive(form);
   }, true);
 });
 
@@ -17261,10 +17264,7 @@ function clearPumpSetupEditingActive() {
 
 function isHvacSetupEditingActive() {
   const activeElement = document.activeElement;
-  const tagName = String(activeElement?.tagName || "").toLowerCase();
-  const inputType = String(activeElement?.type || "").toLowerCase();
-  const isEditableControl = ["input", "select", "textarea"].includes(tagName) && !["button", "submit", "reset"].includes(inputType);
-  if (isEditableControl && activeElement?.closest?.(HVAC_SETUP_FORM_SELECTOR)) return true;
+  if (isEditableFormControl(activeElement) && activeElement?.closest?.(HVAC_SETUP_FORM_SELECTOR)) return true;
   const now = Date.now();
   if (hvacSetupEditHoldUntil && now < hvacSetupEditHoldUntil) return true;
   if (hvacSetupEditHoldUntil && now >= hvacSetupEditHoldUntil) clearHvacSetupEditingActive();
