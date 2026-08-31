@@ -1,18 +1,18 @@
-const SITEWORKS_SW_VERSION = "20260831-hvac-display-setpoints-5";
+const SITEWORKS_SW_VERSION = "20260831-hvac-realtime-setpoints-6";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260831-hvac-display-setpoints-5",
+  "/styles.css?v=20260831-hvac-realtime-setpoints-6",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260831-hvac-display-setpoints-5",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260831-hvac-display-setpoints-5",
-  "/js/panel-hmi-standard-renderer.js?v=20260831-hvac-display-setpoints-5",
-  "/app.js?v=20260831-hvac-display-setpoints-5",
-  "/manifest.webmanifest?v=20260831-hvac-display-setpoints-5",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260831-hvac-display-setpoints-5",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260831-hvac-display-setpoints-5"
+  "/js/panel-hmi-standard-model.js?v=20260831-hvac-realtime-setpoints-6",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260831-hvac-realtime-setpoints-6",
+  "/js/panel-hmi-standard-renderer.js?v=20260831-hvac-realtime-setpoints-6",
+  "/app.js?v=20260831-hvac-realtime-setpoints-6",
+  "/manifest.webmanifest?v=20260831-hvac-realtime-setpoints-6",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260831-hvac-realtime-setpoints-6",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260831-hvac-realtime-setpoints-6"
 ];
 
 self.addEventListener("install", (event) => {
