@@ -19801,11 +19801,7 @@ function hvacTemperatureFromController(controller = {}, liveHvac = {}, name = ""
   const roomDisplaySeenMs = roomDisplay.lastSeenAt ? new Date(roomDisplay.lastSeenAt).getTime() : 0;
   const roomDisplayOnline = roomDisplaySeenMs && Number.isFinite(roomDisplaySeenMs) && Date.now() - roomDisplaySeenMs < 5 * 60 * 1000;
   const roomDisplayTemp = numberOrNull(roomDisplay.temperatureF);
-  const useRoomDisplaySetpoints = roomDisplayOnline &&
-    roomDisplayTemp !== null &&
-    data.useRoomDisplaySetpoints !== false &&
-    data.roomDisplaySetpointMode !== "report_only";
-  if (name === "space" && useRoomDisplaySetpoints) {
+  if (name === "space" && roomDisplayOnline && roomDisplayTemp !== null) {
     return { value: roomDisplayTemp, simulated: false, source: "room-display" };
   }
   const simulator = normalizeHvacTempSimulator(safeController.tempSimulator || data.tempSimulator || data.commissioningTempSimulator || {});
