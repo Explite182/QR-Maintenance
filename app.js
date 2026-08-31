@@ -5578,7 +5578,7 @@ const PUMP_SETUP_FORM_SELECTOR = "[data-pump-controller-form], [data-pump-io-map
 const PUMP_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
 let hvacSetupEditHoldUntil = 0;
 const HVAC_SETUP_FORM_SELECTOR = "[data-hvac-controller-form], [data-hvac-firmware-form], [data-hvac-firmware-assignment-form]";
-const HVAC_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
+const HVAC_SETUP_EDIT_HOLD_MS = 8 * 1000;
 
 function isEditableFormControl(element = null) {
   const tagName = String(element?.tagName || "").toLowerCase();
@@ -17267,10 +17267,13 @@ function clearPumpSetupEditingActive() {
 function isHvacSetupEditingActive() {
   const activeElement = document.activeElement;
   if (isEditableFormControl(activeElement) && activeElement?.closest?.(HVAC_SETUP_FORM_SELECTOR)) return true;
+  const selectedFirmwareFile = Array.from(document.querySelectorAll(`${HVAC_SETUP_FORM_SELECTOR} input[type="file"]`))
+    .some((input) => input.files && input.files.length);
+  if (selectedFirmwareFile) return true;
   const now = Date.now();
   if (hvacSetupEditHoldUntil && now < hvacSetupEditHoldUntil) return true;
   if (hvacSetupEditHoldUntil && now >= hvacSetupEditHoldUntil) clearHvacSetupEditingActive();
-  return Boolean(document.querySelector(`${HVAC_SETUP_FORM_SELECTOR}[data-hvac-editing-active="true"]`));
+  return false;
 }
 
 function markHvacSetupEditingActive(form = null) {
