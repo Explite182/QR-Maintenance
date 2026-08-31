@@ -19940,7 +19940,7 @@ async function loadHvacControllersForCurrentScope(force = false) {
     hvacControllersLoadedAt = Date.now();
   } finally {
     hvacControllersLoading = false;
-    if (!isHvacSetupEditingActive()) renderAutomationHvac();
+    if (!isHvacSetupEditingActive() && !hvacLiveRefreshActive) renderAutomationHvac();
   }
 }
 
@@ -19965,6 +19965,7 @@ async function refreshHvacLiveStatus() {
       refreshes.push(loadHvacCommandsForCurrentScope({ force: true }));
     }
     await Promise.all(refreshes);
+    if (!isHvacSetupEditingActive()) renderAutomationHvac();
   } finally {
     hvacLiveRefreshActive = false;
   }
@@ -20107,7 +20108,7 @@ async function loadHvacCommandsForCurrentScope({ force = false } = {}) {
     hvacCommandsLoadedScope = scopeKey;
   } finally {
     hvacCommandsLoading = false;
-    if (!isHvacSetupEditingActive()) renderAutomationHvac();
+    if (!isHvacSetupEditingActive() && !hvacLiveRefreshActive) renderAutomationHvac();
   }
 }
 
@@ -20162,6 +20163,16 @@ function latestHvacCommandForOutput(controllerId = "", outputNumber = 0) {
       Number(command.outputNumber || 0) === Number(outputNumber || 0)
     )
     .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
+}
+
+function hvacLiveOutputLabel(channel = "", active = false, latestCommand = null) {
+  const cleanChannel = String(channel || "").trim().toUpperCase();
+  if (!cleanChannel) return "Not mapped";
+  const status = String(latestCommand?.status || "").trim().toLowerCase();
+  if (status === "pending" || status === "acknowledged") {
+    return `${cleanChannel} | ${status}`;
+  }
+  return `${cleanChannel} | ${active ? "On" : "Off"}`;
 }
 
 function hvacStartDelayStatus(controller = {}, commands = hvacCommandsCache, now = Date.now()) {
@@ -21624,7 +21635,7 @@ function renderAutomationHvac() {
         channel,
         outputNumber,
         active: hvacLiveChannelActive(primaryController, "outputs", channel),
-        commandStatus: latestCommand?.status ? latestCommand.status : "",
+        liveLabel: hvacLiveOutputLabel(channel, hvacLiveChannelActive(primaryController, "outputs", channel), latestCommand),
         onBlockMessage: hvacCommandInterlockMessage(primaryController, pointName, "On")
       };
     }),
@@ -21640,7 +21651,7 @@ function renderAutomationHvac() {
         channel,
         outputNumber,
         active: hvacLiveChannelActive(primaryController, "outputs", channel),
-        commandStatus: latestCommand?.status ? latestCommand.status : "",
+        liveLabel: hvacLiveOutputLabel(channel, hvacLiveChannelActive(primaryController, "outputs", channel), latestCommand),
         onBlockMessage: hvacCommandInterlockMessage(primaryController, pointName, "On")
       };
     })
@@ -21651,7 +21662,7 @@ function renderAutomationHvac() {
         <div class="hvac-stage-command ${stage.active ? "is-active" : ""}">
           <span>
             <b>${escapeHtml(stage.label)}</b>
-            <em>${escapeHtml(stage.onBlockMessage || stage.channel || "Not mapped")}${!stage.onBlockMessage && stage.commandStatus ? ` | ${escapeHtml(stage.commandStatus)}` : ""}</em>
+            <em>${escapeHtml(stage.onBlockMessage || stage.liveLabel || "Not mapped")}</em>
           </span>
           <button type="button" class="${stage.active ? "is-active" : ""}" ${primaryController && stage.outputNumber && !stage.onBlockMessage ? "" : "disabled"} title="${escapeAttribute(stage.onBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="On">On</button>
           <button type="button" class="${!stage.active && stage.outputNumber ? "is-selected" : ""}" ${primaryController && stage.outputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="Off">Off</button>
