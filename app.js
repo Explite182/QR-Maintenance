@@ -6022,6 +6022,7 @@ let storageFullRecoveryNoticeShown = false;
 let suppressStorageFullWarning = false;
 const signedMediaUrlCache = new Map();
 const signedMediaUrlPending = new Set();
+const signedMediaUrlFailures = new Map();
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -31130,11 +31131,12 @@ const siteworksApi = {
   },
   getSignedFileUrl(file) {
     if (!siteworksServerEnabled()) return Promise.resolve({ ok: false, json: async () => ({}) });
+    const path = file?.path || file?.storageKey || file?.storage_key || getServerStoragePath(file);
     return this.server("/api/files/signed-url", {
       method: "POST",
       body: JSON.stringify({
         bucket: file?.bucket || file?.storageBucket || "",
-        path: file?.path || file?.storageKey || file?.storage_key || "",
+        path,
         customerId: file?.customerId || file?.customer_id || "",
         locationId: file?.locationId || file?.location_id || ""
       })
@@ -33143,6 +33145,8 @@ function signedMediaKey(file) {
 function signedMediaSource(file) {
   const key = signedMediaKey(file);
   if (!key) return "";
+  const failedAt = signedMediaUrlFailures.get(key);
+  if (failedAt && failedAt > Date.now() - 10 * 60 * 1000) return "";
   const cached = signedMediaUrlCache.get(key);
   if (cached && cached.expiresAt > Date.now() + 30 * 1000) return cached.url;
   requestSignedMediaUrl(file, key);
@@ -33157,10 +33161,17 @@ function requestSignedMediaUrl(file, key = signedMediaKey(file)) {
     : Promise.resolve(null);
   request
     .then(async (response) => {
-      if (!response?.ok) return;
+      if (!response?.ok) {
+        signedMediaUrlFailures.set(key, Date.now());
+        return;
+      }
       const data = await response.json();
       const signedUrl = data?.signedUrl || data?.signedURL;
-      if (!signedUrl) return;
+      if (!signedUrl) {
+        signedMediaUrlFailures.set(key, Date.now());
+        return;
+      }
+      signedMediaUrlFailures.delete(key);
       signedMediaUrlCache.set(key, {
         url: signedUrl,
         expiresAt: Date.now() + Number(data.expiresIn || 600) * 1000
