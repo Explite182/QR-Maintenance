@@ -20328,6 +20328,16 @@ function hvacTimerLabel(remainingSeconds = 0, setSeconds = 0) {
 function hvacLiveTimerStatus(timer = {}, fallbackSetSeconds = 0, now = Date.now()) {
   const source = timer && typeof timer === "object" ? timer : {};
   const setSeconds = Math.max(0, Math.min(3600, Math.round(Number(source.setSeconds || fallbackSetSeconds) || 0)));
+  const endsAt = new Date(source.endsAt || source.ends_at || 0).getTime();
+  if (Number.isFinite(endsAt) && endsAt > 0) {
+    const remainingSeconds = Math.max(0, Math.ceil((endsAt - Number(now)) / 1000));
+    return {
+      active: Boolean(source.active) && remainingSeconds > 0,
+      delaySeconds: setSeconds,
+      remainingSeconds,
+      label: hvacTimerLabel(remainingSeconds, setSeconds)
+    };
+  }
   const sourceRemaining = Math.max(0, Math.ceil(Number(source.remainingSeconds || 0) || 0));
   const updatedAt = new Date(source.updatedAt || source.updated_at || 0).getTime();
   const elapsedSeconds = Number.isFinite(updatedAt) && updatedAt > 0
@@ -20422,15 +20432,41 @@ function hvacStageTimerStatus(controller = {}, family = "heat", timerType = "min
 }
 
 function refreshHvacStartDelayCountdowns() {
-  const rows = document.querySelectorAll("[data-hvac-start-delay-controller], [data-hvac-fan-purge-controller], [data-hvac-timer-kind]");
+  const rows = document.querySelectorAll("[data-hvac-stage-hold-controller], [data-hvac-start-delay-controller], [data-hvac-fan-purge-controller], [data-hvac-timer-kind]");
   if (!rows.length) return;
   const controllers = hvacControllersForCurrentView();
   rows.forEach((row) => {
-    const controllerId = row.dataset.hvacStartDelayController || row.dataset.hvacFanPurgeController || "";
+    const controllerId = row.dataset.hvacStageHoldController || row.dataset.hvacStartDelayController || row.dataset.hvacFanPurgeController || "";
     const timerControllerId = row.dataset.hvacTimerController || "";
     const controller = controllers.find((item) => String(item.id || "") === String(controllerId || timerControllerId));
     const label = row.querySelector("strong");
     if (!controller || !label) return;
+    if (row.dataset.hvacStageHoldController) {
+      const liveHvac = controller?.data?.liveHvac && typeof controller.data.liveHvac === "object" ? controller.data.liveHvac : {};
+      const callState = hvacTemperatureCallState(controller, liveHvac);
+      const demand = hvacDemandStageInfo(controller, callState);
+      const lockout = liveHvac.lockout && typeof liveHvac.lockout === "object" ? liveHvac.lockout : {};
+      const faultState = hvacMappedPointState(controller, "fault", "inputs");
+      const smokeState = hvacMappedPointState(controller, "smoke", "inputs");
+      const freezestatState = hvacMappedPointState(controller, "freezestat", "inputs");
+      const fanCommandActive = hvacLiveChannelActive(controller, "outputs", controller?.points?.fanCommand || "");
+      const fanProofActive = hvacLiveChannelActive(controller, "inputs", controller?.points?.fanProof || "");
+      const startDelay = hvacStartDelayStatus(controller, hvacCommandsCache, Date.now());
+      const reason = hvacStageHoldReason(controller, callState, demand, {
+        lockoutActive: Boolean(lockout.active),
+        lockoutReason: lockout.reason || "",
+        smokeActive: smokeState.active,
+        faultActive: faultState.active,
+        freezestatActive: freezestatState.active,
+        fanCommandActive,
+        fanProofActive,
+        startDelayActive: startDelay.active,
+        startDelayRemainingSeconds: startDelay.remainingSeconds
+      });
+      row.classList.toggle("is-active", Boolean(reason && demand.family));
+      label.textContent = reason || "No active heating or cooling demand.";
+      return;
+    }
     if (row.dataset.hvacFanPurgeController) {
       const status = hvacFanPurgeStatus(controller);
       const name = row.querySelector("span");
@@ -21814,8 +21850,8 @@ function renderAutomationHvac() {
       </article>
     `;
   }).join("") : "";
-  const hvacStatusRow = (label, value, className = "") => `
-    <div class="${escapeAttribute(["hvac-status-row", className].filter(Boolean).join(" "))}">
+  const hvacStatusRow = (label, value, className = "", attributes = "") => `
+    <div class="${escapeAttribute(["hvac-status-row", className].filter(Boolean).join(" "))}" ${attributes}>
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
     </div>
@@ -21852,7 +21888,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Room Temp", Number.isFinite(roomDisplayTemp) ? `${roomDisplayTemp.toFixed(1)} F` : temperatureValue("space")),
         hvacStatusRow("Active Setpoints", `${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"} (${setpointSourceLabel})`),
         hvacSetpointControls,
-        hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active") : "",
+        hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active", `data-hvac-stage-hold-controller="${escapeAttribute(primaryController?.id || "")}"`) : "",
         hvacStatusRow("Lockout", hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear", hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")
       ].join(""))}
       ${hvacStatusSection("Fan Control", fanProofActive ? "Proven" : fanCommandActive ? "Commanded" : "Stopped", [
