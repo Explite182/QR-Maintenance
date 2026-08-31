@@ -8051,7 +8051,10 @@ document.addEventListener("pointerdown", (event) => {
 
 document.addEventListener("pointerdown", (event) => {
   const form = event.target?.closest?.(HVAC_SETUP_FORM_SELECTOR);
-  if (form) {
+  const tagName = String(event.target?.tagName || "").toLowerCase();
+  const inputType = String(event.target?.type || "").toLowerCase();
+  const isEditableControl = ["input", "select", "textarea"].includes(tagName) && !["button", "submit", "reset"].includes(inputType);
+  if (form && isEditableControl) {
     markHvacSetupEditingActive(form);
   } else if (!event.target?.closest?.(".hvac-drawer")) {
     clearHvacSetupEditingActive();
@@ -17258,7 +17261,10 @@ function clearPumpSetupEditingActive() {
 
 function isHvacSetupEditingActive() {
   const activeElement = document.activeElement;
-  if (activeElement?.closest?.(HVAC_SETUP_FORM_SELECTOR)) return true;
+  const tagName = String(activeElement?.tagName || "").toLowerCase();
+  const inputType = String(activeElement?.type || "").toLowerCase();
+  const isEditableControl = ["input", "select", "textarea"].includes(tagName) && !["button", "submit", "reset"].includes(inputType);
+  if (isEditableControl && activeElement?.closest?.(HVAC_SETUP_FORM_SELECTOR)) return true;
   const now = Date.now();
   if (hvacSetupEditHoldUntil && now < hvacSetupEditHoldUntil) return true;
   if (hvacSetupEditHoldUntil && now >= hvacSetupEditHoldUntil) clearHvacSetupEditingActive();
