@@ -20595,15 +20595,29 @@ function hvacTemperatureCallState(controller = {}, liveHvac = {}) {
   const occupied = scheduleStatus.hasSchedule
     ? scheduleStatus.occupied
     : String(controller.occupancyMode || controller.data?.occupancyMode || "Occupied").toLowerCase() !== "unoccupied";
-  const heatSetpoint = numberOrNull(occupied ? controller.occupiedHeatSetpoint : controller.unoccupiedHeatSetpoint);
-  const coolSetpoint = numberOrNull(occupied ? controller.occupiedCoolSetpoint : controller.unoccupiedCoolSetpoint);
+  const safeLiveHvac = liveHvac && typeof liveHvac === "object" ? liveHvac : {};
+  const roomDisplay = safeLiveHvac.roomDisplay && typeof safeLiveHvac.roomDisplay === "object" ? safeLiveHvac.roomDisplay : {};
+  const roomDisplaySeenMs = roomDisplay.lastSeenAt ? new Date(roomDisplay.lastSeenAt).getTime() : 0;
+  const roomDisplayOnline = roomDisplaySeenMs && Number.isFinite(roomDisplaySeenMs) && Date.now() - roomDisplaySeenMs < 5 * 60 * 1000;
+  const roomHeatSetpoint = numberOrNull(roomDisplay.heatSetpointF);
+  const roomCoolSetpoint = numberOrNull(roomDisplay.coolSetpointF);
+  const data = controller?.data && typeof controller.data === "object" ? controller.data : {};
+  const useRoomDisplaySetpoints = roomDisplayOnline &&
+    roomHeatSetpoint !== null &&
+    roomCoolSetpoint !== null &&
+    data.useRoomDisplaySetpoints !== false &&
+    data.roomDisplaySetpointMode !== "report_only";
+  const configuredHeatSetpoint = numberOrNull(occupied ? controller.occupiedHeatSetpoint : controller.unoccupiedHeatSetpoint);
+  const configuredCoolSetpoint = numberOrNull(occupied ? controller.occupiedCoolSetpoint : controller.unoccupiedCoolSetpoint);
+  const heatSetpoint = useRoomDisplaySetpoints ? roomHeatSetpoint : configuredHeatSetpoint;
+  const coolSetpoint = useRoomDisplaySetpoints ? roomCoolSetpoint : configuredCoolSetpoint;
   const deadband = Math.max(0.5, numberOrNull(controller.setpointDeadband) ?? 1);
   if (spaceTemp === null || heatSetpoint === null || coolSetpoint === null) {
-    return { label: "Waiting for space temp", className: "is-info", spaceTemp, heatSetpoint, coolSetpoint, occupancyMode: occupied ? "Occupied" : "Unoccupied" };
+    return { label: "Waiting for space temp", className: "is-info", spaceTemp, heatSetpoint, coolSetpoint, setpointSource: useRoomDisplaySetpoints ? "room-display" : "controller", occupancyMode: occupied ? "Occupied" : "Unoccupied" };
   }
-  if (spaceTemp <= heatSetpoint - deadband) return { label: "Heating call", className: "is-heating", spaceTemp, heatSetpoint, coolSetpoint, occupancyMode: occupied ? "Occupied" : "Unoccupied" };
-  if (spaceTemp >= coolSetpoint + deadband) return { label: "Cooling call", className: "is-cooling", spaceTemp, heatSetpoint, coolSetpoint, occupancyMode: occupied ? "Occupied" : "Unoccupied" };
-  return { label: "Satisfied", className: "is-normal", spaceTemp, heatSetpoint, coolSetpoint, occupancyMode: occupied ? "Occupied" : "Unoccupied" };
+  if (spaceTemp <= heatSetpoint - deadband) return { label: "Heating call", className: "is-heating", spaceTemp, heatSetpoint, coolSetpoint, setpointSource: useRoomDisplaySetpoints ? "room-display" : "controller", occupancyMode: occupied ? "Occupied" : "Unoccupied" };
+  if (spaceTemp >= coolSetpoint + deadband) return { label: "Cooling call", className: "is-cooling", spaceTemp, heatSetpoint, coolSetpoint, setpointSource: useRoomDisplaySetpoints ? "room-display" : "controller", occupancyMode: occupied ? "Occupied" : "Unoccupied" };
+  return { label: "Satisfied", className: "is-normal", spaceTemp, heatSetpoint, coolSetpoint, setpointSource: useRoomDisplaySetpoints ? "room-display" : "controller", occupancyMode: occupied ? "Occupied" : "Unoccupied" };
 }
 
 function hvacDemandStageInfo(controller = {}, callState = {}) {
@@ -21534,6 +21548,7 @@ function renderAutomationHvac() {
   const roomDisplaySetpoints = Number.isFinite(Number(roomDisplay.heatSetpointF)) && Number.isFinite(Number(roomDisplay.coolSetpointF))
     ? `${Number(roomDisplay.heatSetpointF).toFixed(0)} / ${Number(roomDisplay.coolSetpointF).toFixed(0)}`
     : "--";
+  const setpointSourceLabel = hvacCallState.setpointSource === "room-display" ? "room display" : "controller";
   const temperatureValue = (name) => {
     const temperature = hvacTemperatureFromController(primaryController, liveHvac, name);
     const value = temperature.value;
@@ -21680,7 +21695,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Fan Command", primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped"),
         hvacStatusRow("Fan Proof", primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped"),
         hvacStatusRow("Room Temp", Number.isFinite(roomDisplayTemp) ? `${roomDisplayTemp.toFixed(1)} F` : temperatureValue("space")),
-        hvacStatusRow("Active Setpoints", `${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"}`),
+        hvacStatusRow("Active Setpoints", `${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"} (${setpointSourceLabel})`),
         hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active") : "",
         hvacStatusRow("Lockout", hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear", hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")
       ].join(""))}
@@ -21731,7 +21746,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Space Temp", temperatureValue("space")),
         hvacStatusRow("Room Display Temp", Number.isFinite(roomDisplayTemp) ? `${roomDisplayTemp.toFixed(1)} F` : "Not seen"),
         hvacStatusRow("Room Humidity", Number.isFinite(roomDisplayHumidity) ? `${roomDisplayHumidity.toFixed(1)}%` : "Not seen"),
-        hvacStatusRow("Display Setpoints", `${roomDisplaySetpoints} report only`),
+        hvacStatusRow("Display Setpoints", `${roomDisplaySetpoints} ${hvacCallState.setpointSource === "room-display" ? "active" : "report only"}`),
         hvacStatusRow("Display Seen", roomDisplay.lastSeenAt ? formatDateTime(roomDisplay.lastSeenAt) : "Never"),
         hvacStatusRow("Supply Temp", temperatureValue("supply")),
         hvacStatusRow("Last Seen", formatDateTime(primaryController?.lastSeenAt) || "Never"),
