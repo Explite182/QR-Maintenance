@@ -1,18 +1,18 @@
-const SITEWORKS_SW_VERSION = "20260831-hvac-drawers-3";
+const SITEWORKS_SW_VERSION = "20260831-hvac-celsius-4";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260831-hvac-drawers-3",
+  "/styles.css?v=20260831-hvac-celsius-4",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
-  "/js/panel-hmi-standard-model.js?v=20260831-hvac-drawers-3",
-  "/js/panel-hmi-siteworks-adapter.js?v=20260831-hvac-drawers-3",
-  "/js/panel-hmi-standard-renderer.js?v=20260831-hvac-drawers-3",
-  "/app.js?v=20260831-hvac-drawers-3",
-  "/manifest.webmanifest?v=20260831-hvac-drawers-3",
-  "/assets/equipment/pump-centrifugal-blue.png?v=20260831-hvac-drawers-3",
-  "/assets/equipment/rtu-rooftop-unit.png?v=20260831-hvac-drawers-3"
+  "/js/panel-hmi-standard-model.js?v=20260831-hvac-celsius-4",
+  "/js/panel-hmi-siteworks-adapter.js?v=20260831-hvac-celsius-4",
+  "/js/panel-hmi-standard-renderer.js?v=20260831-hvac-celsius-4",
+  "/app.js?v=20260831-hvac-celsius-4",
+  "/manifest.webmanifest?v=20260831-hvac-celsius-4",
+  "/assets/equipment/pump-centrifugal-blue.png?v=20260831-hvac-celsius-4",
+  "/assets/equipment/rtu-rooftop-unit.png?v=20260831-hvac-celsius-4"
 ];
 
 self.addEventListener("install", (event) => {

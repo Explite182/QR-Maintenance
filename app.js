@@ -21748,12 +21748,24 @@ function renderAutomationHvac() {
   const roomDisplayOnline = roomDisplayLastSeenMs && Number.isFinite(roomDisplayLastSeenMs) && Date.now() - roomDisplayLastSeenMs < 5 * 60 * 1000;
   const roomDisplayTemp = Number(roomDisplay.temperatureF);
   const roomDisplayHumidity = Number(roomDisplay.humidityPercent);
+  const hvacTemperatureLabel = (fahrenheitValue, fallback = "--") => {
+    const numericValue = Number(fahrenheitValue);
+    if (!Number.isFinite(numericValue)) return fallback;
+    const celsiusValue = (numericValue - 32) * (5 / 9);
+    return `${celsiusValue.toFixed(1)} C (${numericValue.toFixed(1)} F)`;
+  };
+  const hvacSetpointPairLabel = (heatF, coolF, fallback = "--") => {
+    const heatValue = Number(heatF);
+    const coolValue = Number(coolF);
+    if (!Number.isFinite(heatValue) || !Number.isFinite(coolValue)) return fallback;
+    return `${hvacTemperatureLabel(heatValue)} / ${hvacTemperatureLabel(coolValue)}`;
+  };
   const roomDisplaySetpoints = Number.isFinite(Number(roomDisplay.heatSetpointF)) && Number.isFinite(Number(roomDisplay.coolSetpointF))
-    ? `${Number(roomDisplay.heatSetpointF).toFixed(0)} / ${Number(roomDisplay.coolSetpointF).toFixed(0)}`
+    ? hvacSetpointPairLabel(roomDisplay.heatSetpointF, roomDisplay.coolSetpointF)
     : "--";
   const setpointSourceLabel = hvacCallState.setpointSource === "room-display" ? "room display" : "controller";
-  const activeHeatSetpointLabel = numberOrNull(hvacCallState.heatSetpoint) !== null ? Number(hvacCallState.heatSetpoint).toFixed(1) : "--";
-  const activeCoolSetpointLabel = numberOrNull(hvacCallState.coolSetpoint) !== null ? Number(hvacCallState.coolSetpoint).toFixed(1) : "--";
+  const activeHeatSetpointLabel = hvacTemperatureLabel(hvacCallState.heatSetpoint);
+  const activeCoolSetpointLabel = hvacTemperatureLabel(hvacCallState.coolSetpoint);
   const hvacSetpointControls = primaryController ? `
     <div class="hvac-setpoint-control" aria-label="HVAC setpoint controls">
       <div>
@@ -21779,7 +21791,7 @@ function renderAutomationHvac() {
     const value = temperature.value;
     if (value === "" || value === null || value === undefined) return "Not wired";
     const numericValue = Number(value);
-    const label = Number.isFinite(numericValue) ? `${numericValue.toFixed(1)} F` : `${value}`;
+    const label = Number.isFinite(numericValue) ? hvacTemperatureLabel(numericValue) : `${value}`;
     return temperature.simulated ? `${label} sim` : label;
   };
   const mappedPointRows = [
@@ -21919,8 +21931,8 @@ function renderAutomationHvac() {
         hvacStatusRow("Requested Stage", hvacDemandInfo.label, `hvac-demand-row ${hvacDemandInfo.className}`),
         hvacStatusRow("Fan Command", primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped"),
         hvacStatusRow("Fan Proof", primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped"),
-        hvacStatusRow("Room Temp", Number.isFinite(roomDisplayTemp) ? `${roomDisplayTemp.toFixed(1)} F` : temperatureValue("space")),
-        hvacStatusRow("Active Setpoints", `${hvacCallState.heatSetpoint ?? "--"} / ${hvacCallState.coolSetpoint ?? "--"} (${setpointSourceLabel})`),
+        hvacStatusRow("Room Temp", Number.isFinite(roomDisplayTemp) ? hvacTemperatureLabel(roomDisplayTemp) : temperatureValue("space")),
+        hvacStatusRow("Active Setpoints", `${hvacSetpointPairLabel(hvacCallState.heatSetpoint, hvacCallState.coolSetpoint)} (${setpointSourceLabel})`),
         hvacSetpointControls,
         hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active", `data-hvac-stage-hold-controller="${escapeAttribute(primaryController?.id || "")}"`) : "",
         hvacStatusRow("Lockout", hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear", hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")
@@ -21970,7 +21982,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Occupied Input", occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label),
         hvacStatusRow("Live I/O", `${liveHvac.inputMaskHex || "--"} / ${liveHvac.outputMaskHex || "--"}`),
         hvacStatusRow("Space Temp", temperatureValue("space")),
-        hvacStatusRow("Room Display Temp", Number.isFinite(roomDisplayTemp) ? `${roomDisplayTemp.toFixed(1)} F` : "Not seen"),
+        hvacStatusRow("Room Display Temp", Number.isFinite(roomDisplayTemp) ? hvacTemperatureLabel(roomDisplayTemp) : "Not seen"),
         hvacStatusRow("Room Humidity", Number.isFinite(roomDisplayHumidity) ? `${roomDisplayHumidity.toFixed(1)}%` : "Not seen"),
         hvacStatusRow("Display Setpoints", `${roomDisplaySetpoints} ${hvacCallState.setpointSource === "room-display" ? "active" : "report only"}`),
         hvacStatusRow("Display Seen", roomDisplay.lastSeenAt ? formatDateTime(roomDisplay.lastSeenAt) : "Never"),
