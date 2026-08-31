@@ -21564,6 +21564,9 @@ function renderAutomationHvac() {
   const openHvacDrawers = new Set(Array.from(panel.querySelectorAll(".hvac-drawer[open] summary span"))
     .map((item) => String(item.textContent || "").trim())
     .filter(Boolean));
+  const openHvacStatusDrawers = new Set(Array.from(panel.querySelectorAll(".hvac-status-drawer[open] summary span"))
+    .map((item) => String(item.textContent || "").trim())
+    .filter(Boolean));
   const scopeKey = getHvacControllerScopeKey();
   if (scopeKey && hvacControllersLoadedScope !== scopeKey && !hvacControllersLoading) {
     loadHvacControllersForCurrentScope();
@@ -22133,6 +22136,12 @@ function renderAutomationHvac() {
     panel.querySelectorAll(".hvac-drawer").forEach((drawer) => {
       const label = String(drawer.querySelector("summary span")?.textContent || "").trim();
       drawer.open = openHvacDrawers.has(label);
+    });
+  }
+  if (openHvacStatusDrawers.size) {
+    panel.querySelectorAll(".hvac-status-drawer").forEach((drawer) => {
+      const label = String(drawer.querySelector("summary span")?.textContent || "").trim();
+      drawer.open = openHvacStatusDrawers.has(label);
     });
   }
   restorePendingHvacApiKeyForms();
