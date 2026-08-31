@@ -5504,6 +5504,7 @@ const HVAC_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_LIVE_REFRESH_INTERVAL_MS = 5000;
 const PUMP_LIVE_REFRESH_INTERVAL_MS = 2000;
 const HVAC_LIVE_REFRESH_INTERVAL_MS = 5000;
+const HVAC_LIVE_REFRESH_STALE_MS = 15000;
 let lightingControllersCache = [];
 let lightingControllersLoadedScope = "";
 let lightingControllersLoading = false;
@@ -5554,6 +5555,7 @@ let hvacControllersCache = [];
 let hvacControllersLoadedScope = "";
 let hvacControllersLoadedAt = 0;
 let hvacControllersLoading = false;
+let hvacControllersLoadingStartedAt = 0;
 let hvacControllerEmptyRetryTimer = 0;
 let hvacCommandsCache = [];
 let hvacCommandsLoadedScope = "";
@@ -19917,9 +19919,14 @@ function getHvacControllerScopeKey() {
 
 async function loadHvacControllersForCurrentScope(force = false) {
   const scopeKey = getHvacControllerScopeKey();
+  if (hvacControllersLoading && hvacControllersLoadingStartedAt && Date.now() - hvacControllersLoadingStartedAt > HVAC_LIVE_REFRESH_STALE_MS) {
+    hvacControllersLoading = false;
+    hvacControllersLoadingStartedAt = 0;
+  }
   if (!scopeKey || hvacControllersLoading) return;
   if (!force && hvacControllersLoadedScope === scopeKey) return;
   hvacControllersLoading = true;
+  hvacControllersLoadingStartedAt = Date.now();
   try {
     const response = await siteworksApi.loadHvacControllers(selectedCustomerId, selectedLocationId);
     if (!response.ok) throw new Error(`HVAC controller load failed: ${response.status}`);
@@ -19940,6 +19947,7 @@ async function loadHvacControllersForCurrentScope(force = false) {
     hvacControllersLoadedAt = Date.now();
   } finally {
     hvacControllersLoading = false;
+    hvacControllersLoadingStartedAt = 0;
     if (!isHvacSetupEditingActive() && !hvacLiveRefreshActive) renderAutomationHvac();
   }
 }
@@ -19957,6 +19965,10 @@ function scheduleHvacControllerEmptyRetry(scopeKey = "") {
 
 async function refreshHvacLiveStatus() {
   const scopeKey = getHvacControllerScopeKey();
+  if (hvacControllersLoading && hvacControllersLoadingStartedAt && Date.now() - hvacControllersLoadingStartedAt > HVAC_LIVE_REFRESH_STALE_MS) {
+    hvacControllersLoading = false;
+    hvacControllersLoadingStartedAt = 0;
+  }
   if (!scopeKey || hvacControllersLoading) return;
   hvacLiveRefreshActive = true;
   try {
