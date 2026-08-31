@@ -20683,6 +20683,14 @@ function hvacStageHoldReason(controller = {}, callState = {}, demand = {}, conte
   if (context.smokeActive) return "Smoke shutdown input is active.";
   if (context.faultActive) return "Fault input is active.";
   if (demand.family === "cool" && context.freezestatActive) return "Freezestat input is active.";
+  const heatStageCount = Math.max(0, Math.min(4, Number(controller?.heatStageCount || controller?.data?.heatStageCount || 1) || 0));
+  const coolStageCount = Math.max(0, Math.min(4, Number(controller?.coolStageCount || controller?.data?.coolStageCount || 1) || 0));
+  if (demand.family === "heat" && hvacActiveStageNumbers(controller, "cool", coolStageCount).length) {
+    return "Waiting for cooling stage to turn off.";
+  }
+  if (demand.family === "cool" && hvacActiveStageNumbers(controller, "heat", heatStageCount).length) {
+    return "Waiting for heating stage to turn off.";
+  }
   if (!context.fanCommandActive) {
     if (context.startDelayActive) return `Start delay running - ${Math.max(0, context.startDelayRemainingSeconds || 0)} sec left.`;
     return "Waiting for fan command.";
