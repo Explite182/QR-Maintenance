@@ -21814,6 +21814,14 @@ function renderAutomationHvac() {
   const roomDisplayOnline = roomDisplayLastSeenMs && Number.isFinite(roomDisplayLastSeenMs) && Date.now() - roomDisplayLastSeenMs < 5 * 60 * 1000;
   const roomDisplayTemp = Number(roomDisplay.temperatureF);
   const roomDisplayHumidity = Number(roomDisplay.humidityPercent);
+  const roomDisplayDirect = liveHvac.roomDisplayDirect && typeof liveHvac.roomDisplayDirect === "object" ? liveHvac.roomDisplayDirect : {};
+  const roomDisplayDirectTemp = numberOrNull(roomDisplayDirect.temperatureF);
+  const roomDisplayDirectHumidity = numberOrNull(roomDisplayDirect.humidityPercent);
+  const roomDisplayDirectLastSeenMsAgo = numberOrNull(roomDisplayDirect.lastSeenMsAgo);
+  const roomDisplayDirectLastSeenMs = roomDisplayDirect.lastSeenAt ? new Date(roomDisplayDirect.lastSeenAt).getTime() : 0;
+  const roomDisplayDirectOnline = Boolean(roomDisplayDirect.online) ||
+    (roomDisplayDirectLastSeenMsAgo !== null && roomDisplayDirectLastSeenMsAgo <= 30000) ||
+    (roomDisplayDirectLastSeenMs && Number.isFinite(roomDisplayDirectLastSeenMs) && Date.now() - roomDisplayDirectLastSeenMs < 60 * 1000);
   const hvacTemperatureLabel = (fahrenheitValue, fallback = "--") => {
     const numericValue = Number(fahrenheitValue);
     if (!Number.isFinite(numericValue)) return fallback;
@@ -21826,6 +21834,12 @@ function renderAutomationHvac() {
     if (!Number.isFinite(heatValue) || !Number.isFinite(coolValue)) return fallback;
     return `${hvacTemperatureLabel(heatValue)} / ${hvacTemperatureLabel(coolValue)}`;
   };
+  const roomDisplayDirectTempLabel = roomDisplayDirectTemp !== null
+    ? `${hvacTemperatureLabel(roomDisplayDirectTemp)} - RS485 direct`
+    : "Not seen";
+  const roomDisplayDirectStatus = roomDisplayDirectTemp !== null
+    ? roomDisplayDirectOnline ? "Online" : "Stale"
+    : "Not seen";
   const roomDisplaySetpoints = Number.isFinite(Number(roomDisplay.heatSetpointF)) && Number.isFinite(Number(roomDisplay.coolSetpointF))
     ? hvacSetpointPairLabel(roomDisplay.heatSetpointF, roomDisplay.coolSetpointF)
     : "--";
@@ -22019,6 +22033,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Fan Command", primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped"),
         hvacStatusRow("Fan Proof", primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped"),
         hvacStatusRow("Room Temp", Number.isFinite(roomDisplayTemp) ? hvacTemperatureLabel(roomDisplayTemp) : temperatureValue("space")),
+        roomDisplayDirectTemp !== null ? hvacStatusRow("RS485 Room", roomDisplayDirectTempLabel, roomDisplayDirectOnline ? "" : "is-warning") : "",
         hvacStatusRow("Active Setpoints", `${hvacSetpointPairLabel(hvacCallState.heatSetpoint, hvacCallState.coolSetpoint)} (${setpointSourceLabel})`),
         hvacSetpointControls,
         hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active", `data-hvac-stage-hold-controller="${escapeAttribute(primaryController?.id || "")}"`) : "",
@@ -22046,7 +22061,8 @@ function renderAutomationHvac() {
         hvacStatusRow("Controller", primaryController?.name || "Not added"),
         hvacStatusRow("Equipment", primaryEquipment?.equipmentId ? `${primaryEquipment.equipmentId} assigned` : equipmentStatusLabel, equipmentReady ? "is-ready" : "is-warning"),
         hvacStatusRow("Control Mode", primaryController?.hvacControlMode || "Manual"),
-        hvacStatusRow("Temp Source", tempSimulator.enabled ? "Simulator" : roomDisplay.lastSeenAt ? "Room display" : "Field inputs"),
+        hvacStatusRow("Temp Source", tempSimulator.enabled ? "Simulator" : roomDisplayDirectOnline ? "Room display + RS485 direct" : roomDisplay.lastSeenAt ? "Room display" : "Field inputs"),
+        hvacStatusRow("RS485 Com", roomDisplayDirectStatus, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
         hvacStatusRow("Room Display", roomDisplay.lastSeenAt ? roomDisplayOnline ? "Online" : "Stale" : "Not seen", roomDisplay.lastSeenAt && !roomDisplayOnline ? "is-warning" : ""),
         hvacStatusRow("Schedule", hvacScheduleStatus.label),
         hvacStatusRow("Setpoint Mode", hvacCallState.occupancyMode || hvacScheduleStatus.occupancyMode || "--")
@@ -22071,6 +22087,9 @@ function renderAutomationHvac() {
         hvacStatusRow("Live I/O", `${liveHvac.inputMaskHex || "--"} / ${liveHvac.outputMaskHex || "--"}`),
         hvacStatusRow("Space Temp", temperatureValue("space")),
         hvacStatusRow("Room Display Temp", Number.isFinite(roomDisplayTemp) ? hvacTemperatureLabel(roomDisplayTemp) : "Not seen"),
+        hvacStatusRow("RS485 Com", roomDisplayDirectStatus, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
+        hvacStatusRow("RS485 Room Temp", roomDisplayDirectTempLabel, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
+        hvacStatusRow("RS485 Humidity", roomDisplayDirectHumidity !== null ? `${roomDisplayDirectHumidity.toFixed(1)}%` : "Not seen"),
         hvacStatusRow("Room Humidity", Number.isFinite(roomDisplayHumidity) ? `${roomDisplayHumidity.toFixed(1)}%` : "Not seen"),
         hvacStatusRow("Display Setpoints", `${roomDisplaySetpoints} ${roomDisplaySetpointStatus}`),
         hvacStatusRow("Display Seen", roomDisplay.lastSeenAt ? formatDateTime(roomDisplay.lastSeenAt) : "Never"),
