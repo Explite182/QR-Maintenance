@@ -21835,11 +21835,43 @@ function renderAutomationHvac() {
     return `${hvacTemperatureLabel(heatValue)} / ${hvacTemperatureLabel(coolValue)}`;
   };
   const roomDisplayDirectTempLabel = roomDisplayDirectTemp !== null
-    ? `${hvacTemperatureLabel(roomDisplayDirectTemp)} - RS485 direct`
+    ? `${hvacTemperatureLabel(roomDisplayDirectTemp)} - direct`
     : "Not seen";
   const roomDisplayDirectStatus = roomDisplayDirectTemp !== null
     ? roomDisplayDirectOnline ? "Online" : "Stale"
     : "Not seen";
+  const localAuto = liveHvac.localAuto && typeof liveHvac.localAuto === "object" ? liveHvac.localAuto : {};
+  const localAutoRoomSensor = localAuto.roomSensor && typeof localAuto.roomSensor === "object" ? localAuto.roomSensor : {};
+  const localAutoSetpoints = localAuto.setpoints && typeof localAuto.setpoints === "object" ? localAuto.setpoints : {};
+  const localAutoDemandRaw = String(localAuto.demand || "").trim().toLowerCase();
+  const localAutoStateRaw = String(localAuto.state || "").trim();
+  const localAutoDemandLabel = localAutoDemandRaw === "heating"
+    ? "Heating"
+    : localAutoDemandRaw === "cooling"
+      ? "Cooling"
+      : localAutoDemandRaw === "satisfied"
+        ? "Satisfied"
+        : localAutoDemandRaw ? localAutoDemandRaw.replace(/[-_]+/g, " ") : "Not reported";
+  const localAutoClassName = localAutoDemandRaw === "heating"
+    ? "is-heating"
+    : localAutoDemandRaw === "cooling"
+      ? "is-cooling"
+      : localAutoDemandRaw === "satisfied" ? "is-normal" : "is-warning";
+  const localAutoModeLabel = !Object.keys(localAuto).length
+    ? "Not reported"
+    : localAuto.enabled ? "Local control" : "Observe only";
+  const localAutoStateLabel = localAutoStateRaw
+    ? localAutoStateRaw.toLowerCase().replace(/_/g, " ")
+    : "Not reported";
+  const localRoomAge = numberOrNull(localAutoRoomSensor.ageSeconds);
+  const localRoomFresh = Boolean(localAutoRoomSensor.fresh);
+  const localRoomAvailable = Boolean(localAutoRoomSensor.available);
+  const localRoomLinkLabel = !Object.keys(localAuto).length
+    ? "Not reported"
+    : !localRoomAvailable
+      ? "No room sensor"
+      : `${localRoomFresh ? "Fresh" : "Stale"}${localRoomAge !== null ? `, ${Math.round(localRoomAge)} sec old` : ""}`;
+  const localAutoSetpointLabel = hvacSetpointPairLabel(localAutoSetpoints.heatF, localAutoSetpoints.coolF, "Not reported");
   const roomDisplaySetpoints = Number.isFinite(Number(roomDisplay.heatSetpointF)) && Number.isFinite(Number(roomDisplay.coolSetpointF))
     ? hvacSetpointPairLabel(roomDisplay.heatSetpointF, roomDisplay.coolSetpointF)
     : "--";
@@ -22033,9 +22065,10 @@ function renderAutomationHvac() {
         hvacStatusRow("Fan Command", primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped"),
         hvacStatusRow("Fan Proof", primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped"),
         hvacStatusRow("Room Temp", Number.isFinite(roomDisplayTemp) ? hvacTemperatureLabel(roomDisplayTemp) : temperatureValue("space")),
-        roomDisplayDirectTemp !== null ? hvacStatusRow("RS485 Room", roomDisplayDirectTempLabel, roomDisplayDirectOnline ? "" : "is-warning") : "",
+        roomDisplayDirectTemp !== null ? hvacStatusRow("Direct Room", roomDisplayDirectTempLabel, roomDisplayDirectOnline ? "" : "is-warning") : "",
         hvacStatusRow("Active Setpoints", `${hvacSetpointPairLabel(hvacCallState.heatSetpoint, hvacCallState.coolSetpoint)} (${setpointSourceLabel})`),
         hvacSetpointControls,
+        Object.keys(localAuto).length ? hvacStatusRow("ESP32 Demand", localAutoDemandLabel, `hvac-demand-row ${localAutoClassName}`) : "",
         hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active", `data-hvac-stage-hold-controller="${escapeAttribute(primaryController?.id || "")}"`) : "",
         hvacStatusRow("Lockout", hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear", hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")
       ].join(""))}
@@ -22061,8 +22094,14 @@ function renderAutomationHvac() {
         hvacStatusRow("Controller", primaryController?.name || "Not added"),
         hvacStatusRow("Equipment", primaryEquipment?.equipmentId ? `${primaryEquipment.equipmentId} assigned` : equipmentStatusLabel, equipmentReady ? "is-ready" : "is-warning"),
         hvacStatusRow("Control Mode", primaryController?.hvacControlMode || "Manual"),
-        hvacStatusRow("Temp Source", tempSimulator.enabled ? "Simulator" : roomDisplayDirectOnline ? "Room display + RS485 direct" : roomDisplay.lastSeenAt ? "Room display" : "Field inputs"),
-        hvacStatusRow("RS485 Com", roomDisplayDirectStatus, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
+        hvacStatusRow("Temp Source", tempSimulator.enabled ? "Simulator" : roomDisplayDirectOnline ? "Room display + direct link" : roomDisplay.lastSeenAt ? "Room display" : "Field inputs"),
+        hvacStatusRow("Direct Link", roomDisplayDirectStatus, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
+        hvacStatusRow("ESP32 Auto", localAutoModeLabel, localAuto.enabled ? "is-ready" : ""),
+        hvacStatusRow("ESP32 Demand", localAutoDemandLabel, localAutoClassName),
+        hvacStatusRow("Room Link", localRoomLinkLabel, localRoomAvailable && localRoomFresh ? "" : "is-warning"),
+        hvacStatusRow("ESP32 Setpoints", localAutoSetpointLabel),
+        localAuto.blockReason ? hvacStatusRow("Local Block", localAuto.blockReason, "is-warning") : "",
+        hvacStatusRow("Local State", localAutoStateLabel),
         hvacStatusRow("Room Display", roomDisplay.lastSeenAt ? roomDisplayOnline ? "Online" : "Stale" : "Not seen", roomDisplay.lastSeenAt && !roomDisplayOnline ? "is-warning" : ""),
         hvacStatusRow("Schedule", hvacScheduleStatus.label),
         hvacStatusRow("Setpoint Mode", hvacCallState.occupancyMode || hvacScheduleStatus.occupancyMode || "--")
@@ -22087,9 +22126,13 @@ function renderAutomationHvac() {
         hvacStatusRow("Live I/O", `${liveHvac.inputMaskHex || "--"} / ${liveHvac.outputMaskHex || "--"}`),
         hvacStatusRow("Space Temp", temperatureValue("space")),
         hvacStatusRow("Room Display Temp", Number.isFinite(roomDisplayTemp) ? hvacTemperatureLabel(roomDisplayTemp) : "Not seen"),
-        hvacStatusRow("RS485 Com", roomDisplayDirectStatus, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
-        hvacStatusRow("RS485 Room Temp", roomDisplayDirectTempLabel, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
-        hvacStatusRow("RS485 Humidity", roomDisplayDirectHumidity !== null ? `${roomDisplayDirectHumidity.toFixed(1)}%` : "Not seen"),
+        hvacStatusRow("Direct Link", roomDisplayDirectStatus, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
+        hvacStatusRow("Direct Room Temp", roomDisplayDirectTempLabel, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
+        hvacStatusRow("Direct Humidity", roomDisplayDirectHumidity !== null ? `${roomDisplayDirectHumidity.toFixed(1)}%` : "Not seen"),
+        hvacStatusRow("ESP32 Auto", localAutoModeLabel),
+        hvacStatusRow("ESP32 Demand", localAutoDemandLabel, localAutoClassName),
+        hvacStatusRow("Room Link", localRoomLinkLabel, localRoomAvailable && localRoomFresh ? "" : "is-warning"),
+        hvacStatusRow("ESP32 Setpoints", localAutoSetpointLabel),
         hvacStatusRow("Room Humidity", Number.isFinite(roomDisplayHumidity) ? `${roomDisplayHumidity.toFixed(1)}%` : "Not seen"),
         hvacStatusRow("Display Setpoints", `${roomDisplaySetpoints} ${roomDisplaySetpointStatus}`),
         hvacStatusRow("Display Seen", roomDisplay.lastSeenAt ? formatDateTime(roomDisplay.lastSeenAt) : "Never"),
