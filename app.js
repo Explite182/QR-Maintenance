@@ -19855,8 +19855,8 @@ function normalizeHvacController(controller = {}) {
     unoccupiedCoolSetpoint: String(controller.unoccupiedCoolSetpoint || data.unoccupiedCoolSetpoint || autoConfig.unoccupiedCoolSetpoint || 82),
     setpointDeadband: String(controller.setpointDeadband || data.setpointDeadband || autoConfig.deadband || 1),
     startDelaySeconds: String(controller.startDelaySeconds || data.startDelaySeconds || autoConfig.startDelaySeconds || 60),
-    fanProofTimeoutSeconds: String(controller.fanProofTimeoutSeconds || data.fanProofTimeoutSeconds || autoConfig.fanProofTimeoutSeconds || 15),
-    fanOffDelaySeconds: String(controller.fanOffDelaySeconds || data.fanOffDelaySeconds || autoConfig.fanOffDelaySeconds || 60),
+    fanProofTimeoutSeconds: String(controller.fanProofTimeoutSeconds || data.fanProofTimeoutSeconds || autoConfig.fanProofTimeoutSeconds || 30),
+    fanOffDelaySeconds: String(controller.fanOffDelaySeconds || data.fanOffDelaySeconds || autoConfig.fanOffDelaySeconds || 90),
     outputExpansionMode,
     schedule,
     scheduleConfigured,
@@ -20453,7 +20453,7 @@ function hvacFanProofTimerStatus(controller = {}, fanCommandActive = false, fanP
   }
   const data = controller?.data && typeof controller.data === "object" ? controller.data : {};
   const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
-  const setSeconds = Math.max(5, Math.min(300, Math.round(Number(controller?.fanProofTimeoutSeconds ?? data.fanProofTimeoutSeconds ?? autoConfig.fanProofTimeoutSeconds ?? 15) || 15)));
+  const setSeconds = Math.max(5, Math.min(300, Math.round(Number(controller?.fanProofTimeoutSeconds ?? data.fanProofTimeoutSeconds ?? autoConfig.fanProofTimeoutSeconds ?? 30) || 30)));
   if (!controller || !fanCommandActive || fanProofActive) {
     return { active: false, remainingSeconds: 0, setSeconds, label: hvacTimerLabel(0, setSeconds) };
   }
@@ -20589,7 +20589,7 @@ function refreshHvacStartDelayCountdowns() {
       if (name) name.textContent = "Fan Off Delay";
       label.textContent = status.active
         ? status.label
-        : hvacTimerLabel(0, controller?.fanOffDelaySeconds || 60);
+        : hvacTimerLabel(0, controller?.fanOffDelaySeconds || 90);
       return;
     }
     if (row.dataset.hvacTimerKind) {
@@ -21296,10 +21296,10 @@ function renderHvacControllerForm(controller = null) {
         <input name="startDelaySeconds" type="number" min="0" step="5" value="${escapeAttribute(controller?.startDelaySeconds || "60")}">
       </label>
       <label>Fan proof timeout sec
-        <input name="fanProofTimeoutSeconds" type="number" min="5" max="300" step="5" value="${escapeAttribute(controller?.fanProofTimeoutSeconds || "15")}">
+        <input name="fanProofTimeoutSeconds" type="number" min="5" max="300" step="5" value="${escapeAttribute(controller?.fanProofTimeoutSeconds || "30")}">
       </label>
       <label>Fan off delay sec
-        <input name="fanOffDelaySeconds" type="number" min="0" max="3600" step="5" value="${escapeAttribute(controller?.fanOffDelaySeconds || "60")}">
+        <input name="fanOffDelaySeconds" type="number" min="0" max="3600" step="5" value="${escapeAttribute(controller?.fanOffDelaySeconds || "90")}">
       </label>
       ${renderHvacScheduleEditor(controller?.schedule || controller?.data?.schedule || {})}
       ${renderHvacTempSimulatorEditor(controller?.tempSimulator || controller?.data?.tempSimulator || {})}
@@ -21379,8 +21379,8 @@ async function saveHvacControllerFromForm(form) {
     unoccupiedCoolSetpoint: numberField("unoccupiedCoolSetpoint", 82),
     deadband: Math.max(0.5, numberField("setpointDeadband", 1)),
     startDelaySeconds: Math.max(0, Math.round(numberField("startDelaySeconds", 60))),
-    fanProofTimeoutSeconds: Math.max(5, Math.min(300, Math.round(numberField("fanProofTimeoutSeconds", 15)))),
-    fanOffDelaySeconds: Math.max(0, Math.min(3600, Math.round(numberField("fanOffDelaySeconds", 60)))),
+    fanProofTimeoutSeconds: Math.max(5, Math.min(300, Math.round(numberField("fanProofTimeoutSeconds", 30)))),
+    fanOffDelaySeconds: Math.max(0, Math.min(3600, Math.round(numberField("fanOffDelaySeconds", 90)))),
     schedule
   };
   const pointNames = [
@@ -22175,7 +22175,7 @@ function renderAutomationHvac() {
       ].join(""))}
       ${hvacStatusDrawer("Timers", timerDrawerActive ? "Active" : "Idle", [
         `<div class="${escapeAttribute(startDelayStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>`,
-        `<div class="${escapeAttribute(fanPurgeStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active ? fanPurgeStatus.label : hvacTimerLabel(0, primaryController?.fanOffDelaySeconds || 60))}</strong></div>`,
+        `<div class="${escapeAttribute(fanPurgeStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active ? fanPurgeStatus.label : hvacTimerLabel(0, primaryController?.fanOffDelaySeconds || 90))}</strong></div>`,
         `<div class="${escapeAttribute(fanProofTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="fanProof" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Proof Timeout</span><strong>${escapeHtml(fanProofTimerStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(fanProofStuckTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="fanProofStuck" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Proof Stuck</span><strong>${escapeHtml(fanProofStuckTimerStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(heatMinOnTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="heatMinOn" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Min On</span><strong>${escapeHtml(heatMinOnTimerStatus.label)}</strong></div>`,
