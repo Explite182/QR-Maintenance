@@ -19875,7 +19875,7 @@ function normalizeHvacController(controller = {}) {
     notes: controller.notes || "",
     points: {
       fanCommand: pointsSource.fanCommand || controller.fanCommandOutput || "DO1",
-      fanProof: pointsSource.fanProof || controller.fanProofInput || "DI1",
+      fanProof: Object.prototype.hasOwnProperty.call(pointsSource, "fanProof") ? pointsSource.fanProof : controller.fanProofInput || "DI1",
       heatStage1: pointsSource.heatStage1 || controller.heatStage1Output || "DO2",
       coolStage1: pointsSource.coolStage1 || controller.coolStage1Output || "DO3",
       heatStage2: pointsSource.heatStage2 || controller.heatStage2Output || "DO4",
@@ -20038,6 +20038,10 @@ function hvacLiveChannelActive(controller = {}, collectionName = "inputs", chann
   return Boolean(points.find((point) => String(point.channel || "").toUpperCase() === target)?.active);
 }
 
+function hvacFanProofRequired(controller = {}) {
+  return Boolean(String(controller?.points?.fanProof || "").trim());
+}
+
 function hvacChannelOptions(kind = "DI") {
   const type = String(kind || "DI").toUpperCase();
   const count = type === "DO" || type === "DI" ? 8 : 4;
@@ -20045,14 +20049,16 @@ function hvacChannelOptions(kind = "DI") {
 }
 
 function renderHvacPointSelect(name, label, fallback, kind, controller = null, options = {}) {
-  const current = String(controller?.points?.[name] || fallback || "").trim().toUpperCase();
+  const hasSavedValue = Boolean(controller?.points && Object.prototype.hasOwnProperty.call(controller.points, name));
+  const current = String(hasSavedValue ? controller.points[name] : fallback || "").trim().toUpperCase();
   const active = options.active !== false;
   const hint = String(options.hint || (active ? "" : "Reserve stage")).trim();
+  const emptyLabel = String(options.emptyLabel || "Not mapped");
   return `
     <label class="${active ? "" : "is-reserve"}">${escapeHtml(label)}
       <select name="${escapeAttribute(name)}">
         ${hvacChannelOptions(kind).map((channel) => `
-          <option value="${escapeAttribute(channel)}" ${channel === current ? "selected" : ""}>${escapeHtml(channel || "Not mapped")}</option>
+          <option value="${escapeAttribute(channel)}" ${channel === current ? "selected" : ""}>${escapeHtml(channel || emptyLabel)}</option>
         `).join("")}
       </select>
       ${hint ? `<span>${escapeHtml(hint)}</span>` : ""}
@@ -20062,7 +20068,10 @@ function renderHvacPointSelect(name, label, fallback, kind, controller = null, o
 
 function hvacMappedPointState(controller = {}, pointName = "", collectionName = "inputs") {
   const channel = String(controller?.points?.[pointName] || "").trim().toUpperCase();
-  if (!channel) return { channel: "", label: "Not mapped", active: false, className: "is-unmapped" };
+  if (!channel) {
+    const notWired = pointName === "fanProof";
+    return { channel: "", label: notWired ? "Not wired" : "Not mapped", active: false, className: "is-unmapped", notWired };
+  }
   const active = hvacLiveChannelActive(controller, collectionName, channel);
   return { channel, label: active ? "Active" : "Inactive", active, className: active ? "is-active" : "is-inactive" };
 }
@@ -20438,6 +20447,9 @@ function hvacCountdownFromTimestamp(timestamp = "", setSeconds = 0, now = Date.n
 }
 
 function hvacFanProofTimerStatus(controller = {}, fanCommandActive = false, fanProofActive = false, now = Date.now()) {
+  if (!hvacFanProofRequired(controller)) {
+    return { active: false, label: "Not wired", setSeconds: 0, remainingSeconds: 0 };
+  }
   const data = controller?.data && typeof controller.data === "object" ? controller.data : {};
   const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
   const setSeconds = Math.max(5, Math.min(300, Math.round(Number(controller?.fanProofTimeoutSeconds ?? data.fanProofTimeoutSeconds ?? autoConfig.fanProofTimeoutSeconds ?? 15) || 15)));
@@ -20453,6 +20465,9 @@ function hvacFanProofTimerStatus(controller = {}, fanCommandActive = false, fanP
 }
 
 function hvacFanProofStuckTimerStatus(controller = {}, fanCommandActive = false, fanProofActive = false, liveHvac = {}) {
+  if (!hvacFanProofRequired(controller)) {
+    return { active: false, label: "Not wired", setSeconds: 0, remainingSeconds: 0 };
+  }
   const timing = liveHvac && typeof liveHvac === "object" && liveHvac.timing && typeof liveHvac.timing === "object" ? liveHvac.timing : {};
   const setMs = Number(timing.fanProofStuckTimeoutMs);
   const elapsedMs = Number(timing.fanProofStuckElapsedMs);
@@ -20718,7 +20733,7 @@ function hvacCommandInterlockMessage(controller = {}, pointName = "", desiredSta
   }
   if (pointKey.startsWith("heatStage") || pointKey.startsWith("coolStage")) {
     const fanProof = hvacMappedPointState(controller, "fanProof", "inputs");
-    if (!fanProof.active) return `Stage command blocked: fan proof ${fanProof.channel || ""} is not made.`.trim();
+    if (!fanProof.notWired && !fanProof.active) return `Stage command blocked: fan proof ${fanProof.channel || ""} is not made.`.trim();
   }
   if (pointKey.startsWith("heatStage")) {
     const coolStageCount = Math.max(0, Math.min(4, Number(controller?.coolStageCount || controller?.data?.coolStageCount || 1) || 0));
@@ -21176,7 +21191,7 @@ function renderHvacControllerForm(controller = null) {
     ["damper", "OA damper", "", "DO", true, optionalDamperMapped ? "Optional output mapped; count it in output capacity" : "Optional output; leave unmapped unless wired"]
   ];
   const inputPointFields = [
-    ["fanProof", "Fan proof", "DI1", "DI"],
+    ["fanProof", "Fan proof", "DI1", "DI", { emptyLabel: "Not wired" }],
     ["filter", "Filter status", "DI2", "DI"],
     ["freezestat", "Freezestat", "DI3", "DI"],
     ["smoke", "Smoke shutdown", "DI4", "DI"],
@@ -21312,7 +21327,7 @@ function renderHvacControllerForm(controller = null) {
         <strong>HVAC output mapping</strong>
         ${outputPointFields.map(([name, label, fallback, kind, active, hint]) => renderHvacPointSelect(name, label, fallback, kind, controller, { active, hint })).join("")}
         <strong>HVAC input mapping</strong>
-        ${inputPointFields.map(([name, label, fallback, kind]) => renderHvacPointSelect(name, label, fallback, kind, controller)).join("")}
+        ${inputPointFields.map(([name, label, fallback, kind, options]) => renderHvacPointSelect(name, label, fallback, kind, controller, options || {})).join("")}
         <strong>HVAC temperature mapping</strong>
         ${temperaturePointFields.map(([name, label, fallback, kind]) => renderHvacPointSelect(name, label, fallback, kind, controller)).join("")}
       </div>
@@ -21723,7 +21738,11 @@ function renderAutomationHvac() {
   const hvacScheduleStatus = primaryController ? currentHvacScheduleStatus(primaryController) : { label: "No schedule", occupancyMode: "--" };
   const tempSimulator = normalizeHvacTempSimulator(primaryController?.tempSimulator || primaryController?.data?.tempSimulator || {});
   const fanCommandActive = hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.fanCommand || "");
-  const fanProofActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
+  const fanProofRequired = hvacFanProofRequired(primaryController);
+  const fanProofInputActive = hvacLiveChannelActive(primaryController, "inputs", primaryController?.points?.fanProof || "");
+  const fanProofActive = fanProofRequired ? fanProofInputActive : fanCommandActive;
+  const fanProofStatusLabel = fanProofRequired ? fanProofInputActive ? "Made" : "Open" : "Not wired";
+  const fanProvenLabel = fanProofRequired ? fanProofInputActive ? "Fan Proven" : fanCommandActive ? "Fan On" : "Fan Off" : fanCommandActive ? "Fan On" : "Fan Off";
   const fanCommandOutputNumber = hvacOutputNumberFromChannel(primaryController?.points?.fanCommand || "");
   const latestFanCommand = primaryController ? latestHvacCommandForOutput(primaryController.id, fanCommandOutputNumber) : null;
   const fanCommandStatus = latestFanCommand?.status
@@ -21820,8 +21839,8 @@ function renderAutomationHvac() {
     return `<i class="${[stage <= coolStageCount ? "is-configured" : "", active ? "is-active" : ""].filter(Boolean).join(" ")}">${stage}</i>`;
   }).join("");
   const runningUnits = fanCommandActive || fanProofActive ? 1 : 0;
-  const heatCallWaitingForFan = hvacCallState.className === "is-heating" && !fanProofActive;
-  const coolCallWaitingForFan = hvacCallState.className === "is-cooling" && !fanProofActive;
+  const heatCallWaitingForFan = fanProofRequired && hvacCallState.className === "is-heating" && !fanProofInputActive;
+  const coolCallWaitingForFan = fanProofRequired && hvacCallState.className === "is-cooling" && !fanProofInputActive;
   const hvacHoldReason = hvacStageHoldReason(primaryController, hvacCallState, hvacDemandInfo, {
     lockoutActive: hvacLockoutActive,
     lockoutReason: hvacLockoutReason,
@@ -21839,7 +21858,7 @@ function renderAutomationHvac() {
     String(latestFanCommand?.desiredState || "").toLowerCase() === "auto";
   const fanOnSelected = fanCommandActive && !fanAutoSelected;
   const fanOffSelected = !fanCommandActive && !fanAutoSelected;
-  const fanHoldLabel = hvacHoldReason || (fanCommandActive || fanStartPending ? "Waiting for fan proof" : "Waiting for fan command");
+  const fanHoldLabel = hvacHoldReason || (fanProofRequired && (fanCommandActive || fanStartPending) ? "Waiting for fan proof" : "Waiting for fan command");
   const heatCalloutLabel = activeHeatStages
     ? `${activeHeatStages} Active`
     : hvacDemandInfo.family === "heat" ? hvacDemandInfo.label.replace(/^Heating\s+/i, "") : heatStageLabel;
@@ -21968,7 +21987,7 @@ function renderAutomationHvac() {
   };
   const mappedPointRows = [
     ["Fan command", primaryController?.points?.fanCommand || "", fanCommandActive ? "On" : "Off", "output"],
-    ["Fan proof", primaryController?.points?.fanProof || "", fanProofActive ? "Made" : "Open", "input"],
+    ["Fan proof", primaryController?.points?.fanProof || "", fanProofStatusLabel, "input"],
     ["Heat stage 1", primaryController?.points?.heatStage1 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.heatStage1 || "") ? "On" : "Off", "output"],
     ["Heat stage 2", primaryController?.points?.heatStage2 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.heatStage2 || "") ? "On" : "Off", "output"],
     ["Heat stage 3", primaryController?.points?.heatStage3 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.heatStage3 || "") ? "On" : "Off", "output"],
@@ -22104,7 +22123,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Auto Call", hvacCallState.label, `hvac-call-row ${hvacCallState.className}`),
         hvacStatusRow("Requested Stage", hvacDemandInfo.label, `hvac-demand-row ${hvacDemandInfo.className}`),
         hvacStatusRow("Fan Command", primaryController?.points?.fanCommand ? fanCommandActive ? "On" : "Off" : "Not mapped"),
-        hvacStatusRow("Fan Proof", primaryController?.points?.fanProof ? fanProofActive ? "Made" : "Open" : "Not mapped"),
+        hvacStatusRow("Fan Proof", fanProofStatusLabel),
         hvacStatusRow("Room Temp", Number.isFinite(roomDisplayTemp) ? hvacTemperatureLabel(roomDisplayTemp) : temperatureValue("space")),
         roomDisplayDirectTemp !== null ? hvacStatusRow("Direct Room", roomDisplayDirectTempLabel, roomDisplayDirectOnline ? "" : "is-warning") : "",
         hvacStatusRow("Active Setpoints", `${hvacSetpointPairLabel(hvacCallState.heatSetpoint, hvacCallState.coolSetpoint)} (${setpointSourceLabel})`),
@@ -22112,7 +22131,7 @@ function renderAutomationHvac() {
         hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active", `data-hvac-stage-hold-controller="${escapeAttribute(primaryController?.id || "")}"`) : "",
         hvacStatusRow("Lockout", hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear", hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")
       ].join(""))}
-      ${hvacStatusDrawer("Manual Controls", fanProofActive ? "Fan Proven" : fanCommandActive ? "Fan On" : "Fan Off", [
+      ${hvacStatusDrawer("Manual Controls", fanProvenLabel, [
         hvacStatusRow("Fan Command", fanCommandStatus),
         hvacFanCommandButtons,
         hvacStageCommandControls ? `
@@ -22255,11 +22274,11 @@ function renderAutomationHvac() {
               </div>
               <div class="hvac-equipment-callout is-fan ${fanProofActive ? "is-active" : fanCommandActive ? "is-commanded" : ""}">
                 <span>Supply Fan</span>
-                <strong>${escapeHtml(fanProofActive ? "Running" : fanCommandActive ? "Commanded" : "Stopped")}</strong>
+                <strong>${escapeHtml(fanProofRequired ? fanProofInputActive ? "Running" : fanCommandActive ? "Commanded" : "Stopped" : fanCommandActive ? "On" : "Stopped")}</strong>
               </div>
             </div>
             <div class="hvac-interlock-strip" aria-label="HVAC interlock status">
-              <span class="${escapeAttribute(fanProofActive ? "is-normal" : "is-idle")}"><i></i><b>Fan Proof</b><strong>${escapeHtml(fanProofActive ? "Proven" : "Not Proven")}</strong></span>
+              <span class="${escapeAttribute(!fanProofRequired ? "is-idle" : fanProofInputActive ? "is-normal" : "is-idle")}"><i></i><b>Fan Proof</b><strong>${escapeHtml(fanProofRequired ? fanProofInputActive ? "Proven" : "Not Proven" : "Not wired")}</strong></span>
               <span class="${escapeAttribute(smokeState.active ? "is-alarm" : "is-normal")}"><i></i><b>Smoke</b><strong>${escapeHtml(smokeState.active ? "Active" : "Normal")}</strong></span>
               <span class="${escapeAttribute(faultState.active ? "is-alarm" : "is-normal")}"><i></i><b>Fault</b><strong>${escapeHtml(faultState.active ? "Active" : "Normal")}</strong></span>
               <span class="${escapeAttribute(freezestatState.active ? "is-warning" : "is-normal")}"><i></i><b>Freezestat</b><strong>${escapeHtml(freezestatState.active ? "Active" : "Normal")}</strong></span>
