@@ -22095,6 +22095,8 @@ function renderAutomationHvac() {
       <button type="button" class="${fanOffSelected ? "is-selected" : ""}" ${primaryController && fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-command-action="Fan Off">Fan Off</button>
     </div>
   `;
+  const timerDrawerActive = startDelayStatus.active || fanPurgeStatus.active || fanProofTimerStatus.active || fanProofStuckTimerStatus.active ||
+    heatMinOnTimerStatus.active || heatMinOffTimerStatus.active || coolMinOnTimerStatus.active || coolMinOffTimerStatus.active;
   const hvacStatusPanelHtml = `
     <aside class="hvac-status-panel" aria-label="HVAC status points">
       <header><span>Unit Status</span><strong>${runningUnits} Running</strong></header>
@@ -22107,20 +22109,19 @@ function renderAutomationHvac() {
         roomDisplayDirectTemp !== null ? hvacStatusRow("Direct Room", roomDisplayDirectTempLabel, roomDisplayDirectOnline ? "" : "is-warning") : "",
         hvacStatusRow("Active Setpoints", `${hvacSetpointPairLabel(hvacCallState.heatSetpoint, hvacCallState.coolSetpoint)} (${setpointSourceLabel})`),
         hvacSetpointControls,
-        Object.keys(localAuto).length ? hvacStatusRow("ESP32 Demand", localAutoDemandLabel, `hvac-demand-row ${localAutoClassName}`) : "",
         hvacDemandInfo.family ? hvacStatusRow("Stage Hold", hvacHoldReason, "hvac-stage-hold-row is-active", `data-hvac-stage-hold-controller="${escapeAttribute(primaryController?.id || "")}"`) : "",
         hvacStatusRow("Lockout", hvacLockoutActive ? hvacLockoutReason || "Active" : "Clear", hvacLockoutActive ? "hvac-lockout-row is-active" : "hvac-lockout-row")
       ].join(""))}
-      ${hvacStatusSection("Fan Control", fanProofActive ? "Proven" : fanCommandActive ? "Commanded" : "Stopped", [
-        hvacStatusRow("Command", fanCommandStatus),
-        hvacFanCommandButtons
+      ${hvacStatusDrawer("Manual Controls", fanProofActive ? "Fan Proven" : fanCommandActive ? "Fan On" : "Fan Off", [
+        hvacStatusRow("Fan Command", fanCommandStatus),
+        hvacFanCommandButtons,
+        hvacStageCommandControls ? `
+          <section class="hvac-status-group">
+            <header><span>Stage Commands</span><strong>${heatStageLabel} / ${coolStageLabel}</strong></header>
+            ${hvacStageCommandControls}
+          </section>
+        ` : ""
       ].join(""))}
-      ${hvacStageCommandControls ? `
-        <section class="hvac-status-group">
-          <header><span>Stage Commands</span><strong>${heatStageLabel} / ${coolStageLabel}</strong></header>
-          ${hvacStageCommandControls}
-        </section>
-      ` : ""}
       ${hvacLockoutActive ? `
         <section class="hvac-status-group">
           <header><span>Lockout Reset</span><strong>Required</strong></header>
@@ -22129,7 +22130,7 @@ function renderAutomationHvac() {
           </div>
         </section>
       ` : ""}
-      ${hvacStatusDrawer("Setup Details", primaryController ? "Mapped" : "Setup", [
+      ${hvacStatusDrawer("Installer Setup", primaryController ? "Mapped" : "Setup", [
         hvacStatusRow("Controller", primaryController?.name || "Not added"),
         hvacStatusRow("Equipment", primaryEquipment?.equipmentId ? `${primaryEquipment.equipmentId} assigned` : equipmentStatusLabel, equipmentReady ? "is-ready" : "is-warning"),
         hvacStatusRow("Control Mode", primaryController?.hvacControlMode || "Manual"),
@@ -22145,7 +22146,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Schedule", hvacScheduleStatus.label),
         hvacStatusRow("Setpoint Mode", hvacCallState.occupancyMode || hvacScheduleStatus.occupancyMode || "--")
       ].join(""))}
-      ${hvacStatusDrawer("Timers", startDelayStatus.active || fanPurgeStatus.active || fanProofTimerStatus.active || fanProofStuckTimerStatus.active ? "Active" : "Idle", [
+      ${hvacStatusDrawer("Timers", timerDrawerActive ? "Active" : "Idle", [
         `<div class="${escapeAttribute(startDelayStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(fanPurgeStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active ? fanPurgeStatus.label : hvacTimerLabel(0, primaryController?.fanOffDelaySeconds || 60))}</strong></div>`,
         `<div class="${escapeAttribute(fanProofTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="fanProof" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Proof Timeout</span><strong>${escapeHtml(fanProofTimerStatus.label)}</strong></div>`,
