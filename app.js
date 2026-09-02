@@ -21878,17 +21878,14 @@ function renderAutomationHvac() {
   const liveOccupancy = liveHvac.occupancy || primaryEquipment?.hvacOccupancy || "Unoccupied";
   const roomDisplay = liveHvac.roomDisplay && typeof liveHvac.roomDisplay === "object" ? liveHvac.roomDisplay : {};
   const roomDisplayLastSeenMs = roomDisplay.lastSeenAt ? new Date(roomDisplay.lastSeenAt).getTime() : 0;
-  const roomDisplayOnline = roomDisplayLastSeenMs && Number.isFinite(roomDisplayLastSeenMs) && Date.now() - roomDisplayLastSeenMs < 5 * 60 * 1000;
+  const roomDisplaySensorOnline = roomDisplay.sensorOnline !== false;
+  const roomDisplayOnline = roomDisplaySensorOnline && roomDisplayLastSeenMs && Number.isFinite(roomDisplayLastSeenMs) && Date.now() - roomDisplayLastSeenMs < 5 * 60 * 1000;
   const roomDisplayTemp = Number(roomDisplay.temperatureF);
   const roomDisplayHumidity = Number(roomDisplay.humidityPercent);
   const roomDisplayDirect = liveHvac.roomDisplayDirect && typeof liveHvac.roomDisplayDirect === "object" ? liveHvac.roomDisplayDirect : {};
   const roomDisplayDirectTemp = numberOrNull(roomDisplayDirect.temperatureF);
   const roomDisplayDirectHumidity = numberOrNull(roomDisplayDirect.humidityPercent);
-  const roomDisplayDirectLastSeenMsAgo = numberOrNull(roomDisplayDirect.lastSeenMsAgo);
-  const roomDisplayDirectLastSeenMs = roomDisplayDirect.lastSeenAt ? new Date(roomDisplayDirect.lastSeenAt).getTime() : 0;
-  const roomDisplayDirectOnline = Boolean(roomDisplayDirect.online) ||
-    (roomDisplayDirectLastSeenMsAgo !== null && roomDisplayDirectLastSeenMsAgo <= 30000) ||
-    (roomDisplayDirectLastSeenMs && Number.isFinite(roomDisplayDirectLastSeenMs) && Date.now() - roomDisplayDirectLastSeenMs < 60 * 1000);
+  const roomDisplayDirectOnline = Boolean(roomDisplayDirect.online);
   const hvacTemperatureLabel = (fahrenheitValue, fallback = "--") => {
     const numericValue = Number(fahrenheitValue);
     if (!Number.isFinite(numericValue)) return fallback;
@@ -21901,10 +21898,10 @@ function renderAutomationHvac() {
     if (!Number.isFinite(heatValue) || !Number.isFinite(coolValue)) return fallback;
     return `${hvacTemperatureLabel(heatValue)} / ${hvacTemperatureLabel(coolValue)}`;
   };
-  const roomDisplayDirectTempLabel = roomDisplayDirectTemp !== null
+  const roomDisplayDirectTempLabel = roomDisplayDirectOnline && roomDisplayDirectTemp !== null
     ? `${hvacTemperatureLabel(roomDisplayDirectTemp)} - direct`
-    : "Not seen";
-  const roomDisplayDirectStatus = roomDisplayDirectTemp !== null
+    : roomDisplayDirect.source ? "Not ready" : "Not seen";
+  const roomDisplayDirectStatus = roomDisplayDirect.source
     ? roomDisplayDirectOnline ? "Online" : "Stale"
     : "Not seen";
   const localAuto = liveHvac.localAuto && typeof liveHvac.localAuto === "object" ? liveHvac.localAuto : {};
