@@ -20421,6 +20421,22 @@ function hvacCountdownFromCommand(command = {}, setSeconds = 0, now = Date.now()
   };
 }
 
+function hvacCountdownFromTimestamp(timestamp = "", setSeconds = 0, now = Date.now()) {
+  const set = Math.max(0, Math.round(Number(setSeconds) || 0));
+  const startedAt = new Date(timestamp || 0).getTime();
+  if (!set || !Number.isFinite(startedAt) || startedAt <= 0) {
+    return { active: false, remainingSeconds: 0, setSeconds: set, label: hvacTimerLabel(0, set) };
+  }
+  const elapsedSeconds = Math.max(0, Math.floor((Number(now) - startedAt) / 1000));
+  const remainingSeconds = Math.max(0, set - elapsedSeconds);
+  return {
+    active: remainingSeconds > 0,
+    remainingSeconds,
+    setSeconds: set,
+    label: hvacTimerLabel(remainingSeconds, set)
+  };
+}
+
 function hvacFanProofTimerStatus(controller = {}, fanCommandActive = false, fanProofActive = false, now = Date.now()) {
   const data = controller?.data && typeof controller.data === "object" ? controller.data : {};
   const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
@@ -20453,8 +20469,20 @@ function hvacFanProofStuckTimerStatus(controller = {}, fanCommandActive = false,
   };
 }
 
-function hvacStageTimerStatus(controller = {}, family = "heat", timerType = "minOn", timingMs = 0, now = Date.now()) {
+function hvacStageTimerStatus(controller = {}, family = "heat", timerType = "minOn", timingMs = 0, timing = {}, now = Date.now()) {
   const setSeconds = Math.max(0, Math.round(hvacStageTimerSetMs(controller, family, timerType, timingMs) / 1000));
+  const timingSource = timing && typeof timing === "object" ? timing : {};
+  const remainingKey = `${family === "cool" ? "cooling" : "heating"}${timerType === "minOn" ? "MinOn" : "MinOff"}RemainingMs`;
+  const liveRemainingMs = Number(timingSource[remainingKey]);
+  if (Number.isFinite(liveRemainingMs) && liveRemainingMs > 0) {
+    const remainingSeconds = Math.max(0, Math.ceil(liveRemainingMs / 1000));
+    return {
+      active: true,
+      remainingSeconds,
+      setSeconds,
+      label: hvacTimerLabel(remainingSeconds, setSeconds)
+    };
+  }
   const labelPrefix = family === "cool" ? "Cool Stage" : "Heat Stage";
   const countKey = family === "cool" ? "coolStageCount" : "heatStageCount";
   const pointPrefix = family === "cool" ? "coolStage" : "heatStage";
@@ -20471,6 +20499,17 @@ function hvacStageTimerStatus(controller = {}, family = "heat", timerType = "min
     };
   });
   const activeStages = stageStates.filter((stage) => stage.active).map((stage) => stage.stage);
+  const stageProtection = timingSource.stageProtection && typeof timingSource.stageProtection === "object" ? timingSource.stageProtection : {};
+  const protectionPrefix = family === "cool" ? "cooling" : "heating";
+  const protectionTimestampKey = timerType === "minOn" ? "lastOnAt" : "lastOffAt";
+  const protectedStages = timerType === "minOn"
+    ? stageStates.filter((stage) => stage.active)
+    : stageStates.filter((stage) => !stage.active);
+  const protectedCountdown = protectedStages
+    .map((stage) => hvacCountdownFromTimestamp(stageProtection[`${protectionPrefix}${stage.stage}`]?.[protectionTimestampKey], setSeconds, now))
+    .filter((status) => status.active)
+    .sort((a, b) => b.remainingSeconds - a.remainingSeconds)[0];
+  if (protectedCountdown) return protectedCountdown;
   const commandSuffix = timerType === "minOn" ? "On" : "Off";
   if (timerType === "minOn" && !activeStages.length) {
     return { active: false, remainingSeconds: 0, setSeconds, label: hvacTimerLabel(0, setSeconds) };
@@ -20548,12 +20587,12 @@ function refreshHvacStartDelayCountdowns() {
         : kind === "fanProofStuck"
           ? hvacFanProofStuckTimerStatus(controller, fanCommandActive, fanProofActive, liveHvac)
           : kind === "heatMinOn"
-            ? hvacStageTimerStatus(controller, "heat", "minOn", timing.heatingMinOnMs)
+            ? hvacStageTimerStatus(controller, "heat", "minOn", timing.heatingMinOnMs, timing)
             : kind === "heatMinOff"
-              ? hvacStageTimerStatus(controller, "heat", "minOff", timing.heatingMinOffMs)
+              ? hvacStageTimerStatus(controller, "heat", "minOff", timing.heatingMinOffMs, timing)
               : kind === "coolMinOn"
-                ? hvacStageTimerStatus(controller, "cool", "minOn", timing.coolingMinOnMs)
-                : hvacStageTimerStatus(controller, "cool", "minOff", timing.coolingMinOffMs);
+                ? hvacStageTimerStatus(controller, "cool", "minOn", timing.coolingMinOnMs, timing)
+                : hvacStageTimerStatus(controller, "cool", "minOff", timing.coolingMinOffMs, timing);
       row.classList.toggle("is-active", timerStatus.active);
       label.textContent = timerStatus.label;
       return;
@@ -21697,10 +21736,10 @@ function renderAutomationHvac() {
   const fanPurgeStatus = hvacFanPurgeStatus(primaryController, hvacCommandsCache);
   const fanProofTimerStatus = hvacFanProofTimerStatus(primaryController, fanCommandActive, fanProofActive);
   const fanProofStuckTimerStatus = hvacFanProofStuckTimerStatus(primaryController, fanCommandActive, fanProofActive, liveHvac);
-  const heatMinOnTimerStatus = hvacStageTimerStatus(primaryController, "heat", "minOn", hvacTiming.heatingMinOnMs);
-  const heatMinOffTimerStatus = hvacStageTimerStatus(primaryController, "heat", "minOff", hvacTiming.heatingMinOffMs);
-  const coolMinOnTimerStatus = hvacStageTimerStatus(primaryController, "cool", "minOn", hvacTiming.coolingMinOnMs);
-  const coolMinOffTimerStatus = hvacStageTimerStatus(primaryController, "cool", "minOff", hvacTiming.coolingMinOffMs);
+  const heatMinOnTimerStatus = hvacStageTimerStatus(primaryController, "heat", "minOn", hvacTiming.heatingMinOnMs, hvacTiming);
+  const heatMinOffTimerStatus = hvacStageTimerStatus(primaryController, "heat", "minOff", hvacTiming.heatingMinOffMs, hvacTiming);
+  const coolMinOnTimerStatus = hvacStageTimerStatus(primaryController, "cool", "minOn", hvacTiming.coolingMinOnMs, hvacTiming);
+  const coolMinOffTimerStatus = hvacStageTimerStatus(primaryController, "cool", "minOff", hvacTiming.coolingMinOffMs, hvacTiming);
   const latestHvacEvent = recentHvacCommands
     .slice()
     .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
