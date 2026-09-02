@@ -22651,20 +22651,26 @@ function hvacIssueNotificationsForController(controller = {}) {
   const equipment = normalized.equipmentIds?.[0] ? getAsset(normalized.equipmentIds[0]) : null;
   const alertScope = [location?.name || normalized.area || "", equipment?.name || ""].filter(Boolean).join(" | ");
   const issueRows = [
-    [Boolean(lockout.active || lockout.lockoutActive), lockout.reason || lockout.lockoutReason || "HVAC lockout active", "critical"],
-    [hvacMappedPointState(normalized, "smoke", "inputs").active, "Smoke shutdown active", "critical"],
-    [hvacMappedPointState(normalized, "fault", "inputs").active, "HVAC fault input active", "critical"],
-    [hvacMappedPointState(normalized, "phaseMonitor", "inputs").active, "Phase monitor active", "critical"],
-    [hvacMappedPointState(normalized, "freezestat", "inputs").active, "Freezestat active", "critical"],
-    [hvacMappedPointState(normalized, "filter", "inputs").active, "Filter alarm active", "warning"],
-    [roomDisplay.sensorOnline === false, "Room sensor not available", "warning"],
-    [Boolean(localAuto.enabled && roomSensor.available && roomSensor.fresh === false), "Direct room link stale", "warning"],
-    [Boolean(directRoom.source && directRoom.online === false && normalized.data?.roomDisplaySetpointMode !== "report_only"), "Direct room link not ready", "warning"]
+    [Boolean(lockout.active || lockout.lockoutActive), lockout.reason || lockout.lockoutReason || "HVAC lockout active", "critical", "hvac-lockout"],
+    [hvacMappedPointState(normalized, "smoke", "inputs").active, "Smoke shutdown active", "critical", "hvac-smoke"],
+    [hvacMappedPointState(normalized, "fault", "inputs").active, "HVAC fault input active", "critical", "hvac-fault"],
+    [hvacMappedPointState(normalized, "phaseMonitor", "inputs").active, "Phase monitor active", "critical", "hvac-phaseMonitor"],
+    [hvacMappedPointState(normalized, "freezestat", "inputs").active, "Freezestat active", "critical", "hvac-freezestat"],
+    [hvacMappedPointState(normalized, "filter", "inputs").active, "Filter alarm active", "warning", "hvac-filter"],
+    [roomDisplay.sensorOnline === false, "Room sensor not available", "warning", "hvac-room-sensor"],
+    [Boolean(localAuto.enabled && roomSensor.available && roomSensor.fresh === false), "Direct room link stale", "warning", "hvac-direct-room-link"],
+    [Boolean(directRoom.source && directRoom.online === false && normalized.data?.roomDisplaySetpointMode !== "report_only"), "Direct room link not ready", "warning", "hvac-direct-room-link"]
   ].filter(([active]) => active);
+  const hasActiveServerNotification = (type = "") => serverNotifications.some((notification) =>
+    String(notification.type || "") === type &&
+    String(notification.source_id || notification.sourceId || "") === String(normalized.id || "") &&
+    normalizeNotificationStatus(notification.status) === "active"
+  );
 
   const seen = new Set();
   return issueRows
-    .filter(([, message]) => {
+    .filter(([, message, , serverType]) => {
+      if (serverType && hasActiveServerNotification(serverType)) return false;
       const key = String(message || "").toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
