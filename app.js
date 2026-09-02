@@ -22646,6 +22646,10 @@ function hvacIssueNotificationsForController(controller = {}) {
   const roomSensor = localAuto.roomSensor && typeof localAuto.roomSensor === "object" ? localAuto.roomSensor : {};
   const roomDisplay = liveHvac.roomDisplay && typeof liveHvac.roomDisplay === "object" ? liveHvac.roomDisplay : {};
   const directRoom = liveHvac.roomDisplayDirect && typeof liveHvac.roomDisplayDirect === "object" ? liveHvac.roomDisplayDirect : {};
+  const location = getLocation(normalized.locationId);
+  const customer = getCustomer(normalized.customerId);
+  const equipment = normalized.equipmentIds?.[0] ? getAsset(normalized.equipmentIds[0]) : null;
+  const alertScope = [location?.name || normalized.area || "", equipment?.name || ""].filter(Boolean).join(" | ");
   const issueRows = [
     [Boolean(lockout.active || lockout.lockoutActive), lockout.reason || lockout.lockoutReason || "HVAC lockout active", "critical"],
     [hvacMappedPointState(normalized, "smoke", "inputs").active, "Smoke shutdown active", "critical"],
@@ -22671,7 +22675,7 @@ function hvacIssueNotificationsForController(controller = {}) {
       type: "hvac-attention",
       status: "active",
       severity,
-      title: "Club 16 HVAC alert",
+      title: `${location?.name || customer?.name || "SiteWorks"} HVAC alert`,
       message,
       created_at: liveHvac.updatedAt || normalized.lastSeenAt || normalized.last_seen_at || "",
       customer_id: normalized.customerId,
@@ -22683,6 +22687,10 @@ function hvacIssueNotificationsForController(controller = {}) {
         controllerId: normalized.id,
         controllerUid: normalized.uid,
         equipmentId: normalized.equipmentIds?.[0] || "",
+        locationName: location?.name || "",
+        customerName: customer?.name || "",
+        equipmentName: equipment?.name || "",
+        alertScope,
         message
       }
     }));
@@ -22764,6 +22772,9 @@ function notificationDetailText(notification = {}) {
   const panel = getAsset(metadata.panelAssetId);
   return [
     notification.message || "",
+    metadata.alertScope || "",
+    metadata.locationName || "",
+    metadata.equipmentName || "",
     panel?.name || "",
     metadata.circuitNumber ? `Circuit ${metadata.circuitNumber}` : "",
     notification.created_at ? formatDateTime(notification.created_at) : ""
