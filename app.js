@@ -20880,7 +20880,7 @@ function hvacStageHoldReason(controller = {}, callState = {}, demand = {}, conte
     if (context.startDelayActive) return `Start delay running - ${Math.max(0, context.startDelayRemainingSeconds || 0)} sec left.`;
     return "Waiting for fan command.";
   }
-  if (!context.fanProofActive) return "Waiting for fan proof.";
+  if (context.fanProofRequired !== false && !context.fanProofActive) return "Waiting for fan proof.";
   const activeStages = hvacActiveStageNumbers(controller, demand.family, demand.configuredCount);
   if (activeStages.length < demand.requestedCount) return `${demand.family === "heat" ? "Heat" : "Cool"} Stage ${activeStages.length + 1} output pending.`;
   return `${demand.family === "heat" ? "Heat" : "Cool"} Stage ${demand.requestedCount} active.`;
@@ -20895,7 +20895,7 @@ function hvacCommissioningChecks(controller = null, equipmentReady = false) {
     ["Controller saved", Boolean(controller), controller?.name || "Add HVAC controller"],
     ["Equipment assigned", Boolean(equipmentReady), equipmentReady ? "Linked to equipment" : "Assign RTU/MAU equipment"],
     ["Fan command", Boolean(points.fanCommand), points.fanCommand || "Map DO output"],
-    ["Fan proof", Boolean(points.fanProof), points.fanProof || "Map DI input"],
+    ["Fan proof", true, points.fanProof || "Not wired"],
     ["Heating stages", !heatStageCount || stageMapped("heatStage", heatStageCount), heatStageCount ? `${heatStageCount} configured` : "No heating stages"],
     ["Cooling stages", !coolStageCount || stageMapped("coolStage", coolStageCount), coolStageCount ? `${coolStageCount} configured` : "No cooling stages"],
     ["Safety inputs", Boolean(points.smoke && points.fault && points.freezestat), "Smoke / fault / freezestat"],
@@ -21848,6 +21848,7 @@ function renderAutomationHvac() {
     faultActive: faultState.active,
     freezestatActive: freezestatState.active,
     fanCommandActive,
+    fanProofRequired,
     fanProofActive,
     startDelayActive: startDelayStatus.active,
     startDelayRemainingSeconds: startDelayStatus.remainingSeconds
