@@ -22075,7 +22075,7 @@ function renderAutomationHvac() {
     const controllerStatus = hvacControllerStatus(controller);
     const assigned = hvacControllerAssignedEquipment(controller, equipment);
     return `
-      <article class="hvac-controller-card ${controllerStatus.className}">
+      <article class="hvac-controller-card ${controllerStatus.className}" data-hvac-controller-card="${escapeAttribute(controller.id)}">
         <div>
           <strong>${escapeHtml(controller.name)}</strong>
           <span>${escapeHtml(controller.uid || "No UID")} | ${escapeHtml(controller.type)} | ${escapeHtml(controller.area || currentLocation?.name || "No area")}</span>
@@ -22224,6 +22224,13 @@ function renderAutomationHvac() {
     ? hvacFirmwareCache.assignments.filter((item) => ["assigned", "pending", "downloading", "installing"].includes(String(item.status || "").toLowerCase())).length
     : 0;
   const hvacFirmwareSummary = hvacFirmwarePendingCount ? `${hvacFirmwarePendingCount} pending` : hvacFirmwareCache.firmware.length ? "Ready" : "OTA";
+  const hvacPageAlerts = primaryController ? hvacIssueNotificationsForController(primaryController) : [];
+  const hvacCustomerAlertHtml = hvacPageAlerts.length ? `
+      <section class="hvac-customer-alert" aria-label="${escapeAttribute(currentCustomer?.name || "Customer")} alerts">
+        <strong>${escapeHtml(currentCustomer?.name || "Customer")} Alerts</strong>
+        <span>${escapeHtml(hvacPageAlerts.map((item) => item.message).slice(0, 3).join(" | "))}</span>
+      </section>
+  ` : "";
   if (count) count.textContent = controllers.length ? String(controllers.length) : "RTU";
   panel.innerHTML = `
     <section class="hvac-scada-shell" aria-label="SiteWorks HVAC HMI">
@@ -22246,6 +22253,7 @@ function renderAutomationHvac() {
         </div>
         <em>${escapeHtml(primaryController ? primaryController.uid || "HVAC" : "NO CONTROLLER")}</em>
       </section>
+      ${hvacCustomerAlertHtml}
       <main class="hvac-scada-main">
         <section class="hvac-equipment-view" aria-label="HVAC equipment graphic">
           <header>Equipment Section</header>
@@ -22630,6 +22638,60 @@ function localPumpNotifications() {
   });
 }
 
+function hvacIssueNotificationsForController(controller = {}) {
+  const normalized = normalizeHvacController(controller);
+  const liveHvac = normalized.data?.liveHvac && typeof normalized.data.liveHvac === "object" ? normalized.data.liveHvac : {};
+  const lockout = liveHvac.lockout && typeof liveHvac.lockout === "object" ? liveHvac.lockout : {};
+  const localAuto = liveHvac.localAuto && typeof liveHvac.localAuto === "object" ? liveHvac.localAuto : {};
+  const roomSensor = localAuto.roomSensor && typeof localAuto.roomSensor === "object" ? localAuto.roomSensor : {};
+  const roomDisplay = liveHvac.roomDisplay && typeof liveHvac.roomDisplay === "object" ? liveHvac.roomDisplay : {};
+  const directRoom = liveHvac.roomDisplayDirect && typeof liveHvac.roomDisplayDirect === "object" ? liveHvac.roomDisplayDirect : {};
+  const issueRows = [
+    [Boolean(lockout.active || lockout.lockoutActive), lockout.reason || lockout.lockoutReason || "HVAC lockout active", "critical"],
+    [hvacMappedPointState(normalized, "smoke", "inputs").active, "Smoke shutdown active", "critical"],
+    [hvacMappedPointState(normalized, "fault", "inputs").active, "HVAC fault input active", "critical"],
+    [hvacMappedPointState(normalized, "phaseMonitor", "inputs").active, "Phase monitor active", "critical"],
+    [hvacMappedPointState(normalized, "freezestat", "inputs").active, "Freezestat active", "critical"],
+    [hvacMappedPointState(normalized, "filter", "inputs").active, "Filter alarm active", "warning"],
+    [roomDisplay.sensorOnline === false, "Room sensor not available", "warning"],
+    [Boolean(localAuto.enabled && roomSensor.available && roomSensor.fresh === false), "Direct room link stale", "warning"],
+    [Boolean(directRoom.source && directRoom.online === false && normalized.data?.roomDisplaySetpointMode !== "report_only"), "Direct room link not ready", "warning"]
+  ].filter(([active]) => active);
+
+  const seen = new Set();
+  return issueRows
+    .filter(([, message]) => {
+      const key = String(message || "").toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(([, message, severity], index) => ({
+      id: `local-hvac-${normalized.id}-${index}-${String(message).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+      type: "hvac-attention",
+      status: "active",
+      severity,
+      title: "Club 16 HVAC alert",
+      message,
+      created_at: liveHvac.updatedAt || normalized.lastSeenAt || normalized.last_seen_at || "",
+      customer_id: normalized.customerId,
+      location_id: normalized.locationId,
+      source_id: normalized.id,
+      metadata: {
+        synthetic: true,
+        localOnly: true,
+        controllerId: normalized.id,
+        controllerUid: normalized.uid,
+        equipmentId: normalized.equipmentIds?.[0] || "",
+        message
+      }
+    }));
+}
+
+function localHvacNotifications() {
+  return hvacControllersForCurrentView().flatMap(hvacIssueNotificationsForController);
+}
+
 function visibleNotifications() {
   const liveServerNotifications = serverNotifications.filter((notification) =>
     String(notification?.type || "") !== "server-health"
@@ -22638,7 +22700,8 @@ function visibleNotifications() {
     ...liveServerNotifications,
     ...(currentRole === "Admin" && serverHealthNotification ? [serverHealthNotification] : []),
     ...localBreakerTripNotifications(),
-    ...localPumpNotifications()
+    ...localPumpNotifications(),
+    ...localHvacNotifications()
   ].filter(notificationMatchesCurrentView);
 }
 
@@ -22755,6 +22818,7 @@ function renderNotificationCenterItem(notification = {}) {
   const isBreakerTrip = notification.type === "breaker-trip";
   const isServerHealth = notification.type === "server-health";
   const isPumpAttention = notification.type === "pump-attention";
+  const isHvacAttention = notification.type === "hvac-attention";
   const isSynthetic = Boolean(notificationMetadata(notification).synthetic);
   return `
     <article class="notification-center-item is-${escapeAttribute(status)} is-${escapeAttribute(severity)}">
@@ -22767,6 +22831,7 @@ function renderNotificationCenterItem(notification = {}) {
         ${isBreakerTrip ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Panel</button>` : ""}
         ${isServerHealth ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Server</button>` : ""}
         ${isPumpAttention ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Pump</button>` : ""}
+        ${isHvacAttention ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open HVAC</button>` : ""}
         ${!isBreakerTrip && !isPumpAttention && ["esp-offline", "lighting-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
@@ -23177,6 +23242,15 @@ function openServerNotification(id) {
       const selector = selectedPumpHmiAssetId ? `[data-select-pump-asset="${String(selectedPumpHmiAssetId).replace(/"/g, '\\"')}"]` : "";
       const target = selector ? document.querySelector(selector) : document.getElementById("automationPumpsPanel");
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  } else if (notification.type === "hvac-attention") {
+    openAutomationSidebarTab("hvac");
+    render();
+    window.setTimeout(() => {
+      const controllerId = metadata.controllerId || notification.source_id || notification.sourceId || "";
+      const selector = controllerId ? `[data-hvac-controller-card="${String(controllerId).replace(/"/g, '\\"')}"]` : "";
+      const target = selector ? document.querySelector(selector) : document.getElementById("automationHvacPanel");
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   } else if (notification.type === "key-overdue") {
     focusedKeyId = metadata.keyId || metadata.sourceId || "";
