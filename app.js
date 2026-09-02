@@ -19890,6 +19890,7 @@ function normalizeHvacController(controller = {}) {
       smoke: pointsSource.smoke || controller.smokeInput || "DI4",
       occupied: pointsSource.occupied || controller.occupiedInput || "DI5",
       fault: pointsSource.fault || controller.faultInput || "DI6",
+      phaseMonitor: pointsSource.phaseMonitor || controller.phaseMonitorInput || "DI7",
       supplyTemp: pointsSource.supplyTemp || controller.supplyTempInput || "AI1",
       returnTemp: pointsSource.returnTemp || controller.returnTempInput || "AI2",
       outsideTemp: pointsSource.outsideTemp || controller.outsideTempInput || "AI3",
@@ -20724,9 +20725,11 @@ function hvacCommandInterlockMessage(controller = {}, pointName = "", desiredSta
   const lockout = liveHvac.lockout && typeof liveHvac.lockout === "object" ? liveHvac.lockout : {};
   if (lockout.active) return `HVAC command blocked: ${lockout.reason || "lockout active"}.`;
   const faultState = hvacMappedPointState(controller, "fault", "inputs");
+  const phaseMonitorState = hvacMappedPointState(controller, "phaseMonitor", "inputs");
   const smokeState = hvacMappedPointState(controller, "smoke", "inputs");
   const freezestatState = hvacMappedPointState(controller, "freezestat", "inputs");
   if (faultState.active) return `HVAC command blocked: fault input ${faultState.channel || ""} is active.`.trim();
+  if (phaseMonitorState.active) return `HVAC command blocked: phase monitor input ${phaseMonitorState.channel || ""} is active.`.trim();
   if (smokeState.active) return `HVAC command blocked: smoke shutdown input ${smokeState.channel || ""} is active.`.trim();
   if (pointKey.startsWith("coolStage") && freezestatState.active) {
     return `Cooling command blocked: freezestat input ${freezestatState.channel || ""} is active.`.trim();
@@ -20867,6 +20870,7 @@ function hvacStageHoldReason(controller = {}, callState = {}, demand = {}, conte
   if (context.lockoutActive) return context.lockoutReason || "Lockout active.";
   if (context.smokeActive) return "Smoke shutdown input is active.";
   if (context.faultActive) return "Fault input is active.";
+  if (context.phaseMonitorActive) return "Phase monitor input is active.";
   if (demand.family === "cool" && context.freezestatActive) return "Freezestat input is active.";
   const heatStageCount = Math.max(0, Math.min(4, Number(controller?.heatStageCount || controller?.data?.heatStageCount || 1) || 0));
   const coolStageCount = Math.max(0, Math.min(4, Number(controller?.coolStageCount || controller?.data?.coolStageCount || 1) || 0));
@@ -20898,7 +20902,7 @@ function hvacCommissioningChecks(controller = null, equipmentReady = false) {
     ["Fan proof", true, points.fanProof || "Not wired"],
     ["Heating stages", !heatStageCount || stageMapped("heatStage", heatStageCount), heatStageCount ? `${heatStageCount} configured` : "No heating stages"],
     ["Cooling stages", !coolStageCount || stageMapped("coolStage", coolStageCount), coolStageCount ? `${coolStageCount} configured` : "No cooling stages"],
-    ["Safety inputs", Boolean(points.smoke && points.fault && points.freezestat), "Smoke / fault / freezestat"],
+    ["Safety inputs", Boolean(points.smoke && points.fault && points.phaseMonitor && points.freezestat), "Smoke / fault / phase / freezestat"],
     ["Timers", Boolean(controller?.startDelaySeconds && controller?.fanProofTimeoutSeconds && controller?.fanOffDelaySeconds), "Start, proof, and off delay"]
   ];
   return `
@@ -21196,7 +21200,8 @@ function renderHvacControllerForm(controller = null) {
     ["freezestat", "Freezestat", "DI3", "DI"],
     ["smoke", "Smoke shutdown", "DI4", "DI"],
     ["occupied", "Occupied input", "DI5", "DI"],
-    ["fault", "Fault / alarm input", "DI6", "DI"]
+    ["fault", "Fault / alarm input", "DI6", "DI"],
+    ["phaseMonitor", "Phase monitor", "DI7", "DI"]
   ];
   const temperaturePointFields = [
     ["supplyTemp", "Supply temp", "AI1", "AI"],
@@ -21394,6 +21399,7 @@ async function saveHvacControllerFromForm(form) {
     "smoke",
     "occupied",
     "fault",
+    "phaseMonitor",
     "supplyTemp",
     "returnTemp",
     "outsideTemp",
@@ -21817,7 +21823,8 @@ function renderAutomationHvac() {
   const smokeState = hvacMappedPointState(primaryController, "smoke", "inputs");
   const occupiedState = hvacMappedPointState(primaryController, "occupied", "inputs");
   const faultState = hvacMappedPointState(primaryController, "fault", "inputs");
-  const autoReady = primaryController && String(primaryController.hvacControlMode || "").toLowerCase() === "auto" && !hvacLockoutActive && !faultState.active && !smokeState.active;
+  const phaseMonitorState = hvacMappedPointState(primaryController, "phaseMonitor", "inputs");
+  const autoReady = primaryController && String(primaryController.hvacControlMode || "").toLowerCase() === "auto" && !hvacLockoutActive && !faultState.active && !smokeState.active && !phaseMonitorState.active;
   const autoStatusLabel = !primaryController
     ? "No controller"
     : String(primaryController.hvacControlMode || "").toLowerCase() !== "auto"
@@ -21846,6 +21853,7 @@ function renderAutomationHvac() {
     lockoutReason: hvacLockoutReason,
     smokeActive: smokeState.active,
     faultActive: faultState.active,
+    phaseMonitorActive: phaseMonitorState.active,
     freezestatActive: freezestatState.active,
     fanCommandActive,
     fanProofRequired,
@@ -21999,6 +22007,7 @@ function renderAutomationHvac() {
     ["Cool stage 4", primaryController?.points?.coolStage4 || "", hvacLiveChannelActive(primaryController, "outputs", primaryController?.points?.coolStage4 || "") ? "On" : "Off", "output"],
     ["Occupied", occupiedState.channel, occupiedState.label, "input"],
     ["Fault / alarm", faultState.channel, faultState.active ? "Alarm" : "Normal", "input"],
+    ["Phase monitor", phaseMonitorState.channel, phaseMonitorState.active ? "Alarm" : "Normal", "input"],
     ["Filter", filterState.channel, filterState.label, "input"],
     ["Freezestat", freezestatState.channel, freezestatState.active ? "Alarm" : "Normal", "input"],
     ["Smoke shutdown", smokeState.channel, smokeState.active ? "Alarm" : "Normal", "input"],
@@ -22182,6 +22191,7 @@ function renderAutomationHvac() {
       ].join(""))}
       ${hvacStatusDrawer("Live I/O", liveHvac.inputMaskHex || "--", [
         hvacStatusRow("Fault Input", faultState.channel ? `${faultState.channel} ${faultState.active ? "Active" : "Normal"}` : faultState.label, faultState.active ? "is-alarm" : ""),
+        hvacStatusRow("Phase Monitor", phaseMonitorState.channel ? `${phaseMonitorState.channel} ${phaseMonitorState.active ? "Fault" : "Normal"}` : phaseMonitorState.label, phaseMonitorState.active ? "is-alarm" : ""),
         hvacStatusRow("Occupied Input", occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label),
         hvacStatusRow("Live I/O", `${liveHvac.inputMaskHex || "--"} / ${liveHvac.outputMaskHex || "--"}`),
         hvacStatusRow("Space Temp", temperatureValue("space")),
@@ -22200,8 +22210,9 @@ function renderAutomationHvac() {
         hvacStatusRow("Last Seen", formatDateTime(primaryController?.lastSeenAt) || "Never"),
         hvacStatusRow("IP", primaryController?.ipAddress || "Not seen")
       ].join(""))}
-      ${hvacStatusDrawer("Safety Details", faultState.active || smokeState.active || freezestatState.active ? "Check" : "Normal", [
+      ${hvacStatusDrawer("Safety Details", faultState.active || smokeState.active || phaseMonitorState.active || freezestatState.active ? "Check" : "Normal", [
         hvacStatusRow("Filter", filterState.channel ? `${filterState.channel} ${filterState.label}` : filterState.label, filterState.active ? "is-warning" : ""),
+        hvacStatusRow("Phase Monitor", phaseMonitorState.channel ? `${phaseMonitorState.channel} ${phaseMonitorState.active ? "Fault" : "Normal"}` : phaseMonitorState.label, phaseMonitorState.active ? "is-alarm" : ""),
         hvacStatusRow("Freezestat", freezestatState.channel ? `${freezestatState.channel} ${freezestatState.active ? "Active" : "Normal"}` : freezestatState.label, freezestatState.active ? "is-alarm" : ""),
         hvacStatusRow("Smoke Shutdown", smokeState.channel ? `${smokeState.channel} ${smokeState.active ? "Active" : "Normal"}` : smokeState.label, smokeState.active ? "is-alarm" : ""),
         hvacStatusRow("Heating Stages", heatStageLabel),
@@ -22282,6 +22293,7 @@ function renderAutomationHvac() {
               <span class="${escapeAttribute(!fanProofRequired ? "is-idle" : fanProofInputActive ? "is-normal" : "is-idle")}"><i></i><b>Fan Proof</b><strong>${escapeHtml(fanProofRequired ? fanProofInputActive ? "Proven" : "Not Proven" : "Not wired")}</strong></span>
               <span class="${escapeAttribute(smokeState.active ? "is-alarm" : "is-normal")}"><i></i><b>Smoke</b><strong>${escapeHtml(smokeState.active ? "Active" : "Normal")}</strong></span>
               <span class="${escapeAttribute(faultState.active ? "is-alarm" : "is-normal")}"><i></i><b>Fault</b><strong>${escapeHtml(faultState.active ? "Active" : "Normal")}</strong></span>
+              <span class="${escapeAttribute(phaseMonitorState.active ? "is-alarm" : "is-normal")}"><i></i><b>Phase</b><strong>${escapeHtml(phaseMonitorState.active ? "Fault" : "Normal")}</strong></span>
               <span class="${escapeAttribute(freezestatState.active ? "is-warning" : "is-normal")}"><i></i><b>Freezestat</b><strong>${escapeHtml(freezestatState.active ? "Active" : "Normal")}</strong></span>
               <span class="${escapeAttribute(filterState.active ? "is-warning" : "is-normal")}"><i></i><b>Filter</b><strong>${escapeHtml(filterState.active ? "Active" : "Normal")}</strong></span>
               <span class="${escapeAttribute(autoStatusClass)}"><i></i><b>Auto</b><strong>${escapeHtml(autoStatusLabel)}</strong></span>
