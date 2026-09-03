@@ -11300,14 +11300,41 @@ function savePumpControllers(controllers) {
 function getLightingZones() {
   try {
     const saved = JSON.parse(localStorage.getItem(LIGHTING_ZONES_STORAGE_KEY) || "[]");
-    return Array.isArray(saved) ? saved : [];
+    return sortLightingZones(Array.isArray(saved) ? saved : []);
   } catch {
     return [];
   }
 }
 
+function lightingZoneOutputSortValue(zone = {}) {
+  const output = Number(zone.outputNumber || zone.output_number || 0);
+  if (Number.isFinite(output) && output > 0) return output;
+  const text = [
+    zone.name,
+    zone.label,
+    zone.output,
+    zone.outputLabel,
+    zone.output_label,
+    zone.channel,
+    zone.commandOutput,
+    zone.command_output
+  ].filter(Boolean).join(" ");
+  const match = text.match(/\b(?:DO|O|OUTPUT)\s*0*(\d{1,2})\b/i);
+  return match ? Number(match[1]) : 9999;
+}
+
+function sortLightingZones(zones = []) {
+  return [...zones].sort((a, b) => {
+    const controllerCompare = String(a.controllerName || a.controller_name || "").localeCompare(String(b.controllerName || b.controller_name || ""));
+    if (controllerCompare) return controllerCompare;
+    const outputCompare = lightingZoneOutputSortValue(a) - lightingZoneOutputSortValue(b);
+    if (outputCompare) return outputCompare;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+}
+
 function saveLightingZones(zones) {
-  if (!setLocalStorageWithRecovery(LIGHTING_ZONES_STORAGE_KEY, JSON.stringify(zones))) {
+  if (!setLocalStorageWithRecovery(LIGHTING_ZONES_STORAGE_KEY, JSON.stringify(sortLightingZones(zones)))) {
     showStorageFullWarning?.();
     console.warn("Lighting zone setup could not be saved locally.");
   }
@@ -11549,9 +11576,9 @@ function renderLightingHome() {
   if (lightingOverridesLoadedScope !== scopeKey && !lightingOverridesLoading) {
     loadLightingOverridesForCurrentScope();
   }
-  const zones = lightingZonesLoadedScope === scopeKey
+  const zones = sortLightingZones(lightingZonesLoadedScope === scopeKey
     ? lightingZonesCache
-    : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
+    : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId));
   if (lightingZonesLoading && lightingZonesLoadedScope !== scopeKey) {
     list.innerHTML = `<div class="lighting-hmi-empty"><strong>Loading lighting HMI</strong><span>Checking ${escapeHtml(currentLocation?.name || "this location")}.</span></div>`;
     return;
@@ -11822,14 +11849,14 @@ async function loadLightingZonesForCurrentScope({ force = false } = {}) {
     const response = await siteworksApi.loadLightingZones(selectedCustomerId, selectedLocationId);
     if (!response.ok) throw new Error(`Lighting zone load failed: ${response.status}`);
     const payload = await response.json();
-    lightingZonesCache = Array.isArray(payload.zones) ? payload.zones : [];
+    lightingZonesCache = sortLightingZones(Array.isArray(payload.zones) ? payload.zones : []);
     lightingZonesLoadedScope = scopeKey;
     if (status) status.textContent = "";
   } catch (error) {
     console.warn("Lighting zones could not be loaded from the server.", error);
-    lightingZonesCache = getLightingZones().filter((zone) => (
+    lightingZonesCache = sortLightingZones(getLightingZones().filter((zone) => (
       zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId
-    ));
+    )));
     lightingZonesLoadedScope = scopeKey;
     if (status) status.textContent = "Using local saved zones until the server endpoint is available.";
   } finally {
@@ -12045,9 +12072,9 @@ function getLightingZoneBrightnessLabel(zone = {}) {
 
 function getLightingZoneOptionsHtml(selectedId = "") {
   const { scopeKey } = getLightingScopeDetails();
-  const zones = lightingZonesLoadedScope === scopeKey
+  const zones = sortLightingZones(lightingZonesLoadedScope === scopeKey
     ? lightingZonesCache
-    : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
+    : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId));
   return `<option value="">All zones</option>${zones.map((zone) => (
     `<option value="${escapeHtml(zone.id)}"${zone.id === selectedId ? " selected" : ""}>${escapeHtml(zone.name)}</option>`
   )).join("")}`;
@@ -12273,9 +12300,9 @@ function renderLightingZones() {
   if (lightingOverridesLoadedScope !== scopeKey && !lightingOverridesLoading) {
     loadLightingOverridesForCurrentScope();
   }
-  const zones = lightingZonesLoadedScope === scopeKey
+  const zones = sortLightingZones(lightingZonesLoadedScope === scopeKey
     ? lightingZonesCache
-    : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
+    : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId));
   const zonesOn = zones.filter((zone) => {
     const priorityDecision = getLightingZonePriorityDecision(zone);
     const effectiveState = priorityDecision.state || zone.desiredState || "";
@@ -14004,7 +14031,7 @@ async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = 
         console.warn("Lighting zone-control override could not be cleared.", clearError);
       });
     });
-    lightingZonesCache = [savedZone, ...lightingZonesCache.filter((item) => item.id !== savedZone.id)];
+    lightingZonesCache = sortLightingZones([savedZone, ...lightingZonesCache.filter((item) => item.id !== savedZone.id)]);
     lightingOverridesCache = lightingOverridesCache.map((item) => {
       if (!zoneControlOverrides.some((overrideItem) => overrideItem.id === item.id)) return item;
       return {
@@ -14024,9 +14051,9 @@ async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = 
   } catch (error) {
     console.warn("Lighting zone command could not be saved to the server.", error);
     const zones = getLightingZones().filter((item) => item.id !== updatedZone.id);
-    zones.unshift(updatedZone);
+    zones.push(updatedZone);
     saveLightingZones(zones);
-    lightingZonesCache = [updatedZone, ...lightingZonesCache.filter((item) => item.id !== updatedZone.id)];
+    lightingZonesCache = sortLightingZones([updatedZone, ...lightingZonesCache.filter((item) => item.id !== updatedZone.id)]);
     lightingZonesLoadedScope = scopeKey;
     if (status) status.textContent = `${updatedZone.name || "Lighting zone"} set locally. Server command did not save.`;
   }
@@ -14088,16 +14115,16 @@ async function saveLightingZoneFromForm(form, existingZoneId = "") {
     if (!response.ok) throw new Error(`Lighting zone save failed: ${response.status}`);
     const payload = await response.json();
     const savedZone = payload.zone || zone;
-    lightingZonesCache = [savedZone, ...lightingZonesCache.filter((item) => item.id !== savedZone.id)];
+    lightingZonesCache = sortLightingZones([savedZone, ...lightingZonesCache.filter((item) => item.id !== savedZone.id)]);
     lightingZonesLoadedScope = scopeKey;
     editingLightingZoneId = "";
     if (status) status.textContent = `Saved ${savedZone.name} to SiteWorks server.`;
   } catch (error) {
     console.warn("Lighting zone could not be saved to the server.", error);
     const zones = getLightingZones().filter((item) => item.id !== zone.id);
-    zones.unshift(zone);
+    zones.push(zone);
     saveLightingZones(zones);
-    lightingZonesCache = [zone, ...lightingZonesCache.filter((item) => item.id !== zone.id)];
+    lightingZonesCache = sortLightingZones([zone, ...lightingZonesCache.filter((item) => item.id !== zone.id)]);
     lightingZonesLoadedScope = scopeKey;
     editingLightingZoneId = "";
     if (status) status.textContent = `Saved ${zone.name} locally. Upload the server file to enable shared zone storage.`;
