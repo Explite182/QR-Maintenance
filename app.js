@@ -20556,16 +20556,56 @@ function hvacStageTimerStatus(controller = {}, family = "heat", timerType = "min
   return hvacCountdownFromCommand(latestCommand, setSeconds, now);
 }
 
+function hvacStageFeedbackLabel(controller = {}, pointName = "", active = false, liveLabel = "", demand = {}, timing = {}, now = Date.now()) {
+  const match = String(pointName || "").match(/^(heat|cool)Stage(\d+)$/);
+  if (!match) return liveLabel || "Not mapped";
+  const family = match[1];
+  const stage = Number(match[2]);
+  const title = family === "cool" ? "Cool" : "Heat";
+  const timingSource = timing && typeof timing === "object" ? timing : {};
+  const minOnMs = family === "cool" ? timingSource.coolingMinOnMs : timingSource.heatingMinOnMs;
+  const minOffMs = family === "cool" ? timingSource.coolingMinOffMs : timingSource.heatingMinOffMs;
+  if (active) {
+    const minOn = hvacStageTimerStatus(controller, family, "minOn", minOnMs, timingSource, now);
+    return minOn.active ? `${liveLabel || "On"} | min on ${minOn.remainingSeconds} sec` : liveLabel || "On";
+  }
+  if (demand?.family !== family || stage > Number(demand?.requestedCount || 0)) return liveLabel || "Off";
+  if (stage > 1) {
+    const previousChannel = controller?.points?.[`${family}Stage${stage - 1}`] || "";
+    if (!hvacLiveChannelActive(controller, "outputs", previousChannel)) {
+      return `Waiting for ${title} ${stage - 1}.`;
+    }
+  }
+  const minOff = hvacStageTimerStatus(controller, family, "minOff", minOffMs, timingSource, now);
+  if (minOff.active) return `Waiting ${minOff.remainingSeconds} sec: ${title} min off.`;
+  return `${title} ${stage} output pending.`;
+}
+
 function refreshHvacStartDelayCountdowns() {
-  const rows = document.querySelectorAll("[data-hvac-stage-hold-controller], [data-hvac-start-delay-controller], [data-hvac-fan-purge-controller], [data-hvac-timer-kind]");
+  const rows = document.querySelectorAll("[data-hvac-stage-hold-controller], [data-hvac-start-delay-controller], [data-hvac-fan-purge-controller], [data-hvac-timer-kind], [data-hvac-stage-feedback-controller]");
   if (!rows.length) return;
   const controllers = hvacControllersForCurrentView();
   rows.forEach((row) => {
     const controllerId = row.dataset.hvacStageHoldController || row.dataset.hvacStartDelayController || row.dataset.hvacFanPurgeController || "";
     const timerControllerId = row.dataset.hvacTimerController || "";
-    const controller = controllers.find((item) => String(item.id || "") === String(controllerId || timerControllerId));
-    const label = row.querySelector("strong");
+    const stageFeedbackControllerId = row.dataset.hvacStageFeedbackController || "";
+    const controller = controllers.find((item) => String(item.id || "") === String(controllerId || timerControllerId || stageFeedbackControllerId));
+    const label = row.querySelector("[data-hvac-stage-feedback-label]") || row.querySelector("strong");
     if (!controller || !label) return;
+    if (row.dataset.hvacStageFeedbackController) {
+      const pointName = row.dataset.hvacStageFeedbackPoint || "";
+      const liveHvac = controller?.data?.liveHvac && typeof controller.data.liveHvac === "object" ? controller.data.liveHvac : {};
+      const timing = liveHvac.timing && typeof liveHvac.timing === "object" ? liveHvac.timing : {};
+      const callState = hvacTemperatureCallState(controller, liveHvac);
+      const demand = hvacDemandStageInfo(controller, callState);
+      const channel = controller?.points?.[pointName] || "";
+      const active = hvacLiveChannelActive(controller, "outputs", channel);
+      const outputNumber = hvacOutputNumberFromChannel(channel);
+      const latestCommand = latestHvacCommandForOutput(controller.id, outputNumber);
+      label.textContent = hvacStageFeedbackLabel(controller, pointName, active, hvacLiveOutputLabel(channel, active, latestCommand), demand, timing);
+      row.classList.toggle("is-active", active);
+      return;
+    }
     if (row.dataset.hvacStageHoldController) {
       const liveHvac = controller?.data?.liveHvac && typeof controller.data.liveHvac === "object" ? controller.data.liveHvac : {};
       const callState = hvacTemperatureCallState(controller, liveHvac);
@@ -21790,13 +21830,14 @@ function renderAutomationHvac() {
       const channel = primaryController.points?.[pointName] || "";
       const outputNumber = hvacOutputNumberFromChannel(channel);
       const latestCommand = latestHvacCommandForOutput(primaryController.id, outputNumber);
+      const active = hvacLiveChannelActive(primaryController, "outputs", channel);
       return {
         pointName,
         label: `Heat ${stage}`,
         channel,
         outputNumber,
-        active: hvacLiveChannelActive(primaryController, "outputs", channel),
-        liveLabel: hvacLiveOutputLabel(channel, hvacLiveChannelActive(primaryController, "outputs", channel), latestCommand),
+        active,
+        liveLabel: hvacStageFeedbackLabel(primaryController, pointName, active, hvacLiveOutputLabel(channel, active, latestCommand), hvacDemandInfo, hvacTiming),
         onBlockMessage: hvacCommandInterlockMessage(primaryController, pointName, "On")
       };
     }),
@@ -21806,13 +21847,14 @@ function renderAutomationHvac() {
       const channel = primaryController.points?.[pointName] || "";
       const outputNumber = hvacOutputNumberFromChannel(channel);
       const latestCommand = latestHvacCommandForOutput(primaryController.id, outputNumber);
+      const active = hvacLiveChannelActive(primaryController, "outputs", channel);
       return {
         pointName,
         label: `Cool ${stage}`,
         channel,
         outputNumber,
-        active: hvacLiveChannelActive(primaryController, "outputs", channel),
-        liveLabel: hvacLiveOutputLabel(channel, hvacLiveChannelActive(primaryController, "outputs", channel), latestCommand),
+        active,
+        liveLabel: hvacStageFeedbackLabel(primaryController, pointName, active, hvacLiveOutputLabel(channel, active, latestCommand), hvacDemandInfo, hvacTiming),
         onBlockMessage: hvacCommandInterlockMessage(primaryController, pointName, "On")
       };
     })
@@ -21820,10 +21862,10 @@ function renderAutomationHvac() {
   const hvacStageCommandControls = hvacStageCommandRows.length ? `
     <div class="hvac-stage-command-grid">
       ${hvacStageCommandRows.map((stage) => `
-        <div class="hvac-stage-command ${stage.active ? "is-active" : ""}">
+        <div class="hvac-stage-command ${stage.active ? "is-active" : ""}" data-hvac-stage-feedback-controller="${escapeAttribute(primaryController?.id || "")}" data-hvac-stage-feedback-point="${escapeAttribute(stage.pointName)}">
           <span>
             <b>${escapeHtml(stage.label)}</b>
-            <em>${escapeHtml(stage.onBlockMessage || stage.liveLabel || "Not mapped")}</em>
+            <em data-hvac-stage-feedback-label>${escapeHtml(stage.onBlockMessage || stage.liveLabel || "Not mapped")}</em>
           </span>
           <button type="button" class="${stage.active ? "is-active" : ""}" ${primaryController && stage.outputNumber && !stage.onBlockMessage ? "" : "disabled"} title="${escapeAttribute(stage.onBlockMessage || "")}" data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="On">On</button>
           <button type="button" class="${!stage.active && stage.outputNumber ? "is-selected" : ""}" ${primaryController && stage.outputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController?.id || "")}" data-hvac-point="${escapeAttribute(stage.pointName)}" data-hvac-command-action="Off">Off</button>
