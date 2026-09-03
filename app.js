@@ -19878,12 +19878,12 @@ function normalizeHvacController(controller = {}) {
       fanProof: Object.prototype.hasOwnProperty.call(pointsSource, "fanProof") ? pointsSource.fanProof : controller.fanProofInput || "DI1",
       heatStage1: pointsSource.heatStage1 || controller.heatStage1Output || "DO2",
       coolStage1: pointsSource.coolStage1 || controller.coolStage1Output || "DO3",
-      heatStage2: pointsSource.heatStage2 || controller.heatStage2Output || "DO4",
-      coolStage2: pointsSource.coolStage2 || controller.coolStage2Output || "DO5",
-      heatStage3: pointsSource.heatStage3 || controller.heatStage3Output || "DO6",
-      coolStage3: pointsSource.coolStage3 || controller.coolStage3Output || "DO7",
-      heatStage4: pointsSource.heatStage4 || controller.heatStage4Output || "DO8",
-      coolStage4: pointsSource.coolStage4 || controller.coolStage4Output || "",
+      heatStage2: pointsSource.heatStage2 || controller.heatStage2Output || "XDO1",
+      coolStage2: pointsSource.coolStage2 || controller.coolStage2Output || "XDO2",
+      heatStage3: pointsSource.heatStage3 || controller.heatStage3Output || "XDO3",
+      coolStage3: pointsSource.coolStage3 || controller.coolStage3Output || "XDO4",
+      heatStage4: pointsSource.heatStage4 || controller.heatStage4Output || "XDO5",
+      coolStage4: pointsSource.coolStage4 || controller.coolStage4Output || "XDO6",
       damper: pointsSource.damper || controller.damperOutput || "AO1",
       filter: pointsSource.filter || controller.filterInput || "DI2",
       freezestat: pointsSource.freezestat || controller.freezestatInput || "DI3",
@@ -20045,6 +20045,13 @@ function hvacFanProofRequired(controller = {}) {
 
 function hvacChannelOptions(kind = "DI") {
   const type = String(kind || "DI").toUpperCase();
+  if (type === "DO") {
+    return [
+      "",
+      ...Array.from({ length: 8 }, (_, index) => `DO${index + 1}`),
+      ...Array.from({ length: 8 }, (_, index) => `XDO${index + 1}`)
+    ];
+  }
   const count = type === "DO" || type === "DI" ? 8 : 4;
   return ["", ...Array.from({ length: count }, (_, index) => `${type}${index + 1}`)];
 }
@@ -20084,8 +20091,11 @@ function hvacActiveStageCount(controller = {}, prefix = "heatStage", count = 0) 
 }
 
 function hvacOutputNumberFromChannel(channel = "") {
-  const match = String(channel || "").trim().toUpperCase().match(/^DO(\d+)$/);
-  return match ? Number(match[1]) : 0;
+  const value = String(channel || "").trim().toUpperCase();
+  const onboardMatch = value.match(/^DO(\d+)$/);
+  if (onboardMatch) return Number(onboardMatch[1]);
+  const expansionMatch = value.match(/^XDO(\d+)$/);
+  return expansionMatch ? 100 + Number(expansionMatch[1]) : 0;
 }
 
 function normalizeHvacCommand(command = {}) {
@@ -21186,13 +21196,13 @@ function renderHvacControllerForm(controller = null) {
   const outputPointFields = [
     ["fanCommand", "Fan command", "DO1", "DO", true, "Required before auto heat/cool can start the fan"],
     ["heatStage1", "Heat stage 1", "DO2", "DO", selectedHeatStageCount >= 1, selectedHeatStageCount >= 1 ? "Active heating stage" : "Reserve heating stage"],
-    ["heatStage2", "Heat stage 2", "DO4", "DO", selectedHeatStageCount >= 2, selectedHeatStageCount >= 2 ? "Active heating stage" : "Reserve heating stage"],
-    ["heatStage3", "Heat stage 3", "DO6", "DO", selectedHeatStageCount >= 3, selectedHeatStageCount >= 3 ? "Active heating stage" : "Reserve heating stage"],
-    ["heatStage4", "Heat stage 4", "DO8", "DO", selectedHeatStageCount >= 4, selectedHeatStageCount >= 4 ? "Active heating stage" : "Reserve heating stage"],
+    ["heatStage2", "Heat stage 2", "XDO1", "DO", selectedHeatStageCount >= 2, selectedHeatStageCount >= 2 ? "Active heating stage on expansion" : "Reserve heating stage"],
+    ["heatStage3", "Heat stage 3", "XDO3", "DO", selectedHeatStageCount >= 3, selectedHeatStageCount >= 3 ? "Active heating stage on expansion" : "Reserve heating stage"],
+    ["heatStage4", "Heat stage 4", "XDO5", "DO", selectedHeatStageCount >= 4, selectedHeatStageCount >= 4 ? "Active heating stage on expansion" : "Reserve heating stage"],
     ["coolStage1", "Cool stage 1", "DO3", "DO", selectedCoolStageCount >= 1, selectedCoolStageCount >= 1 ? "Active cooling stage" : "Reserve cooling stage"],
-    ["coolStage2", "Cool stage 2", "DO5", "DO", selectedCoolStageCount >= 2, selectedCoolStageCount >= 2 ? "Active cooling stage" : "Reserve cooling stage"],
-    ["coolStage3", "Cool stage 3", "DO7", "DO", selectedCoolStageCount >= 3, selectedCoolStageCount >= 3 ? "Active cooling stage" : "Reserve cooling stage"],
-    ["coolStage4", "Cool stage 4", "", "DO", selectedCoolStageCount >= 4, selectedCoolStageCount >= 4 ? "Active cooling stage; expansion I/O required on an 8-output ESP32" : "Reserve cooling stage"],
+    ["coolStage2", "Cool stage 2", "XDO2", "DO", selectedCoolStageCount >= 2, selectedCoolStageCount >= 2 ? "Active cooling stage on expansion" : "Reserve cooling stage"],
+    ["coolStage3", "Cool stage 3", "XDO4", "DO", selectedCoolStageCount >= 3, selectedCoolStageCount >= 3 ? "Active cooling stage on expansion" : "Reserve cooling stage"],
+    ["coolStage4", "Cool stage 4", "XDO6", "DO", selectedCoolStageCount >= 4, selectedCoolStageCount >= 4 ? "Active cooling stage on expansion" : "Reserve cooling stage"],
     ["damper", "OA damper", "", "DO", true, optionalDamperMapped ? "Optional output mapped; count it in output capacity" : "Optional output; leave unmapped unless wired"]
   ];
   const inputPointFields = [
@@ -21251,7 +21261,7 @@ function renderHvacControllerForm(controller = null) {
       </label>
       <label>Output hardware
         <select name="outputExpansionMode">
-          ${["Onboard 8 outputs", "Expansion I/O planned", "Second ESP32 planned"].map((mode) =>
+          ${["Onboard 8 outputs", "Waveshare Modbus 8-output expansion", "Second ESP32 planned"].map((mode) =>
             `<option value="${escapeAttribute(mode)}" ${mode === selectedExpansionMode ? "selected" : ""}>${escapeHtml(mode)}</option>`
           ).join("")}
         </select>
@@ -21327,7 +21337,7 @@ function renderHvacControllerForm(controller = null) {
         <span>Hardware plan: ${escapeHtml(selectedExpansionMode)}.</span>
         <span>Onboard outputs required: ${selectedStageOutputCount} of ${onboardOutputCapacity} for fan plus active heat/cool stages.</span>
         <span>${needsExpansionOutput ? "Expansion I/O or a second ESP32 is required before every selected stage can be physically controlled." : `${onboardOutputsRemaining} onboard output${onboardOutputsRemaining === 1 ? "" : "s"} still available for optional points.`}</span>
-        <span>Current default map: DO1 fan, DO2/DO4/DO6/DO8 heat, DO3/DO5/DO7 cool. Cool stage 4 is intentionally left unmapped for expansion.</span>
+        <span>Current default map: DO1 fan, DO2 heat 1, DO3 cool 1, then XDO1/XDO3/XDO5 heat and XDO2/XDO4/XDO6 cool for extra stages.</span>
       </div>
       <div class="hvac-point-map">
         <strong>HVAC output mapping</strong>
@@ -21939,6 +21949,12 @@ function renderAutomationHvac() {
       ? "No room sensor"
       : `${localRoomFresh ? "Fresh" : "Stale"}${localRoomAge !== null ? `, ${Math.round(localRoomAge)} sec old` : ""}`;
   const localAutoSetpointLabel = hvacSetpointPairLabel(localAutoSetpoints.heatF, localAutoSetpoints.coolF, "Not reported");
+  const expansionIo = liveHvac.expansionIo && typeof liveHvac.expansionIo === "object" ? liveHvac.expansionIo : {};
+  const expansionOnline = Boolean(expansionIo.online);
+  const expansionLastError = String(expansionIo.lastError || "").trim();
+  const expansionStatusLabel = Object.keys(expansionIo).length
+    ? expansionOnline ? "Online" : expansionLastError || "Offline"
+    : "Not reported";
   const roomDisplaySetpoints = Number.isFinite(Number(roomDisplay.heatSetpointF)) && Number.isFinite(Number(roomDisplay.coolSetpointF))
     ? hvacSetpointPairLabel(roomDisplay.heatSetpointF, roomDisplay.coolSetpointF)
     : "--";
@@ -22165,6 +22181,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Control Mode", primaryController?.hvacControlMode || "Manual"),
         hvacStatusRow("Temp Source", tempSimulator.enabled ? "Simulator" : roomDisplayDirectOnline ? "Room display + direct link" : roomDisplay.lastSeenAt ? "Room display" : "Field inputs"),
         hvacStatusRow("Direct Link", roomDisplayDirectStatus, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
+        hvacStatusRow("Expansion I/O", expansionStatusLabel, expansionOnline ? "is-ready" : "is-warning"),
         hvacStatusRow("ESP32 Auto", localAutoModeLabel, localAuto.enabled ? "is-ready" : ""),
         hvacStatusRow("ESP32 Demand", localAutoDemandLabel, localAutoClassName),
         hvacStatusRow("Room Link", localRoomLinkLabel, localRoomAvailable && localRoomFresh ? "" : "is-warning"),
@@ -22194,6 +22211,7 @@ function renderAutomationHvac() {
         hvacStatusRow("Phase Monitor", phaseMonitorState.channel ? `${phaseMonitorState.channel} ${phaseMonitorState.active ? "Fault" : "Normal"}` : phaseMonitorState.label, phaseMonitorState.active ? "is-alarm" : ""),
         hvacStatusRow("Occupied Input", occupiedState.channel ? `${occupiedState.channel} ${occupiedState.label}` : occupiedState.label),
         hvacStatusRow("Live I/O", `${liveHvac.inputMaskHex || "--"} / ${liveHvac.outputMaskHex || "--"}`),
+        hvacStatusRow("Expansion I/O", expansionStatusLabel, expansionOnline ? "" : "is-warning"),
         hvacStatusRow("Space Temp", temperatureValue("space")),
         hvacStatusRow("Room Display Temp", roomDisplayTemp !== null ? hvacTemperatureLabel(roomDisplayTemp) : "Not seen"),
         hvacStatusRow("Direct Link", roomDisplayDirectStatus, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
