@@ -20895,7 +20895,7 @@ function hvacStageHoldReason(controller = {}, callState = {}, demand = {}, conte
     if (context.startDelayActive) return `Start delay running - ${Math.max(0, context.startDelayRemainingSeconds || 0)} sec left.`;
     return "Waiting for fan command.";
   }
-  if (context.fanProofRequired !== false && !context.fanProofActive) return "Waiting for fan proof.";
+  if (context.fanProofRequired === true && !context.fanProofActive) return "Waiting for fan proof.";
   const activeStages = hvacActiveStageNumbers(controller, demand.family, demand.configuredCount);
   if (activeStages.length < demand.requestedCount) return `${demand.family === "heat" ? "Heat" : "Cool"} Stage ${activeStages.length + 1} output pending.`;
   return `${demand.family === "heat" ? "Heat" : "Cool"} Stage ${demand.requestedCount} active.`;
