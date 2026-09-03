@@ -21687,6 +21687,8 @@ function renderAutomationHvac() {
     stopHvacFirmwareAutoRefresh();
     return;
   }
+  const hadHvacDrawers = Boolean(panel.querySelector(".hvac-drawer"));
+  const hadHvacStatusDrawers = Boolean(panel.querySelector(".hvac-status-drawer"));
   const openHvacDrawers = new Set(Array.from(panel.querySelectorAll(".hvac-drawer[open] summary span"))
     .map((item) => String(item.textContent || "").trim())
     .filter(Boolean));
@@ -22372,13 +22374,13 @@ function renderAutomationHvac() {
       </section>
     </section>
   `;
-  if (openHvacDrawers.size) {
+  if (hadHvacDrawers) {
     panel.querySelectorAll(".hvac-drawer").forEach((drawer) => {
       const label = String(drawer.querySelector("summary span")?.textContent || "").trim();
       drawer.open = openHvacDrawers.has(label);
     });
   }
-  if (openHvacStatusDrawers.size) {
+  if (hadHvacStatusDrawers) {
     panel.querySelectorAll(".hvac-status-drawer").forEach((drawer) => {
       const label = String(drawer.querySelector("summary span")?.textContent || "").trim();
       drawer.open = openHvacStatusDrawers.has(label);
