@@ -20556,6 +20556,41 @@ function hvacStageTimerStatus(controller = {}, family = "heat", timerType = "min
   return hvacCountdownFromCommand(latestCommand, setSeconds, now);
 }
 
+function hvacStageStepTimerStatus(controller = {}, family = "heat", direction = "up", timing = {}, demand = {}, now = Date.now()) {
+  const timingSource = timing && typeof timing === "object" ? timing : {};
+  const prefix = family === "cool" ? "cooling" : "heating";
+  const delayMs = family === "cool"
+    ? Number(direction === "up" ? timingSource.coolingStageUpDelayMs : timingSource.coolingStageDownDelayMs)
+    : Number(direction === "up" ? timingSource.heatingStageUpDelayMs : timingSource.heatingStageDownDelayMs);
+  const fallbackMs = Number(direction === "up" ? timingSource.stageUpDelayMs : timingSource.stageDownDelayMs);
+  const setSeconds = Math.max(0, Math.round((Number.isFinite(delayMs) && delayMs > 0 ? delayMs : fallbackMs || 0) / 1000));
+  if (!controller || !setSeconds) return { active: false, remainingSeconds: 0, setSeconds, label: hvacTimerLabel(0, setSeconds) };
+  const stageProtection = timingSource.stageProtection && typeof timingSource.stageProtection === "object" ? timingSource.stageProtection : {};
+  const countKey = family === "cool" ? "coolStageCount" : "heatStageCount";
+  const pointPrefix = family === "cool" ? "coolStage" : "heatStage";
+  const stageCount = Math.max(0, Math.min(4, Number(controller?.[countKey] || controller?.data?.[countKey] || 1) || 0));
+  const requestedCount = demand?.family === family ? Number(demand.requestedCount || 0) : 0;
+  const statuses = [];
+  for (let stage = 1; stage <= stageCount; stage += 1) {
+    const channel = controller?.points?.[`${pointPrefix}${stage}`] || "";
+    const active = hvacLiveChannelActive(controller, "outputs", channel);
+    const stageTiming = stageProtection[`${prefix}${stage}`] && typeof stageProtection[`${prefix}${stage}`] === "object" ? stageProtection[`${prefix}${stage}`] : {};
+    if (direction === "up") {
+      if (!active || stage >= requestedCount || stage >= stageCount) continue;
+      const nextChannel = controller?.points?.[`${pointPrefix}${stage + 1}`] || "";
+      if (hvacLiveChannelActive(controller, "outputs", nextChannel)) continue;
+      statuses.push(hvacCountdownFromTimestamp(stageTiming.lastOnAt, setSeconds, now));
+    } else {
+      if (active || stage <= requestedCount) continue;
+      statuses.push(hvacCountdownFromTimestamp(stageTiming.lastOffAt, setSeconds, now));
+    }
+  }
+  const activeStatus = statuses
+    .filter((status) => status.active)
+    .sort((a, b) => b.remainingSeconds - a.remainingSeconds)[0];
+  return activeStatus || { active: false, remainingSeconds: 0, setSeconds, label: hvacTimerLabel(0, setSeconds) };
+}
+
 function hvacStageFeedbackLabel(controller = {}, pointName = "", active = false, liveLabel = "", demand = {}, timing = {}, now = Date.now()) {
   const match = String(pointName || "").match(/^(heat|cool)Stage(\d+)$/);
   if (!match) return liveLabel || "Not mapped";
@@ -20653,6 +20688,8 @@ function refreshHvacStartDelayCountdowns() {
     if (row.dataset.hvacTimerKind) {
       const liveHvac = controller?.data?.liveHvac && typeof controller.data.liveHvac === "object" ? controller.data.liveHvac : {};
       const timing = liveHvac.timing && typeof liveHvac.timing === "object" ? liveHvac.timing : {};
+      const callState = hvacTemperatureCallState(controller, liveHvac);
+      const demand = hvacDemandStageInfo(controller, callState);
       const fanCommandActive = hvacLiveChannelActive(controller, "outputs", controller?.points?.fanCommand || "");
       const fanProofActive = hvacLiveChannelActive(controller, "inputs", controller?.points?.fanProof || "");
       const kind = row.dataset.hvacTimerKind;
@@ -20666,7 +20703,15 @@ function refreshHvacStartDelayCountdowns() {
               ? hvacStageTimerStatus(controller, "heat", "minOff", timing.heatingMinOffMs, timing)
               : kind === "coolMinOn"
                 ? hvacStageTimerStatus(controller, "cool", "minOn", timing.coolingMinOnMs, timing)
-                : hvacStageTimerStatus(controller, "cool", "minOff", timing.coolingMinOffMs, timing);
+                : kind === "coolMinOff"
+                  ? hvacStageTimerStatus(controller, "cool", "minOff", timing.coolingMinOffMs, timing)
+                  : kind === "heatStageUp"
+                    ? hvacStageStepTimerStatus(controller, "heat", "up", timing, demand)
+                    : kind === "heatStageDown"
+                      ? hvacStageStepTimerStatus(controller, "heat", "down", timing, demand)
+                      : kind === "coolStageUp"
+                        ? hvacStageStepTimerStatus(controller, "cool", "up", timing, demand)
+                        : hvacStageStepTimerStatus(controller, "cool", "down", timing, demand);
       row.classList.toggle("is-active", timerStatus.active);
       label.textContent = timerStatus.label;
       return;
@@ -21826,6 +21871,10 @@ function renderAutomationHvac() {
   const heatMinOffTimerStatus = hvacStageTimerStatus(primaryController, "heat", "minOff", hvacTiming.heatingMinOffMs, hvacTiming);
   const coolMinOnTimerStatus = hvacStageTimerStatus(primaryController, "cool", "minOn", hvacTiming.coolingMinOnMs, hvacTiming);
   const coolMinOffTimerStatus = hvacStageTimerStatus(primaryController, "cool", "minOff", hvacTiming.coolingMinOffMs, hvacTiming);
+  const heatStageUpTimerStatus = hvacStageStepTimerStatus(primaryController, "heat", "up", hvacTiming, hvacDemandInfo);
+  const heatStageDownTimerStatus = hvacStageStepTimerStatus(primaryController, "heat", "down", hvacTiming, hvacDemandInfo);
+  const coolStageUpTimerStatus = hvacStageStepTimerStatus(primaryController, "cool", "up", hvacTiming, hvacDemandInfo);
+  const coolStageDownTimerStatus = hvacStageStepTimerStatus(primaryController, "cool", "down", hvacTiming, hvacDemandInfo);
   const latestHvacEvent = recentHvacCommands
     .slice()
     .sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))[0] || null;
@@ -22191,7 +22240,15 @@ function renderAutomationHvac() {
     </div>
   `;
   const timerDrawerActive = startDelayStatus.active || fanPurgeStatus.active || fanProofTimerStatus.active || fanProofStuckTimerStatus.active ||
-    heatMinOnTimerStatus.active || heatMinOffTimerStatus.active || coolMinOnTimerStatus.active || coolMinOffTimerStatus.active;
+    heatMinOnTimerStatus.active || heatMinOffTimerStatus.active || heatStageUpTimerStatus.active || heatStageDownTimerStatus.active ||
+    coolMinOnTimerStatus.active || coolMinOffTimerStatus.active || coolStageUpTimerStatus.active || coolStageDownTimerStatus.active;
+  const timerDrawerBadge = startDelayStatus.active || fanPurgeStatus.active || fanProofTimerStatus.active || fanProofStuckTimerStatus.active
+    ? "Fan delay"
+    : coolMinOnTimerStatus.active || coolMinOffTimerStatus.active || coolStageUpTimerStatus.active || coolStageDownTimerStatus.active
+      ? "Cooling delay"
+      : heatMinOnTimerStatus.active || heatMinOffTimerStatus.active || heatStageUpTimerStatus.active || heatStageDownTimerStatus.active
+        ? "Heating delay"
+        : "Idle";
   const hvacStatusPanelHtml = `
     <aside class="hvac-status-panel" aria-label="HVAC status points">
       <header><span>Unit Status</span><strong>${runningUnits} Running</strong></header>
@@ -22242,15 +22299,19 @@ function renderAutomationHvac() {
         hvacStatusRow("Schedule", hvacScheduleStatus.label),
         hvacStatusRow("Setpoint Mode", hvacCallState.occupancyMode || hvacScheduleStatus.occupancyMode || "--")
       ].join(""))}
-      ${hvacStatusDrawer("Timers", timerDrawerActive ? "Active" : "Idle", [
+      ${hvacStatusDrawer("Timers", timerDrawerBadge, [
         `<div class="${escapeAttribute(startDelayStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-start-delay-controller="${escapeAttribute(primaryController?.id || "")}"><span>Start Delay</span><strong>${escapeHtml(startDelayStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(fanPurgeStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-fan-purge-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Off Delay</span><strong>${escapeHtml(fanPurgeStatus.active ? fanPurgeStatus.label : hvacTimerLabel(0, primaryController?.fanOffDelaySeconds || 90))}</strong></div>`,
         `<div class="${escapeAttribute(fanProofTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="fanProof" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Proof Timeout</span><strong>${escapeHtml(fanProofTimerStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(fanProofStuckTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="fanProofStuck" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Fan Proof Stuck</span><strong>${escapeHtml(fanProofStuckTimerStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(heatMinOnTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="heatMinOn" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Min On</span><strong>${escapeHtml(heatMinOnTimerStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(heatMinOffTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="heatMinOff" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Min Off</span><strong>${escapeHtml(heatMinOffTimerStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(heatStageUpTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="heatStageUp" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Stage Up</span><strong>${escapeHtml(heatStageUpTimerStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(heatStageDownTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="heatStageDown" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Heat Stage Down</span><strong>${escapeHtml(heatStageDownTimerStatus.label)}</strong></div>`,
         `<div class="${escapeAttribute(coolMinOnTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="coolMinOn" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Min On</span><strong>${escapeHtml(coolMinOnTimerStatus.label)}</strong></div>`,
-        `<div class="${escapeAttribute(coolMinOffTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="coolMinOff" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Min Off</span><strong>${escapeHtml(coolMinOffTimerStatus.label)}</strong></div>`
+        `<div class="${escapeAttribute(coolMinOffTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="coolMinOff" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Min Off</span><strong>${escapeHtml(coolMinOffTimerStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(coolStageUpTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="coolStageUp" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Stage Up</span><strong>${escapeHtml(coolStageUpTimerStatus.label)}</strong></div>`,
+        `<div class="${escapeAttribute(coolStageDownTimerStatus.active ? "hvac-status-row hvac-start-delay-row is-active" : "hvac-status-row hvac-start-delay-row")}" data-hvac-timer-kind="coolStageDown" data-hvac-timer-controller="${escapeAttribute(primaryController?.id || "")}"><span>Cool Stage Down</span><strong>${escapeHtml(coolStageDownTimerStatus.label)}</strong></div>`
       ].join(""))}
       ${hvacStatusDrawer("Events", hvacCommandsCache.length ? String(hvacCommandsCache.length) : "None", [
         hvacStatusRow("Last Event", latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events"),
