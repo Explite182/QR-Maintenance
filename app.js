@@ -20575,6 +20575,14 @@ function hvacStageFeedbackLabel(controller = {}, pointName = "", active = false,
     if (!hvacLiveChannelActive(controller, "outputs", previousChannel)) {
       return `Waiting for ${title} ${stage - 1}.`;
     }
+    const stageProtection = timingSource.stageProtection && typeof timingSource.stageProtection === "object" ? timingSource.stageProtection : {};
+    const delayMs = family === "cool"
+      ? Number(timingSource.coolingStageUpDelayMs || timingSource.stageUpDelayMs || 0)
+      : Number(timingSource.heatingStageUpDelayMs || timingSource.stageUpDelayMs || 0);
+    const setSeconds = Math.max(0, Math.round((Number.isFinite(delayMs) ? delayMs : 0) / 1000));
+    const previousOn = stageProtection[`${family === "cool" ? "cooling" : "heating"}${stage - 1}`]?.lastOnAt;
+    const stageUp = hvacCountdownFromTimestamp(previousOn, setSeconds, now);
+    if (stageUp.active) return `Waiting ${stageUp.remainingSeconds} sec: ${title} stage-up.`;
   }
   const minOff = hvacStageTimerStatus(controller, family, "minOff", minOffMs, timingSource, now);
   if (minOff.active) return `Waiting ${minOff.remainingSeconds} sec: ${title} min off.`;
