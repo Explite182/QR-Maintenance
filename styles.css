@@ -1780,6 +1780,12 @@ textarea:disabled {
   white-space: nowrap;
 }
 
+.hvac-customer-alert.is-clear {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: linear-gradient(90deg, rgba(20, 83, 45, 0.9), rgba(6, 78, 59, 0.76));
+  box-shadow: inset 4px 0 0 #22c55e;
+}
+
 .hvac-scada-main {
   display: grid;
   grid-template-columns: minmax(520px, 1fr) minmax(300px, 0.34fr);
@@ -20436,6 +20442,25 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   gap: 12px;
 }
 
+.hvac-customer-tab-panel {
+  display: grid;
+  gap: 12px;
+  min-height: 520px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 58% 18%, rgba(148, 163, 184, 0.13), transparent 30%),
+    linear-gradient(145deg, rgba(30, 38, 42, 0.94), rgba(8, 13, 15, 0.96));
+}
+
+.hvac-customer-tab-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
 .hvac-customer-setpoints,
 .hvac-customer-controls {
   display: grid;
@@ -20513,22 +20538,33 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   overflow: hidden;
 }
 
-.hvac-customer-tabs span {
+.hvac-customer-tabs button {
+  appearance: none;
   display: grid;
   place-items: center;
   min-height: 56px;
   border-right: 1px solid rgba(148, 163, 184, 0.18);
+  border-top: 0;
+  border-bottom: 0;
+  border-left: 0;
   color: #cbd5df;
+  background: transparent;
   font-weight: 900;
+  cursor: pointer;
 }
 
-.hvac-customer-tabs span:last-child {
+.hvac-customer-tabs button:last-child {
   border-right: 0;
 }
 
-.hvac-customer-tabs span.is-active {
+.hvac-customer-tabs button.is-active {
   color: #ffffff;
   background: rgba(22, 101, 52, 0.68);
+}
+
+.hvac-customer-tabs button:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: -2px;
 }
 
 .hvac-service-overview-drawer[open] {
@@ -20550,6 +20586,10 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   }
 
   .hvac-customer-bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .hvac-customer-tab-grid {
     grid-template-columns: 1fr;
   }
 }
