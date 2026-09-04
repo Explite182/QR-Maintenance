@@ -2884,7 +2884,7 @@ function setMonitoringConnectionStatus(status = "offline", label = "") {
 
 function monitoringDeviceIsFresh(device = null) {
   if (!device) return false;
-  if (isDemoMonitoringDevice(device)) return true;
+  if (isDemoMonitoringDevice(device)) return false;
   if (String(device.onlineStatus || device.online_status || "").toLowerCase() === "offline") return false;
   const lastSeenAt = device.lastSeenAt || device.last_seen_at || "";
   if (!lastSeenAt) return false;
@@ -3000,7 +3000,7 @@ function monitoringTripAlertsForCurrentView() {
 }
 
 function monitoringDisplayChannelsForDevice(device = null, channels = []) {
-  if (monitoringDeviceIsFresh(device) || isDemoMonitoringDevice(device)) return channels;
+  if (monitoringDeviceIsFresh(device)) return channels;
   return channels.map(channel => ({
     ...channel,
     lastRawState: null,
@@ -3101,6 +3101,7 @@ function visibleMonitoringDevices() {
     .map(normalizeMonitoringDevice)
     .filter(device => {
       if (!device?.id) return false;
+      if (isDemoMonitoringDevice(device)) return false;
       const panel = device?.panelAssetId ? getAsset(device.panelAssetId) : null;
       if (panel) {
         const panelId = String(panel.id || "");
