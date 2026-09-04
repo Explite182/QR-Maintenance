@@ -1634,6 +1634,9 @@
             </div>
           </div>
           <div class="lighting-tab-panel hidden" data-lighting-panel="inputs">
+            <div data-lighting-input-list class="lighting-controller-list">
+              <div class="lighting-list-row"><strong>No lighting inputs added yet</strong><span>Add mappings for photocells, external timeclocks, aux contacts, or override switches.</span></div>
+            </div>
             <details class="lighting-controller-wizard">
               <summary>+ Add Lighting Input</summary>
               <form data-lighting-input-form class="lighting-controller-form">
@@ -1692,11 +1695,9 @@
                 <p data-lighting-input-status class="lighting-controller-status" aria-live="polite"></p>
               </form>
             </details>
-            <div data-lighting-input-list class="lighting-controller-list">
-              <div class="lighting-list-row"><strong>No lighting inputs added yet</strong><span>Add mappings for photocells, external timeclocks, aux contacts, or override switches.</span></div>
-            </div>
           </div>
           <div class="lighting-tab-panel hidden" data-lighting-panel="schedules">
+            <div class="lighting-controller-list" data-lighting-schedule-list></div>
             <details class="lighting-controller-wizard">
               <summary>+ Add Lighting Schedule</summary>
               <form data-lighting-schedule-form class="lighting-controller-form">
@@ -1729,7 +1730,6 @@
                 <p data-lighting-schedule-status class="lighting-controller-status"></p>
               </form>
             </details>
-            <div class="lighting-controller-list" data-lighting-schedule-list></div>
           </div>
           <div class="lighting-tab-panel hidden" data-lighting-panel="overrides">
             <details class="lighting-controller-wizard">

@@ -7964,6 +7964,178 @@ textarea:disabled {
   background: #e0f2fe;
 }
 
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-clock,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-list-row,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-controller-wizard {
+  border-color: rgba(94, 234, 212, 0.28);
+  color: #e5f7f5;
+  background:
+    linear-gradient(180deg, rgba(12, 31, 33, 0.96), rgba(6, 18, 20, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(94, 234, 212, 0.14),
+    0 10px 22px rgba(0, 0, 0, 0.22);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-clock span,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-list-row span,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-controller-scope,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-controller-status,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-controller-help span,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-run-status {
+  color: #9fb9b6;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-clock strong,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-clock em,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-list-row strong,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-controller-wizard summary,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-controller-help strong {
+  color: #f8fafc;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-clock-actions button,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-zone-actions button {
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #e5f7f5;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 42%),
+    linear-gradient(180deg, #152323, #081010);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.32),
+    0 2px 0 rgba(0, 0, 0, 0.58);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-clock-actions button:hover,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-zone-actions button:hover {
+  border-color: rgba(20, 184, 166, 0.7);
+  color: #ecfeff;
+  background: linear-gradient(180deg, #0f766e, #064e47);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-status-grid span {
+  border-color: rgba(94, 234, 212, 0.18);
+  color: #9fb9b6;
+  background: rgba(3, 12, 14, 0.72);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-status-grid strong {
+  color: #f8fafc;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-status-grid.is-completed span {
+  border-color: rgba(52, 211, 153, 0.42);
+  background: rgba(6, 78, 59, 0.42);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-status-grid.is-warning span,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-status-grid.is-pending span,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-status-grid.is-acknowledged span {
+  border-color: rgba(250, 204, 21, 0.5);
+  background: rgba(113, 63, 18, 0.34);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="schedules"] .lighting-schedule-status-grid.is-failed span {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(127, 29, 29, 0.34);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-list-row,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-wizard {
+  border-color: rgba(94, 234, 212, 0.28);
+  color: #e5f7f5;
+  background:
+    linear-gradient(180deg, rgba(12, 31, 33, 0.96), rgba(6, 18, 20, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(94, 234, 212, 0.14),
+    0 10px 22px rgba(0, 0, 0, 0.22);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-list-row.is-input-active {
+  border-color: rgba(250, 204, 21, 0.5);
+  background:
+    linear-gradient(180deg, rgba(113, 63, 18, 0.38), rgba(47, 25, 8, 0.48));
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-list-row.is-input-inactive {
+  border-color: rgba(52, 211, 153, 0.42);
+  background:
+    linear-gradient(180deg, rgba(6, 78, 59, 0.46), rgba(3, 35, 31, 0.56));
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-list-row.is-input-disabled {
+  border-color: rgba(148, 163, 184, 0.22);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.46), rgba(3, 7, 18, 0.56));
+  opacity: 0.78;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-list-row span,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-scope,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-status,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-help span {
+  color: #9fb9b6;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-list-row strong,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-wizard summary,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-help strong {
+  color: #f8fafc;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-input-status-pill {
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-input-status-pill.is-active {
+  border-color: rgba(250, 204, 21, 0.5);
+  color: #fde68a;
+  background: rgba(113, 63, 18, 0.54);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-input-status-pill.is-inactive {
+  border-color: rgba(52, 211, 153, 0.42);
+  color: #86efac;
+  background: rgba(6, 78, 59, 0.54);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-input-status-pill.is-disabled {
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-input-detail-grid span,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-scope,
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-help {
+  border-color: rgba(94, 234, 212, 0.18);
+  background: rgba(3, 12, 14, 0.72);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-input-detail-grid strong {
+  color: #f8fafc;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-form button {
+  border-color: rgba(20, 184, 166, 0.68);
+  color: #f8fafc;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 46%),
+    linear-gradient(180deg, #0f8f7d, #09695f);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.26),
+    0 2px 0 rgba(0, 0, 0, 0.58);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="inputs"] .lighting-controller-form button:hover {
+  border-color: rgba(45, 212, 191, 0.82);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 46%),
+    linear-gradient(180deg, #14b8a6, #0f766e);
+}
+
 .lighting-physical-panel {
   display: grid;
   align-content: start;
