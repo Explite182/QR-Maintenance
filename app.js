@@ -19859,6 +19859,9 @@ function normalizeHvacController(controller = {}) {
   const diagnostics = data.diagnostics && typeof data.diagnostics === "object" ? data.diagnostics : {};
   const lastHeartbeat = diagnostics.lastHeartbeat && typeof diagnostics.lastHeartbeat === "object" ? diagnostics.lastHeartbeat : {};
   const pointsSource = data.points && typeof data.points === "object" ? data.points : {};
+  const pointValue = (name, fallback) => Object.prototype.hasOwnProperty.call(pointsSource, name)
+    ? pointsSource[name]
+    : fallback;
   const heatStageCount = Math.max(0, Math.min(4, Number(controller.heatStageCount || controller.heat_stage_count || data.heatStageCount || 1) || 0));
   const coolStageCount = Math.max(0, Math.min(4, Number(controller.coolStageCount || controller.cool_stage_count || data.coolStageCount || 1) || 0));
   const autoConfig = data.autoConfig && typeof data.autoConfig === "object" ? data.autoConfig : {};
@@ -19910,27 +19913,27 @@ function normalizeHvacController(controller = {}) {
     apiKeyLast4: data.apiKeyLast4 || data.api_key_last4 || controller.apiKeyLast4 || controller.api_key_last4 || "",
     notes: controller.notes || "",
     points: {
-      fanCommand: pointsSource.fanCommand || controller.fanCommandOutput || "DO1",
-      fanProof: Object.prototype.hasOwnProperty.call(pointsSource, "fanProof") ? pointsSource.fanProof : controller.fanProofInput || "DI1",
-      heatStage1: pointsSource.heatStage1 || controller.heatStage1Output || "DO2",
-      coolStage1: pointsSource.coolStage1 || controller.coolStage1Output || "DO3",
-      heatStage2: pointsSource.heatStage2 || controller.heatStage2Output || "XDO1",
-      coolStage2: pointsSource.coolStage2 || controller.coolStage2Output || "XDO2",
-      heatStage3: pointsSource.heatStage3 || controller.heatStage3Output || "XDO3",
-      coolStage3: pointsSource.coolStage3 || controller.coolStage3Output || "XDO4",
-      heatStage4: pointsSource.heatStage4 || controller.heatStage4Output || "XDO5",
-      coolStage4: pointsSource.coolStage4 || controller.coolStage4Output || "XDO6",
-      damper: pointsSource.damper || controller.damperOutput || "AO1",
-      filter: pointsSource.filter || controller.filterInput || "DI2",
-      freezestat: pointsSource.freezestat || controller.freezestatInput || "DI3",
-      smoke: pointsSource.smoke || controller.smokeInput || "DI4",
-      occupied: pointsSource.occupied || controller.occupiedInput || "DI5",
-      fault: pointsSource.fault || controller.faultInput || "DI6",
-      phaseMonitor: pointsSource.phaseMonitor || controller.phaseMonitorInput || "DI7",
-      supplyTemp: pointsSource.supplyTemp || controller.supplyTempInput || "AI1",
-      returnTemp: pointsSource.returnTemp || controller.returnTempInput || "AI2",
-      outsideTemp: pointsSource.outsideTemp || controller.outsideTempInput || "AI3",
-      spaceTemp: pointsSource.spaceTemp || controller.spaceTempInput || "AI4"
+      fanCommand: pointValue("fanCommand", controller.fanCommandOutput || "DO1"),
+      fanProof: pointValue("fanProof", controller.fanProofInput || "DI1"),
+      heatStage1: pointValue("heatStage1", controller.heatStage1Output || "DO2"),
+      coolStage1: pointValue("coolStage1", controller.coolStage1Output || "DO3"),
+      heatStage2: pointValue("heatStage2", controller.heatStage2Output || "XDO1"),
+      coolStage2: pointValue("coolStage2", controller.coolStage2Output || "XDO2"),
+      heatStage3: pointValue("heatStage3", controller.heatStage3Output || "XDO3"),
+      coolStage3: pointValue("coolStage3", controller.coolStage3Output || "XDO4"),
+      heatStage4: pointValue("heatStage4", controller.heatStage4Output || "XDO5"),
+      coolStage4: pointValue("coolStage4", controller.coolStage4Output || "XDO6"),
+      damper: pointValue("damper", controller.damperOutput || "AO1"),
+      filter: pointValue("filter", controller.filterInput || "DI2"),
+      freezestat: pointValue("freezestat", controller.freezestatInput || "DI3"),
+      smoke: pointValue("smoke", controller.smokeInput || "DI4"),
+      occupied: pointValue("occupied", controller.occupiedInput || "DI5"),
+      fault: pointValue("fault", controller.faultInput || "DI6"),
+      phaseMonitor: pointValue("phaseMonitor", controller.phaseMonitorInput || "DI7"),
+      supplyTemp: pointValue("supplyTemp", controller.supplyTempInput || "AI1"),
+      returnTemp: pointValue("returnTemp", controller.returnTempInput || "AI2"),
+      outsideTemp: pointValue("outsideTemp", controller.outsideTempInput || "AI3"),
+      spaceTemp: pointValue("spaceTemp", controller.spaceTempInput || "AI4")
     },
     data,
     createdAt: controller.createdAt || controller.created_at || new Date().toISOString(),
