@@ -20971,10 +20971,11 @@ function hvacDemandStageInfo(controller = {}, callState = {}) {
   const spaceTemp = numberOrNull(callState.spaceTemp);
   const setpoint = family === "heat" ? numberOrNull(callState.heatSetpoint) : numberOrNull(callState.coolSetpoint);
   const deadband = Math.max(0.5, numberOrNull(controller?.setpointDeadband) ?? 1);
+  const stageSpread = Math.max(1.8, numberOrNull(controller?.data?.liveHvac?.timing?.stageTemperatureSpreadF) ?? 1.8);
   const difference = spaceTemp === null || setpoint === null
     ? deadband
     : family === "heat" ? setpoint - spaceTemp : spaceTemp - setpoint;
-  const requestedCount = Math.max(1, Math.min(configuredCount, Math.ceil(Math.max(deadband, difference) / deadband)));
+  const requestedCount = Math.max(1, Math.min(configuredCount, Math.floor(Math.max(deadband, difference) / stageSpread) + 1));
   const name = family === "heat" ? "Heating" : "Cooling";
   return {
     family,
@@ -20982,7 +20983,7 @@ function hvacDemandStageInfo(controller = {}, callState = {}) {
     configuredCount,
     label: `${name} Stage ${requestedCount} requested`,
     className: family === "heat" ? "is-heating" : "is-cooling",
-    detail: `${name} demand is ${Math.max(0, difference).toFixed(1)} F past setpoint.`
+    detail: `${name} demand is ${Math.max(0, difference).toFixed(1)} F past setpoint. Stage spread is ${stageSpread.toFixed(1)} F.`
   };
 }
 
