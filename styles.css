@@ -20481,6 +20481,7 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   justify-items: center;
   justify-content: center;
   gap: 9px;
+  min-width: 230px;
 }
 
 .hvac-customer-setpoints .hvac-setpoint-control span {
@@ -20492,10 +20493,12 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
 .hvac-customer-setpoints .hvac-setpoint-control strong {
   grid-column: 1 / -1;
   order: 2;
+  min-width: 220px;
   min-height: auto;
   border: 0;
   background: transparent;
   font-size: 1.55rem;
+  white-space: nowrap;
 }
 
 .hvac-customer-setpoints .hvac-setpoint-control button {
