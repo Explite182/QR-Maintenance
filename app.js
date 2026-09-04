@@ -22029,6 +22029,7 @@ function renderAutomationHvac() {
   const liveMode = liveHvac.mode || primaryEquipment?.hvacMode || "Auto";
   const liveOccupancy = liveHvac.occupancy || primaryEquipment?.hvacOccupancy || "Unoccupied";
   const roomDisplay = liveHvac.roomDisplay && typeof liveHvac.roomDisplay === "object" ? liveHvac.roomDisplay : {};
+  const roomDisplayDiagnostics = roomDisplay.diagnostics && typeof roomDisplay.diagnostics === "object" ? roomDisplay.diagnostics : {};
   const roomDisplayLastSeenMs = roomDisplay.lastSeenAt ? new Date(roomDisplay.lastSeenAt).getTime() : 0;
   const roomDisplaySensorOnline = roomDisplay.sensorOnline !== false;
   const roomDisplayOnline = roomDisplaySensorOnline && roomDisplayLastSeenMs && Number.isFinite(roomDisplayLastSeenMs) && Date.now() - roomDisplayLastSeenMs < 5 * 60 * 1000;
@@ -22103,6 +22104,21 @@ function renderAutomationHvac() {
   const roomDisplaySetpointStatus = hvacCallState.setpointSource === "room-display"
     ? hvacCallState.roomSetpointPending ? "command pending" : "active"
     : "report only";
+  const diagnosticSecondsLabel = (value) => {
+    const seconds = numberOrNull(value);
+    return seconds === null ? "Not reported" : `${Math.round(seconds)} sec`;
+  };
+  const diagnosticNumberLabel = (value, suffix = "") => {
+    const numericValue = numberOrNull(value);
+    return numericValue === null ? "Not reported" : `${Math.round(numericValue)}${suffix}`;
+  };
+  const displayHealthLabel = Object.keys(roomDisplayDiagnostics).length
+    ? roomDisplayDiagnostics.lastReportCode === 200 || roomDisplayDiagnostics.lastReportCode === 204
+      ? "Reporting"
+      : roomDisplayDiagnostics.lastReportCode
+        ? `Last code ${roomDisplayDiagnostics.lastReportCode}`
+        : "Local only"
+    : "Not reported";
   const activeHeatSetpointLabel = hvacTemperatureLabel(hvacCallState.heatSetpoint);
   const activeCoolSetpointLabel = hvacTemperatureLabel(hvacCallState.coolSetpoint);
   const desiredRoomSetpoints = primaryController?.data?.roomDisplayDesiredSetpoints && typeof primaryController.data.roomDisplayDesiredSetpoints === "object"
@@ -22368,6 +22384,13 @@ function renderAutomationHvac() {
         hvacStatusRow("Direct Link", roomDisplayDirectStatus, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
         hvacStatusRow("Direct Room Temp", roomDisplayDirectTempLabel, roomDisplayDirectTemp !== null && !roomDisplayDirectOnline ? "is-warning" : ""),
         hvacStatusRow("Direct Humidity", roomDisplayDirectHumidity !== null ? `${roomDisplayDirectHumidity.toFixed(1)}%` : "Not seen"),
+        hvacStatusRow("Display Health", displayHealthLabel, roomDisplayDiagnostics.lastReportCode && roomDisplayDiagnostics.lastReportCode !== 200 && roomDisplayDiagnostics.lastReportCode !== 204 ? "is-warning" : ""),
+        hvacStatusRow("Display Sensor Age", diagnosticSecondsLabel(roomDisplayDiagnostics.sensorReadAgeSeconds), numberOrNull(roomDisplayDiagnostics.sensorReadAgeSeconds) !== null && numberOrNull(roomDisplayDiagnostics.sensorReadAgeSeconds) > 10 ? "is-warning" : ""),
+        hvacStatusRow("Display Direct TX Age", diagnosticSecondsLabel(roomDisplayDiagnostics.directTxAgeSeconds), numberOrNull(roomDisplayDiagnostics.directTxAgeSeconds) !== null && numberOrNull(roomDisplayDiagnostics.directTxAgeSeconds) > 10 ? "is-warning" : ""),
+        hvacStatusRow("Display Loop Max", diagnosticNumberLabel(roomDisplayDiagnostics.loopMaxDelayMs, " ms"), numberOrNull(roomDisplayDiagnostics.loopMaxDelayMs) !== null && numberOrNull(roomDisplayDiagnostics.loopMaxDelayMs) > 1500 ? "is-warning" : ""),
+        hvacStatusRow("Display Wi-Fi", roomDisplayDiagnostics.wifiStatus || "Not reported"),
+        hvacStatusRow("Display Reset", roomDisplayDiagnostics.resetReason || "Not reported"),
+        hvacStatusRow("Display Heap", diagnosticNumberLabel(roomDisplayDiagnostics.freeHeap, " B")),
         hvacStatusRow("ESP32 Auto", localAutoModeLabel),
         hvacStatusRow("ESP32 Demand", localAutoDemandLabel, localAutoClassName),
         hvacStatusRow("Room Link", localRoomLinkLabel, localRoomAvailable && localRoomFresh ? "" : "is-warning"),
