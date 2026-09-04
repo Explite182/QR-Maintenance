@@ -5156,17 +5156,25 @@ function renderMonitoringLivePanel(devices) {
   });
   const fallbackPanel = panel || getAsset(channels[0]?.panelAssetId || channels[0]?.panel_asset_id || "");
   if (!fallbackPanel && !channels.length) {
-    if (window.SiteWorksPanelHmiAdapter && window.SiteWorksPanelHmiRenderer) {
-      const examplePanel = window.SiteWorksPanelHmiAdapter.createPreparedPanel({ useExample: true });
-      elements.livePanel.innerHTML = window.SiteWorksPanelHmiRenderer.render(examplePanel);
-    } else {
-      elements.livePanel.innerHTML = `<p class="muted">Add a monitoring device to select a panel and see its breaker layout.</p>`;
-    }
+    setMonitoringPanelSummary(null, []);
+    elements.livePanel.innerHTML = `
+      <div class="monitoring-empty-state">
+        <strong>No panel monitor installed for this location.</strong>
+        <p>Add a monitoring device before this page shows live panel status.</p>
+      </div>
+    `;
     return;
   }
   const primaryDevice = devices[0] || getMonitoringDevice(channels[0]?.deviceId);
   setMonitoringPanelSummary(primaryDevice, channels);
   const displayChannels = monitoringDisplayChannelsForDevice(primaryDevice, channels);
+  const displayDevice = primaryDevice
+    ? {
+      ...primaryDevice,
+      onlineStatus: monitoringDeviceIsFresh(primaryDevice) ? (primaryDevice.onlineStatus || primaryDevice.online_status || "online") : "offline",
+      online_status: monitoringDeviceIsFresh(primaryDevice) ? (primaryDevice.onlineStatus || primaryDevice.online_status || "online") : "offline"
+    }
+    : null;
   const standardPanelModulesReady = Boolean(window.SiteWorksPanelHmiAdapter && window.SiteWorksPanelHmiRenderer);
   if (standardPanelModulesReady) {
     try {
@@ -5174,7 +5182,7 @@ function renderMonitoringLivePanel(devices) {
         panel: fallbackPanel,
         location: getLocation(fallbackPanel?.locationId || fallbackPanel?.location_id || ""),
         schedule: isElectricalPanelAsset(fallbackPanel) ? getElectricalPanelSchedule(fallbackPanel) : {},
-        device: primaryDevice,
+        device: displayDevice,
         channels: displayChannels
       });
       elements.livePanel.innerHTML = window.SiteWorksPanelHmiRenderer.render(preparedPanel);
