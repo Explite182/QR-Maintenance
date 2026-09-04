@@ -12110,6 +12110,7 @@ function getLightingInputActionState(input = {}) {
   if (isLightingInputRelayFeedback(input)) return "";
   const action = String(input.action || "").toLowerCase();
   if (!action || action === "no action") return "";
+  if (!isLightingInputWindowCurrentlyAllowed(input)) return "";
   if (action.includes("off")) return "Off";
   if (action.includes("on")) return "On";
   return "";
@@ -12136,6 +12137,65 @@ function getLightingInputStateLastSeenAt(input = {}) {
   return input.stateLastSeenAt || input.state_last_seen_at || "";
 }
 
+function getLightingInputWindowData(input = {}) {
+  const data = input.data && typeof input.data === "object" ? input.data : {};
+  return {
+    mode: String(input.windowMode || input.window_mode || data.windowMode || data.window_mode || "always").trim().toLowerCase() || "always",
+    start: String(input.windowStart || input.window_start || data.windowStart || data.window_start || "").slice(0, 5),
+    end: String(input.windowEnd || input.window_end || data.windowEnd || data.window_end || "").slice(0, 5)
+  };
+}
+
+function lightingTimeToMinutes(time = "") {
+  const match = String(time || "").match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return (hours * 60) + minutes;
+}
+
+function getCurrentLightingMinutes() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Vancouver",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(new Date()).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return lightingTimeToMinutes(`${parts.hour}:${parts.minute}`);
+}
+
+function isLightingMinuteBetween(value, start, end) {
+  if (start === null || end === null || value === null) return false;
+  if (start <= end) return value >= start && value <= end;
+  return value >= start || value <= end;
+}
+
+function isLightingInputWindowCurrentlyAllowed(input = {}) {
+  const windowData = getLightingInputWindowData(input);
+  if (windowData.mode === "always") return true;
+  const now = getCurrentLightingMinutes();
+  const start = lightingTimeToMinutes(windowData.start);
+  const end = lightingTimeToMinutes(windowData.end);
+  if (windowData.mode === "before") return end !== null ? now < end : true;
+  if (windowData.mode === "after") return start !== null ? now >= start : true;
+  if (windowData.mode === "between") return isLightingMinuteBetween(now, start, end);
+  return true;
+}
+
+function getLightingInputWindowDescription(input = {}) {
+  const windowData = getLightingInputWindowData(input);
+  if (windowData.mode === "before") return windowData.end ? `Before ${windowData.end}` : "Before time not set";
+  if (windowData.mode === "after") return windowData.start ? `After ${windowData.start}` : "After time not set";
+  if (windowData.mode === "between") {
+    return windowData.start && windowData.end ? `${windowData.start} to ${windowData.end}` : "Window not set";
+  }
+  return "Always active";
+}
+
 function getLightingInputActionDescription(input = {}) {
   const action = input.action || "No action";
   const actionState = getLightingInputActionState(input);
@@ -12146,6 +12206,7 @@ function getLightingInputActionDescription(input = {}) {
       : "waiting for feedback";
     return `Relay feedback | ${state}`;
   }
+  if (!isLightingInputWindowCurrentlyAllowed(input) && getLightingInputIsActive(input)) return `${action} | outside time window`;
   if (!actionState) return `${action} | waiting`;
   return `${action} | applying ${actionState}`;
 }
@@ -13514,6 +13575,7 @@ function renderLightingInputs() {
   }
   list.innerHTML = inputs.map((input) => {
     const isEditing = input.id === editingLightingInputId;
+    const inputWindow = getLightingInputWindowData(input);
     if (isEditing) {
       return `
         <form class="lighting-controller-card lighting-controller-edit-form" data-lighting-input-edit-form="${escapeHtml(input.id)}">
@@ -13541,8 +13603,24 @@ function renderLightingInputs() {
           </label>
           <label>Action
             <select name="action">
-              ${["No action", "Monitor relay feedback", "Turn zone on", "Turn zone off", "Hold off when active", "Allow schedule when active", "Manual override on", "Manual override off"].map((action) => `<option value="${action}"${action === input.action ? " selected" : ""}>${action}</option>`).join("")}
+              ${["No action", "Monitor relay feedback", "Turn zone on", "Turn zone off", "Press turns zone on", "Press turns zone off", "Hold off when active", "Allow schedule when active", "Manual override on", "Manual override off"].map((action) => `<option value="${action}"${action === input.action ? " selected" : ""}>${action}</option>`).join("")}
             </select>
+          </label>
+          <label>Time window
+            <select name="windowMode">
+              ${[
+                ["always", "Always active"],
+                ["before", "Only before time"],
+                ["after", "Only after time"],
+                ["between", "Only between times"]
+              ].map(([value, label]) => `<option value="${value}"${value === inputWindow.mode ? " selected" : ""}>${label}</option>`).join("")}
+            </select>
+          </label>
+          <label>After/start time
+            <input name="windowStart" type="time" value="${escapeHtml(inputWindow.start || "")}">
+          </label>
+          <label>Before/end time
+            <input name="windowEnd" type="time" value="${escapeHtml(inputWindow.end || "")}">
           </label>
           <label>Enabled
             <select name="enabled">
@@ -13601,6 +13679,7 @@ function renderLightingInputs() {
           <span>Active when <strong>${escapeHtml(input.activeState || "Closed")}</strong></span>
           <span>Target <strong>${escapeHtml(targetName)}</strong></span>
           <span>Action <strong>${escapeHtml(actionText)}</strong></span>
+          <span>Time window <strong>${escapeHtml(getLightingInputWindowDescription(input))}</strong></span>
           <span>Contact <strong>${escapeHtml(contactText)}</strong></span>
           <span>Live state <strong>${escapeHtml(liveText)}</strong></span>
         </div>
@@ -13629,6 +13708,10 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
   const existingInput = existingInputId
     ? lightingInputsCache.find((item) => item.id === existingInputId) || getLightingInputs().find((item) => item.id === existingInputId)
     : null;
+  const existingData = existingInput?.data && typeof existingInput.data === "object" ? existingInput.data : {};
+  const windowMode = String(formData.get("windowMode") || "always").trim().toLowerCase();
+  const windowStart = String(formData.get("windowStart") || "").trim().slice(0, 5);
+  const windowEnd = String(formData.get("windowEnd") || "").trim().slice(0, 5);
   const input = {
     id: existingInputId || crypto.randomUUID?.() || `lighting-input-${Date.now()}`,
     customerId: selectedCustomerId,
@@ -13642,6 +13725,9 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
     label: String(formData.get("label") || "").trim(),
     activeState: String(formData.get("activeState") || "Closed").trim(),
     action: String(formData.get("action") || "No action").trim(),
+    windowMode,
+    windowStart,
+    windowEnd,
     enabled: formData.get("enabled") !== "off",
     notes: String(formData.get("notes") || "").trim(),
     createdAt: existingInput?.createdAt || new Date().toISOString()
@@ -13665,8 +13751,12 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
       input_type: input.inputType,
       active_state: input.activeState,
       data: {
+        ...existingData,
         controllerName: input.controllerName,
-        zoneName: input.zoneName
+        zoneName: input.zoneName,
+        windowMode: input.windowMode,
+        windowStart: input.windowStart,
+        windowEnd: input.windowEnd
       }
     });
     if (!response.ok) throw new Error(`Lighting input save failed: ${response.status}`);

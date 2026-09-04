@@ -1674,12 +1674,24 @@
                     <option>Monitor relay feedback</option>
                     <option>Turn zone on</option>
                     <option>Turn zone off</option>
+                    <option>Press turns zone on</option>
+                    <option>Press turns zone off</option>
                     <option>Hold off when active</option>
                     <option>Allow schedule when active</option>
                     <option>Manual override on</option>
                     <option>Manual override off</option>
                   </select>
                 </label>
+                <label>Time window
+                  <select name="windowMode">
+                    <option value="always">Always active</option>
+                    <option value="before">Only before time</option>
+                    <option value="after">Only after time</option>
+                    <option value="between">Only between times</option>
+                  </select>
+                </label>
+                <label>After/start time <input name="windowStart" type="time"></label>
+                <label>Before/end time <input name="windowEnd" type="time"></label>
                 <label>Enabled
                   <select name="enabled">
                     <option value="on">Enabled</option>
