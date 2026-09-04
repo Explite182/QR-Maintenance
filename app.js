@@ -19936,6 +19936,9 @@ function readHvacTempSimulatorFromForm(formData) {
 
 function hvacTemperatureFromController(controller = {}, liveHvac = {}, name = "") {
   const safeController = controller && typeof controller === "object" ? controller : {};
+  if (!hvacControllerIsFresh(safeController)) {
+    return { value: null, simulated: false, source: "stale-controller" };
+  }
   const data = safeController.data && typeof safeController.data === "object" ? safeController.data : {};
   const safeLiveHvac = liveHvac && typeof liveHvac === "object" ? liveHvac : {};
   const roomDisplay = safeLiveHvac.roomDisplay && typeof safeLiveHvac.roomDisplay === "object" ? safeLiveHvac.roomDisplay : {};
@@ -20158,8 +20161,7 @@ function defaultHvacTemplateId(customerId = "") {
 
 function hvacControllerStatus(controller = {}) {
   const onlineStatus = String(controller.onlineStatus || controller.online_status || "").toLowerCase();
-  const lastSeenMs = Date.parse(controller.lastSeenAt || controller.last_seen_at || "");
-  if (onlineStatus === "online" && Number.isFinite(lastSeenMs) && Date.now() - lastSeenMs <= HVAC_CONTROLLER_ONLINE_WINDOW_MS) {
+  if (hvacControllerIsFresh(controller)) {
     return { label: "Online", className: "is-running" };
   }
   if (onlineStatus === "online") return { label: "Last seen", className: "is-info" };
@@ -20169,7 +20171,14 @@ function hvacControllerStatus(controller = {}) {
   return { label: "Setup only", className: "is-info" };
 }
 
+function hvacControllerIsFresh(controller = {}, nowMs = Date.now()) {
+  const onlineStatus = String(controller?.onlineStatus || controller?.online_status || "").toLowerCase();
+  const lastSeenMs = Date.parse(controller?.lastSeenAt || controller?.last_seen_at || "");
+  return onlineStatus === "online" && Number.isFinite(lastSeenMs) && nowMs - lastSeenMs <= HVAC_CONTROLLER_ONLINE_WINDOW_MS;
+}
+
 function hvacLiveChannelActive(controller = {}, collectionName = "inputs", channel = "") {
+  if (!hvacControllerIsFresh(controller)) return false;
   const liveHvac = controller?.data?.liveHvac && typeof controller.data.liveHvac === "object" ? controller.data.liveHvac : {};
   const points = Array.isArray(liveHvac[collectionName]) ? liveHvac[collectionName] : [];
   const target = String(channel || "").trim().toUpperCase();
@@ -21968,11 +21977,13 @@ function renderAutomationHvac() {
         ? "Available to assign"
         : "Create equipment";
   const status = primaryController ? hvacControllerStatus(primaryController) : { label: "No controller", className: "is-info" };
+  const controllerLiveFresh = primaryController ? hvacControllerIsFresh(primaryController) : false;
   const heatStageCount = Math.max(0, Math.min(4, Number(primaryController?.heatStageCount || primaryController?.data?.heatStageCount || 1) || 0));
   const coolStageCount = Math.max(0, Math.min(4, Number(primaryController?.coolStageCount || primaryController?.data?.coolStageCount || 1) || 0));
   const heatStageLabel = heatStageCount === 1 ? "1 Stage" : `${heatStageCount} Stages`;
   const coolStageLabel = coolStageCount === 1 ? "1 Stage" : `${coolStageCount} Stages`;
-  const liveHvac = primaryController?.data?.liveHvac && typeof primaryController.data.liveHvac === "object" ? primaryController.data.liveHvac : {};
+  const rawLiveHvac = primaryController?.data?.liveHvac && typeof primaryController.data.liveHvac === "object" ? primaryController.data.liveHvac : {};
+  const liveHvac = controllerLiveFresh ? rawLiveHvac : {};
   const hvacLockout = liveHvac.lockout && typeof liveHvac.lockout === "object" ? liveHvac.lockout : {};
   const hvacLockoutActive = Boolean(hvacLockout.active);
   const hvacLockoutReason = String(hvacLockout.reason || "").trim();
@@ -22137,7 +22148,13 @@ function renderAutomationHvac() {
   const roomDisplayDirect = liveHvac.roomDisplayDirect && typeof liveHvac.roomDisplayDirect === "object" ? liveHvac.roomDisplayDirect : {};
   const roomDisplayDirectTemp = numberOrNull(roomDisplayDirect.temperatureF);
   const roomDisplayDirectHumidity = numberOrNull(roomDisplayDirect.humidityPercent);
-  const roomDisplayDirectOnline = Boolean(roomDisplayDirect.online);
+  const roomDisplayDirectSeenMs = roomDisplayDirect.lastSeenAt ? new Date(roomDisplayDirect.lastSeenAt).getTime() : 0;
+  const roomDisplayDirectAgeMs = roomDisplayDirectSeenMs && Number.isFinite(roomDisplayDirectSeenMs) ? Date.now() - roomDisplayDirectSeenMs : null;
+  const roomDisplayDirectTempPlausible = roomDisplayDirectTemp !== null && roomDisplayDirectTemp > -40 && roomDisplayDirectTemp < 160;
+  const roomDisplayDirectOnline = Boolean(roomDisplayDirect.online) &&
+    roomDisplayDirectTempPlausible &&
+    roomDisplayDirectAgeMs !== null &&
+    roomDisplayDirectAgeMs < 60 * 1000;
   const hvacTemperatureLabel = (fahrenheitValue, fallback = "--") => {
     const numericValue = Number(fahrenheitValue);
     if (!Number.isFinite(numericValue)) return fallback;
@@ -22706,6 +22723,11 @@ function renderAutomationHvac() {
       : selectedHvacCustomerTab === "settings"
         ? hvacSettingsTabHtml
         : hvacOverviewTabHtml;
+  const hvacStatusMessage = !primaryController
+    ? "Add HVAC equipment and controller points to bring this view live."
+    : controllerLiveFresh
+      ? "HVAC controller is mapped for live SiteWorks monitoring."
+      : "No recent HVAC controller heartbeat. Live values are shown as not ready until the controller reports again.";
   if (count) count.textContent = controllers.length ? String(controllers.length) : "RTU";
   panel.innerHTML = `
     <section class="hvac-scada-shell" aria-label="SiteWorks HVAC HMI">
@@ -22724,7 +22746,7 @@ function renderAutomationHvac() {
         <span class="hvac-scada-led" aria-hidden="true"></span>
         <div>
           <strong>${escapeHtml(status.label.toUpperCase())}</strong>
-          <span>${escapeHtml(primaryController ? "HVAC controller is mapped for live SiteWorks monitoring." : "Add HVAC equipment and controller points to bring this view live.")}</span>
+          <span>${escapeHtml(hvacStatusMessage)}</span>
         </div>
         <em>${escapeHtml(primaryController ? primaryController.uid || "HVAC" : "NO CONTROLLER")}</em>
       </section>
@@ -23027,7 +23049,10 @@ function hvacIssueNotificationsForController(controller = {}) {
   const roomDisplayStaleLongEnough = roomDisplaySeenAgeMs > 3 * 60 * 1000;
   const directRoomAgeSeconds = numberOrNull(roomSensor.ageSeconds ?? directRoom.lastSeenMsAgo / 1000);
   const directRoomStaleLongEnough = directRoomAgeSeconds === null ? true : directRoomAgeSeconds >= 60;
+  const controllerWasOnline = String(normalized.onlineStatus || normalized.online_status || "").toLowerCase() === "online";
+  const controllerStale = controllerWasOnline && !hvacControllerIsFresh(normalized);
   const issueRows = [
+    [controllerStale, "HVAC controller not reporting", "critical", "hvac-controller-stale"],
     [Boolean(lockout.active || lockout.lockoutActive), lockout.reason || lockout.lockoutReason || "HVAC lockout active", "critical", "hvac-lockout"],
     [hvacMappedPointState(normalized, "smoke", "inputs").active, "Smoke shutdown active", "critical", "hvac-smoke"],
     [hvacMappedPointState(normalized, "fault", "inputs").active, "HVAC fault input active", "critical", "hvac-fault"],
