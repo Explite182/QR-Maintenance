@@ -22389,6 +22389,32 @@ function renderAutomationHvac() {
         <span>${escapeHtml(hvacPageAlerts.map((item) => item.message).slice(0, 3).join(" | "))}</span>
       </section>
   ` : "";
+  const customerRoomTempF = roomDisplayDirectOnline && roomDisplayDirectTemp !== null
+    ? roomDisplayDirectTemp
+    : roomDisplayTemp !== null
+      ? roomDisplayTemp
+      : numberOrNull(hvacTemperatureFromController(primaryController, liveHvac, "space").value);
+  const customerRoomTempC = customerRoomTempF !== null ? ((customerRoomTempF - 32) * (5 / 9)).toFixed(1) : "--";
+  const customerRoomTempFLabel = customerRoomTempF !== null ? customerRoomTempF.toFixed(1) : "--";
+  const customerStatusCard = (label, value, className = "") => `
+    <div class="${escapeAttribute(["hvac-customer-card", className].filter(Boolean).join(" "))}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+  const customerStatusItem = (code, label, value, className = "") => `
+    <span class="${escapeAttribute(["hvac-customer-status-item", className].filter(Boolean).join(" "))}">
+      <i>${escapeHtml(code)}</i>
+      <b>${escapeHtml(label)}</b>
+      <strong>${escapeHtml(value)}</strong>
+    </span>
+  `;
+  const customerModeButtons = primaryController ? `
+    <div class="hvac-customer-mode-actions">
+      <button type="button" class="${fanAutoSelected ? "is-selected" : ""}" ${fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-command-action="Auto">Auto</button>
+      <button type="button" class="${fanOffSelected ? "is-selected" : ""}" ${fanCommandOutputNumber ? "" : "disabled"} data-hvac-controller-id="${escapeAttribute(primaryController.id)}" data-hvac-command-action="Fan Off">Off</button>
+    </div>
+  ` : "";
   if (count) count.textContent = controllers.length ? String(controllers.length) : "RTU";
   panel.innerHTML = `
     <section class="hvac-scada-shell" aria-label="SiteWorks HVAC HMI">
@@ -22412,62 +22438,58 @@ function renderAutomationHvac() {
         <em>${escapeHtml(primaryController ? primaryController.uid || "HVAC" : "NO CONTROLLER")}</em>
       </section>
       ${hvacCustomerAlertHtml}
-      <main class="hvac-scada-main">
-        <section class="hvac-equipment-view" aria-label="HVAC equipment graphic">
-          <header>Equipment Section</header>
-          <div class="hvac-rtu-graphic" aria-label="Rooftop unit graphic">
-            <div class="hvac-rtu-image-stage">
-              <img src="${escapeAttribute(HVAC_EQUIPMENT_IMAGE_SRC)}" alt="" width="2048" height="803" loading="eager" decoding="sync" fetchpriority="high">
-              <div class="hvac-ribbon is-return">
-                <span>Return Air</span>
-                <strong>${escapeHtml(temperatureValue("return"))}</strong>
-              </div>
-              <div class="hvac-ribbon is-outside">
-                <span>Outside Air</span>
-                <strong>${escapeHtml(temperatureValue("outside"))}</strong>
-              </div>
-              <div class="hvac-ribbon is-supply">
-                <span>Supply Air</span>
-                <strong>${escapeHtml(temperatureValue("supply"))}</strong>
-              </div>
-              <div class="hvac-equipment-callout is-damper">
-                <span>OA Damper</span>
-                <strong>--%</strong>
-              </div>
-              <div class="hvac-equipment-callout is-filter ${filterState.active ? "is-warning" : "is-normal"}">
-                <span>Filter</span>
-                <strong>${escapeHtml(filterState.channel ? filterState.label : "Normal")}</strong>
-              </div>
-              <div class="hvac-equipment-callout is-cooling ${activeCoolStages ? "is-active" : coolCallWaitingForFan ? "is-commanded" : ""}">
-                <span>Cooling</span>
-                <strong>${escapeHtml(coolCalloutLabel)}</strong>
-                <div class="hvac-stage-dots" aria-label="Cooling stage configuration">${coolStageDots}</div>
-              </div>
-              <div class="hvac-equipment-callout is-heating ${activeHeatStages ? "is-active" : heatCallWaitingForFan ? "is-commanded" : ""}">
-                <span>Heating</span>
-                <strong>${escapeHtml(heatCalloutLabel)}</strong>
-                <div class="hvac-stage-dots" aria-label="Heating stage configuration">${heatStageDots}</div>
-              </div>
-              <div class="hvac-equipment-callout is-fan ${fanProofActive ? "is-active" : fanCommandActive ? "is-commanded" : ""}">
-                <span>Supply Fan</span>
-                <strong>${escapeHtml(fanProofRequired ? fanProofInputActive ? "Running" : fanCommandActive ? "Commanded" : "Stopped" : fanCommandActive ? "On" : "Stopped")}</strong>
-              </div>
+      <main class="hvac-customer-main">
+        <section class="hvac-customer-overview" aria-label="HVAC customer overview">
+          <div class="hvac-customer-topgrid">
+            ${customerStatusCard("Status", autoStatusLabel, autoReady ? "is-good" : "is-warning")}
+            ${customerStatusCard("Return Air", temperatureValue("return"))}
+            ${customerStatusCard("Outside Air", temperatureValue("outside"))}
+          </div>
+          <div class="hvac-customer-hero">
+            <div class="hvac-customer-room-temp">
+              <span>Room Temperature</span>
+              <strong>${escapeHtml(customerRoomTempC)} C</strong>
+              <em>${escapeHtml(customerRoomTempFLabel)} F</em>
             </div>
-            <div class="hvac-interlock-strip" aria-label="HVAC interlock status">
-              <span class="${escapeAttribute(!fanProofRequired ? "is-idle" : fanProofInputActive ? "is-normal" : "is-idle")}"><i></i><b>Fan Proof</b><strong>${escapeHtml(fanProofRequired ? fanProofInputActive ? "Proven" : "Not Proven" : "Not wired")}</strong></span>
-              <span class="${escapeAttribute(smokeState.active ? "is-alarm" : "is-normal")}"><i></i><b>Smoke</b><strong>${escapeHtml(smokeState.active ? "Active" : "Normal")}</strong></span>
-              <span class="${escapeAttribute(faultState.active ? "is-alarm" : "is-normal")}"><i></i><b>Fault</b><strong>${escapeHtml(faultState.active ? "Active" : "Normal")}</strong></span>
-              <span class="${escapeAttribute(phaseMonitorState.active ? "is-alarm" : "is-normal")}"><i></i><b>Phase</b><strong>${escapeHtml(phaseMonitorState.active ? "Fault" : "Normal")}</strong></span>
-              <span class="${escapeAttribute(freezestatState.active ? "is-warning" : "is-normal")}"><i></i><b>Freezestat</b><strong>${escapeHtml(freezestatState.active ? "Active" : "Normal")}</strong></span>
-              <span class="${escapeAttribute(filterState.active ? "is-warning" : "is-normal")}"><i></i><b>Filter</b><strong>${escapeHtml(filterState.active ? "Active" : "Normal")}</strong></span>
-              <span class="${escapeAttribute(autoStatusClass)}"><i></i><b>Auto</b><strong>${escapeHtml(autoStatusLabel)}</strong></span>
-            </div>
+            <img src="${escapeAttribute(HVAC_EQUIPMENT_IMAGE_SRC)}" alt="" width="2048" height="803" loading="eager" decoding="sync" fetchpriority="high">
+          </div>
+          <div class="hvac-customer-sidegrid">
+            ${customerStatusCard("Supply Air", temperatureValue("supply"))}
+            ${customerStatusCard("Supply Fan", fanCommandActive ? "On" : "Off", fanCommandActive ? "is-good" : "")}
+            ${customerStatusCard("Fan Proof", fanProofRequired ? fanProofInputActive ? "Proven" : "Not Proven" : "Not wired", fanProofRequired && !fanProofInputActive ? "is-warning" : "")}
+          </div>
+          <div class="hvac-customer-status-grid" aria-label="System status">
+            ${customerStatusItem("F", "Filter", filterState.active ? "Active" : "Good", filterState.active ? "is-warning" : "is-good")}
+            ${customerStatusItem("C", "Cooling", activeCoolStages ? `${activeCoolStages} Active` : coolCalloutLabel, activeCoolStages || hvacDemandInfo.family === "cool" ? "is-cooling" : "")}
+            ${customerStatusItem("H", "Heating", activeHeatStages ? `${activeHeatStages} Active` : heatCalloutLabel, activeHeatStages || hvacDemandInfo.family === "heat" ? "is-heating" : "")}
+            ${customerStatusItem("S", "Smoke", smokeState.active ? "Active" : "Normal", smokeState.active ? "is-alarm" : "is-good")}
+            ${customerStatusItem("Z", "Freezestat", freezestatState.active ? "Active" : "Normal", freezestatState.active ? "is-warning" : "is-good")}
+            ${customerStatusItem("!", "Fault", faultState.active || phaseMonitorState.active ? "Active" : "Normal", faultState.active || phaseMonitorState.active ? "is-alarm" : "is-good")}
           </div>
         </section>
-        ${hvacStatusPanelHtml}
+        <section class="hvac-customer-bottom">
+          <section class="hvac-customer-setpoints">
+            <header>Setpoints</header>
+            ${hvacSetpointControls}
+          </section>
+          <section class="hvac-customer-controls">
+            <header>Controls</header>
+            ${customerModeButtons}
+          </section>
+        </section>
+        <nav class="hvac-customer-tabs" aria-label="HVAC view shortcuts">
+          <span class="is-active">Overview</span>
+          <span>Alarms</span>
+          <span>Trends</span>
+          <span>Settings</span>
+        </nav>
       </main>
       <section class="hvac-drawer-grid" aria-label="HVAC setup drawers">
-        <details class="hvac-drawer" open>
+        <details class="hvac-drawer hvac-service-overview-drawer">
+          <summary><span>Service Status</span><strong>${escapeHtml(autoStatusLabel)}</strong></summary>
+          <div>${hvacStatusPanelHtml}</div>
+        </details>
+        <details class="hvac-drawer">
           <summary><span>Controller Setup</span><strong>${controllers.length ? `${controllers.length} saved` : "Add"}</strong></summary>
           <div>${formHtml}${controllerCards}</div>
         </details>
