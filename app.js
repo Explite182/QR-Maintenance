@@ -22908,11 +22908,26 @@ function hvacIssueNotificationsForController(controller = {}) {
   const localAuto = liveHvac.localAuto && typeof liveHvac.localAuto === "object" ? liveHvac.localAuto : {};
   const roomSensor = localAuto.roomSensor && typeof localAuto.roomSensor === "object" ? localAuto.roomSensor : {};
   const roomDisplay = liveHvac.roomDisplay && typeof liveHvac.roomDisplay === "object" ? liveHvac.roomDisplay : {};
+  const roomDisplayDiagnostics = roomDisplay.diagnostics && typeof roomDisplay.diagnostics === "object" ? roomDisplay.diagnostics : {};
   const directRoom = liveHvac.roomDisplayDirect && typeof liveHvac.roomDisplayDirect === "object" ? liveHvac.roomDisplayDirect : {};
   const location = getLocation(normalized.locationId);
   const customer = getCustomer(normalized.customerId);
   const equipment = normalized.equipmentIds?.[0] ? getAsset(normalized.equipmentIds[0]) : null;
   const alertScope = [location?.name || normalized.area || "", equipment?.name || ""].filter(Boolean).join(" | ");
+  const roomDisplaySeenMs = roomDisplay.lastSeenAt ? new Date(roomDisplay.lastSeenAt).getTime() : 0;
+  const roomDisplaySeenAgeMs = roomDisplaySeenMs && Number.isFinite(roomDisplaySeenMs) ? Date.now() - roomDisplaySeenMs : 0;
+  const sensorReadAgeSeconds = numberOrNull(roomDisplayDiagnostics.sensorReadAgeSeconds);
+  const displayUptimeMs = numberOrNull(roomDisplay.uptimeMs);
+  const roomDisplaySensorMissingLongEnough = roomDisplay.sensorOnline === false && (
+    sensorReadAgeSeconds !== null
+      ? sensorReadAgeSeconds >= 120
+      : displayUptimeMs !== null
+        ? displayUptimeMs >= 120 * 1000
+        : false
+  );
+  const roomDisplayStaleLongEnough = roomDisplaySeenAgeMs > 3 * 60 * 1000;
+  const directRoomAgeSeconds = numberOrNull(roomSensor.ageSeconds ?? directRoom.lastSeenMsAgo / 1000);
+  const directRoomStaleLongEnough = directRoomAgeSeconds === null ? true : directRoomAgeSeconds >= 60;
   const issueRows = [
     [Boolean(lockout.active || lockout.lockoutActive), lockout.reason || lockout.lockoutReason || "HVAC lockout active", "critical", "hvac-lockout"],
     [hvacMappedPointState(normalized, "smoke", "inputs").active, "Smoke shutdown active", "critical", "hvac-smoke"],
@@ -22920,9 +22935,9 @@ function hvacIssueNotificationsForController(controller = {}) {
     [hvacMappedPointState(normalized, "phaseMonitor", "inputs").active, "Phase monitor active", "critical", "hvac-phaseMonitor"],
     [hvacMappedPointState(normalized, "freezestat", "inputs").active, "Freezestat active", "critical", "hvac-freezestat"],
     [hvacMappedPointState(normalized, "filter", "inputs").active, "Filter alarm active", "warning", "hvac-filter"],
-    [roomDisplay.sensorOnline === false, "Room sensor not available", "warning", "hvac-room-sensor"],
-    [Boolean(localAuto.enabled && roomSensor.available && roomSensor.fresh === false), "Direct room link stale", "warning", "hvac-direct-room-link"],
-    [Boolean(directRoom.source && directRoom.online === false && normalized.data?.roomDisplaySetpointMode !== "report_only"), "Direct room link not ready", "warning", "hvac-direct-room-link"]
+    [roomDisplaySensorMissingLongEnough || roomDisplayStaleLongEnough, "Room sensor not available", "warning", "hvac-room-sensor"],
+    [Boolean(localAuto.enabled && roomSensor.available && roomSensor.fresh === false && directRoomStaleLongEnough), "Direct room link stale", "warning", "hvac-direct-room-link"],
+    [Boolean(directRoom.source && directRoom.online === false && directRoomStaleLongEnough && normalized.data?.roomDisplaySetpointMode !== "report_only"), "Direct room link not ready", "warning", "hvac-direct-room-link"]
   ].filter(([active]) => active);
   const hasActiveServerNotification = (type = "") => serverNotifications.some((notification) =>
     String(notification.type || "") === type &&
