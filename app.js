@@ -138,7 +138,14 @@ async function fetchOptionalStructuredRows(table, order = "updated_at.asc") {
   try {
     return await siteworksApi.loadRows(table, order);
   } catch (error) {
-    console.warn(`Optional SiteWorks server table ${table} is not available yet.`, error);
+    const warningKey = `${table}:${order}`;
+    const now = Date.now();
+    fetchOptionalStructuredRows.lastWarnings ||= new Map();
+    const lastWarningAt = fetchOptionalStructuredRows.lastWarnings.get(warningKey) || 0;
+    if (now - lastWarningAt > 5 * 60 * 1000) {
+      fetchOptionalStructuredRows.lastWarnings.set(warningKey, now);
+      console.warn(`Optional SiteWorks server table ${table} is not available yet.`, error);
+    }
     return [];
   }
 }
@@ -3291,7 +3298,11 @@ async function syncMonitoringStatusFromApi() {
     if (changed) renderMonitoring();
   } catch (error) {
     setMonitoringConnectionStatus("offline");
-    console.warn("Monitoring live status sync failed", error);
+    const now = Date.now();
+    if (!syncMonitoringLiveStatusFromServer.lastWarningAt || now - syncMonitoringLiveStatusFromServer.lastWarningAt > 60 * 1000) {
+      syncMonitoringLiveStatusFromServer.lastWarningAt = now;
+      console.warn("Monitoring live status sync failed", error);
+    }
   }
 }
 
@@ -34121,7 +34132,10 @@ function requestSignedMediaUrl(file, key = signedMediaKey(file)) {
       });
       window.setTimeout(render, 0);
     })
-    .catch((error) => console.warn("Signed file link skipped.", error))
+    .catch((error) => {
+      signedMediaUrlFailures.set(key, Date.now());
+      console.warn("Signed file link skipped.", error);
+    })
     .finally(() => signedMediaUrlPending.delete(key));
 }
 
