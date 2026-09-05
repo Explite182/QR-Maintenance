@@ -23366,6 +23366,7 @@ function hvacIssueNotificationsForController(controller = {}) {
   const location = getLocation(normalized.locationId);
   const customer = getCustomer(normalized.customerId);
   const equipment = normalized.equipmentIds?.[0] ? getAsset(normalized.equipmentIds[0]) : null;
+  const alertTitleLabel = equipment?.name || normalized.name || location?.name || customer?.name || "SiteWorks";
   const alertScope = [location?.name || normalized.area || "", equipment?.name || ""].filter(Boolean).join(" | ");
   const roomDisplaySeenMs = roomDisplay.lastSeenAt ? new Date(roomDisplay.lastSeenAt).getTime() : 0;
   const roomDisplaySeenAgeMs = roomDisplaySeenMs && Number.isFinite(roomDisplaySeenMs) ? Date.now() - roomDisplaySeenMs : 0;
@@ -23415,7 +23416,7 @@ function hvacIssueNotificationsForController(controller = {}) {
       type: "hvac-attention",
       status: "active",
       severity,
-      title: `${location?.name || customer?.name || "SiteWorks"} HVAC alert`,
+      title: `${alertTitleLabel} HVAC alert`,
       message,
       created_at: liveHvac.updatedAt || normalized.lastSeenAt || normalized.last_seen_at || "",
       customer_id: normalized.customerId,
