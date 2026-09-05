@@ -23844,6 +23844,9 @@ async function loadServerNotifications() {
     if (!response.ok) throw new Error(await response.text());
     const payload = await response.json().catch(() => ({}));
     serverNotifications = Array.isArray(payload.notifications) ? payload.notifications : [];
+    await loadHvacControllersForCurrentScope(true).catch((error) => {
+      console.warn("HVAC controller refresh before notifications failed.", error?.message || error);
+    });
     lastNotificationLoadAt = new Date().toISOString();
     renderServerNotifications();
   } catch (error) {
