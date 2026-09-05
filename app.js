@@ -4924,6 +4924,11 @@ function renderMonitoring() {
   if (elements.devicePanel && elements.devicePanel.innerHTML !== panelOptions) elements.devicePanel.innerHTML = panelOptions;
   if (elements.devicePanel) elements.devicePanel.disabled = !hasCustomerScope || !panels.length;
   const devices = visibleMonitoringDevices();
+  if (selectedLocationId === ALL_LOCATIONS) {
+    renderMonitoringAllLocations(devices, panels);
+    return;
+  }
+  elements.panelSelect?.closest(".monitoring-panel-toolbar")?.classList.remove("hidden");
   const selectablePanels = monitoringSelectablePanels(devices);
   if (!selectedMonitoringPanelId || !selectablePanels.some(panel => String(panel.id || "") === String(selectedMonitoringPanelId))) {
     selectedMonitoringPanelId = selectablePanels[0]?.id || "";
@@ -4960,6 +4965,110 @@ function renderMonitoring() {
   renderMonitoringLivePanel(selectedDevices);
   renderMonitoringAlerts(selectedDevices);
   renderMonitoringEvents(selectedDevices);
+}
+
+function systemPortfolioScopeLabel() {
+  return `${getCustomer(selectedCustomerId)?.name || "No customer selected"} | All locations`;
+}
+
+function systemPortfolioSummaryTile(label, value, className = "") {
+  return `
+    <div class="${escapeAttribute(["pump-status-tile", className].filter(Boolean).join(" "))}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
+function systemPortfolioRow({ className = "", title = "", subtitle = "", facts = [], actionLabel = "", actionAttribute = "", actionValue = "" } = {}) {
+  return `
+    <article class="${escapeAttribute(["pump-equipment-card", "system-portfolio-card", className].filter(Boolean).join(" "))}">
+      <div class="pump-equipment-main">
+        <span class="pump-indicator" aria-hidden="true"></span>
+        <div>
+          <strong>${escapeHtml(title)}</strong>
+          <span>${escapeHtml(subtitle)}</span>
+        </div>
+      </div>
+      <div class="pump-equipment-facts">
+        ${facts.map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join("")}
+      </div>
+      ${actionAttribute ? `<button type="button" class="secondary" ${actionAttribute}="${escapeAttribute(actionValue)}">${escapeHtml(actionLabel)}</button>` : ""}
+    </article>
+  `;
+}
+
+function renderMonitoringAllLocations(devices = [], panels = []) {
+  const elements = monitoringElements();
+  elements.panelSelect?.closest(".monitoring-panel-toolbar")?.classList.add("hidden");
+  const channels = state.monitoringChannels.filter((channel) => {
+    const panelId = channel.panelAssetId || channel.panel_asset_id || "";
+    const deviceId = channel.deviceId || channel.device_id || "";
+    return panels.some((panel) => String(panel.id || "") === String(panelId)) ||
+      devices.some((device) => String(device.id || "") === String(deviceId));
+  });
+  const alertCount = state.monitoringAlerts.filter((alert) => {
+    if (String(alert.status || "active").toLowerCase() === "resolved") return false;
+    const deviceId = String(alert.deviceId || alert.device_id || "");
+    return devices.some((device) => String(device.id || "") === deviceId);
+  }).length;
+  const onlineCount = devices.filter(monitoringDeviceIsFresh).length;
+  if (elements.deviceCount) elements.deviceCount.textContent = String(devices.length);
+  if (elements.connectionStatus) {
+    elements.connectionStatus.textContent = devices.length ? `${onlineCount}/${devices.length}` : "0";
+    elements.connectionStatus.className = `monitoring-connection-status ${onlineCount ? "is-online" : "is-offline"}`;
+  }
+  if (elements.livePanel) {
+    elements.livePanel.innerHTML = `
+      <section class="system-portfolio-list" aria-label="Panel monitors for all locations">
+        <div class="pump-overview-grid">
+          ${systemPortfolioSummaryTile("Panel monitors", String(devices.length))}
+          ${systemPortfolioSummaryTile("Online", String(onlineCount), onlineCount ? "is-running" : "")}
+          ${systemPortfolioSummaryTile("Needs attention", String(alertCount), alertCount ? "is-warning" : "")}
+          ${systemPortfolioSummaryTile("Mapped channels", String(channels.length), "is-muted")}
+        </div>
+        <div class="pump-scope-strip">${escapeHtml(systemPortfolioScopeLabel())}</div>
+        <div class="pump-equipment-list">
+          ${devices.length ? devices.map((device) => {
+            const panel = getAsset(device.panelAssetId);
+            const locationRecord = getLocation(device.locationId || panel?.locationId || "");
+            const panelChannels = monitoringChannelsForDevice(device.id);
+            const status = monitoringDeviceIsFresh(device)
+              ? { label: "Online", className: "is-running" }
+              : { label: device.lastSeenAt ? "Last seen" : "Setup only", className: "is-warning" };
+            return systemPortfolioRow({
+              className: status.className,
+              title: panel?.name || device.name || "Panel monitor",
+              subtitle: `${device.name || "Monitoring device"} | ${locationRecord?.name || "No location"}`,
+              facts: [
+                ["Status", status.label],
+                ["Device UID", device.deviceUid || "Not set"],
+                ["Channels", String(panelChannels.length)],
+                ["Last seen", device.lastSeenAt ? formatDateTime(device.lastSeenAt) : "Never"],
+                ["Firmware", device.firmwareVersion || "Unknown"]
+              ],
+              actionLabel: "Open panel",
+              actionAttribute: "data-open-monitoring-panel",
+              actionValue: panel?.id || device.panelAssetId || ""
+            });
+          }).join("") : `
+            <div class="automation-empty-state">
+              <strong>No panel monitors found in this view.</strong>
+              <p>Add a monitoring device at a Club 16 location and it will show here.</p>
+            </div>
+          `}
+        </div>
+      </section>
+    `;
+  }
+  if (elements.breakerDetail) elements.breakerDetail.classList.add("hidden");
+  if (elements.setupDrawer) elements.setupDrawer.open = false;
+  renderMonitoringDeviceList(devices);
+  renderMonitoringChannelList(devices, "");
+  renderMonitoringDeviceDetails(devices, devices[0]?.id || "");
+  renderMonitoringSimulatorHistory(devices, devices[0]?.id || "");
+  renderMonitoringAlerts(devices);
+  renderMonitoringEvents(devices);
 }
 
 function monitoringSelectablePanels(devices = []) {
@@ -9354,6 +9463,59 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const openSystemLocationButton = event.target.closest("[data-open-system-location]");
+  if (openSystemLocationButton) {
+    event.preventDefault();
+    const [system, locationId] = String(openSystemLocationButton.dataset.openSystemLocation || "").split("|");
+    if (locationId) {
+      selectedLocationId = locationId;
+      if (els.locationFilter) els.locationFilter.value = locationId;
+      siteMapLayerFilter = "all";
+      siteMapAreaFilter = "all";
+      siteMapOverlayMode = "normal";
+      selectedSiteMapOverlayAssetId = "";
+      siteMapLevelId = "main";
+      siteMapViewportMemory = { left: 0, top: 0 };
+      selectedId = null;
+      editingLightingControllerId = "";
+      editingLightingZoneId = "";
+      editingLightingScheduleId = "";
+      editingLightingOverrideId = "";
+      editingHvacControllerId = "";
+      clearSelectedAssetUrl();
+      assetPage = 1;
+    }
+    if (system === "lighting") {
+      openAutomationSidebarTab("lighting");
+      setLightingAutomationTab("home");
+      return;
+    }
+    if (system === "hvac") {
+      openAutomationSidebarTab("hvac");
+      renderAutomationHvac();
+      return;
+    }
+    render();
+    return;
+  }
+
+  const openMonitoringPanelButton = event.target.closest("[data-open-monitoring-panel]");
+  if (openMonitoringPanelButton) {
+    event.preventDefault();
+    const panelId = openMonitoringPanelButton.dataset.openMonitoringPanel || "";
+    const panelAsset = getAsset(panelId);
+    if (panelAsset?.locationId) {
+      selectedLocationId = panelAsset.locationId;
+      if (els.locationFilter) els.locationFilter.value = panelAsset.locationId;
+    }
+    selectedMonitoringPanelId = panelId;
+    selectedId = null;
+    clearSelectedAssetUrl();
+    openAutomationSidebarTab("panel-monitor");
+    renderMonitoringIfReady();
+    return;
+  }
+
   const addHvacControllerButton = event.target.closest("[data-add-hvac-controller]");
   if (addHvacControllerButton) {
     event.preventDefault();
@@ -11569,9 +11731,13 @@ function renderLightingPhysicalStatus(summary = getLightingNetworkSummary()) {
 
 function renderLightingHome() {
   const list = document.querySelector("[data-lighting-hmi-zone-list]");
-  renderLightingNetworkSummary();
   if (!list) return;
   const { canUseLocation, scopeKey, currentLocation } = getLightingScopeDetails();
+  if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && selectedLocationId === ALL_LOCATIONS) {
+    renderLightingAllLocations(list);
+    return;
+  }
+  renderLightingNetworkSummary();
   if (!canUseLocation) {
     list.innerHTML = `<div class="lighting-hmi-empty"><strong>Select a location</strong><span>The lighting HMI is location based.</span></div>`;
     return;
@@ -11639,6 +11805,87 @@ function renderLightingHome() {
   const overridesValue = document.querySelector("[data-lighting-overrides-active]");
   if (overridesValue) overridesValue.textContent = visibleOverrides.length ? String(visibleOverrides.length) : "None";
   renderLightingPhysicalStatus();
+}
+
+function renderLightingAllLocations(list) {
+  const controllers = getLightingControllers()
+    .filter((controller) => controller.customerId === selectedCustomerId && canSeeLocation(controller.locationId, controller.customerId));
+  const zones = sortLightingZones(getLightingZones()
+    .filter((zone) => zone.customerId === selectedCustomerId && canSeeLocation(zone.locationId, zone.customerId)));
+  const inputs = getLightingInputs()
+    .filter((input) => input.customerId === selectedCustomerId && canSeeLocation(input.locationId, input.customerId));
+  const schedules = getLightingSchedules()
+    .filter((schedule) => schedule.customerId === selectedCustomerId && canSeeLocation(schedule.locationId, schedule.customerId));
+  const onlineCount = controllers.filter((controller) => getLightingControllerHealth(controller).label === "Online").length;
+  const zonesOn = zones.filter((zone) => {
+    const effectiveState = zone.desiredState || zone.desired_state || "";
+    return String(effectiveState).toLowerCase() === "on";
+  }).length;
+  const activeScheduleCount = schedules.filter((schedule) => schedule.enabled !== false).length;
+  const locations = locationsForCustomer(selectedCustomerId)
+    .filter((locationRecord) => canSeeLocation(locationRecord.id, locationRecord.customerId))
+    .map((locationRecord) => {
+      const locationControllers = controllers.filter((controller) => controller.locationId === locationRecord.id);
+      const locationZones = zones.filter((zone) => zone.locationId === locationRecord.id);
+      const locationInputs = inputs.filter((input) => input.locationId === locationRecord.id);
+      const locationSchedules = schedules.filter((schedule) => schedule.locationId === locationRecord.id);
+      return { locationRecord, locationControllers, locationZones, locationInputs, locationSchedules };
+    })
+    .filter((record) => record.locationControllers.length || record.locationZones.length || record.locationInputs.length || record.locationSchedules.length);
+  const lightingCount = document.querySelector("[data-lighting-count]");
+  if (lightingCount) lightingCount.textContent = String(zones.length || controllers.length);
+  const networkValue = document.querySelector("[data-lighting-network-status]");
+  if (networkValue) networkValue.textContent = controllers.length ? `Online ${onlineCount}/${controllers.length}` : "No controllers";
+  const zonesOnValue = document.querySelector("[data-lighting-zones-on]");
+  if (zonesOnValue) zonesOnValue.textContent = String(zonesOn);
+  const inputsValue = document.querySelector("[data-lighting-inputs-count]");
+  if (inputsValue) inputsValue.textContent = String(inputs.length);
+  const schedulesValue = document.querySelector("[data-lighting-schedules-active]");
+  if (schedulesValue) schedulesValue.textContent = String(activeScheduleCount);
+  renderLightingPhysicalStatus({ label: controllers.length ? `Online ${onlineCount}/${controllers.length}` : "No controllers", className: onlineCount ? "is-on" : "is-offline" });
+  list.innerHTML = `
+    <section class="system-portfolio-list" aria-label="Lighting for all locations">
+      <div class="pump-overview-grid">
+        ${systemPortfolioSummaryTile("Lighting systems", String(locations.length))}
+        ${systemPortfolioSummaryTile("Online", `${onlineCount}/${controllers.length || 0}`, onlineCount ? "is-running" : "")}
+        ${systemPortfolioSummaryTile("Zones on", String(zonesOn), zonesOn ? "is-running" : "")}
+        ${systemPortfolioSummaryTile("Schedules active", String(activeScheduleCount), "is-muted")}
+      </div>
+      <div class="pump-scope-strip">${escapeHtml(systemPortfolioScopeLabel())}</div>
+      <div class="pump-equipment-list">
+        ${locations.length ? locations.map(({ locationRecord, locationControllers, locationZones, locationInputs, locationSchedules }) => {
+          const locationOnline = locationControllers.filter((controller) => getLightingControllerHealth(controller).label === "Online").length;
+          const locationZonesOn = locationZones.filter((zone) => String(zone.desiredState || zone.desired_state || "").toLowerCase() === "on").length;
+          const locationScheduleActive = locationSchedules.filter((schedule) => schedule.enabled !== false).length;
+          const status = locationControllers.length && locationOnline === 0
+            ? { label: "Needs attention", className: "is-warning" }
+            : locationOnline
+              ? { label: "Online", className: "is-running" }
+              : { label: "Setup only", className: "is-off" };
+          return systemPortfolioRow({
+            className: status.className,
+            title: `${locationRecord.name || "Location"} Lighting`,
+            subtitle: `Lighting | ${locationRecord.name || "No location"}`,
+            facts: [
+              ["Status", status.label],
+              ["Controllers", `${locationOnline}/${locationControllers.length || 0}`],
+              ["Zones", `${locationZonesOn}/${locationZones.length}`],
+              ["Inputs", String(locationInputs.length)],
+              ["Schedules", String(locationScheduleActive)]
+            ],
+            actionLabel: "Open lighting",
+            actionAttribute: "data-open-system-location",
+            actionValue: `lighting|${locationRecord.id}`
+          });
+        }).join("") : `
+          <div class="automation-empty-state">
+            <strong>No lighting systems found in this view.</strong>
+            <p>Add lighting controllers, zones, schedules, or inputs at a Club 16 location and they will show here.</p>
+          </div>
+        `}
+      </div>
+    </section>
+  `;
 }
 
 function getLatestLightingCommandForZone(zoneId) {
@@ -21931,6 +22178,71 @@ async function deleteHvacController(controllerId = "") {
   renderAutomationHvac();
 }
 
+function renderHvacAllLocations(panel, controllers = [], equipment = []) {
+  const locations = locationsForCustomer(selectedCustomerId)
+    .filter((locationRecord) => canSeeLocation(locationRecord.id, locationRecord.customerId))
+    .map((locationRecord) => ({
+      locationRecord,
+      controllers: controllers.filter((controller) => controller.locationId === locationRecord.id),
+      equipment: equipment.filter((asset) => asset.locationId === locationRecord.id)
+    }))
+    .filter((record) => record.controllers.length || record.equipment.length);
+  const onlineCount = controllers.filter(hvacControllerIsFresh).length;
+  const alertCount = controllers.reduce((total, controller) => total + hvacIssueNotificationsForController(controller).length, 0);
+  const runningCount = controllers.filter((controller) => {
+    if (!hvacControllerIsFresh(controller)) return false;
+    const fan = hvacLiveChannelActive(controller, "outputs", controller?.points?.fanCommand || "");
+    const heat = [1, 2, 3, 4].some((stage) => hvacLiveChannelActive(controller, "outputs", controller?.points?.[`heatStage${stage}`] || ""));
+    const cool = [1, 2, 3, 4].some((stage) => hvacLiveChannelActive(controller, "outputs", controller?.points?.[`coolStage${stage}`] || ""));
+    return fan || heat || cool;
+  }).length;
+  panel.innerHTML = `
+    <section class="system-portfolio-list" aria-label="HVAC for all locations">
+      <div class="pump-overview-grid">
+        ${systemPortfolioSummaryTile("HVAC systems", String(locations.length))}
+        ${systemPortfolioSummaryTile("Running", String(runningCount), runningCount ? "is-running" : "")}
+        ${systemPortfolioSummaryTile("Needs attention", String(alertCount), alertCount ? "is-warning" : "")}
+        ${systemPortfolioSummaryTile("Controllers online", `${onlineCount}/${controllers.length || 0}`, "is-muted")}
+      </div>
+      <div class="pump-scope-strip">${escapeHtml(systemPortfolioScopeLabel())}</div>
+      <div class="pump-equipment-list">
+        ${locations.length ? locations.map(({ locationRecord, controllers: locationControllers, equipment: locationEquipment }) => {
+          const controller = locationControllers[0] || null;
+          const status = controller ? hvacControllerStatus(controller) : { label: "No controller", className: "is-warning" };
+          const liveHvac = controller && hvacControllerIsFresh(controller) && controller.data?.liveHvac && typeof controller.data.liveHvac === "object"
+            ? controller.data.liveHvac
+            : {};
+          const callState = controller ? hvacTemperatureCallState(controller, liveHvac) : { label: "No controller" };
+          const roomTemp = controller ? hvacTemperatureFromController(controller, liveHvac, "space").value : "";
+          const roomTempLabel = Number.isFinite(Number(roomTemp)) ? `${Number(roomTemp).toFixed(1)} F` : "Not ready";
+          const fanActive = controller ? hvacLiveChannelActive(controller, "outputs", controller?.points?.fanCommand || "") : false;
+          const lastSeen = controller?.lastSeenAt || controller?.last_seen_at || "";
+          return systemPortfolioRow({
+            className: status.className,
+            title: locationEquipment[0]?.name || `${locationRecord.name || "Location"} HVAC`,
+            subtitle: `HVAC | ${locationRecord.name || "No location"}`,
+            facts: [
+              ["Status", status.label],
+              ["Auto call", callState.label || "Not ready"],
+              ["Room temp", roomTempLabel],
+              ["Fan", fanActive ? "On" : "Off"],
+              ["Last seen", lastSeen ? formatDateTime(lastSeen) : "Never"]
+            ],
+            actionLabel: "Open HVAC",
+            actionAttribute: "data-open-system-location",
+            actionValue: `hvac|${locationRecord.id}`
+          });
+        }).join("") : `
+          <div class="automation-empty-state">
+            <strong>No HVAC systems found in this view.</strong>
+            <p>Add HVAC equipment or an HVAC controller at a Club 16 location and it will show here.</p>
+          </div>
+        `}
+      </div>
+    </section>
+  `;
+}
+
 function renderAutomationHvac() {
   const panel = document.querySelector("#automationHvacPanel .hvac-hmi-panel");
   const count = document.querySelector("#automationHvacPanel .section-title span");
@@ -21961,6 +22273,12 @@ function renderAutomationHvac() {
     scheduleHvacControllerEmptyRetry(scopeKey);
   }
   const equipment = hvacAssetsForCurrentView();
+  if (count) count.textContent = selectedLocationId === ALL_LOCATIONS ? String(equipment.length || controllers.length) : "RTU";
+  if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && selectedLocationId === ALL_LOCATIONS) {
+    renderHvacAllLocations(panel, controllers, equipment);
+    stopHvacFirmwareAutoRefresh();
+    return;
+  }
   const primaryController = controllers[0] || null;
   const primaryEquipment = primaryController ? hvacControllerAssignedEquipment(primaryController, equipment)[0] || equipment[0] : equipment[0];
   const assignedEquipment = primaryController ? hvacControllerAssignedEquipment(primaryController, equipment) : [];

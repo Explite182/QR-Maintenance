@@ -3413,6 +3413,32 @@ textarea:disabled {
   white-space: nowrap;
 }
 
+.system-portfolio-list {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+}
+
+.monitoring-live-grid .system-portfolio-list,
+.lighting-hmi-zone-grid .system-portfolio-list {
+  grid-column: 1 / -1;
+}
+
+.system-portfolio-card .pump-equipment-facts {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .pump-equipment-card.system-portfolio-card {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .system-portfolio-card .pump-equipment-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .pump-alarm-overview {
   display: grid;
   gap: 10px;
