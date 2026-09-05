@@ -5683,6 +5683,7 @@ let editingHvacControllerId = "";
 let hvacControllersCache = [];
 let hvacControllersLoadedScope = "";
 let hvacControllersLoadedAt = 0;
+let hvacControllersServerLoadedAt = 0;
 let hvacControllersLoading = false;
 let hvacControllersLoadingStartedAt = 0;
 let hvacControllerEmptyRetryTimer = 0;
@@ -20342,6 +20343,7 @@ async function loadHvacControllersForCurrentScope(force = false) {
       : localScopeControllers;
     hvacControllersLoadedScope = scopeKey;
     hvacControllersLoadedAt = Date.now();
+    hvacControllersServerLoadedAt = hvacControllersLoadedAt;
     const localOtherScopes = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` !== scopeKey);
     saveHvacControllers([...hvacControllersCache, ...localOtherScopes], { sync: false });
   } catch (error) {
@@ -20349,6 +20351,7 @@ async function loadHvacControllersForCurrentScope(force = false) {
     hvacControllersCache = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` === scopeKey);
     hvacControllersLoadedScope = scopeKey;
     hvacControllersLoadedAt = Date.now();
+    hvacControllersServerLoadedAt = 0;
   } finally {
     hvacControllersLoading = false;
     hvacControllersLoadingStartedAt = 0;
@@ -23434,6 +23437,9 @@ function hvacIssueNotificationsForController(controller = {}) {
 }
 
 function localHvacNotifications() {
+  const serverNotificationsFresh = lastNotificationLoadAt && Date.now() - Date.parse(lastNotificationLoadAt) < 90 * 1000;
+  const serverHvacFresh = hvacControllersServerLoadedAt && Date.now() - hvacControllersServerLoadedAt < HVAC_LIVE_REFRESH_STALE_MS;
+  if (siteworksServerEnabled() && serverNotificationsFresh && serverHvacFresh) return [];
   return hvacControllersForCurrentView().flatMap(hvacIssueNotificationsForController);
 }
 
