@@ -5060,7 +5060,7 @@ function renderEnergyTrendBars(meter = {}) {
   const base = Number(meter.todayKwh) || 1;
   return Array.from({ length: 7 }, (_, index) => {
     const value = Math.max(1, Math.round(base * (0.74 + ((index + 2) % 5) * 0.08)));
-    const height = Math.max(18, Math.min(96, Math.round((value / (base * 1.2)) * 96)));
+    const height = Math.max(30, Math.min(168, Math.round((value / (base * 1.2)) * 168)));
     return `
       <span class="energy-trend-bar" title="${escapeAttribute(`${value} kWh`)}">
         <i style="height:${height}px"></i>
@@ -5070,37 +5070,84 @@ function renderEnergyTrendBars(meter = {}) {
   }).join("");
 }
 
+function renderEnergySparkline(meter = {}, offset = 0) {
+  const base = Number(meter.currentKw) || 1;
+  const points = Array.from({ length: 12 }, (_, index) => {
+    const x = Math.round((index / 11) * 118);
+    const wave = Math.sin((index + offset) * 0.85) * 9;
+    const trend = (index % 4) * 3;
+    const value = base + wave + trend;
+    const y = Math.max(8, Math.min(46, Math.round(54 - (value / (base * 1.45)) * 50)));
+    return `${x},${y}`;
+  }).join(" ");
+  return `<svg class="energy-sparkline" viewBox="0 0 120 58" aria-hidden="true"><polyline points="${points}"></polyline></svg>`;
+}
+
+function renderEnergyMetricCard(label = "", value = "", tone = "teal", meter = {}, offset = 0) {
+  return `
+    <article class="energy-metric-card is-${escapeAttribute(tone)}">
+      <span class="energy-metric-icon" aria-hidden="true"></span>
+      <div>
+        <small>${escapeHtml(label)}</small>
+        <strong>${escapeHtml(value)}</strong>
+      </div>
+      ${renderEnergySparkline(meter, offset)}
+    </article>
+  `;
+}
+
+function renderEnergyGauge(meter = {}) {
+  const currentKw = Number(meter.currentKw) || 0;
+  const demandLimit = Number(meter.demandLimitKw) || 150;
+  const maxKw = Math.max(150, Math.ceil(demandLimit * 1.2));
+  const percent = Math.max(0, Math.min(1, currentKw / maxKw));
+  const angle = Math.round(-112 + percent * 224);
+  return `
+    <div class="energy-gauge" style="--energy-gauge-angle:${angle}deg">
+      <div class="energy-gauge-arc" aria-hidden="true"></div>
+      <span class="energy-gauge-tick is-left">0</span>
+      <span class="energy-gauge-tick is-mid">${Math.round(maxKw / 2)}</span>
+      <span class="energy-gauge-tick is-right">${maxKw}</span>
+      <span class="energy-gauge-needle" aria-hidden="true"></span>
+      <div class="energy-gauge-value">
+        <strong>${formatEnergyNumber(currentKw)}</strong>
+        <span>kW</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderEnergyLocationDetail(currentCustomer = null, currentLocation = null) {
   const meter = energyMockMeterForLocation(currentLocation || {});
   const afterHours = Math.round((meter.todayKwh * 0.18) * 10) / 10;
   const projectedMonth = Math.round((meter.monthKwh + meter.todayKwh * 12) / 10) * 10;
   return `
     <section class="energy-site-dashboard" aria-label="Energy monitoring for ${escapeAttribute(currentLocation?.name || "location")}">
-      <div class="pump-overview-grid">
-        ${systemPortfolioSummaryTile("Live demand", formatEnergyNumber(meter.currentKw, " kW"), meter.status.className)}
-        ${systemPortfolioSummaryTile("Today", formatEnergyNumber(meter.todayKwh, " kWh"), "is-running")}
-        ${systemPortfolioSummaryTile("Month to date", formatEnergyNumber(meter.monthKwh, " kWh"), "is-muted")}
-        ${systemPortfolioSummaryTile("Peak demand", formatEnergyNumber(meter.peakKw, " kW"), meter.peakKw > meter.demandLimitKw ? "is-warning" : "")}
-      </div>
-      <article class="energy-live-card ${escapeAttribute(meter.status.className)}">
-        <div class="pump-equipment-main">
-          <span class="pump-indicator" aria-hidden="true"></span>
-          <div>
-            <strong>${escapeHtml(meter.name)}</strong>
-            <span>${escapeHtml(currentCustomer?.name || "Customer")} | ${escapeHtml(currentLocation?.name || "No location")}</span>
+      <header class="energy-page-header">
+        <div>
+          <h3>${escapeHtml(currentCustomer?.name || "Customer")} | ${escapeHtml(currentLocation?.name || "Location")}</h3>
+          <div class="energy-meter-strip">
+            <span><i class="energy-status-dot" aria-hidden="true"></i>${escapeHtml(meter.status.label)}</span>
+            <span>${escapeHtml(meter.meterId)}</span>
+            <span>${formatEnergyNumber(meter.voltageAverage, " V")}</span>
+            <span>${formatEnergyNumber(meter.currentAverage, " A")}</span>
+            <span>Power Factor ${escapeHtml(String(meter.powerFactor))}</span>
           </div>
         </div>
-        <div class="pump-equipment-facts">
-          <span><b>Status</b>${escapeHtml(meter.status.label)}</span>
-          <span><b>Meter ID</b>${escapeHtml(meter.meterId)}</span>
-          <span><b>Voltage</b>${formatEnergyNumber(meter.voltageAverage, " V")}</span>
-          <span><b>Current</b>${formatEnergyNumber(meter.currentAverage, " A")}</span>
-          <span><b>Power factor</b>${escapeHtml(String(meter.powerFactor))}</span>
-        </div>
-      </article>
-      <div class="energy-detail-grid">
-        <article class="energy-detail-panel">
-          <strong>7 day usage</strong>
+        <time>${escapeHtml(formatDateTime(meter.lastSeenAt))}</time>
+      </header>
+      <div class="energy-metric-grid">
+        ${renderEnergyMetricCard("Live demand", formatEnergyNumber(meter.currentKw, " kW"), "green", meter, 0)}
+        ${renderEnergyMetricCard("Today", formatEnergyNumber(meter.todayKwh, " kWh"), "cyan", meter, 2)}
+        ${renderEnergyMetricCard("Month to date", formatEnergyNumber(meter.monthKwh, " kWh"), "violet", meter, 4)}
+        ${renderEnergyMetricCard("Peak demand", formatEnergyNumber(meter.peakKw, " kW"), "amber", meter, 6)}
+      </div>
+      <div class="energy-dashboard-grid">
+        <article class="energy-detail-panel energy-usage-panel">
+          <div class="energy-panel-heading">
+            <strong>7 day usage</strong>
+            <span>kWh</span>
+          </div>
           <div class="energy-trend-bars">${renderEnergyTrendBars(meter)}</div>
         </article>
         <article class="energy-detail-panel">
@@ -5110,6 +5157,29 @@ function renderEnergyLocationDetail(currentCustomer = null, currentLocation = nu
             <span><b>Demand limit</b>${formatEnergyNumber(meter.demandLimitKw, " kW")}</span>
             <span><b>Projected month</b>${formatEnergyNumber(projectedMonth, " kWh")}</span>
             <span><b>Last reading</b>${escapeHtml(formatDateTime(meter.lastSeenAt))}</span>
+          </div>
+        </article>
+        <article class="energy-detail-panel energy-demand-panel">
+          <strong>Live demand</strong>
+          ${renderEnergyGauge(meter)}
+          <div class="energy-demand-facts">
+            <span><b>Voltage</b>${formatEnergyNumber(meter.voltageAverage, " V")}</span>
+            <span><b>Current</b>${formatEnergyNumber(meter.currentAverage, " A")}</span>
+            <span><b>Power factor</b>${escapeHtml(String(meter.powerFactor))}</span>
+          </div>
+        </article>
+        <article class="energy-detail-panel energy-about-panel">
+          <strong>About this meter</strong>
+          <dl>
+            <div><dt>Meter ID</dt><dd>${escapeHtml(meter.meterId)}</dd></div>
+            <div><dt>Status</dt><dd><i class="energy-status-dot" aria-hidden="true"></i>${escapeHtml(meter.status.label)}</dd></div>
+            <div><dt>Location</dt><dd>${escapeHtml(currentCustomer?.name || "Customer")} | ${escapeHtml(currentLocation?.name || "Location")}</dd></div>
+            <div><dt>Meter type</dt><dd>Main Meter</dd></div>
+            <div><dt>Last updated</dt><dd>${escapeHtml(formatDateTime(meter.lastSeenAt))}</dd></div>
+          </dl>
+          <div>
+            <small>Auto-refresh on</small>
+            <i class="energy-status-dot" aria-hidden="true"></i>
           </div>
         </article>
       </div>
