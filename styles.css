@@ -3428,6 +3428,112 @@ textarea:disabled {
   min-width: 0;
 }
 
+.energy-site-dashboard {
+  display: grid;
+  gap: 10px;
+}
+
+.energy-live-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+.energy-live-card.is-running {
+  border-color: rgba(16, 185, 129, 0.34);
+}
+
+.energy-live-card.is-warning {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(255, 251, 235, 0.92);
+}
+
+.energy-live-card.is-running .pump-indicator {
+  background: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.16);
+}
+
+.energy-live-card.is-warning .pump-indicator {
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18);
+}
+
+.energy-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.1fr) minmax(280px, 0.9fr);
+  gap: 10px;
+}
+
+.energy-detail-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.energy-detail-panel > strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.energy-trend-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(28px, 1fr));
+  align-items: end;
+  min-height: 132px;
+  gap: 8px;
+}
+
+.energy-trend-bar {
+  display: grid;
+  align-items: end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.energy-trend-bar i {
+  display: block;
+  width: 100%;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, #14b8a6, #0f766e);
+}
+
+.energy-trend-bar b {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.energy-note-list {
+  display: grid;
+  gap: 8px;
+}
+
+.energy-note-list span {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.78);
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.energy-note-list b {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 900px) {
   .pump-equipment-card.system-portfolio-card {
     grid-template-columns: 1fr;
@@ -3436,6 +3542,10 @@ textarea:disabled {
 
   .system-portfolio-card .pump-equipment-facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .energy-detail-grid {
+    grid-template-columns: 1fr;
   }
 }
 

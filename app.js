@@ -5009,6 +5009,183 @@ function systemPortfolioRow({ className = "", title = "", subtitle = "", facts =
   `;
 }
 
+function energyMockHash(value = "") {
+  return Array.from(String(value || "")).reduce((total, char) => total + char.charCodeAt(0), 0);
+}
+
+function energyMockMeterForLocation(locationRecord = {}) {
+  const seed = energyMockHash(locationRecord.id || locationRecord.name || "site");
+  const currentKw = 38 + (seed % 72) + ((seed % 9) / 10);
+  const todayKwh = Math.round((currentKw * (8.8 + ((seed % 8) / 10))) * 10) / 10;
+  const monthKwh = Math.round((todayKwh * (18 + (seed % 7))) / 10) * 10;
+  const peakKw = Math.round((currentKw * (1.18 + ((seed % 5) / 20))) * 10) / 10;
+  const demandLimitKw = 125;
+  const status = peakKw > demandLimitKw
+    ? { label: "Needs attention", className: "is-warning" }
+    : { label: "Online", className: "is-running" };
+  return {
+    id: `mock-energy-${locationRecord.id || seed}`,
+    name: `${locationRecord.name || "Location"} Main Meter`,
+    meterId: `EM-${String(seed).padStart(4, "0").slice(-4)}`,
+    currentKw,
+    todayKwh,
+    monthKwh,
+    peakKw,
+    demandLimitKw,
+    powerFactor: Math.round((0.91 + ((seed % 7) / 100)) * 100) / 100,
+    voltageAverage: 598 + (seed % 8),
+    currentAverage: Math.round((currentKw * 1000 / 600 / 1.73) * 10) / 10,
+    lastSeenAt: new Date(Date.now() - ((seed % 11) + 1) * 60000).toISOString(),
+    status
+  };
+}
+
+function energyMockMetersForCurrentCustomer() {
+  if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS) return [];
+  return locationsForCustomer(selectedCustomerId)
+    .filter((locationRecord) => canSeeLocation(locationRecord.id, locationRecord.customerId))
+    .map((locationRecord) => ({
+      locationRecord,
+      meter: energyMockMeterForLocation(locationRecord)
+    }));
+}
+
+function formatEnergyNumber(value, suffix = "") {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "Not ready";
+  return `${number.toLocaleString(undefined, { maximumFractionDigits: 1 })}${suffix}`;
+}
+
+function renderEnergyTrendBars(meter = {}) {
+  const base = Number(meter.todayKwh) || 1;
+  return Array.from({ length: 7 }, (_, index) => {
+    const value = Math.max(1, Math.round(base * (0.74 + ((index + 2) % 5) * 0.08)));
+    const height = Math.max(18, Math.min(96, Math.round((value / (base * 1.2)) * 96)));
+    return `
+      <span class="energy-trend-bar" title="${escapeAttribute(`${value} kWh`)}">
+        <i style="height:${height}px"></i>
+        <b>${escapeHtml(["M", "T", "W", "T", "F", "S", "S"][index])}</b>
+      </span>
+    `;
+  }).join("");
+}
+
+function renderEnergyLocationDetail(currentCustomer = null, currentLocation = null) {
+  const meter = energyMockMeterForLocation(currentLocation || {});
+  const afterHours = Math.round((meter.todayKwh * 0.18) * 10) / 10;
+  const projectedMonth = Math.round((meter.monthKwh + meter.todayKwh * 12) / 10) * 10;
+  return `
+    <section class="energy-site-dashboard" aria-label="Energy monitoring for ${escapeAttribute(currentLocation?.name || "location")}">
+      <div class="pump-overview-grid">
+        ${systemPortfolioSummaryTile("Live demand", formatEnergyNumber(meter.currentKw, " kW"), meter.status.className)}
+        ${systemPortfolioSummaryTile("Today", formatEnergyNumber(meter.todayKwh, " kWh"), "is-running")}
+        ${systemPortfolioSummaryTile("Month to date", formatEnergyNumber(meter.monthKwh, " kWh"), "is-muted")}
+        ${systemPortfolioSummaryTile("Peak demand", formatEnergyNumber(meter.peakKw, " kW"), meter.peakKw > meter.demandLimitKw ? "is-warning" : "")}
+      </div>
+      <article class="energy-live-card ${escapeAttribute(meter.status.className)}">
+        <div class="pump-equipment-main">
+          <span class="pump-indicator" aria-hidden="true"></span>
+          <div>
+            <strong>${escapeHtml(meter.name)}</strong>
+            <span>${escapeHtml(currentCustomer?.name || "Customer")} | ${escapeHtml(currentLocation?.name || "No location")}</span>
+          </div>
+        </div>
+        <div class="pump-equipment-facts">
+          <span><b>Status</b>${escapeHtml(meter.status.label)}</span>
+          <span><b>Meter ID</b>${escapeHtml(meter.meterId)}</span>
+          <span><b>Voltage</b>${formatEnergyNumber(meter.voltageAverage, " V")}</span>
+          <span><b>Current</b>${formatEnergyNumber(meter.currentAverage, " A")}</span>
+          <span><b>Power factor</b>${escapeHtml(String(meter.powerFactor))}</span>
+        </div>
+      </article>
+      <div class="energy-detail-grid">
+        <article class="energy-detail-panel">
+          <strong>7 day usage</strong>
+          <div class="energy-trend-bars">${renderEnergyTrendBars(meter)}</div>
+        </article>
+        <article class="energy-detail-panel">
+          <strong>Site notes</strong>
+          <div class="energy-note-list">
+            <span><b>After-hours usage</b>${formatEnergyNumber(afterHours, " kWh today")}</span>
+            <span><b>Demand limit</b>${formatEnergyNumber(meter.demandLimitKw, " kW")}</span>
+            <span><b>Projected month</b>${formatEnergyNumber(projectedMonth, " kWh")}</span>
+            <span><b>Last reading</b>${escapeHtml(formatDateTime(meter.lastSeenAt))}</span>
+          </div>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderAutomationEnergy() {
+  const count = document.getElementById("automationEnergyCount");
+  const scope = document.getElementById("energyAutomationScope");
+  const list = document.getElementById("energyAutomationList");
+  if (!count || !scope || !list) return;
+
+  const currentCustomer = getCustomer(selectedCustomerId);
+  const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
+  const records = energyMockMetersForCurrentCustomer();
+  const visibleRecords = currentLocation
+    ? records.filter(({ locationRecord }) => locationRecord.id === currentLocation.id)
+    : records;
+  const totalKw = visibleRecords.reduce((total, { meter }) => total + meter.currentKw, 0);
+  const totalKwh = visibleRecords.reduce((total, { meter }) => total + meter.todayKwh, 0);
+  const needsAttention = visibleRecords.filter(({ meter }) => meter.status.label === "Needs attention").length;
+
+  count.textContent = String(visibleRecords.length);
+  scope.textContent = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
+
+  if (!currentCustomer || selectedCustomerId === ALL_CUSTOMERS) {
+    list.innerHTML = `
+      <div class="automation-empty-state">
+        <strong>Select a customer to view energy monitoring.</strong>
+        <p>Energy is mocked by customer location until a main site meter is installed.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (currentLocation) {
+    list.innerHTML = renderEnergyLocationDetail(currentCustomer, currentLocation);
+    return;
+  }
+
+  list.innerHTML = `
+    <section class="system-portfolio-list" aria-label="Energy for all locations">
+      <div class="pump-overview-grid">
+        ${systemPortfolioSummaryTile("Sites monitored", String(records.length))}
+        ${systemPortfolioSummaryTile("Live demand", formatEnergyNumber(totalKw, " kW"), totalKw ? "is-running" : "")}
+        ${systemPortfolioSummaryTile("Today", formatEnergyNumber(totalKwh, " kWh"), "is-muted")}
+        ${systemPortfolioSummaryTile("Needs attention", String(needsAttention), needsAttention ? "is-warning" : "")}
+      </div>
+      <div class="pump-scope-strip">${escapeHtml(systemPortfolioScopeLabel())}</div>
+      <div class="pump-equipment-list">
+        ${records.length ? records.map(({ locationRecord, meter }) => systemPortfolioRow({
+          className: meter.status.className,
+          title: meter.name,
+          subtitle: `Energy | ${locationRecord.name || "No location"}`,
+          facts: [
+            ["Status", meter.status.label],
+            ["Live demand", formatEnergyNumber(meter.currentKw, " kW")],
+            ["Today", formatEnergyNumber(meter.todayKwh, " kWh")],
+            ["Month", formatEnergyNumber(meter.monthKwh, " kWh")],
+            ["Peak", formatEnergyNumber(meter.peakKw, " kW")]
+          ],
+          actionLabel: "Open energy",
+          actionAttribute: "data-open-system-location",
+          actionValue: `energy|${locationRecord.id}`
+        })).join("") : `
+          <div class="automation-empty-state">
+            <strong>No locations found for this customer.</strong>
+            <p>Add locations first, then each site can get a main energy meter.</p>
+          </div>
+        `}
+      </div>
+    </section>
+  `;
+}
+
 function renderMonitoringAllLocations(devices = [], panels = []) {
   const elements = monitoringElements();
   elements.panelSelect?.closest(".monitoring-panel-toolbar")?.classList.add("hidden");
@@ -7099,6 +7276,14 @@ els.mobilePmMenu?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
   closeMobilePmMenu();
+  if (button.dataset.mobilePmTarget === "automationHvacPanel") {
+    openAutomationSidebarTab("hvac");
+    return;
+  }
+  if (button.dataset.mobilePmTarget === "automationLightingPanel") {
+    openAutomationSidebarTab("lighting");
+    return;
+  }
   openMobileTab(button.dataset.mobilePmTarget);
 });
 
@@ -9507,6 +9692,11 @@ document.addEventListener("click", async (event) => {
       renderAutomationHvac();
       return;
     }
+    if (system === "energy") {
+      openAutomationSidebarTab("energy");
+      renderAutomationEnergy();
+      return;
+    }
     render();
     return;
   }
@@ -10844,6 +11034,7 @@ function render() {
   renderAssetLocationOptions();
   renderDashboard();
   renderAutomationPumps();
+  renderAutomationEnergy();
   renderSiteMapIfReady();
   renderMonitoringIfReady();
   renderPmCalendar();
@@ -11276,6 +11467,7 @@ function openAutomationSidebarTab(tab = "panel-monitor") {
   }
   if (targetId === "automationHvacPanel") renderAutomationHvac();
   if (targetId === "automationPumpsPanel") renderAutomationPumps();
+  if (targetId === "automationEnergyPanel") renderAutomationEnergy();
   document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -14609,7 +14801,7 @@ function setMobileTabState(targetId) {
   document.querySelectorAll("[data-mobile-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.mobileTab === targetId);
   });
-  els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "templatesPanel" || targetId === "siteMapPanel");
+  els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "templatesPanel" || targetId === "siteMapPanel" || targetId === "monitoringPanel" || targetId === "automationHvacPanel" || targetId === "automationLightingPanel");
   els.mobileInventoryBtn?.classList.toggle("is-active", targetId === "inventoryPanel");
 }
 
