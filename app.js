@@ -23632,7 +23632,7 @@ function hvacIssueNotificationsForController(controller = {}) {
 function localHvacNotifications() {
   const serverNotificationsFresh = lastNotificationLoadAt && Date.now() - Date.parse(lastNotificationLoadAt) < 90 * 1000;
   const serverHvacFresh = hvacControllersServerLoadedAt && Date.now() - hvacControllersServerLoadedAt < HVAC_LIVE_REFRESH_STALE_MS;
-  if (siteworksServerEnabled() && serverNotificationsFresh && serverHvacFresh) return [];
+  if (siteworksServerEnabled() && serverNotificationsFresh) return [];
   return hvacControllersForCurrentView().flatMap(hvacIssueNotificationsForController);
 }
 
