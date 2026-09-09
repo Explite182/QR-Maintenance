@@ -6391,6 +6391,7 @@ let serverNotifications = [];
 let serverNotificationsLoading = false;
 let lastNotificationLoadAt = "";
 let serverHealthNotification = null;
+let serverHealthFailureCount = 0;
 let notificationCenterTab = "active";
 let notificationRules = [];
 let notificationRulesLoading = false;
@@ -24057,6 +24058,7 @@ function renderServerHealth(payload = null) {
   const staleBackup = backupsOk && latestBackupIsStale(payload);
   const healthOk = Boolean(payload.ok) && !staleBackup;
 
+  serverHealthFailureCount = 0;
   serverHealthNotification = serverHealthNotificationFromPayload(payload);
   renderServerNotifications();
 
@@ -24093,15 +24095,23 @@ async function loadServerHealth() {
     const payload = await response.json().catch(() => null);
     renderServerHealth(payload);
   } catch (error) {
-    if (els.serverHealthBadge) els.serverHealthBadge.textContent = "Issue";
+    serverHealthFailureCount += 1;
+    const shouldNotify = serverHealthFailureCount >= 3;
+    if (els.serverHealthBadge) els.serverHealthBadge.textContent = shouldNotify ? "Issue" : "Retry";
     if (els.serverHealthStatus) {
-      els.serverHealthStatus.textContent = error?.message || "Could not check server.";
-      els.serverHealthStatus.classList.add("is-error");
+      els.serverHealthStatus.textContent = shouldNotify
+        ? error?.message || "Could not check server."
+        : "Connection check delayed. Retrying...";
+      els.serverHealthStatus.classList.toggle("is-error", shouldNotify);
       els.serverHealthStatus.classList.remove("is-ok");
     }
-    serverHealthNotification = serverHealthNotificationFromError(error);
+    serverHealthNotification = shouldNotify ? serverHealthNotificationFromError(error) : null;
     renderServerNotifications();
-    els.serverHealthGrid.innerHTML = serverHealthRow("Status", error?.message || "Could not check server.", false);
+    els.serverHealthGrid.innerHTML = serverHealthRow(
+      "Status",
+      shouldNotify ? error?.message || "Could not check server." : "Connection check delayed. Retrying automatically.",
+      !shouldNotify
+    );
   }
 }
 
