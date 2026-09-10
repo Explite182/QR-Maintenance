@@ -9967,7 +9967,6 @@ document.addEventListener("click", async (event) => {
 
   const panelToggle = event.target.closest("[data-panel-toggle]");
   if (panelToggle) {
-    if (panelToggle.dataset.panelToggle === "dashboardPanel") return;
     const panel = document.getElementById(panelToggle.dataset.panelToggle);
     if (panel?.classList.contains("sidebar-controlled-panel")) {
       closeSidebarTarget(panelToggle.dataset.panelToggle);
@@ -26382,8 +26381,24 @@ function markSyncSuccess(type) {
 function markSyncError(message) {
   syncHealth.lastError = message || "Cloud sync failed.";
   syncHealth.lastErrorAt = new Date().toISOString();
-  setSyncBanner("error", "Sync issue", syncHealth.lastError, 0);
+  setSyncBanner("error", friendlySyncErrorTitle(syncHealth.lastError), friendlySyncErrorDetail(syncHealth.lastError), 7000);
   renderSyncHealth();
+}
+
+function friendlySyncErrorTitle(message = "") {
+  const text = String(message || "").toLowerCase();
+  if (text.includes("structured cloud load") || text.includes("server data load") || text.includes("failed to fetch") || text.includes("load failed")) {
+    return "Connection issue";
+  }
+  return "Connection issue";
+}
+
+function friendlySyncErrorDetail(message = "") {
+  const text = String(message || "").toLowerCase();
+  if (text.includes("work_orders")) return "Ticket data may be a moment out of date. Retrying automatically.";
+  if (text.includes("service_requests")) return "Service request data may be a moment out of date. Retrying automatically.";
+  if (text.includes("inventory_items")) return "Inventory data may be a moment out of date. Retrying automatically.";
+  return "Some SiteWorks data may be a moment out of date. Retrying automatically.";
 }
 
 function isCloudQuotaRestrictionError(value = "") {

@@ -801,13 +801,15 @@
         </details>
       </details>
 
-      <section id="dashboardPanel" class="dashboard-panel" aria-label="Maintenance summary">
-        <div class="panel-heading">
+      <section id="dashboardPanel" class="dashboard-panel collapsible-panel" aria-label="Maintenance summary">
+        <div class="panel-heading clickable-panel-title" data-panel-toggle="dashboardPanel">
           <div>
           <p class="eyebrow">Today</p>
           <h2>Maintenance overview</h2>
           </div>
+          <button type="button" class="secondary mini panel-toggle" data-panel-toggle="dashboardPanel" aria-expanded="true">Hide</button>
         </div>
+        <div data-panel-body>
         <div id="serverNotificationPanel" class="server-notification-panel hidden" aria-live="polite"></div>
         <div class="dashboard">
           <div class="metric-menu-wrap">
@@ -1976,6 +1978,7 @@
               <p>Add meters, demand readings, voltage/current feeds, and consumption trends here later.</p>
             </div>
           </div>
+        </div>
         </div>
       </section>
 
