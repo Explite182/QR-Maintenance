@@ -323,6 +323,26 @@ function structuredPayload(row) {
   return row?.data && typeof row.data === "object" ? row.data : {};
 }
 
+function normalizeInventoryMovements(movements = []) {
+  return Array.isArray(movements)
+    ? movements
+      .filter((movement) => movement && typeof movement === "object")
+      .map((movement) => ({
+        id: movement.id || crypto.randomUUID?.() || `inventory-move-${Date.now()}`,
+        at: movement.at || movement.createdAt || movement.created_at || new Date().toISOString(),
+        type: movement.type || "adjustment",
+        delta: Number(movement.delta || 0),
+        previousQuantity: Math.max(0, Number(movement.previousQuantity ?? movement.previous_quantity ?? 0)),
+        quantityAfter: Math.max(0, Number(movement.quantityAfter ?? movement.quantity_after ?? 0)),
+        note: movement.note || "",
+        userId: movement.userId || movement.user_id || "",
+        userName: movement.userName || movement.user_name || ""
+      }))
+      .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+      .slice(0, 30)
+    : [];
+}
+
 function nfcTagFromStructuredRow(row) {
   const payload = structuredPayload(row);
   return normalizeAssetNfcTag(payload.nfcTag || {
@@ -484,6 +504,7 @@ function preferredContractorFromStructuredRow(row) {
 }
 
 function inventoryItemFromStructuredRow(row) {
+  const payload = structuredPayload(row);
   return {
     id: row.id,
     customerId: row.customer_id || "",
@@ -497,7 +518,8 @@ function inventoryItemFromStructuredRow(row) {
     notes: row.notes || "",
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
-    ...structuredPayload(row)
+    ...payload,
+    movements: normalizeInventoryMovements(payload.movements || payload.movementLog || payload.stockMovements)
   };
 }
 
@@ -8386,7 +8408,14 @@ document.addEventListener("click", async (event) => {
     const item = getInventoryItem(adjustButton.dataset.adjustInventoryItem);
     if (!item || !canManageInventoryCustomer(item.customerId)) return;
     const delta = Number(adjustButton.dataset.delta || 0);
-    item.quantity = Math.max(0, Number(item.quantity || 0) + delta);
+    const previousQuantity = Math.max(0, Number(item.quantity || 0));
+    item.quantity = Math.max(0, previousQuantity + delta);
+    addInventoryMovement(item, {
+      type: delta > 0 ? "receive" : "use",
+      previousQuantity,
+      quantityAfter: item.quantity,
+      note: delta > 0 ? "Quick add" : "Quick remove"
+    });
     item.updatedAt = new Date().toISOString();
     addActivity("Inventory quantity updated", `${item.name}: ${item.quantity} on hand`);
     saveState();
@@ -8590,9 +8619,16 @@ document.addEventListener("submit", (event) => {
   const item = getInventoryItem(form.dataset.inventoryEditForm);
   if (!item || !canManageInventoryCustomer(item.customerId)) return;
   const formData = new FormData(form);
+  const previousQuantity = Math.max(0, Number(item.quantity || 0));
   item.category = String(formData.get("category") || "Parts");
   item.name = String(formData.get("name") || "").trim() || item.name;
   item.quantity = Math.max(0, Number(formData.get("quantity") || 0));
+  addInventoryMovement(item, {
+    type: "edit",
+    previousQuantity,
+    quantityAfter: item.quantity,
+    note: "Edited item count"
+  });
   item.minStock = Math.max(0, Number(formData.get("minStock") || 0));
   item.bin = String(formData.get("bin") || "").trim();
   item.supplier = String(formData.get("supplier") || "").trim();
@@ -9256,8 +9292,15 @@ els.inventoryForm?.addEventListener("submit", (event) => {
     supplier: els.inventorySupplier.value.trim(),
     notes: els.inventoryNotes.value.trim(),
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    movements: []
   };
+  addInventoryMovement(item, {
+    type: "initial",
+    previousQuantity: 0,
+    quantityAfter: item.quantity,
+    note: "Item created"
+  });
   state.inventoryItems.push(item);
   addActivity("Inventory item added", `${item.name} (${item.quantity} on hand)`);
   saveState();
@@ -15430,9 +15473,70 @@ function renderInventoryItem(item) {
             <button type="button" class="secondary mini" data-copy-inventory-link="${escapeAttribute(item.id)}" data-link-label="Copy NFC Link">Copy NFC Link</button>
           </div>
         </div>
+        ${renderInventoryMovementLog(item)}
         ${canManage ? renderInventoryEditForm(item) : `<p class="muted">Inventory can be edited by Admin or Manager users.</p>`}
       </div>
     </details>
+  `;
+}
+
+function inventoryMovementTypeLabel(type = "") {
+  const normalized = String(type || "").toLowerCase();
+  if (normalized === "initial") return "Initial stock";
+  if (normalized === "edit") return "Manual count";
+  if (normalized === "use") return "Used";
+  if (normalized === "receive") return "Received";
+  return "Adjustment";
+}
+
+function inventoryMovementDeltaLabel(delta = 0) {
+  const value = Number(delta || 0);
+  if (value > 0) return `+${formatInventoryNumber(value)}`;
+  if (value < 0) return `-${formatInventoryNumber(Math.abs(value))}`;
+  return "0";
+}
+
+function addInventoryMovement(item, { type = "adjustment", previousQuantity = 0, quantityAfter = 0, note = "" } = {}) {
+  if (!item) return;
+  const previous = Math.max(0, Number(previousQuantity || 0));
+  const next = Math.max(0, Number(quantityAfter || 0));
+  const delta = next - previous;
+  if (!delta && type !== "initial") return;
+  const movement = {
+    id: crypto.randomUUID?.() || `inventory-move-${Date.now()}`,
+    at: new Date().toISOString(),
+    type,
+    delta,
+    previousQuantity: previous,
+    quantityAfter: next,
+    note,
+    userId: currentUser?.id || "",
+    userName: currentUser?.name || currentUser?.username || ""
+  };
+  item.movements = normalizeInventoryMovements([movement, ...(item.movements || [])]);
+}
+
+function renderInventoryMovementLog(item = {}) {
+  const movements = normalizeInventoryMovements(item.movements).slice(0, 6);
+  return `
+    <section class="inventory-movement-log" aria-label="Stock movement history">
+      <div class="inventory-movement-heading">
+        <strong>Stock movement</strong>
+        <small>${movements.length ? `${movements.length} recent` : "No movements yet"}</small>
+      </div>
+      ${movements.length
+        ? `<div class="inventory-movement-list">
+            ${movements.map((movement) => `
+              <div class="inventory-movement-row">
+                <span>${escapeHtml(inventoryMovementTypeLabel(movement.type))}</span>
+                <strong>${escapeHtml(inventoryMovementDeltaLabel(movement.delta))}</strong>
+                <small>${escapeHtml(formatDateTime(movement.at))}${movement.userName ? ` | ${escapeHtml(movement.userName)}` : ""}</small>
+                <em>On hand ${escapeHtml(formatInventoryNumber(movement.quantityAfter))}${movement.note ? ` | ${escapeHtml(movement.note)}` : ""}</em>
+              </div>
+            `).join("")}
+          </div>`
+        : `<p class="muted">Quantity changes will appear here.</p>`}
+    </section>
   `;
 }
 
@@ -33403,6 +33507,7 @@ function normalizeState(input) {
     supplier: item.supplier || "",
     nfcTag: item.nfcTag || "",
     notes: item.notes || "",
+    movements: normalizeInventoryMovements(item.movements || item.movementLog || item.stockMovements),
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
   })).filter((item) => item.name);

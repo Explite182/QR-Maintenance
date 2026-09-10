@@ -14851,6 +14851,75 @@ button.asset-detail-card {
   gap: 6px;
 }
 
+.inventory-movement-log {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(248, 251, 250, 0.82);
+}
+
+.inventory-movement-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.inventory-movement-heading strong {
+  font-size: 14px;
+}
+
+.inventory-movement-heading small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-movement-list {
+  display: grid;
+  gap: 6px;
+}
+
+.inventory-movement-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 70px minmax(180px, 1.2fr) minmax(180px, 1.5fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.inventory-movement-row span,
+.inventory-movement-row strong,
+.inventory-movement-row small,
+.inventory-movement-row em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inventory-movement-row span {
+  font-weight: 900;
+}
+
+.inventory-movement-row strong {
+  font-size: 16px;
+  text-align: right;
+}
+
+.inventory-movement-row small,
+.inventory-movement-row em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .inventory-qr-card {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
@@ -16922,6 +16991,15 @@ body.panel-schedule-open {
   .inventory-detail-actions {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .inventory-movement-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .inventory-movement-row small,
+  .inventory-movement-row em {
+    grid-column: 1 / -1;
   }
 
   .mobile-tab-dashboard::before {
