@@ -23620,13 +23620,16 @@ function localBreakerTripNotifications() {
 function localPumpNotifications() {
   return activePumpAlarmAssets(pumpAssetsForCurrentView()).map(({ asset, status, latestEvent, openIssueCount }) => {
     const eventDate = latestEvent?.date || latestEvent?.createdAt || latestEvent?.timestamp || latestEvent?.updatedAt || "";
+    const customer = getCustomer(asset.customerId || asset.customer_id || "");
+    const location = getLocation(asset.locationId || asset.location_id || "");
+    const equipmentName = asset.name || "Pump equipment";
     return {
       id: `local-pump-${asset.id}`,
       type: "pump-attention",
       status: "active",
       severity: pumpStatusSeverity(status),
-      title: `${status.label} pump attention`,
-      message: `${asset.name || "Pump equipment"} is ${status.label.toLowerCase()}. ${pumpStatusMeaning(status)}`,
+      title: `${equipmentName} attention`,
+      message: `${equipmentName} is ${status.label.toLowerCase()}. ${pumpStatusMeaning(status)}`,
       created_at: eventDate || asset.updatedAt || asset.updated_at || "",
       customer_id: asset.customerId || asset.customer_id || "",
       location_id: asset.locationId || asset.location_id || "",
@@ -23636,6 +23639,10 @@ function localPumpNotifications() {
         localOnly: true,
         pumpAssetId: asset.id,
         equipmentId: getAssetEquipmentId(asset),
+        equipmentName,
+        locationName: location?.name || "",
+        customerName: customer?.name || "",
+        alertScope: [customer?.name || "", location?.name || "", equipmentName].filter(Boolean).join(" | "),
         pumpStatus: status.label,
         openIssueCount
       }
@@ -23803,15 +23810,19 @@ function renderServerNotifications() {
 function notificationDetailText(notification = {}) {
   const metadata = notificationMetadata(notification);
   const panel = getAsset(metadata.panelAssetId);
+  const customer = getCustomer(notification.customer_id || notification.customerId || metadata.customerId || "");
+  const location = getLocation(notification.location_id || notification.locationId || metadata.locationId || "");
   return [
     notification.message || "",
     metadata.alertScope || "",
+    metadata.customerName || customer?.name || "",
     metadata.locationName || "",
+    location?.name || "",
     metadata.equipmentName || "",
     panel?.name || "",
     metadata.circuitNumber ? `Circuit ${metadata.circuitNumber}` : "",
     notification.created_at ? formatDateTime(notification.created_at) : ""
-  ].filter(Boolean).join(" | ");
+  ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" | ");
 }
 
 function renderNotificationCenter(activeNotifications = null) {
@@ -24292,6 +24303,19 @@ function openServerNotification(id) {
     }, 50);
   } else if (notification.type === "pump-attention") {
     selectedPumpHmiAssetId = metadata.pumpAssetId || notification.source_id || notification.sourceId || "";
+    const pumpAsset = getRawAsset(selectedPumpHmiAssetId);
+    const targetCustomerId = notification.customer_id || notification.customerId || metadata.customerId || pumpAsset?.customerId || "";
+    const targetLocationId = notification.location_id || notification.locationId || metadata.locationId || pumpAsset?.locationId || "";
+    if (targetCustomerId && canSeeCustomer(targetCustomerId) && getCustomer(targetCustomerId)) {
+      selectedCustomerId = targetCustomerId;
+      selectedContractorCustomerId = targetCustomerId;
+      if (els.customerFilter) els.customerFilter.value = targetCustomerId;
+    }
+    if (targetLocationId && canSeeLocation(targetLocationId, targetCustomerId || selectedCustomerId) && getLocation(targetLocationId)) {
+      selectedLocationId = targetLocationId;
+      renderLocationOptions();
+      if (els.locationFilter) els.locationFilter.value = targetLocationId;
+    }
     openAutomationSidebarTab("pumps");
     render();
     window.setTimeout(() => {
