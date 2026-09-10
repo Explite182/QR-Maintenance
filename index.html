@@ -2028,12 +2028,28 @@
               </div>
               <div class="form-grid">
                 <label>
-                  Location / bin
-                  <input id="inventoryBin" placeholder="Shop shelf A3">
+                  Storage location
+                  <select id="inventoryStorageLocation">
+                    <option>Shop</option>
+                    <option>Truck</option>
+                    <option>Site</option>
+                    <option>Vendor</option>
+                    <option>Other</option>
+                  </select>
                 </label>
+                <label>
+                  Location / bin
+                  <input id="inventoryBin" placeholder="Shelf A3, Truck 2, rooftop kit">
+                </label>
+              </div>
+              <div class="form-grid">
                 <label>
                   Supplier
                   <input id="inventorySupplier" placeholder="Supplier or preferred contact">
+                </label>
+                <label>
+                  Item photo
+                  <input id="inventoryPhoto" type="file" accept="image/*">
                 </label>
               </div>
               <label>

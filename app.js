@@ -519,6 +519,10 @@ function inventoryItemFromStructuredRow(row) {
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
     ...payload,
+    storageLocation: payload.storageLocation || payload.storage_location || "Shop",
+    photo: withFileScope(payload.photo, { inventoryItemId: row.id }),
+    reorderStatus: payload.reorderStatus || payload.reorder_status || "",
+    reorderMarkedAt: payload.reorderMarkedAt || payload.reorder_marked_at || "",
     movements: normalizeInventoryMovements(payload.movements || payload.movementLog || payload.stockMovements)
   };
 }
@@ -6809,8 +6813,10 @@ const els = {
   inventoryName: document.getElementById("inventoryName"),
   inventoryQuantity: document.getElementById("inventoryQuantity"),
   inventoryMinStock: document.getElementById("inventoryMinStock"),
+  inventoryStorageLocation: document.getElementById("inventoryStorageLocation"),
   inventoryBin: document.getElementById("inventoryBin"),
   inventorySupplier: document.getElementById("inventorySupplier"),
+  inventoryPhoto: document.getElementById("inventoryPhoto"),
   inventoryNotes: document.getElementById("inventoryNotes"),
   inventoryStatus: document.getElementById("inventoryStatus"),
   inventoryCount: document.getElementById("inventoryCount"),
@@ -8400,6 +8406,40 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const copyReorderButton = event.target.closest("[data-copy-reorder-list]");
+  if (copyReorderButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const lowStockItems = visibleInventoryItems().filter(inventoryItemLowStock);
+    const supplierLines = lowStockItems.map((item) => {
+      const supplier = item.supplier || "No supplier";
+      const needed = Math.max(0, Number(item.minStock || 0) - Number(item.quantity || 0) + 1);
+      return `${item.name} - on hand ${formatInventoryNumber(item.quantity)} / min ${formatInventoryNumber(item.minStock)} - order ${formatInventoryNumber(needed)} - ${supplier}`;
+    }).join("\n");
+    await copyText(supplierLines || "No low stock items.");
+    copyReorderButton.textContent = "Copied";
+    window.setTimeout(() => {
+      copyReorderButton.textContent = "Copy supplier list";
+    }, 1200);
+    return;
+  }
+
+  const orderedButton = event.target.closest("[data-mark-inventory-ordered]");
+  if (orderedButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageInventory()) return;
+    const item = getInventoryItem(orderedButton.dataset.markInventoryOrdered);
+    if (!item || !canManageInventoryCustomer(item.customerId)) return;
+    item.reorderStatus = item.reorderStatus === "ordered" ? "" : "ordered";
+    item.reorderMarkedAt = item.reorderStatus === "ordered" ? new Date().toISOString() : "";
+    item.updatedAt = new Date().toISOString();
+    addActivity(item.reorderStatus === "ordered" ? "Inventory reorder marked" : "Inventory reorder cleared", item.name);
+    saveState();
+    render();
+    return;
+  }
+
   const adjustButton = event.target.closest("[data-adjust-inventory-item]");
   if (adjustButton) {
     event.preventDefault();
@@ -8611,7 +8651,39 @@ document.addEventListener("click", async (event) => {
   }
 });
 
-document.addEventListener("submit", (event) => {
+document.addEventListener("submit", async (event) => {
+  const useForm = event.target.closest("[data-inventory-use-form]");
+  if (useForm) {
+    event.preventDefault();
+    if (!canManageInventory()) return;
+    const item = getInventoryItem(useForm.dataset.inventoryUseForm);
+    if (!item || !canManageInventoryCustomer(item.customerId)) return;
+    const formData = new FormData(useForm);
+    const workOrder = getWorkOrder(String(formData.get("workOrderId") || ""));
+    if (!workOrder || !canWorkOnTicket(workOrder)) return;
+    const previousQuantity = Math.max(0, Number(item.quantity || 0));
+    const quantityUsed = Math.min(previousQuantity, Math.max(1, Number(formData.get("quantityUsed") || 1)));
+    if (!quantityUsed) return;
+    item.quantity = Math.max(0, previousQuantity - quantityUsed);
+    item.reorderStatus = inventoryItemLowStock(item) ? item.reorderStatus || "" : "";
+    addInventoryMovement(item, {
+      type: "use",
+      previousQuantity,
+      quantityAfter: item.quantity,
+      note: `Used on ${formatIssueNumber(workOrder)}`
+    });
+    item.updatedAt = new Date().toISOString();
+
+    const note = `Used ${formatInventoryNumber(quantityUsed)} x ${item.name} from inventory. On hand: ${formatInventoryNumber(item.quantity)}.`;
+    workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
+    workOrder.updatedAt = new Date().toISOString();
+    addWorkOrderHistory(workOrder, "Inventory used", note);
+    addActivity("Inventory used on ticket", `${item.name} -> ${formatIssueNumber(workOrder)}`);
+    saveState();
+    render();
+    return;
+  }
+
   const form = event.target.closest("[data-inventory-edit-form]");
   if (!form) return;
   event.preventDefault();
@@ -8630,8 +8702,11 @@ document.addEventListener("submit", (event) => {
     note: "Edited item count"
   });
   item.minStock = Math.max(0, Number(formData.get("minStock") || 0));
+  item.storageLocation = String(formData.get("storageLocation") || "Shop").trim() || "Shop";
   item.bin = String(formData.get("bin") || "").trim();
   item.supplier = String(formData.get("supplier") || "").trim();
+  const replacementPhoto = await readPhoto(form.querySelector("input[name='photo']")?.files?.[0]);
+  if (replacementPhoto) item.photo = replacementPhoto;
   item.nfcTag = String(formData.get("nfcTag") || "").trim();
   item.notes = String(formData.get("notes") || "").trim();
   item.updatedAt = new Date().toISOString();
@@ -9267,7 +9342,7 @@ els.contractorCustomer?.addEventListener("change", () => {
   renderPreferredContractors();
 });
 
-els.inventoryForm?.addEventListener("submit", (event) => {
+els.inventoryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageInventory()) return;
   const name = els.inventoryName.value.trim();
@@ -9281,6 +9356,7 @@ els.inventoryForm?.addEventListener("submit", (event) => {
     return;
   }
   const now = new Date().toISOString();
+  const photo = await readPhoto(els.inventoryPhoto?.files?.[0]);
   const item = {
     id: crypto.randomUUID(),
     customerId,
@@ -9288,8 +9364,10 @@ els.inventoryForm?.addEventListener("submit", (event) => {
     name,
     quantity: Math.max(0, Number(els.inventoryQuantity.value || 0)),
     minStock: Math.max(0, Number(els.inventoryMinStock.value || 0)),
+    storageLocation: els.inventoryStorageLocation?.value || "Shop",
     bin: els.inventoryBin.value.trim(),
     supplier: els.inventorySupplier.value.trim(),
+    photo,
     notes: els.inventoryNotes.value.trim(),
     createdAt: now,
     updatedAt: now,
@@ -15420,8 +15498,43 @@ function renderInventory() {
   if (focusedInventoryItemId && !items.some((item) => item.id === focusedInventoryItemId)) focusedInventoryItemId = "";
   if (els.inventoryCount) els.inventoryCount.textContent = items.length;
   els.inventoryList.innerHTML = items.length
-    ? items.map(renderInventoryItem).join("")
+    ? `${renderInventoryReorderList(items)}${items.map(renderInventoryItem).join("")}`
     : `<p class="muted">No inventory items for this view yet.</p>`;
+}
+
+function inventoryItemLowStock(item = {}) {
+  return Number(item.minStock || 0) > 0 && Number(item.quantity || 0) <= Number(item.minStock || 0);
+}
+
+function renderInventoryReorderList(items = []) {
+  const lowStockItems = items.filter(inventoryItemLowStock);
+  if (!lowStockItems.length) return "";
+  return `
+    <section class="inventory-reorder-panel" aria-label="Reorder list">
+      <div class="inventory-reorder-heading">
+        <div>
+          <strong>Reorder list</strong>
+          <small>${lowStockItems.length} item${lowStockItems.length === 1 ? "" : "s"} at or below minimum stock</small>
+        </div>
+        <button type="button" class="secondary mini" data-copy-reorder-list>Copy supplier list</button>
+      </div>
+      <div class="inventory-reorder-list">
+        ${lowStockItems.map((item) => `
+          <article class="inventory-reorder-row">
+            <div>
+              <strong>${escapeHtml(item.name)}</strong>
+              <small>${escapeHtml([item.supplier || "No supplier", item.bin || "No bin"].join(" | "))}</small>
+            </div>
+            <span>On hand <b>${escapeHtml(formatInventoryNumber(item.quantity))}</b></span>
+            <span>Min <b>${escapeHtml(formatInventoryNumber(item.minStock))}</b></span>
+            <button type="button" class="secondary mini" data-mark-inventory-ordered="${escapeAttribute(item.id)}">
+              ${item.reorderStatus === "ordered" ? "Ordered" : "Mark ordered"}
+            </button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderInventoryItem(item) {
@@ -15434,18 +15547,24 @@ function renderInventoryItem(item) {
     ? `<span class="status-badge badge-warn">Low stock</span>`
     : `<span class="status-badge badge-ok">In stock</span>`;
   const supplier = item.supplier || "No supplier";
+  const storageLocation = item.storageLocation || "Shop";
   const bin = item.bin || "No bin";
+  const photoSrc = mediaSource(item.photo);
+  const photoThumb = photoSrc
+    ? `<button type="button" class="inventory-thumb" data-view-photo data-photo-src="${escapeAttribute(photoSrc)}" data-photo-caption="${escapeAttribute(item.photo?.name || item.name || "Inventory photo")}"><img alt="" src="${escapeAttribute(photoSrc)}"></button>`
+    : `<span class="inventory-thumb inventory-thumb-empty" aria-hidden="true">${escapeHtml((item.category || "P").slice(0, 1).toUpperCase())}</span>`;
   const notesPreview = item.notes ? `<p>${escapeHtml(item.notes)}</p>` : "";
   return `
     <details class="inventory-item inventory-item-drawer" ${item.id === focusedInventoryItemId ? "open" : ""}>
       <summary data-inventory-item-summary="${escapeAttribute(item.id)}">
+        ${photoThumb}
         <div class="inventory-main">
           <strong>${escapeHtml(item.name)}</strong>
           <small>${escapeHtml(currentRole === "Admin" ? customerName : item.category || "Parts")}</small>
           ${notesPreview}
         </div>
         <div class="inventory-facts" aria-label="Inventory details">
-          <span><b>Category</b>${escapeHtml(item.category || "Parts")}</span>
+          <span><b>Location</b>${escapeHtml(storageLocation)}</span>
           <span><b>Bin</b>${escapeHtml(bin)}</span>
           <span><b>Supplier</b>${escapeHtml(supplier)}</span>
         </div>
@@ -15465,6 +15584,7 @@ function renderInventoryItem(item) {
           <button type="button" class="secondary mini" data-print-inventory-qr="${escapeAttribute(item.id)}">Print QR</button>
           <button type="button" class="secondary mini danger-action" data-delete-inventory-item="${escapeAttribute(item.id)}" ${canManage ? "" : "disabled"}>Delete</button>
         </div>
+        ${renderInventoryPhotoCard(item)}
         <div class="inventory-qr-card">
           <img alt="Inventory QR code for ${escapeAttribute(item.name)}" src="${qrUrl(inventoryUrl)}">
           <div>
@@ -15473,10 +15593,58 @@ function renderInventoryItem(item) {
             <button type="button" class="secondary mini" data-copy-inventory-link="${escapeAttribute(item.id)}" data-link-label="Copy NFC Link">Copy NFC Link</button>
           </div>
         </div>
+        ${renderInventoryUseOnTicket(item)}
         ${renderInventoryMovementLog(item)}
         ${canManage ? renderInventoryEditForm(item) : `<p class="muted">Inventory can be edited by Admin or Manager users.</p>`}
       </div>
     </details>
+  `;
+}
+
+function renderInventoryPhotoCard(item = {}) {
+  const photoSrc = mediaSource(item.photo);
+  return `
+    <section class="inventory-photo-card" aria-label="Inventory photo">
+      ${photoSrc
+        ? `<button type="button" class="photo-open-button" data-view-photo data-photo-src="${escapeAttribute(photoSrc)}" data-photo-caption="${escapeAttribute(item.photo?.name || item.name || "Inventory photo")}">
+            <img alt="Photo of ${escapeAttribute(item.name || "Inventory item")}" src="${escapeAttribute(photoSrc)}">
+          </button>`
+        : `<div class="inventory-photo-empty">No item photo added.</div>`}
+      <div>
+        <strong>Item photo</strong>
+        <span>${escapeHtml(item.photo?.name || "Add a photo in the edit form below.")}</span>
+      </div>
+    </section>
+  `;
+}
+
+function inventoryOpenTicketsForItem(item = {}) {
+  return (state.workOrders || [])
+    .filter((ticket) => ticket.customerId === item.customerId)
+    .filter((ticket) => ticket.status !== "Closed")
+    .filter(canSeeWorkOrder)
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+}
+
+function renderInventoryUseOnTicket(item = {}) {
+  const tickets = inventoryOpenTicketsForItem(item);
+  const canUse = canManageInventoryCustomer(item.customerId) && Number(item.quantity || 0) > 0 && tickets.length;
+  return `
+    <section class="inventory-use-panel" aria-label="Use inventory on ticket">
+      <div class="inventory-use-heading">
+        <strong>Use on ticket</strong>
+        <small>${tickets.length ? `${tickets.length} open ticket${tickets.length === 1 ? "" : "s"}` : "No open tickets for this customer"}</small>
+      </div>
+      <form class="inventory-use-form" data-inventory-use-form="${escapeAttribute(item.id)}">
+        <select name="workOrderId" ${canUse ? "" : "disabled"}>
+          ${tickets.length
+            ? tickets.map((ticket) => `<option value="${escapeAttribute(ticket.id)}">${escapeHtml(`${formatIssueNumber(ticket)} - ${ticket.title || "Open ticket"}`)}</option>`).join("")
+            : `<option>No open tickets</option>`}
+        </select>
+        <input name="quantityUsed" type="number" min="1" max="${escapeAttribute(item.quantity || 0)}" step="1" value="1" ${canUse ? "" : "disabled"}>
+        <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Use part</button>
+      </form>
+    </section>
   `;
 }
 
@@ -15569,12 +15737,26 @@ function renderInventoryEditForm(item) {
       </div>
       <div class="form-grid">
         <label>
+          Storage location
+          <select name="storageLocation">
+            ${["Shop", "Truck", "Site", "Vendor", "Other"].map((locationLabel) =>
+              `<option ${item.storageLocation === locationLabel ? "selected" : ""}>${escapeHtml(locationLabel)}</option>`
+            ).join("")}
+          </select>
+        </label>
+        <label>
           Location / bin
           <input name="bin" value="${escapeAttribute(item.bin || "")}">
         </label>
+      </div>
+      <div class="form-grid">
         <label>
           Supplier
           <input name="supplier" value="${escapeAttribute(item.supplier || "")}">
+        </label>
+        <label>
+          Replace photo
+          <input name="photo" type="file" accept="image/*">
         </label>
       </div>
       <label>
@@ -33503,10 +33685,14 @@ function normalizeState(input) {
     name: item.name || "",
     quantity: Math.max(0, Number(item.quantity ?? item.quantityOnHand ?? 0)),
     minStock: Math.max(0, Number(item.minStock ?? 0)),
+    storageLocation: item.storageLocation || item.storage_location || "Shop",
     bin: item.bin || "",
     supplier: item.supplier || "",
     nfcTag: item.nfcTag || "",
     notes: item.notes || "",
+    photo: item.photo || null,
+    reorderStatus: item.reorderStatus || item.reorder_status || "",
+    reorderMarkedAt: item.reorderMarkedAt || item.reorder_marked_at || "",
     movements: normalizeInventoryMovements(item.movements || item.movementLog || item.stockMovements),
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()

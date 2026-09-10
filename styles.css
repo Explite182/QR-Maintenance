@@ -14825,7 +14825,7 @@ button.asset-detail-card {
 
 .inventory-item-drawer > summary {
   display: grid;
-  grid-template-columns: minmax(240px, 1.6fr) minmax(360px, 2fr) minmax(88px, auto) auto;
+  grid-template-columns: 52px minmax(220px, 1.5fr) minmax(360px, 2fr) minmax(88px, auto) auto;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -14849,6 +14849,167 @@ button.asset-detail-card {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.inventory-thumb {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfa;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.inventory-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.inventory-thumb-empty {
+  text-transform: uppercase;
+}
+
+.inventory-photo-card {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfa;
+}
+
+.inventory-photo-card .photo-open-button,
+.inventory-photo-empty {
+  width: 112px;
+  height: 84px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.inventory-photo-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.inventory-photo-card div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.inventory-photo-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.inventory-reorder-panel,
+.inventory-use-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 248, 224, 0.78);
+}
+
+.inventory-reorder-heading,
+.inventory-use-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.inventory-reorder-heading div {
+  display: grid;
+  gap: 2px;
+}
+
+.inventory-reorder-heading strong,
+.inventory-use-heading strong {
+  font-size: 14px;
+}
+
+.inventory-reorder-heading small,
+.inventory-use-heading small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-reorder-list {
+  display: grid;
+  gap: 6px;
+}
+
+.inventory-reorder-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.inventory-reorder-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.inventory-reorder-row strong,
+.inventory-reorder-row small,
+.inventory-reorder-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inventory-reorder-row small,
+.inventory-reorder-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-reorder-row b {
+  color: var(--text);
+}
+
+.inventory-use-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 92px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.inventory-use-form select,
+.inventory-use-form input {
+  margin: 0;
 }
 
 .inventory-movement-log {
@@ -16959,8 +17120,23 @@ body.panel-schedule-open {
     align-items: stretch;
   }
 
+  .inventory-thumb {
+    width: 100%;
+    height: 72px;
+  }
+
   .inventory-facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inventory-photo-card {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+
+  .inventory-photo-card .photo-open-button,
+  .inventory-photo-empty {
+    width: 84px;
+    height: 70px;
   }
 
   .inventory-qr-card {
@@ -16991,6 +17167,25 @@ body.panel-schedule-open {
   .inventory-detail-actions {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .inventory-reorder-heading,
+  .inventory-use-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inventory-reorder-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .inventory-reorder-row div,
+  .inventory-reorder-row button {
+    grid-column: 1 / -1;
+  }
+
+  .inventory-use-form {
+    grid-template-columns: 1fr;
   }
 
   .inventory-movement-row {
