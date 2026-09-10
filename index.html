@@ -2042,6 +2042,16 @@
               </label>
               <div class="form-grid">
                 <label>
+                  Order quantity
+                  <input id="inventoryReorderQuantity" type="number" min="0" step="1" placeholder="Qty to buy when low">
+                </label>
+                <label>
+                  Lead time days
+                  <input id="inventoryLeadTimeDays" type="number" min="0" step="1" placeholder="Typical delivery time">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
                   Quantity on hand
                   <input id="inventoryQuantity" type="number" min="0" step="1" value="0">
                 </label>
@@ -2068,7 +2078,7 @@
               </div>
               <div class="form-grid">
                 <label>
-                  Supplier
+                  Preferred supplier
                   <input id="inventorySupplier" placeholder="Supplier or preferred contact">
                 </label>
                 <label>

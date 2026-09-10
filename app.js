@@ -525,6 +525,10 @@ function inventoryItemFromStructuredRow(row) {
     supplierSku: payload.supplierSku || payload.supplier_sku || "",
     specs: payload.specs || payload.specifications || "",
     alternatePart: payload.alternatePart || payload.alternate_part || payload.replacementPart || "",
+    reorderQuantity: Number(payload.reorderQuantity ?? payload.reorder_quantity ?? 0),
+    leadTimeDays: Number(payload.leadTimeDays ?? payload.lead_time_days ?? 0),
+    lastOrderedAt: payload.lastOrderedAt || payload.last_ordered_at || "",
+    expectedBy: payload.expectedBy || payload.expected_by || "",
     photo: withFileScope(payload.photo, { inventoryItemId: row.id }),
     reorderStatus: payload.reorderStatus || payload.reorder_status || "",
     reorderMarkedAt: payload.reorderMarkedAt || payload.reorder_marked_at || "",
@@ -6825,6 +6829,8 @@ const els = {
   inventorySupplierSku: document.getElementById("inventorySupplierSku"),
   inventorySpecs: document.getElementById("inventorySpecs"),
   inventoryAlternatePart: document.getElementById("inventoryAlternatePart"),
+  inventoryReorderQuantity: document.getElementById("inventoryReorderQuantity"),
+  inventoryLeadTimeDays: document.getElementById("inventoryLeadTimeDays"),
   inventoryQuantity: document.getElementById("inventoryQuantity"),
   inventoryMinStock: document.getElementById("inventoryMinStock"),
   inventoryStorageLocation: document.getElementById("inventoryStorageLocation"),
@@ -8453,15 +8459,10 @@ document.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
     const lowStockItems = visibleInventoryItems().filter(inventoryItemLowStock);
-    const supplierLines = lowStockItems.map((item) => {
-      const supplier = item.supplier || "No supplier";
-      const needed = Math.max(0, Number(item.minStock || 0) - Number(item.quantity || 0) + 1);
-      return `${item.name} - on hand ${formatInventoryNumber(item.quantity)} / min ${formatInventoryNumber(item.minStock)} - order ${formatInventoryNumber(needed)} - ${supplier}`;
-    }).join("\n");
-    await copyText(supplierLines || "No low stock items.");
+    await copyText(formatInventoryReorderClipboard(lowStockItems));
     copyReorderButton.textContent = "Copied";
     window.setTimeout(() => {
-      copyReorderButton.textContent = "Copy supplier list";
+      copyReorderButton.textContent = "Copy PO list";
     }, 1200);
     return;
   }
@@ -8474,7 +8475,14 @@ document.addEventListener("click", async (event) => {
     const item = getInventoryItem(orderedButton.dataset.markInventoryOrdered);
     if (!item || !canManageInventoryCustomer(item.customerId)) return;
     item.reorderStatus = item.reorderStatus === "ordered" ? "" : "ordered";
-    item.reorderMarkedAt = item.reorderStatus === "ordered" ? new Date().toISOString() : "";
+    if (item.reorderStatus === "ordered") {
+      item.reorderMarkedAt = new Date().toISOString();
+      item.lastOrderedAt = toDateInputValue(new Date());
+      item.expectedBy = inventoryExpectedByDate(item);
+    } else {
+      item.reorderMarkedAt = "";
+      item.expectedBy = "";
+    }
     item.updatedAt = new Date().toISOString();
     addActivity(item.reorderStatus === "ordered" ? "Inventory reorder marked" : "Inventory reorder cleared", item.name);
     saveState();
@@ -8498,6 +8506,8 @@ document.addEventListener("click", async (event) => {
       quantityAfter: item.quantity,
       note: delta > 0 ? "Quick add" : "Quick remove"
     });
+    item.reorderStatus = inventoryItemLowStock(item) ? item.reorderStatus || "" : "";
+    if (!inventoryItemLowStock(item)) item.expectedBy = "";
     item.updatedAt = new Date().toISOString();
     addActivity("Inventory quantity updated", `${item.name}: ${item.quantity} on hand`);
     saveState();
@@ -8741,6 +8751,10 @@ document.addEventListener("submit", async (event) => {
   item.supplierSku = String(formData.get("supplierSku") || "").trim();
   item.specs = String(formData.get("specs") || "").trim();
   item.alternatePart = String(formData.get("alternatePart") || "").trim();
+  item.reorderQuantity = Math.max(0, Number(formData.get("reorderQuantity") || 0));
+  item.leadTimeDays = Math.max(0, Number(formData.get("leadTimeDays") || 0));
+  item.lastOrderedAt = String(formData.get("lastOrderedAt") || "").trim();
+  item.expectedBy = String(formData.get("expectedBy") || "").trim();
   item.quantity = Math.max(0, Number(formData.get("quantity") || 0));
   addInventoryMovement(item, {
     type: "edit",
@@ -9414,6 +9428,10 @@ els.inventoryForm?.addEventListener("submit", async (event) => {
     supplierSku: els.inventorySupplierSku?.value.trim() || "",
     specs: els.inventorySpecs?.value.trim() || "",
     alternatePart: els.inventoryAlternatePart?.value.trim() || "",
+    reorderQuantity: Math.max(0, Number(els.inventoryReorderQuantity?.value || 0)),
+    leadTimeDays: Math.max(0, Number(els.inventoryLeadTimeDays?.value || 0)),
+    lastOrderedAt: "",
+    expectedBy: "",
     quantity: Math.max(0, Number(els.inventoryQuantity.value || 0)),
     minStock: Math.max(0, Number(els.inventoryMinStock.value || 0)),
     storageLocation: els.inventoryStorageLocation?.value || "Shop",
@@ -15584,6 +15602,48 @@ function inventoryItemLowStock(item = {}) {
   return Number(item.minStock || 0) > 0 && Number(item.quantity || 0) <= Number(item.minStock || 0);
 }
 
+function inventoryReorderQuantity(item = {}) {
+  const configured = Math.max(0, Number(item.reorderQuantity || 0));
+  if (configured > 0) return configured;
+  return Math.max(1, Number(item.minStock || 0) - Number(item.quantity || 0) + 1);
+}
+
+function inventoryExpectedByDate(item = {}, startDate = new Date()) {
+  const days = Math.max(0, Number(item.leadTimeDays || 0));
+  if (!days) return "";
+  const expectedDate = new Date(startDate);
+  expectedDate.setDate(expectedDate.getDate() + days);
+  return toDateInputValue(expectedDate);
+}
+
+function inventoryDateLabel(value) {
+  return value ? formatDate(new Date(value)) : "Not set";
+}
+
+function formatInventoryReorderClipboard(items = []) {
+  const lowStockItems = items.filter(inventoryItemLowStock);
+  if (!lowStockItems.length) return "No low stock items.";
+  const groups = lowStockItems.reduce((map, item) => {
+    const supplier = item.supplier || "No supplier";
+    if (!map.has(supplier)) map.set(supplier, []);
+    map.get(supplier).push(item);
+    return map;
+  }, new Map());
+  return [...groups.entries()].map(([supplier, supplierItems]) => {
+    const lines = supplierItems.map((item) => [
+      `${item.name}`,
+      item.partNumber ? `Part #: ${item.partNumber}` : "",
+      item.supplierSku ? `SKU: ${item.supplierSku}` : "",
+      `Qty to order: ${formatInventoryNumber(inventoryReorderQuantity(item))}`,
+      `On hand: ${formatInventoryNumber(item.quantity)} / Min: ${formatInventoryNumber(item.minStock)}`,
+      item.bin || item.storageLocation ? `Location: ${[item.storageLocation, item.bin].filter(Boolean).join(" / ")}` : "",
+      item.leadTimeDays ? `Lead time: ${formatInventoryNumber(item.leadTimeDays)} day${Number(item.leadTimeDays) === 1 ? "" : "s"}` : "",
+      item.notes ? `Notes: ${item.notes}` : ""
+    ].filter(Boolean).join("\n"));
+    return `${supplier}\n\n${lines.join("\n\n")}`;
+  }).join("\n\n---\n\n");
+}
+
 function renderInventoryReorderList(items = []) {
   const lowStockItems = items.filter(inventoryItemLowStock);
   if (!lowStockItems.length) return "";
@@ -15594,17 +15654,25 @@ function renderInventoryReorderList(items = []) {
           <strong>Reorder list</strong>
           <small>${lowStockItems.length} item${lowStockItems.length === 1 ? "" : "s"} at or below minimum stock</small>
         </div>
-        <button type="button" class="secondary mini" data-copy-reorder-list>Copy supplier list</button>
+        <button type="button" class="secondary mini" data-copy-reorder-list>Copy PO list</button>
       </div>
       <div class="inventory-reorder-list">
         ${lowStockItems.map((item) => `
           <article class="inventory-reorder-row">
             <div>
               <strong>${escapeHtml(item.name)}</strong>
-              <small>${escapeHtml([item.supplier || "No supplier", item.bin || "No bin"].join(" | "))}</small>
+              <small>${escapeHtml([
+                item.supplier || "No supplier",
+                item.supplierSku ? `SKU ${item.supplierSku}` : "",
+                item.bin || "No bin"
+              ].filter(Boolean).join(" | "))}</small>
             </div>
             <span>On hand <b>${escapeHtml(formatInventoryNumber(item.quantity))}</b></span>
             <span>Min <b>${escapeHtml(formatInventoryNumber(item.minStock))}</b></span>
+            <span>Order <b>${escapeHtml(formatInventoryNumber(inventoryReorderQuantity(item)))}</b></span>
+            <span>Lead <b>${item.leadTimeDays ? `${escapeHtml(formatInventoryNumber(item.leadTimeDays))}d` : "Not set"}</b></span>
+            <span>Last <b>${escapeHtml(inventoryDateLabel(item.lastOrderedAt))}</b></span>
+            <span>Expected <b>${escapeHtml(inventoryDateLabel(item.expectedBy))}</b></span>
             <button type="button" class="secondary mini" data-mark-inventory-ordered="${escapeAttribute(item.id)}">
               ${item.reorderStatus === "ordered" ? "Ordered" : "Mark ordered"}
             </button>
@@ -15707,7 +15775,11 @@ function renderInventoryPartDetails(item = {}) {
     ["Part / model #", item.partNumber],
     ["Supplier SKU", item.supplierSku],
     ["Specs", item.specs],
-    ["Alternate part", item.alternatePart]
+    ["Alternate part", item.alternatePart],
+    ["Order quantity", item.reorderQuantity ? formatInventoryNumber(item.reorderQuantity) : ""],
+    ["Lead time", item.leadTimeDays ? `${formatInventoryNumber(item.leadTimeDays)} day${Number(item.leadTimeDays) === 1 ? "" : "s"}` : ""],
+    ["Last ordered", item.lastOrderedAt ? inventoryDateLabel(item.lastOrderedAt) : ""],
+    ["Expected", item.expectedBy ? inventoryDateLabel(item.expectedBy) : ""]
   ].filter(([, value]) => String(value || "").trim());
   if (!details.length) return "";
   return `
@@ -15855,6 +15927,26 @@ function renderInventoryEditForm(item) {
       </label>
       <div class="form-grid">
         <label>
+          Order quantity
+          <input name="reorderQuantity" type="number" min="0" step="1" value="${escapeAttribute(item.reorderQuantity || "")}">
+        </label>
+        <label>
+          Lead time days
+          <input name="leadTimeDays" type="number" min="0" step="1" value="${escapeAttribute(item.leadTimeDays || "")}">
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          Last ordered
+          <input name="lastOrderedAt" type="date" value="${escapeAttribute(item.lastOrderedAt || "")}">
+        </label>
+        <label>
+          Expected by
+          <input name="expectedBy" type="date" value="${escapeAttribute(item.expectedBy || "")}">
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
           Quantity on hand
           <input name="quantity" type="number" min="0" step="1" value="${escapeAttribute(item.quantity)}">
         </label>
@@ -15879,7 +15971,7 @@ function renderInventoryEditForm(item) {
       </div>
       <div class="form-grid">
         <label>
-          Supplier
+          Preferred supplier
           <input name="supplier" value="${escapeAttribute(item.supplier || "")}">
         </label>
         <label>
@@ -33851,6 +33943,10 @@ function normalizeState(input) {
     supplierSku: item.supplierSku || item.supplier_sku || "",
     specs: item.specs || item.specifications || "",
     alternatePart: item.alternatePart || item.alternate_part || item.replacementPart || "",
+    reorderQuantity: Math.max(0, Number(item.reorderQuantity ?? item.reorder_quantity ?? 0)),
+    leadTimeDays: Math.max(0, Number(item.leadTimeDays ?? item.lead_time_days ?? 0)),
+    lastOrderedAt: item.lastOrderedAt || item.last_ordered_at || "",
+    expectedBy: item.expectedBy || item.expected_by || "",
     bin: item.bin || "",
     supplier: item.supplier || "",
     nfcTag: item.nfcTag || "",
