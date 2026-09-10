@@ -525,10 +525,14 @@ function inventoryItemFromStructuredRow(row) {
     supplierSku: payload.supplierSku || payload.supplier_sku || "",
     specs: payload.specs || payload.specifications || "",
     alternatePart: payload.alternatePart || payload.alternate_part || payload.replacementPart || "",
+    linkedAssetId: payload.linkedAssetId || payload.linked_asset_id || payload.assetId || "",
+    unitCost: Number(payload.unitCost ?? payload.unit_cost ?? 0),
     reorderQuantity: Number(payload.reorderQuantity ?? payload.reorder_quantity ?? 0),
     leadTimeDays: Number(payload.leadTimeDays ?? payload.lead_time_days ?? 0),
     lastOrderedAt: payload.lastOrderedAt || payload.last_ordered_at || "",
     expectedBy: payload.expectedBy || payload.expected_by || "",
+    lastAuditedAt: payload.lastAuditedAt || payload.last_audited_at || "",
+    lastAuditedBy: payload.lastAuditedBy || payload.last_audited_by || "",
     photo: withFileScope(payload.photo, { inventoryItemId: row.id }),
     reorderStatus: payload.reorderStatus || payload.reorder_status || "",
     reorderMarkedAt: payload.reorderMarkedAt || payload.reorder_marked_at || "",
@@ -6798,6 +6802,7 @@ const els = {
   serviceRequestsMetric: document.getElementById("serviceRequestsMetric"),
   highPriorityIssues: document.getElementById("highPriorityIssues"),
   waitingPartsIssues: document.getElementById("waitingPartsIssues"),
+  lowStockInventoryMetric: document.getElementById("lowStockInventoryMetric"),
   reportedIssues: document.getElementById("reportedIssues"),
   failedPmIssues: document.getElementById("failedPmIssues"),
   breakerTripAlerts: document.getElementById("breakerTripAlerts"),
@@ -6829,6 +6834,8 @@ const els = {
   inventorySupplierSku: document.getElementById("inventorySupplierSku"),
   inventorySpecs: document.getElementById("inventorySpecs"),
   inventoryAlternatePart: document.getElementById("inventoryAlternatePart"),
+  inventoryLinkedAsset: document.getElementById("inventoryLinkedAsset"),
+  inventoryUnitCost: document.getElementById("inventoryUnitCost"),
   inventoryReorderQuantity: document.getElementById("inventoryReorderQuantity"),
   inventoryLeadTimeDays: document.getElementById("inventoryLeadTimeDays"),
   inventoryQuantity: document.getElementById("inventoryQuantity"),
@@ -6845,6 +6852,10 @@ const els = {
   inventoryFilterCategory: document.getElementById("inventoryFilterCategory"),
   inventoryFilterLocation: document.getElementById("inventoryFilterLocation"),
   inventoryFilterStatus: document.getElementById("inventoryFilterStatus"),
+  inventoryExportBtn: document.getElementById("inventoryExportBtn"),
+  inventoryImportBtn: document.getElementById("inventoryImportBtn"),
+  inventoryImportFile: document.getElementById("inventoryImportFile"),
+  inventoryImportStatus: document.getElementById("inventoryImportStatus"),
   inventoryList: document.getElementById("inventoryList"),
   keysPanel: document.getElementById("keysPanel"),
   keyCreateDrawer: document.getElementById("keyCreateDrawer"),
@@ -8358,6 +8369,25 @@ els.inventoryFilterStatus?.addEventListener("change", () => {
   renderInventory();
 });
 
+els.inventoryCustomer?.addEventListener("change", () => {
+  renderInventoryAssetOptions(els.inventoryCustomer.value || selectedCustomerId);
+});
+
+els.inventoryExportBtn?.addEventListener("click", () => {
+  downloadInventoryCsv(visibleInventoryItems());
+});
+
+els.inventoryImportBtn?.addEventListener("click", () => {
+  els.inventoryImportFile?.click();
+});
+
+els.inventoryImportFile?.addEventListener("change", async () => {
+  const file = els.inventoryImportFile?.files?.[0];
+  if (!file) return;
+  await importInventoryCsv(file);
+  if (els.inventoryImportFile) els.inventoryImportFile.value = "";
+});
+
 els.globalSearch?.addEventListener("input", () => {
   globalQuery = els.globalSearch.value.trim().toLowerCase();
   assetPage = 1;
@@ -8751,6 +8781,8 @@ document.addEventListener("submit", async (event) => {
   item.supplierSku = String(formData.get("supplierSku") || "").trim();
   item.specs = String(formData.get("specs") || "").trim();
   item.alternatePart = String(formData.get("alternatePart") || "").trim();
+  item.linkedAssetId = String(formData.get("linkedAssetId") || "").trim();
+  item.unitCost = Math.max(0, Number(formData.get("unitCost") || 0));
   item.reorderQuantity = Math.max(0, Number(formData.get("reorderQuantity") || 0));
   item.leadTimeDays = Math.max(0, Number(formData.get("leadTimeDays") || 0));
   item.lastOrderedAt = String(formData.get("lastOrderedAt") || "").trim();
@@ -8772,6 +8804,59 @@ document.addEventListener("submit", async (event) => {
   item.notes = String(formData.get("notes") || "").trim();
   item.updatedAt = new Date().toISOString();
   addActivity("Inventory item edited", item.name);
+  saveState();
+  render();
+});
+
+document.addEventListener("submit", (event) => {
+  const receiveForm = event.target.closest("[data-inventory-receive-form]");
+  if (!receiveForm) return;
+  event.preventDefault();
+  if (!canManageInventory()) return;
+  const item = getInventoryItem(receiveForm.dataset.inventoryReceiveForm);
+  if (!item || !canManageInventoryCustomer(item.customerId)) return;
+  const formData = new FormData(receiveForm);
+  const quantityReceived = Math.max(1, Number(formData.get("quantityReceived") || 0));
+  const previousQuantity = Math.max(0, Number(item.quantity || 0));
+  item.quantity = previousQuantity + quantityReceived;
+  item.supplier = String(formData.get("supplier") || "").trim() || item.supplier || "";
+  item.lastOrderedAt = String(formData.get("receivedAt") || "").trim() || toDateInputValue(new Date());
+  item.reorderStatus = inventoryItemLowStock(item) ? item.reorderStatus || "" : "";
+  if (!inventoryItemLowStock(item)) item.expectedBy = "";
+  addInventoryMovement(item, {
+    type: "receive",
+    previousQuantity,
+    quantityAfter: item.quantity,
+    note: String(formData.get("note") || "").trim() || "Received stock"
+  });
+  item.updatedAt = new Date().toISOString();
+  addActivity("Inventory stock received", `${item.name}: +${formatInventoryNumber(quantityReceived)}`);
+  saveState();
+  render();
+});
+
+document.addEventListener("submit", (event) => {
+  const auditForm = event.target.closest("[data-inventory-audit-form]");
+  if (!auditForm) return;
+  event.preventDefault();
+  if (!canManageInventory()) return;
+  const item = getInventoryItem(auditForm.dataset.inventoryAuditForm);
+  if (!item || !canManageInventoryCustomer(item.customerId)) return;
+  const formData = new FormData(auditForm);
+  const previousQuantity = Math.max(0, Number(item.quantity || 0));
+  item.quantity = Math.max(0, Number(formData.get("actualQuantity") || 0));
+  item.lastAuditedAt = new Date().toISOString();
+  item.lastAuditedBy = getCurrentUserLabel();
+  item.reorderStatus = inventoryItemLowStock(item) ? item.reorderStatus || "" : "";
+  if (!inventoryItemLowStock(item)) item.expectedBy = "";
+  addInventoryMovement(item, {
+    type: "audit",
+    previousQuantity,
+    quantityAfter: item.quantity,
+    note: String(formData.get("note") || "").trim() || "Inventory audit count"
+  });
+  item.updatedAt = new Date().toISOString();
+  addActivity("Inventory audited", `${item.name}: ${formatInventoryNumber(item.quantity)} counted`);
   saveState();
   render();
 });
@@ -9428,10 +9513,14 @@ els.inventoryForm?.addEventListener("submit", async (event) => {
     supplierSku: els.inventorySupplierSku?.value.trim() || "",
     specs: els.inventorySpecs?.value.trim() || "",
     alternatePart: els.inventoryAlternatePart?.value.trim() || "",
+    linkedAssetId: els.inventoryLinkedAsset?.value || "",
+    unitCost: Math.max(0, Number(els.inventoryUnitCost?.value || 0)),
     reorderQuantity: Math.max(0, Number(els.inventoryReorderQuantity?.value || 0)),
     leadTimeDays: Math.max(0, Number(els.inventoryLeadTimeDays?.value || 0)),
     lastOrderedAt: "",
     expectedBy: "",
+    lastAuditedAt: "",
+    lastAuditedBy: "",
     quantity: Math.max(0, Number(els.inventoryQuantity.value || 0)),
     minStock: Math.max(0, Number(els.inventoryMinStock.value || 0)),
     storageLocation: els.inventoryStorageLocation?.value || "Shop",
@@ -15555,6 +15644,7 @@ function renderInventory() {
     els.inventoryCustomer.value = selectedInventoryCustomerId;
     els.inventoryCustomer.disabled = currentRole !== "Admin" || !canManageInventory();
   }
+  renderInventoryAssetOptions(selectedInventoryCustomerId);
   if (els.inventoryCreateDrawer) {
     els.inventoryCreateDrawer.classList.toggle("hidden", !canManageInventory());
     if (!canManageInventory()) els.inventoryCreateDrawer.open = false;
@@ -15598,6 +15688,26 @@ function renderInventoryFilterControls(items = []) {
   if (els.inventoryFilterStatus) els.inventoryFilterStatus.value = inventoryStatusFilter;
 }
 
+function renderInventoryAssetOptions(customerId = "") {
+  if (!els.inventoryLinkedAsset) return;
+  els.inventoryLinkedAsset.innerHTML = inventoryAssetOptions(customerId, "");
+}
+
+function inventoryAssetOptions(customerId = "", selectedAssetId = "") {
+  const assets = (state.assets || [])
+    .filter((asset) => canSeeAsset(asset))
+    .filter((asset) => !customerId || asset.customerId === customerId)
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  return [
+    `<option value="">No linked equipment</option>`,
+    ...assets.map((asset) => {
+      const locationRecord = getLocation(asset.locationId);
+      const label = [asset.name, locationRecord?.name].filter(Boolean).join(" | ");
+      return `<option value="${escapeAttribute(asset.id)}" ${asset.id === selectedAssetId ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    })
+  ].join("");
+}
+
 function inventoryItemLowStock(item = {}) {
   return Number(item.minStock || 0) > 0 && Number(item.quantity || 0) <= Number(item.minStock || 0);
 }
@@ -15620,6 +15730,22 @@ function inventoryDateLabel(value) {
   return value ? formatDate(new Date(value)) : "Not set";
 }
 
+function inventoryStockValue(item = {}) {
+  return Math.max(0, Number(item.quantity || 0)) * Math.max(0, Number(item.unitCost || 0));
+}
+
+function formatMoney(value) {
+  const number = Math.max(0, Number(value || 0));
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "CAD", maximumFractionDigits: 2 }).format(number);
+}
+
+function getInventoryLinkedAssetLabel(item = {}) {
+  const asset = getAsset(item.linkedAssetId);
+  if (!asset) return "";
+  const locationRecord = getLocation(asset.locationId);
+  return [asset.name, locationRecord?.name].filter(Boolean).join(" | ");
+}
+
 function formatInventoryReorderClipboard(items = []) {
   const lowStockItems = items.filter(inventoryItemLowStock);
   if (!lowStockItems.length) return "No low stock items.";
@@ -15636,6 +15762,7 @@ function formatInventoryReorderClipboard(items = []) {
       item.supplierSku ? `SKU: ${item.supplierSku}` : "",
       `Qty to order: ${formatInventoryNumber(inventoryReorderQuantity(item))}`,
       `On hand: ${formatInventoryNumber(item.quantity)} / Min: ${formatInventoryNumber(item.minStock)}`,
+      item.unitCost ? `Unit cost: ${formatMoney(item.unitCost)}` : "",
       item.bin || item.storageLocation ? `Location: ${[item.storageLocation, item.bin].filter(Boolean).join(" / ")}` : "",
       item.leadTimeDays ? `Lead time: ${formatInventoryNumber(item.leadTimeDays)} day${Number(item.leadTimeDays) === 1 ? "" : "s"}` : "",
       item.notes ? `Notes: ${item.notes}` : ""
@@ -15696,6 +15823,7 @@ function renderInventoryItem(item) {
   const storageLocation = item.storageLocation || "Shop";
   const bin = item.bin || "No bin";
   const partNumber = item.partNumber || "";
+  const linkedAsset = getAsset(item.linkedAssetId);
   const partSummary = [item.manufacturer, partNumber, item.specs].filter(Boolean).join(" | ");
   const photoSrc = mediaSource(item.photo);
   const photoThumb = photoSrc
@@ -15717,6 +15845,8 @@ function renderInventoryItem(item) {
           <span><b>Bin</b>${escapeHtml(bin)}</span>
           <span><b>Supplier</b>${escapeHtml(supplier)}</span>
           <span><b>Part #</b>${escapeHtml(partNumber || "Not set")}</span>
+          <span><b>Used on</b>${escapeHtml(linkedAsset?.name || "Not linked")}</span>
+          <span><b>Value</b>${escapeHtml(formatMoney(inventoryStockValue(item)))}</span>
         </div>
         <div class="inventory-stock">
           <span>${stockBadge}</span>
@@ -15736,6 +15866,8 @@ function renderInventoryItem(item) {
         </div>
         ${renderInventoryPhotoCard(item)}
         ${renderInventoryPartDetails(item)}
+        ${renderInventoryReceiveForm(item)}
+        ${renderInventoryAuditForm(item)}
         <div class="inventory-qr-card">
           <img alt="Inventory QR code for ${escapeAttribute(item.name)}" src="${qrUrl(inventoryUrl)}">
           <div>
@@ -15776,6 +15908,9 @@ function renderInventoryPartDetails(item = {}) {
     ["Supplier SKU", item.supplierSku],
     ["Specs", item.specs],
     ["Alternate part", item.alternatePart],
+    ["Linked equipment", getInventoryLinkedAssetLabel(item)],
+    ["Unit cost", item.unitCost ? formatMoney(item.unitCost) : ""],
+    ["Stock value", item.unitCost ? formatMoney(inventoryStockValue(item)) : ""],
     ["Order quantity", item.reorderQuantity ? formatInventoryNumber(item.reorderQuantity) : ""],
     ["Lead time", item.leadTimeDays ? `${formatInventoryNumber(item.leadTimeDays)} day${Number(item.leadTimeDays) === 1 ? "" : "s"}` : ""],
     ["Last ordered", item.lastOrderedAt ? inventoryDateLabel(item.lastOrderedAt) : ""],
@@ -15790,6 +15925,45 @@ function renderInventoryPartDetails(item = {}) {
           ${escapeHtml(value)}
         </span>
       `).join("")}
+    </section>
+  `;
+}
+
+function renderInventoryReceiveForm(item = {}) {
+  const canUse = canManageInventoryCustomer(item.customerId);
+  return `
+    <section class="inventory-action-card" aria-label="Receive stock">
+      <div class="inventory-use-heading">
+        <strong>Receive stock</strong>
+        <small>Add delivered parts and clear low-stock status when count is healthy</small>
+      </div>
+      <form class="inventory-inline-form" data-inventory-receive-form="${escapeAttribute(item.id)}">
+        <input name="quantityReceived" type="number" min="1" step="1" value="${escapeAttribute(inventoryReorderQuantity(item))}" ${canUse ? "" : "disabled"}>
+        <input name="supplier" value="${escapeAttribute(item.supplier || "")}" placeholder="Supplier" ${canUse ? "" : "disabled"}>
+        <input name="receivedAt" type="date" value="${escapeAttribute(toDateInputValue(new Date()))}" ${canUse ? "" : "disabled"}>
+        <input name="note" placeholder="PO, invoice, or receiving note" ${canUse ? "" : "disabled"}>
+        <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Receive</button>
+      </form>
+    </section>
+  `;
+}
+
+function renderInventoryAuditForm(item = {}) {
+  const canUse = canManageInventoryCustomer(item.customerId);
+  const auditText = item.lastAuditedAt
+    ? `Last counted ${formatDateTime(item.lastAuditedAt)}${item.lastAuditedBy ? ` by ${item.lastAuditedBy}` : ""}`
+    : "No count audit yet";
+  return `
+    <section class="inventory-action-card" aria-label="Inventory audit">
+      <div class="inventory-use-heading">
+        <strong>Audit count</strong>
+        <small>${escapeHtml(auditText)}</small>
+      </div>
+      <form class="inventory-inline-form" data-inventory-audit-form="${escapeAttribute(item.id)}">
+        <input name="actualQuantity" type="number" min="0" step="1" value="${escapeAttribute(item.quantity || 0)}" ${canUse ? "" : "disabled"}>
+        <input name="note" placeholder="Count note or bin checked" ${canUse ? "" : "disabled"}>
+        <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Save count</button>
+      </form>
     </section>
   `;
 }
@@ -15830,6 +16004,7 @@ function inventoryMovementTypeLabel(type = "") {
   if (normalized === "edit") return "Manual count";
   if (normalized === "use") return "Used";
   if (normalized === "receive") return "Received";
+  if (normalized === "audit") return "Audit count";
   return "Adjustment";
 }
 
@@ -15925,6 +16100,18 @@ function renderInventoryEditForm(item) {
         Alternate / replacement part
         <input name="alternatePart" value="${escapeAttribute(item.alternatePart || "")}">
       </label>
+      <div class="form-grid">
+        <label>
+          Linked equipment
+          <select name="linkedAssetId">
+            ${inventoryAssetOptions(item.customerId, item.linkedAssetId || "")}
+          </select>
+        </label>
+        <label>
+          Unit cost
+          <input name="unitCost" type="number" min="0" step="0.01" value="${escapeAttribute(item.unitCost || "")}">
+        </label>
+      </div>
       <div class="form-grid">
         <label>
           Order quantity
@@ -24021,6 +24208,7 @@ function renderDashboard() {
   const activeServiceRequests = filteredServiceRequests().filter((item) => item.status !== "Completed" && item.status !== "Declined");
   const completedIssues = completedTicketRecords();
   const breakerTrips = monitoringTripAlertsForCurrentView();
+  const lowStockInventory = inventoryItemsForCustomer().filter(inventoryItemLowStock);
   const currentCustomer = getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
   if (els.currentViewLabel) {
@@ -24033,6 +24221,7 @@ function renderDashboard() {
   if (els.serviceRequestsMetric) els.serviceRequestsMetric.textContent = activeServiceRequests.length;
   els.highPriorityIssues.textContent = activeIssues.filter((item) => item.priority === "High").length;
   els.waitingPartsIssues.textContent = activeIssues.filter((item) => item.status === "Waiting parts").length;
+  if (els.lowStockInventoryMetric) els.lowStockInventoryMetric.textContent = lowStockInventory.length;
   if (els.assignedToMeIssues) els.assignedToMeIssues.textContent = activeIssues.filter((item) => item.assignedUserId === currentUser?.id).length;
   if (els.reportedIssues) els.reportedIssues.textContent = activeIssues.filter((item) => item.source === "Public QR report").length;
   if (els.failedPmIssues) els.failedPmIssues.textContent = activeIssues.filter(isFailedPmIssue).length;
@@ -24041,7 +24230,7 @@ function renderDashboard() {
   renderServerNotifications();
   if (els.activeLocations) els.activeLocations.textContent = activeAssetLocationCountForCurrentCustomer();
   if (els.globalSearch) els.globalSearch.value = globalQuery;
-  renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips });
+  renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips, lowStockInventory });
   syncMobileMetricVisibility();
   renderGlobalSearchResults();
 }
@@ -24940,7 +25129,7 @@ function syncMobileMetricVisibility() {
     wrap.classList.toggle("mobile-empty-metric", value === 0);
   });
   if (metricWraps.length && metricWraps.every((wrap) => wrap.classList.contains("mobile-empty-metric"))) {
-    const fallbackFilters = new Set(["dueNow", "overdue", "workOrders", "reportedIssues"]);
+    const fallbackFilters = new Set(["dueNow", "overdue", "workOrders", "reportedIssues", "lowStockInventory"]);
     metricWraps.forEach((wrap) => {
       const filter = wrap.querySelector("[data-dashboard-filter]")?.dataset.dashboardFilter || "";
       if (fallbackFilters.has(filter)) wrap.classList.remove("mobile-empty-metric");
@@ -25379,7 +25568,7 @@ function exportPmCalendarCsv() {
   URL.revokeObjectURL(url);
 }
 
-function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips = [] }) {
+function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips = [], lowStockInventory = [] }) {
   const scopedDueInfos = dueInfos.filter((item) => item?.asset && isCurrentViewAsset(item.asset));
   const scopedActiveIssues = activeIssues.filter(isCurrentViewWorkOrder);
   const scopedServiceRequests = activeServiceRequests.filter(isCurrentViewServiceRequest);
@@ -25406,6 +25595,7 @@ function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceReq
     serviceRequests: dashboardServiceRequestItems(scopedServiceRequests, "No service requests for this view."),
     highPriority: dashboardIssueItems(highPriorityIssues, "No high priority tickets for this view."),
     waitingParts: dashboardIssueItems(waitingPartsIssues, "No waiting parts tickets for this view."),
+    lowStockInventory: dashboardInventoryItems(lowStockInventory, "No low-stock inventory for this view."),
     assignedToMe: dashboardIssueItems(assignedTickets, "No tickets assigned to you for this view.")
   };
 
@@ -25483,6 +25673,23 @@ function dashboardServiceRequestItems(requests, emptyText) {
         meta: `${getCustomer(request.customerId)?.name || "Unknown customer"} | ${getLocation(request.locationId)?.name || "Unknown location"} | ${request.status || "New"}`,
         badge: "Service"
       })).join("") + renderDashboardMoreCount(scopedRequests.length)
+    : renderDashboardEmpty(emptyText);
+}
+
+function dashboardInventoryItems(items, emptyText) {
+  return items.length
+    ? items.slice(0, 6).map((item) => renderDashboardMenuItem({
+        type: "inventory",
+        id: item.id,
+        label: item.name || "Inventory item",
+        meta: [
+          getCustomer(item.customerId)?.name || "Unknown customer",
+          item.supplier || "No supplier",
+          item.partNumber ? `Part ${item.partNumber}` : "",
+          `On hand ${formatInventoryNumber(item.quantity)} / min ${formatInventoryNumber(item.minStock)}`
+        ].filter(Boolean).join(" | "),
+        badge: item.reorderStatus === "ordered" ? "Ordered" : "Low stock"
+      })).join("") + renderDashboardMoreCount(items.length)
     : renderDashboardEmpty(emptyText);
 }
 
@@ -26700,6 +26907,17 @@ function openDashboardResult(type, id) {
     openPanel("monitoringPanel");
     syncAutomationSidebarMenuState();
     setMobileTabState("monitoringPanel");
+  } else if (type === "inventory") {
+    const item = getInventoryItem(id);
+    if (!item || !canSeeCustomer(item.customerId)) return;
+    focusedInventoryItemId = item.id;
+    inventoryQuery = "";
+    inventoryCategoryFilter = "all";
+    inventoryLocationFilter = "all";
+    inventoryStatusFilter = "all";
+    setInventoryTab("items");
+    openPanel("inventoryPanel");
+    setMobileTabState("inventoryPanel");
   } else if (type === "completed") {
     if (!openCompletedRecord(id, false)) return;
   }
@@ -26712,7 +26930,9 @@ function openDashboardResult(type, id) {
         ? document.getElementById("serviceRequestsPanel")
         : type === "breaker-alert"
           ? document.getElementById("monitoringPanel")
-          : document.getElementById("completedPmPanel");
+          : type === "inventory"
+            ? document.getElementById("inventoryPanel")
+            : document.getElementById("completedPmPanel");
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -30305,15 +30525,18 @@ function renderNfcLabels(assets = filteredAssets()) {
 
 function renderInventoryLabel(item) {
   const customer = getCustomer(item.customerId);
+  const linkedAsset = getInventoryLinkedAssetLabel(item);
   els.labelSheet.innerHTML = `
     <div class="print-label">
       <img alt="" src="${qrUrl(getInventoryItemUrl(item.id))}">
       <div>
         <span class="label-brand">SiteWorks Inventory</span>
         <strong>${escapeHtml(item.name)}</strong>
-        <span>${escapeHtml(customer?.name || "Unknown customer")}</span>
-        <span>${escapeHtml(item.category || "Parts")}${item.bin ? ` | ${escapeHtml(item.bin)}` : ""}</span>
-        <span>Scan for inventory count and notes</span>
+        <span>${escapeHtml(customer?.name || "Unknown customer")}${linkedAsset ? ` | ${escapeHtml(linkedAsset)}` : ""}</span>
+        <span>${escapeHtml(item.partNumber || item.category || "Part")}${item.supplierSku ? ` | SKU ${escapeHtml(item.supplierSku)}` : ""}</span>
+        <span>${escapeHtml(item.storageLocation || "Shop")}${item.bin ? ` | ${escapeHtml(item.bin)}` : ""}</span>
+        <span>Min ${escapeHtml(formatInventoryNumber(item.minStock))} | Order ${escapeHtml(formatInventoryNumber(inventoryReorderQuantity(item)))}</span>
+        <span>Scan to count, reorder, or use on a ticket</span>
       </div>
     </div>
   `;
@@ -31338,6 +31561,8 @@ function inventorySearchText(item = {}) {
     item.supplierSku,
     item.specs,
     item.alternatePart,
+    getInventoryLinkedAssetLabel(item),
+    item.unitCost ? formatMoney(item.unitCost) : "",
     item.storageLocation,
     item.bin,
     item.supplier,
@@ -33943,10 +34168,14 @@ function normalizeState(input) {
     supplierSku: item.supplierSku || item.supplier_sku || "",
     specs: item.specs || item.specifications || "",
     alternatePart: item.alternatePart || item.alternate_part || item.replacementPart || "",
+    linkedAssetId: item.linkedAssetId || item.linked_asset_id || item.assetId || "",
+    unitCost: Math.max(0, Number(item.unitCost ?? item.unit_cost ?? 0)),
     reorderQuantity: Math.max(0, Number(item.reorderQuantity ?? item.reorder_quantity ?? 0)),
     leadTimeDays: Math.max(0, Number(item.leadTimeDays ?? item.lead_time_days ?? 0)),
     lastOrderedAt: item.lastOrderedAt || item.last_ordered_at || "",
     expectedBy: item.expectedBy || item.expected_by || "",
+    lastAuditedAt: item.lastAuditedAt || item.last_audited_at || "",
+    lastAuditedBy: item.lastAuditedBy || item.last_audited_by || "",
     bin: item.bin || "",
     supplier: item.supplier || "",
     nfcTag: item.nfcTag || "",
@@ -35225,6 +35454,130 @@ function downloadAssetRegisterCsv(assets, filename = `asset-register-${timestamp
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadInventoryCsv(items = visibleInventoryItems(), filename = `siteworks-inventory-${timestampForFile()}.csv`) {
+  const rows = [
+    ["Customer", "Item Name", "Category", "Manufacturer", "Part Number", "Supplier SKU", "Specs", "Alternate Part", "Linked Equipment", "Quantity", "Minimum Stock", "Order Quantity", "Lead Time Days", "Last Ordered", "Expected By", "Unit Cost", "Stock Value", "Storage", "Bin", "Supplier", "NFC Tag", "Last Audited", "Last Audited By", "Notes"],
+    ...items.map((item) => [
+      getCustomer(item.customerId)?.name || "",
+      item.name,
+      item.category,
+      item.manufacturer,
+      item.partNumber,
+      item.supplierSku,
+      item.specs,
+      item.alternatePart,
+      getInventoryLinkedAssetLabel(item),
+      item.quantity,
+      item.minStock,
+      item.reorderQuantity,
+      item.leadTimeDays,
+      item.lastOrderedAt,
+      item.expectedBy,
+      item.unitCost,
+      inventoryStockValue(item),
+      item.storageLocation,
+      item.bin,
+      item.supplier,
+      item.nfcTag,
+      item.lastAuditedAt,
+      item.lastAuditedBy,
+      item.notes
+    ])
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importInventoryCsv(file) {
+  if (!canManageInventory()) return;
+  const text = await file.text();
+  const rows = parseCsvRows(text);
+  const stats = { imported: 0, skipped: 0, customersCreated: 0, errors: [] };
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2;
+    const name = findCsvValue(row, ["Item Name", "Name", "Part", "Description"]);
+    if (!name) {
+      skipImportRow(stats, rowNumber, "Missing item name");
+      return;
+    }
+    const customer = findOrCreateImportCustomer(findCsvValue(row, ["Customer", "Customer Name"]), stats);
+    if (!customer || !canManageInventoryCustomer(customer.id)) {
+      skipImportRow(stats, rowNumber, "Customer is not available for inventory import");
+      return;
+    }
+    const linkedAssetId = findInventoryImportAssetId(row, customer.id);
+    const now = new Date().toISOString();
+    const quantity = Math.max(0, Number(findCsvValue(row, ["Quantity", "Qty", "Quantity On Hand", "On Hand"]) || 0));
+    const item = {
+      id: crypto.randomUUID(),
+      customerId: customer.id,
+      category: findCsvValue(row, ["Category"]) || "Parts",
+      name,
+      manufacturer: findCsvValue(row, ["Manufacturer", "Brand"]),
+      partNumber: findCsvValue(row, ["Part Number", "Part #", "Model", "Model Number"]),
+      supplierSku: findCsvValue(row, ["Supplier SKU", "SKU", "Vendor SKU"]),
+      specs: findCsvValue(row, ["Specs", "Specifications"]),
+      alternatePart: findCsvValue(row, ["Alternate Part", "Replacement Part", "Alternate"]),
+      linkedAssetId,
+      quantity,
+      minStock: Math.max(0, Number(findCsvValue(row, ["Minimum Stock", "Min Stock", "Min"]) || 0)),
+      reorderQuantity: Math.max(0, Number(findCsvValue(row, ["Order Quantity", "Reorder Quantity", "Order Qty"]) || 0)),
+      leadTimeDays: Math.max(0, Number(findCsvValue(row, ["Lead Time Days", "Lead Time", "Lead Days"]) || 0)),
+      lastOrderedAt: findCsvValue(row, ["Last Ordered", "Last Ordered At"]),
+      expectedBy: findCsvValue(row, ["Expected By", "Expected"]),
+      unitCost: Math.max(0, Number(findCsvValue(row, ["Unit Cost", "Cost"]) || 0)),
+      storageLocation: findCsvValue(row, ["Storage", "Storage Location"]) || "Shop",
+      bin: findCsvValue(row, ["Bin", "Location / Bin", "Location Bin"]),
+      supplier: findCsvValue(row, ["Supplier", "Preferred Supplier", "Vendor"]),
+      nfcTag: findCsvValue(row, ["NFC Tag", "NFC"]),
+      notes: findCsvValue(row, ["Notes"]),
+      lastAuditedAt: "",
+      lastAuditedBy: "",
+      photo: null,
+      reorderStatus: "",
+      reorderMarkedAt: "",
+      createdAt: now,
+      updatedAt: now,
+      movements: []
+    };
+    addInventoryMovement(item, {
+      type: "initial",
+      previousQuantity: 0,
+      quantityAfter: item.quantity,
+      note: "Imported from CSV"
+    });
+    state.inventoryItems.push(item);
+    stats.imported += 1;
+  });
+  addActivity("Inventory CSV imported", `${stats.imported} item${stats.imported === 1 ? "" : "s"} added`);
+  saveState();
+  if (els.inventoryImportStatus) {
+    els.inventoryImportStatus.textContent = stats.errors.length
+      ? `Imported ${stats.imported}; skipped ${stats.skipped}.`
+      : `Imported ${stats.imported} item${stats.imported === 1 ? "" : "s"}.`;
+    els.inventoryImportStatus.className = `inline-status ${stats.errors.length ? "is-warn" : "is-ok"}`;
+  }
+  render();
+}
+
+function findInventoryImportAssetId(row = {}, customerId = "") {
+  const value = findCsvValue(row, ["Linked Equipment", "Equipment", "Asset", "Equipment Name", "Asset Name"]);
+  if (!value) return "";
+  const normalized = normalizedName(String(value).split("|")[0] || value);
+  const asset = (state.assets || []).find((item) =>
+    item.customerId === customerId &&
+    canSeeAsset(item) &&
+    (normalizedName(item.name) === normalized || normalizedName(getAssetEquipmentId(item)) === normalized)
+  );
+  return asset?.id || "";
 }
 
 async function copyText(value) {

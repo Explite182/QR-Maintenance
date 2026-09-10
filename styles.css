@@ -14805,6 +14805,14 @@ button.asset-detail-card {
   min-width: 0;
 }
 
+.inventory-tool-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 12px;
+}
+
 .inventory-create-drawer {
   position: static;
   width: auto;
@@ -14950,7 +14958,7 @@ button.asset-detail-card {
 
 .inventory-part-card {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -14977,7 +14985,8 @@ button.asset-detail-card {
 }
 
 .inventory-reorder-panel,
-.inventory-use-panel {
+.inventory-use-panel,
+.inventory-action-card {
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -15058,6 +15067,18 @@ button.asset-detail-card {
   grid-template-columns: minmax(260px, 1fr) 92px auto;
   gap: 8px;
   align-items: center;
+}
+
+.inventory-inline-form {
+  display: grid;
+  grid-template-columns: 86px minmax(140px, 0.8fr) minmax(130px, 0.7fr) minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.inventory-inline-form input {
+  width: 100%;
+  min-width: 0;
 }
 
 .inventory-use-form select,
@@ -17246,6 +17267,10 @@ body.panel-schedule-open {
   }
 
   .inventory-use-form {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-inline-form {
     grid-template-columns: 1fr;
   }
 

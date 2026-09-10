@@ -892,6 +892,15 @@
             </div>
           </div>
           <div class="metric-menu-wrap">
+            <button type="button" class="metric-card metric-warn" data-dashboard-filter="lowStockInventory">
+              <span id="lowStockInventoryMetric">0</span>
+              <p>Low stock</p>
+            </button>
+            <div class="metric-dropdown hidden" data-dashboard-menu="lowStockInventory">
+              <p class="metric-dropdown-empty">No low-stock inventory for this view.</p>
+            </div>
+          </div>
+          <div class="metric-menu-wrap">
             <button type="button" class="metric-card metric-neutral" data-dashboard-filter="assignedToMe">
               <span id="assignedToMeIssues">0</span>
               <p>Assigned to me</p>
@@ -2042,6 +2051,18 @@
               </label>
               <div class="form-grid">
                 <label>
+                  Linked equipment
+                  <select id="inventoryLinkedAsset">
+                    <option value="">No linked equipment</option>
+                  </select>
+                </label>
+                <label>
+                  Unit cost
+                  <input id="inventoryUnitCost" type="number" min="0" step="0.01" placeholder="0.00">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
                   Order quantity
                   <input id="inventoryReorderQuantity" type="number" min="0" step="1" placeholder="Qty to buy when low">
                 </label>
@@ -2119,6 +2140,12 @@
                 <option value="ordered">Ordered</option>
               </select>
             </label>
+          </div>
+          <div class="inventory-tool-bar">
+            <button id="inventoryExportBtn" type="button" class="secondary mini">Export CSV</button>
+            <button id="inventoryImportBtn" type="button" class="secondary mini">Import CSV</button>
+            <input id="inventoryImportFile" class="hidden-input" type="file" accept=".csv,text/csv">
+            <span id="inventoryImportStatus" class="inline-status"></span>
           </div>
           <div id="inventoryList" class="inventory-list"></div>
           </div>
