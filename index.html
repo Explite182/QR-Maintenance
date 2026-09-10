@@ -2018,6 +2018,30 @@
               </label>
               <div class="form-grid">
                 <label>
+                  Manufacturer
+                  <input id="inventoryManufacturer" placeholder="Square D, Siemens, Belimo">
+                </label>
+                <label>
+                  Part / model number
+                  <input id="inventoryPartNumber" placeholder="QO115, 6ES..., actuator model">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Supplier SKU
+                  <input id="inventorySupplierSku" placeholder="Vendor item number">
+                </label>
+                <label>
+                  Specs
+                  <input id="inventorySpecs" placeholder="15A, 1 pole, 600V, NC">
+                </label>
+              </div>
+              <label>
+                Alternate / replacement part
+                <input id="inventoryAlternatePart" placeholder="Approved substitute or replacement">
+              </label>
+              <div class="form-grid">
+                <label>
                   Quantity on hand
                   <input id="inventoryQuantity" type="number" min="0" step="1" value="0">
                 </label>
@@ -2060,6 +2084,32 @@
               <p id="inventoryStatus" class="inline-status"></p>
             </form>
           </details>
+          <div class="inventory-filter-bar">
+            <label>
+              Search
+              <input id="inventorySearch" type="search" placeholder="Name, part #, supplier, bin">
+            </label>
+            <label>
+              Category
+              <select id="inventoryFilterCategory">
+                <option value="all">All categories</option>
+              </select>
+            </label>
+            <label>
+              Storage
+              <select id="inventoryFilterLocation">
+                <option value="all">All storage</option>
+              </select>
+            </label>
+            <label>
+              Status
+              <select id="inventoryFilterStatus">
+                <option value="all">All stock</option>
+                <option value="low">Low stock</option>
+                <option value="ordered">Ordered</option>
+              </select>
+            </label>
+          </div>
           <div id="inventoryList" class="inventory-list"></div>
           </div>
           <div id="keysPanel" class="inventory-tab-pane hidden" data-inventory-pane="keys">

@@ -14780,6 +14780,31 @@ button.asset-detail-card {
   gap: 10px;
 }
 
+.inventory-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(150px, 0.6fr));
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.inventory-filter-bar label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-filter-bar input,
+.inventory-filter-bar select {
+  width: 100%;
+  min-width: 0;
+}
+
 .inventory-create-drawer {
   position: static;
   width: auto;
@@ -14921,6 +14946,34 @@ button.asset-detail-card {
   font-size: 12px;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.inventory-part-card {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.inventory-part-card span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.inventory-part-card b,
+.inventory-part-summary {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .inventory-reorder-panel,
@@ -17115,6 +17168,10 @@ body.panel-schedule-open {
     align-items: stretch;
   }
 
+  .inventory-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
   .inventory-item-drawer > summary {
     grid-template-columns: 1fr;
     align-items: stretch;
@@ -17131,6 +17188,10 @@ body.panel-schedule-open {
 
   .inventory-photo-card {
     grid-template-columns: 84px minmax(0, 1fr);
+  }
+
+  .inventory-part-card {
+    grid-template-columns: 1fr;
   }
 
   .inventory-photo-card .photo-open-button,

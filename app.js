@@ -520,6 +520,11 @@ function inventoryItemFromStructuredRow(row) {
     updatedAt: row.updated_at || "",
     ...payload,
     storageLocation: payload.storageLocation || payload.storage_location || "Shop",
+    manufacturer: payload.manufacturer || payload.brand || "",
+    partNumber: payload.partNumber || payload.part_number || payload.model || "",
+    supplierSku: payload.supplierSku || payload.supplier_sku || "",
+    specs: payload.specs || payload.specifications || "",
+    alternatePart: payload.alternatePart || payload.alternate_part || payload.replacementPart || "",
     photo: withFileScope(payload.photo, { inventoryItemId: row.id }),
     reorderStatus: payload.reorderStatus || payload.reorder_status || "",
     reorderMarkedAt: payload.reorderMarkedAt || payload.reorder_marked_at || "",
@@ -6345,6 +6350,10 @@ let selectedMonitoringBreakerChannelId = "";
 let selectedMonitoringBreakerCircuit = "";
 let assetQuery = "";
 let keyQuery = "";
+let inventoryQuery = "";
+let inventoryCategoryFilter = "all";
+let inventoryLocationFilter = "all";
+let inventoryStatusFilter = "all";
 let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
 let assetSort = "due";
@@ -6811,6 +6820,11 @@ const els = {
   inventoryCustomer: document.getElementById("inventoryCustomer"),
   inventoryCategory: document.getElementById("inventoryCategory"),
   inventoryName: document.getElementById("inventoryName"),
+  inventoryManufacturer: document.getElementById("inventoryManufacturer"),
+  inventoryPartNumber: document.getElementById("inventoryPartNumber"),
+  inventorySupplierSku: document.getElementById("inventorySupplierSku"),
+  inventorySpecs: document.getElementById("inventorySpecs"),
+  inventoryAlternatePart: document.getElementById("inventoryAlternatePart"),
   inventoryQuantity: document.getElementById("inventoryQuantity"),
   inventoryMinStock: document.getElementById("inventoryMinStock"),
   inventoryStorageLocation: document.getElementById("inventoryStorageLocation"),
@@ -6821,6 +6835,10 @@ const els = {
   inventoryStatus: document.getElementById("inventoryStatus"),
   inventoryCount: document.getElementById("inventoryCount"),
   inventoryOpenFormBtn: document.getElementById("inventoryOpenFormBtn"),
+  inventorySearch: document.getElementById("inventorySearch"),
+  inventoryFilterCategory: document.getElementById("inventoryFilterCategory"),
+  inventoryFilterLocation: document.getElementById("inventoryFilterLocation"),
+  inventoryFilterStatus: document.getElementById("inventoryFilterStatus"),
   inventoryList: document.getElementById("inventoryList"),
   keysPanel: document.getElementById("keysPanel"),
   keyCreateDrawer: document.getElementById("keyCreateDrawer"),
@@ -8310,6 +8328,30 @@ els.keySearch?.addEventListener("input", () => {
   renderKeys();
 });
 
+els.inventorySearch?.addEventListener("input", () => {
+  inventoryQuery = els.inventorySearch.value.trim().toLowerCase();
+  focusedInventoryItemId = "";
+  renderInventory();
+});
+
+els.inventoryFilterCategory?.addEventListener("change", () => {
+  inventoryCategoryFilter = els.inventoryFilterCategory.value || "all";
+  focusedInventoryItemId = "";
+  renderInventory();
+});
+
+els.inventoryFilterLocation?.addEventListener("change", () => {
+  inventoryLocationFilter = els.inventoryFilterLocation.value || "all";
+  focusedInventoryItemId = "";
+  renderInventory();
+});
+
+els.inventoryFilterStatus?.addEventListener("change", () => {
+  inventoryStatusFilter = els.inventoryFilterStatus.value || "all";
+  focusedInventoryItemId = "";
+  renderInventory();
+});
+
 els.globalSearch?.addEventListener("input", () => {
   globalQuery = els.globalSearch.value.trim().toLowerCase();
   assetPage = 1;
@@ -8694,6 +8736,11 @@ document.addEventListener("submit", async (event) => {
   const previousQuantity = Math.max(0, Number(item.quantity || 0));
   item.category = String(formData.get("category") || "Parts");
   item.name = String(formData.get("name") || "").trim() || item.name;
+  item.manufacturer = String(formData.get("manufacturer") || "").trim();
+  item.partNumber = String(formData.get("partNumber") || "").trim();
+  item.supplierSku = String(formData.get("supplierSku") || "").trim();
+  item.specs = String(formData.get("specs") || "").trim();
+  item.alternatePart = String(formData.get("alternatePart") || "").trim();
   item.quantity = Math.max(0, Number(formData.get("quantity") || 0));
   addInventoryMovement(item, {
     type: "edit",
@@ -9362,6 +9409,11 @@ els.inventoryForm?.addEventListener("submit", async (event) => {
     customerId,
     category: els.inventoryCategory.value || "Parts",
     name,
+    manufacturer: els.inventoryManufacturer?.value.trim() || "",
+    partNumber: els.inventoryPartNumber?.value.trim() || "",
+    supplierSku: els.inventorySupplierSku?.value.trim() || "",
+    specs: els.inventorySpecs?.value.trim() || "",
+    alternatePart: els.inventoryAlternatePart?.value.trim() || "",
     quantity: Math.max(0, Number(els.inventoryQuantity.value || 0)),
     minStock: Math.max(0, Number(els.inventoryMinStock.value || 0)),
     storageLocation: els.inventoryStorageLocation?.value || "Shop",
@@ -15494,12 +15546,38 @@ function renderInventory() {
   els.inventoryForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
     control.disabled = !canManageInventory();
   });
+  renderInventoryFilterControls(inventoryItemsForCustomer());
   const items = visibleInventoryItems();
   if (focusedInventoryItemId && !items.some((item) => item.id === focusedInventoryItemId)) focusedInventoryItemId = "";
   if (els.inventoryCount) els.inventoryCount.textContent = items.length;
   els.inventoryList.innerHTML = items.length
     ? `${renderInventoryReorderList(items)}${items.map(renderInventoryItem).join("")}`
     : `<p class="muted">No inventory items for this view yet.</p>`;
+}
+
+function renderInventoryFilterControls(items = []) {
+  if (els.inventorySearch && els.inventorySearch.value !== inventoryQuery) els.inventorySearch.value = inventoryQuery;
+  const categoryOptions = [...new Set(items.map((item) => item.category || "Parts").filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const locationOptions = [...new Set(items.map((item) => item.storageLocation || "Shop").filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  if (els.inventoryFilterCategory) {
+    const categoryStillExists = inventoryCategoryFilter === "all" || categoryOptions.includes(inventoryCategoryFilter);
+    if (!categoryStillExists) inventoryCategoryFilter = "all";
+    els.inventoryFilterCategory.innerHTML = [
+      `<option value="all">All categories</option>`,
+      ...categoryOptions.map((category) => `<option value="${escapeAttribute(category)}">${escapeHtml(category)}</option>`)
+    ].join("");
+    els.inventoryFilterCategory.value = inventoryCategoryFilter;
+  }
+  if (els.inventoryFilterLocation) {
+    const locationStillExists = inventoryLocationFilter === "all" || locationOptions.includes(inventoryLocationFilter);
+    if (!locationStillExists) inventoryLocationFilter = "all";
+    els.inventoryFilterLocation.innerHTML = [
+      `<option value="all">All storage</option>`,
+      ...locationOptions.map((location) => `<option value="${escapeAttribute(location)}">${escapeHtml(location)}</option>`)
+    ].join("");
+    els.inventoryFilterLocation.value = inventoryLocationFilter;
+  }
+  if (els.inventoryFilterStatus) els.inventoryFilterStatus.value = inventoryStatusFilter;
 }
 
 function inventoryItemLowStock(item = {}) {
@@ -15549,6 +15627,8 @@ function renderInventoryItem(item) {
   const supplier = item.supplier || "No supplier";
   const storageLocation = item.storageLocation || "Shop";
   const bin = item.bin || "No bin";
+  const partNumber = item.partNumber || "";
+  const partSummary = [item.manufacturer, partNumber, item.specs].filter(Boolean).join(" | ");
   const photoSrc = mediaSource(item.photo);
   const photoThumb = photoSrc
     ? `<button type="button" class="inventory-thumb" data-view-photo data-photo-src="${escapeAttribute(photoSrc)}" data-photo-caption="${escapeAttribute(item.photo?.name || item.name || "Inventory photo")}"><img alt="" src="${escapeAttribute(photoSrc)}"></button>`
@@ -15561,12 +15641,14 @@ function renderInventoryItem(item) {
         <div class="inventory-main">
           <strong>${escapeHtml(item.name)}</strong>
           <small>${escapeHtml(currentRole === "Admin" ? customerName : item.category || "Parts")}</small>
+          ${partSummary ? `<small class="inventory-part-summary">${escapeHtml(partSummary)}</small>` : ""}
           ${notesPreview}
         </div>
         <div class="inventory-facts" aria-label="Inventory details">
           <span><b>Location</b>${escapeHtml(storageLocation)}</span>
           <span><b>Bin</b>${escapeHtml(bin)}</span>
           <span><b>Supplier</b>${escapeHtml(supplier)}</span>
+          <span><b>Part #</b>${escapeHtml(partNumber || "Not set")}</span>
         </div>
         <div class="inventory-stock">
           <span>${stockBadge}</span>
@@ -15585,6 +15667,7 @@ function renderInventoryItem(item) {
           <button type="button" class="secondary mini danger-action" data-delete-inventory-item="${escapeAttribute(item.id)}" ${canManage ? "" : "disabled"}>Delete</button>
         </div>
         ${renderInventoryPhotoCard(item)}
+        ${renderInventoryPartDetails(item)}
         <div class="inventory-qr-card">
           <img alt="Inventory QR code for ${escapeAttribute(item.name)}" src="${qrUrl(inventoryUrl)}">
           <div>
@@ -15614,6 +15697,27 @@ function renderInventoryPhotoCard(item = {}) {
         <strong>Item photo</strong>
         <span>${escapeHtml(item.photo?.name || "Add a photo in the edit form below.")}</span>
       </div>
+    </section>
+  `;
+}
+
+function renderInventoryPartDetails(item = {}) {
+  const details = [
+    ["Manufacturer", item.manufacturer],
+    ["Part / model #", item.partNumber],
+    ["Supplier SKU", item.supplierSku],
+    ["Specs", item.specs],
+    ["Alternate part", item.alternatePart]
+  ].filter(([, value]) => String(value || "").trim());
+  if (!details.length) return "";
+  return `
+    <section class="inventory-part-card" aria-label="Part details">
+      ${details.map(([label, value]) => `
+        <span>
+          <b>${escapeHtml(label)}</b>
+          ${escapeHtml(value)}
+        </span>
+      `).join("")}
     </section>
   `;
 }
@@ -15725,6 +15829,30 @@ function renderInventoryEditForm(item) {
           <input name="name" required value="${escapeAttribute(item.name)}">
         </label>
       </div>
+      <div class="form-grid">
+        <label>
+          Manufacturer
+          <input name="manufacturer" value="${escapeAttribute(item.manufacturer || "")}">
+        </label>
+        <label>
+          Part / model number
+          <input name="partNumber" value="${escapeAttribute(item.partNumber || "")}">
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          Supplier SKU
+          <input name="supplierSku" value="${escapeAttribute(item.supplierSku || "")}">
+        </label>
+        <label>
+          Specs
+          <input name="specs" value="${escapeAttribute(item.specs || "")}">
+        </label>
+      </div>
+      <label>
+        Alternate / replacement part
+        <input name="alternatePart" value="${escapeAttribute(item.alternatePart || "")}">
+      </label>
       <div class="form-grid">
         <label>
           Quantity on hand
@@ -31083,16 +31211,48 @@ function manageableInventoryCustomers() {
   return visibleCustomers();
 }
 
-function visibleInventoryItems(customerId = selectedCustomerId) {
+function inventoryItemsForCustomer(customerId = selectedCustomerId) {
   return (state.inventoryItems || [])
     .filter((item) => canSeeCustomer(item.customerId))
-    .filter((item) => !customerId || item.customerId === customerId || (currentRole === "Admin" && !getCustomer(customerId)))
+    .filter((item) => !customerId || item.customerId === customerId || (currentRole === "Admin" && !getCustomer(customerId)));
+}
+
+function visibleInventoryItems(customerId = selectedCustomerId) {
+  return inventoryItemsForCustomer(customerId)
+    .filter(inventoryMatchesFilters)
     .sort((a, b) => {
       const lowA = Number(a.minStock || 0) > 0 && Number(a.quantity || 0) <= Number(a.minStock || 0);
       const lowB = Number(b.minStock || 0) > 0 && Number(b.quantity || 0) <= Number(b.minStock || 0);
       if (lowA !== lowB) return lowA ? -1 : 1;
       return `${a.category || ""} ${a.name || ""}`.localeCompare(`${b.category || ""} ${b.name || ""}`);
     });
+}
+
+function inventoryMatchesFilters(item = {}) {
+  if (inventoryCategoryFilter !== "all" && (item.category || "Parts") !== inventoryCategoryFilter) return false;
+  if (inventoryLocationFilter !== "all" && (item.storageLocation || "Shop") !== inventoryLocationFilter) return false;
+  if (inventoryStatusFilter === "low" && !inventoryItemLowStock(item)) return false;
+  if (inventoryStatusFilter === "ordered" && item.reorderStatus !== "ordered") return false;
+  return !inventoryQuery || inventorySearchText(item).includes(inventoryQuery);
+}
+
+function inventorySearchText(item = {}) {
+  const customer = getCustomer(item.customerId);
+  return [
+    item.name,
+    item.category,
+    item.manufacturer,
+    item.partNumber,
+    item.supplierSku,
+    item.specs,
+    item.alternatePart,
+    item.storageLocation,
+    item.bin,
+    item.supplier,
+    item.nfcTag,
+    item.notes,
+    customer?.name
+  ].filter(Boolean).join(" ").toLowerCase();
 }
 
 function canManageKeys() {
@@ -33686,6 +33846,11 @@ function normalizeState(input) {
     quantity: Math.max(0, Number(item.quantity ?? item.quantityOnHand ?? 0)),
     minStock: Math.max(0, Number(item.minStock ?? 0)),
     storageLocation: item.storageLocation || item.storage_location || "Shop",
+    manufacturer: item.manufacturer || item.brand || "",
+    partNumber: item.partNumber || item.part_number || item.model || "",
+    supplierSku: item.supplierSku || item.supplier_sku || "",
+    specs: item.specs || item.specifications || "",
+    alternatePart: item.alternatePart || item.alternate_part || item.replacementPart || "",
     bin: item.bin || "",
     supplier: item.supplier || "",
     nfcTag: item.nfcTag || "",
