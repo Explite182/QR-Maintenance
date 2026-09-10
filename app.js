@@ -23557,8 +23557,12 @@ function notificationTitleText(notification = {}) {
   const rawTitle = notification.title || "SiteWorks notification";
   const location = notificationLocationRecord(notification);
   if (!location?.name) return rawTitle;
-  if (rawTitle.startsWith(`(${location.name})`)) return rawTitle;
-  return `(${location.name}) ${rawTitle}`;
+  const metadata = notificationMetadata(notification);
+  const customer = getCustomer(notification.customer_id || notification.customerId || metadata.customerId || location.customerId || "");
+  const locationLabel = [customer?.name || "", location.name].filter(Boolean).join(" ");
+  if (!locationLabel) return rawTitle;
+  if (rawTitle.startsWith(`(${locationLabel})`) || rawTitle.startsWith(`(${location.name})`)) return rawTitle;
+  return `(${locationLabel}) ${rawTitle}`;
 }
 
 function localBreakerTripNotifications() {
@@ -23845,6 +23849,7 @@ function notificationDetailText(notification = {}) {
   const panel = getAsset(metadata.panelAssetId);
   const customer = getCustomer(notification.customer_id || notification.customerId || metadata.customerId || "");
   const location = getLocation(notification.location_id || notification.locationId || metadata.locationId || "");
+  const isHvacNotification = notification.type === "hvac-attention" || String(notification.type || "").startsWith("hvac-");
   if (notification.type === "pump-attention") {
     return [
       notification.message || "",
@@ -23859,6 +23864,14 @@ function notificationDetailText(notification = {}) {
       metadata.customerName || customer?.name || "",
       metadata.equipmentName || panel?.name || "",
       metadata.circuitNumber ? `Circuit ${metadata.circuitNumber}` : "",
+      notification.created_at ? formatDateTime(notification.created_at) : ""
+    ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" | ");
+  }
+  if (isHvacNotification) {
+    return [
+      notification.message || "",
+      metadata.customerName || customer?.name || "",
+      metadata.equipmentName || "",
       notification.created_at ? formatDateTime(notification.created_at) : ""
     ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" | ");
   }
@@ -23923,7 +23936,7 @@ function renderNotificationCenterItem(notification = {}) {
   const isBreakerTrip = notification.type === "breaker-trip";
   const isServerHealth = notification.type === "server-health";
   const isPumpAttention = notification.type === "pump-attention";
-  const isHvacAttention = notification.type === "hvac-attention";
+  const isHvacAttention = notification.type === "hvac-attention" || String(notification.type || "").startsWith("hvac-");
   const isSynthetic = Boolean(notificationMetadata(notification).synthetic);
   return `
     <article class="notification-center-item is-${escapeAttribute(status)} is-${escapeAttribute(severity)}">
@@ -23937,7 +23950,7 @@ function renderNotificationCenterItem(notification = {}) {
         ${isServerHealth ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Server</button>` : ""}
         ${isPumpAttention ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Pump</button>` : ""}
         ${isHvacAttention ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open HVAC</button>` : ""}
-        ${!isBreakerTrip && !isPumpAttention && ["esp-offline", "lighting-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
+        ${!isBreakerTrip && !isPumpAttention && !isHvacAttention && ["esp-offline", "lighting-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
       </div>
@@ -24373,7 +24386,7 @@ function openServerNotification(id) {
       const target = selector ? document.querySelector(selector) : document.getElementById("automationPumpsPanel");
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
-  } else if (notification.type === "hvac-attention") {
+  } else if (notification.type === "hvac-attention" || String(notification.type || "").startsWith("hvac-")) {
     openAutomationSidebarTab("hvac");
     render();
     window.setTimeout(() => {
