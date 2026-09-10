@@ -15385,19 +15385,26 @@ function renderInventoryItem(item) {
   const customer = getCustomer(item.customerId);
   const lowStock = Number(item.minStock || 0) > 0 && Number(item.quantity || 0) <= Number(item.minStock || 0);
   const canManage = canManageInventoryCustomer(item.customerId);
-  const customerLabel = currentRole === "Admin" ? `${customer?.name || "No customer"} | ` : "";
+  const customerName = customer?.name || "No customer";
   const inventoryUrl = getInventoryItemUrl(item.id);
   const stockBadge = lowStock
     ? `<span class="status-badge badge-warn">Low stock</span>`
     : `<span class="status-badge badge-ok">In stock</span>`;
+  const supplier = item.supplier || "No supplier";
+  const bin = item.bin || "No bin";
+  const notesPreview = item.notes ? `<p>${escapeHtml(item.notes)}</p>` : "";
   return `
     <details class="inventory-item inventory-item-drawer" ${item.id === focusedInventoryItemId ? "open" : ""}>
       <summary data-inventory-item-summary="${escapeAttribute(item.id)}">
         <div class="inventory-main">
           <strong>${escapeHtml(item.name)}</strong>
-          <small>${escapeHtml(customerLabel)}${escapeHtml(item.category || "Parts")}${item.bin ? ` | ${escapeHtml(item.bin)}` : ""}</small>
-          ${item.supplier ? `<span>${escapeHtml(item.supplier)}</span>` : ""}
-          ${item.notes ? `<p>${escapeHtml(item.notes)}</p>` : ""}
+          <small>${escapeHtml(currentRole === "Admin" ? customerName : item.category || "Parts")}</small>
+          ${notesPreview}
+        </div>
+        <div class="inventory-facts" aria-label="Inventory details">
+          <span><b>Category</b>${escapeHtml(item.category || "Parts")}</span>
+          <span><b>Bin</b>${escapeHtml(bin)}</span>
+          <span><b>Supplier</b>${escapeHtml(supplier)}</span>
         </div>
         <div class="inventory-stock">
           <span>${stockBadge}</span>
@@ -15407,12 +15414,14 @@ function renderInventoryItem(item) {
         <div class="inventory-actions">
           <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="-1" ${canManage ? "" : "disabled"}>-</button>
           <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="1" ${canManage ? "" : "disabled"}>+</button>
+        </div>
+      </summary>
+      <div class="inventory-detail-panel">
+        <div class="inventory-detail-actions">
           <button type="button" class="secondary mini" data-copy-inventory-link="${escapeAttribute(item.id)}" data-link-label="Copy QR Link">Copy QR Link</button>
           <button type="button" class="secondary mini" data-print-inventory-qr="${escapeAttribute(item.id)}">Print QR</button>
           <button type="button" class="secondary mini danger-action" data-delete-inventory-item="${escapeAttribute(item.id)}" ${canManage ? "" : "disabled"}>Delete</button>
         </div>
-      </summary>
-      <div class="inventory-detail-panel">
         <div class="inventory-qr-card">
           <img alt="Inventory QR code for ${escapeAttribute(item.name)}" src="${qrUrl(inventoryUrl)}">
           <div>
