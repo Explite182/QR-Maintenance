@@ -23545,6 +23545,22 @@ function notificationMetadata(notification = {}) {
   return metadata && typeof metadata === "object" ? metadata : {};
 }
 
+function notificationLocationRecord(notification = {}) {
+  const metadata = notificationMetadata(notification);
+  const panel = getAsset(metadata.panelAssetId || metadata.assetId || metadata.equipmentId || "");
+  const sourceAsset = getAsset(notification.source_id || notification.sourceId || "");
+  const locationId = notification.location_id || notification.locationId || metadata.locationId || panel?.locationId || sourceAsset?.locationId || "";
+  return getLocation(locationId);
+}
+
+function notificationTitleText(notification = {}) {
+  const rawTitle = notification.title || "SiteWorks notification";
+  const location = notificationLocationRecord(notification);
+  if (!location?.name) return rawTitle;
+  if (rawTitle.startsWith(`(${location.name})`)) return rawTitle;
+  return `(${location.name}) ${rawTitle}`;
+}
+
 function localBreakerTripNotifications() {
   ensureMonitoringCollections();
   const localNotifications = [];
@@ -23566,6 +23582,8 @@ function localBreakerTripNotifications() {
       const device = getMonitoringDevice(alert.deviceId || alert.device_id || channel?.deviceId || channel?.device_id || "");
       const panelAssetId = alert.panelAssetId || alert.panel_asset_id || channel?.panelAssetId || channel?.panel_asset_id || device?.panelAssetId || "";
       const panel = getAsset(panelAssetId);
+      const customer = getCustomer(panel?.customerId || alert.customerId || alert.customer_id || "");
+      const location = getLocation(panel?.locationId || alert.locationId || alert.location_id || "");
       if (panel && !isCurrentViewAsset(panel)) return;
       if (!panel && !monitoringRecordMatchesCurrentView(alert, device || channel)) return;
       if (status === "active") seenChannels.add(channelId);
@@ -23577,12 +23595,16 @@ function localBreakerTripNotifications() {
         title: alert.title || "Breaker trip needs confirmation",
         message: alert.message || "",
         created_at: alert.createdAt || alert.created_at || channel?.updatedAt || channel?.updated_at || "",
+        customer_id: panel?.customerId || alert.customerId || alert.customer_id || "",
+        location_id: panel?.locationId || alert.locationId || alert.location_id || "",
         acknowledged_at: alert.acknowledgedAt || alert.acknowledged_at || "",
         resolved_at: alert.resolvedAt || alert.resolved_at || "",
         metadata: {
           localOnly: true,
           channelId,
           panelAssetId,
+          customerName: customer?.name || "",
+          locationName: location?.name || "",
           circuitNumber: alert.circuitNumber || alert.circuit_number || channel?.circuitNumber || channel?.circuit_number || ""
         }
       });
@@ -23597,6 +23619,9 @@ function localBreakerTripNotifications() {
     }))
     .filter((alert) => !seenChannels.has(String(alert.channelId || "")))
     .forEach((alert) => {
+      const panel = getAsset(alert.panelAssetId || "");
+      const customer = getCustomer(panel?.customerId || "");
+      const location = getLocation(panel?.locationId || "");
       localNotifications.push({
       id: `local-breaker-${alert.channelId || alert.id}`,
       type: "breaker-trip",
@@ -23605,10 +23630,14 @@ function localBreakerTripNotifications() {
       title: alert.title || "Breaker trip needs confirmation",
       message: alert.message || "",
       created_at: alert.createdAt || "",
+      customer_id: panel?.customerId || "",
+      location_id: panel?.locationId || "",
       metadata: {
         localOnly: true,
         channelId: alert.channelId || "",
         panelAssetId: alert.panelAssetId || "",
+        customerName: customer?.name || "",
+        locationName: location?.name || "",
         circuitNumber: alert.circuitNumber || ""
       }
       });
@@ -23824,6 +23853,15 @@ function notificationDetailText(notification = {}) {
       notification.created_at ? formatDateTime(notification.created_at) : ""
     ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" | ");
   }
+  if (notification.type === "breaker-trip" || notification.type === "esp-offline") {
+    return [
+      notification.message || "",
+      metadata.customerName || customer?.name || "",
+      metadata.equipmentName || panel?.name || "",
+      metadata.circuitNumber ? `Circuit ${metadata.circuitNumber}` : "",
+      notification.created_at ? formatDateTime(notification.created_at) : ""
+    ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" | ");
+  }
   return [
     notification.message || "",
     metadata.alertScope || "",
@@ -23876,7 +23914,7 @@ function renderNotificationCenter(activeNotifications = null) {
 
 function renderNotificationCenterItem(notification = {}) {
   const status = normalizeNotificationStatus(notification.status);
-  const title = notification.title || "SiteWorks notification";
+  const title = notificationTitleText(notification);
   const severity = String(notification.severity || "warning").toLowerCase();
   const detail = notificationDetailText(notification);
   const handled = status === "resolved"
