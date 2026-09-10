@@ -23623,13 +23623,17 @@ function localPumpNotifications() {
     const customer = getCustomer(asset.customerId || asset.customer_id || "");
     const location = getLocation(asset.locationId || asset.location_id || "");
     const equipmentName = asset.name || "Pump equipment";
+    const locationPrefix = location?.name ? `(${location.name}) ` : "";
+    const pumpMessage = status.label === "Needs attention"
+      ? `${equipmentName} needs attention. ${pumpStatusMeaning(status)}`
+      : `${equipmentName} is ${status.label.toLowerCase()}. ${pumpStatusMeaning(status)}`;
     return {
       id: `local-pump-${asset.id}`,
       type: "pump-attention",
       status: "active",
       severity: pumpStatusSeverity(status),
-      title: `${equipmentName} attention`,
-      message: `${equipmentName} is ${status.label.toLowerCase()}. ${pumpStatusMeaning(status)}`,
+      title: `${locationPrefix}${equipmentName} attention`,
+      message: pumpMessage,
       created_at: eventDate || asset.updatedAt || asset.updated_at || "",
       customer_id: asset.customerId || asset.customer_id || "",
       location_id: asset.locationId || asset.location_id || "",
@@ -23642,7 +23646,7 @@ function localPumpNotifications() {
         equipmentName,
         locationName: location?.name || "",
         customerName: customer?.name || "",
-        alertScope: [customer?.name || "", location?.name || "", equipmentName].filter(Boolean).join(" | "),
+        alertScope: [customer?.name || "", equipmentName].filter(Boolean).join(" | "),
         pumpStatus: status.label,
         openIssueCount
       }
@@ -23812,6 +23816,14 @@ function notificationDetailText(notification = {}) {
   const panel = getAsset(metadata.panelAssetId);
   const customer = getCustomer(notification.customer_id || notification.customerId || metadata.customerId || "");
   const location = getLocation(notification.location_id || notification.locationId || metadata.locationId || "");
+  if (notification.type === "pump-attention") {
+    return [
+      notification.message || "",
+      metadata.customerName || customer?.name || "",
+      metadata.equipmentId ? `ID ${metadata.equipmentId}` : "",
+      notification.created_at ? formatDateTime(notification.created_at) : ""
+    ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" | ");
+  }
   return [
     notification.message || "",
     metadata.alertScope || "",
