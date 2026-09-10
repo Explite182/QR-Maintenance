@@ -11883,8 +11883,34 @@ function getLightingScopeDetails() {
   };
 }
 
+function getLightingControllerLastActivityAt(controller = {}) {
+  const data = controller.data && typeof controller.data === "object" ? controller.data : {};
+  const diagnostics = controller.diagnostics && typeof controller.diagnostics === "object"
+    ? controller.diagnostics
+    : data.diagnostics && typeof data.diagnostics === "object"
+      ? data.diagnostics
+      : {};
+  const candidates = [
+    controller.lastSeenAt,
+    controller.last_seen_at,
+    data.lastSeenAt,
+    data.last_seen_at,
+    diagnostics.lastNetwork?.seenAt,
+    diagnostics.lastInputSync?.checkedAt,
+    diagnostics.lastCommandAck?.checkedAt,
+    diagnostics.lastCommandPoll?.checkedAt,
+    diagnostics.lastConfigSync?.checkedAt,
+    diagnostics.lastFirmwareCheck?.checkedAt,
+    diagnostics.lastFirmwareStatus?.checkedAt
+  ].map((value) => {
+    const time = Date.parse(value || "");
+    return Number.isFinite(time) ? { value, time } : null;
+  }).filter(Boolean).sort((a, b) => b.time - a.time);
+  return candidates[0]?.value || "";
+}
+
 function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
-  const lastSeenAt = controller.lastSeenAt || controller.last_seen_at || "";
+  const lastSeenAt = getLightingControllerLastActivityAt(controller);
   const lastSeenTime = Date.parse(lastSeenAt);
   if (!lastSeenAt || !Number.isFinite(lastSeenTime)) {
     return {
