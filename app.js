@@ -6434,6 +6434,8 @@ let inventoryQuery = "";
 let inventoryCategoryFilter = "all";
 let inventoryLocationFilter = "all";
 let inventoryStatusFilter = "all";
+let inventorySupplierFilter = "";
+let inventorySupplierPanelOpen = false;
 let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
 let assetSort = "due";
@@ -6933,6 +6935,7 @@ const els = {
   inventoryImportFile: document.getElementById("inventoryImportFile"),
   inventoryImportStatus: document.getElementById("inventoryImportStatus"),
   inventorySummaryStrip: document.getElementById("inventorySummaryStrip"),
+  inventorySupplierPanel: document.getElementById("inventorySupplierPanel"),
   inventoryList: document.getElementById("inventoryList"),
   keysPanel: document.getElementById("keysPanel"),
   keyCreateDrawer: document.getElementById("keyCreateDrawer"),
@@ -8429,6 +8432,7 @@ els.keySearch?.addEventListener("input", () => {
 els.inventorySearch?.addEventListener("input", () => {
   inventoryQuery = els.inventorySearch.value.trim().toLowerCase();
   focusedInventoryItemId = "";
+  inventorySupplierFilter = "";
   renderInventory();
 });
 
@@ -8453,10 +8457,48 @@ els.inventoryFilterStatus?.addEventListener("change", () => {
 els.inventorySummaryStrip?.addEventListener("click", (event) => {
   const tile = event.target.closest("[data-inventory-summary-filter]");
   if (!tile) return;
+  if (tile.dataset.inventorySummaryAction === "suppliers") {
+    inventorySupplierPanelOpen = !inventorySupplierPanelOpen;
+    renderInventory();
+    return;
+  }
   inventoryStatusFilter = tile.dataset.inventorySummaryFilter || "all";
+  inventorySupplierFilter = "";
+  inventorySupplierPanelOpen = false;
   inventoryQuery = "";
   focusedInventoryItemId = "";
   renderInventory();
+});
+
+els.inventorySupplierPanel?.addEventListener("click", async (event) => {
+  const filterButton = event.target.closest("[data-filter-inventory-supplier]");
+  if (filterButton) {
+    event.preventDefault();
+    inventorySupplierFilter = filterButton.dataset.filterInventorySupplier || "";
+    inventoryStatusFilter = "all";
+    inventoryQuery = "";
+    focusedInventoryItemId = "";
+    renderInventory();
+    return;
+  }
+  const clearButton = event.target.closest("[data-clear-inventory-supplier]");
+  if (clearButton) {
+    event.preventDefault();
+    inventorySupplierFilter = "";
+    renderInventory();
+    return;
+  }
+  const copyButton = event.target.closest("[data-copy-supplier-po]");
+  if (copyButton) {
+    event.preventDefault();
+    const supplierName = copyButton.dataset.copySupplierPo || "";
+    const supplierItems = inventoryItemsForCustomer().filter((item) => inventorySupplierLabel(item) === supplierName);
+    await copyText(formatInventoryReorderClipboard(supplierItems));
+    copyButton.textContent = "Copied";
+    window.setTimeout(() => {
+      copyButton.textContent = "Copy PO list";
+    }, 1200);
+  }
 });
 
 els.inventoryCustomer?.addEventListener("change", () => {
@@ -15769,6 +15811,7 @@ function renderInventory() {
   const items = visibleInventoryItems();
   if (focusedInventoryItemId && !items.some((item) => item.id === focusedInventoryItemId)) focusedInventoryItemId = "";
   if (els.inventoryCount) els.inventoryCount.textContent = items.length;
+  renderInventorySupplierPanel(inventoryItemsForCustomer());
   const refreshNotice = inventorySyncStillRefreshing
     ? `
       <div class="inventory-sync-notice is-soft">
@@ -15799,16 +15842,106 @@ function renderInventorySummaryStrip(items = inventoryItemsForCustomer()) {
     { label: "Ordered", value: orderedItems.length, tone: orderedItems.length ? "warn" : "info", filter: "ordered" },
     { label: "Stock value", value: formatMoney(totalValue), tone: "info", filter: "all" },
     { label: "Storage", value: uniqueStorageLocations.size, detail: `${uniqueBins.size} bin${uniqueBins.size === 1 ? "" : "s"}`, tone: "neutral", filter: "all" },
-    { label: "Suppliers", value: supplierCount, tone: "neutral", filter: "all" },
+    { label: "Suppliers", value: supplierCount, tone: "neutral", filter: "all", action: "suppliers", active: inventorySupplierPanelOpen || Boolean(inventorySupplierFilter) },
     { label: "Barcoded", value: barcodeItems.length, tone: barcodeItems.length === items.length && items.length ? "ok" : "warn", filter: "barcoded" }
   ];
   els.inventorySummaryStrip.innerHTML = summaryTiles.map((tile) => `
-    <button type="button" class="inventory-summary-tile is-${escapeAttribute(tile.tone)} ${inventoryStatusFilter === tile.filter ? "is-active" : ""}" data-inventory-summary-filter="${escapeAttribute(tile.filter)}">
+    <button type="button" class="inventory-summary-tile is-${escapeAttribute(tile.tone)} ${(tile.active || (!tile.action && tile.filter !== "all" && inventoryStatusFilter === tile.filter && !inventorySupplierFilter)) ? "is-active" : ""}" data-inventory-summary-filter="${escapeAttribute(tile.filter)}"${tile.action ? ` data-inventory-summary-action="${escapeAttribute(tile.action)}"` : ""}>
       <strong>${escapeHtml(tile.value)}</strong>
       <span>${escapeHtml(tile.label)}</span>
       ${tile.detail ? `<small>${escapeHtml(tile.detail)}</small>` : ""}
     </button>
   `).join("");
+}
+
+function renderInventorySupplierPanel(items = inventoryItemsForCustomer()) {
+  if (!els.inventorySupplierPanel) return;
+  els.inventorySupplierPanel.classList.toggle("hidden", !inventorySupplierPanelOpen);
+  if (!inventorySupplierPanelOpen) {
+    els.inventorySupplierPanel.innerHTML = "";
+    return;
+  }
+  const supplierGroups = inventorySupplierGroups(items);
+  els.inventorySupplierPanel.innerHTML = `
+    <div class="inventory-supplier-panel-heading">
+      <div>
+        <strong>Supplier list</strong>
+        <span>${supplierGroups.length} supplier${supplierGroups.length === 1 ? "" : "s"} in this inventory view</span>
+      </div>
+      ${inventorySupplierFilter ? `<button type="button" class="secondary mini" data-clear-inventory-supplier>Clear supplier filter</button>` : ""}
+    </div>
+    <div class="inventory-supplier-list">
+      ${supplierGroups.length
+        ? supplierGroups.map(renderInventorySupplierRow).join("")
+        : `<p class="muted">No suppliers saved on these inventory items yet.</p>`}
+    </div>
+  `;
+}
+
+function inventorySupplierGroups(items = []) {
+  const groups = new Map();
+  items.forEach((item) => {
+    const supplierName = inventorySupplierLabel(item);
+    if (!groups.has(supplierName)) {
+      groups.set(supplierName, {
+        name: supplierName,
+        items: [],
+        quantity: 0,
+        value: 0,
+        lowStock: 0,
+        ordered: 0
+      });
+    }
+    const group = groups.get(supplierName);
+    group.items.push(item);
+    group.quantity += Math.max(0, Number(item.quantity || 0));
+    group.value += inventoryStockValue(item);
+    if (inventoryItemLowStock(item)) group.lowStock += 1;
+    if (item.reorderStatus === "ordered") group.ordered += 1;
+  });
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }));
+}
+
+function inventorySupplierLabel(item = {}) {
+  return String(item.supplier || "").trim() || "No supplier";
+}
+
+function inventorySupplierContact(customerId = "", supplierName = "") {
+  const normalizedSupplier = normalizedName(supplierName);
+  if (!normalizedSupplier || supplierName === "No supplier") return null;
+  return (state.preferredContractors || []).find((contact) =>
+    canSeeCustomer(contact.customerId) &&
+    (!customerId || !contact.customerId || contact.customerId === customerId) &&
+    normalizedName(contact.name) === normalizedSupplier
+  ) || null;
+}
+
+function renderInventorySupplierRow(group) {
+  const customerIds = [...new Set(group.items.map((item) => item.customerId).filter(Boolean))];
+  const contact = inventorySupplierContact(customerIds[0] || "", group.name);
+  const contactLine = contact
+    ? [contact.email, contact.trade].filter(Boolean).join(" | ")
+    : "No supplier contact saved";
+  const active = inventorySupplierFilter === group.name;
+  return `
+    <article class="inventory-supplier-row ${active ? "is-active" : ""}">
+      <div class="inventory-supplier-main">
+        <strong>${escapeHtml(group.name)}</strong>
+        <span>${escapeHtml(contactLine)}</span>
+      </div>
+      <div class="inventory-supplier-stats">
+        <span><b>${escapeHtml(formatInventoryNumber(group.items.length))}</b> items</span>
+        <span><b>${escapeHtml(formatInventoryNumber(group.quantity))}</b> on hand</span>
+        <span><b>${escapeHtml(formatMoney(group.value))}</b> value</span>
+        <span><b>${escapeHtml(formatInventoryNumber(group.lowStock))}</b> low</span>
+        <span><b>${escapeHtml(formatInventoryNumber(group.ordered))}</b> ordered</span>
+      </div>
+      <div class="inventory-supplier-actions">
+        <button type="button" class="secondary mini" data-filter-inventory-supplier="${escapeAttribute(group.name)}">${active ? "Filtered" : "Filter parts"}</button>
+        <button type="button" class="secondary mini" data-copy-supplier-po="${escapeAttribute(group.name)}">Copy PO list</button>
+      </div>
+    </article>
+  `;
 }
 
 function renderInventoryFilterControls(items = []) {
@@ -31719,6 +31852,7 @@ function compareInventoryItemsAlphabetically(a = {}, b = {}) {
 }
 
 function inventoryMatchesFilters(item = {}) {
+  if (inventorySupplierFilter && inventorySupplierLabel(item) !== inventorySupplierFilter) return false;
   if (inventoryCategoryFilter !== "all" && (item.category || "Parts") !== inventoryCategoryFilter) return false;
   if (inventoryLocationFilter !== "all" && (item.storageLocation || "Shop") !== inventoryLocationFilter) return false;
   if (inventoryStatusFilter === "low" && !inventoryItemLowStock(item)) return false;

@@ -14872,6 +14872,96 @@ button.asset-detail-card {
   background: rgba(239, 246, 255, 0.86);
 }
 
+.inventory-supplier-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.inventory-supplier-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inventory-supplier-panel-heading div {
+  display: grid;
+  gap: 2px;
+}
+
+.inventory-supplier-panel-heading strong {
+  font-size: 15px;
+}
+
+.inventory-supplier-panel-heading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-supplier-list {
+  display: grid;
+  gap: 8px;
+}
+
+.inventory-supplier-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(280px, 1.4fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.inventory-supplier-row.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.inventory-supplier-main {
+  display: grid;
+  gap: 3px;
+}
+
+.inventory-supplier-main span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-supplier-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(70px, 1fr));
+  gap: 8px;
+}
+
+.inventory-supplier-stats span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-supplier-stats b {
+  display: block;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.inventory-supplier-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .inventory-filter-bar {
   display: grid;
   grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(150px, 0.6fr));
@@ -17327,6 +17417,23 @@ body.panel-schedule-open {
   .inventory-summary-tile {
     min-height: 72px;
     padding: 12px;
+  }
+
+  .inventory-supplier-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .inventory-supplier-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inventory-supplier-actions {
+    justify-content: stretch;
+  }
+
+  .inventory-supplier-actions button {
+    flex: 1 1 130px;
   }
 
   .inventory-item-drawer > summary {
