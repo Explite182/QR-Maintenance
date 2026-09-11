@@ -14780,6 +14780,26 @@ button.asset-detail-card {
   gap: 10px;
 }
 
+.inventory-sync-notice {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid rgba(20, 184, 166, 0.28);
+  border-radius: 8px;
+  background: rgba(240, 253, 250, 0.9);
+  color: var(--text);
+}
+
+.inventory-sync-notice strong {
+  font-size: 15px;
+}
+
+.inventory-sync-notice span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .inventory-filter-bar {
   display: grid;
   grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(150px, 0.6fr));
@@ -17123,6 +17143,7 @@ body.panel-schedule-open {
     display: grid;
     place-items: center;
     gap: 4px;
+    min-width: 0;
     min-height: 54px;
     padding: 4px 2px;
     color: #627179;
@@ -17132,6 +17153,17 @@ body.panel-schedule-open {
     box-shadow: none;
     font-size: 10px;
     font-weight: 800;
+  }
+
+  .mobile-tab-btn > span:last-child {
+    display: block;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.1;
   }
 
   .mobile-tab-btn:hover {

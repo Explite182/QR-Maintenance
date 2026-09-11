@@ -6398,6 +6398,7 @@ let sharedStateSaveTimer = null;
 let applyingSharedState = false;
 let structuredDataLoading = false;
 let structuredDataReady = false;
+let initialCloudDataLoaded = !currentUser;
 let structuredSyncTimer = null;
 let structuredSyncActive = false;
 let realtimeClient = null;
@@ -6918,7 +6919,11 @@ window.setTimeout(() => {
 window.setTimeout(syncLoginQrReportPrompt, 0);
 window.setTimeout(syncLoginQrReportPrompt, 600);
 setupInactivityLogout();
-window.setTimeout(bootstrapCloudData, 0);
+window.setTimeout(() => {
+  bootstrapCloudData().catch((error) => {
+    console.warn("SiteWorks startup cloud refresh failed.", error);
+  });
+}, 0);
 window.setTimeout(initializeRealtimeSync, 1200);
 window.setTimeout(loadServerNotifications, 1800);
 window.setTimeout(loadNotificationRules, 2200);
@@ -15632,6 +15637,7 @@ function deletePreferredContractor(contractorId) {
 
 function renderInventory() {
   if (!els.inventoryList) return;
+  const inventorySyncPending = currentUser && !initialCloudDataLoaded && !isPublicReportUrl();
   const customers = manageableInventoryCustomers();
   const selectedInventoryCustomerId = currentRole === "Admin" && customers.some((customer) => customer.id === selectedCustomerId)
     ? selectedCustomerId
@@ -15654,6 +15660,16 @@ function renderInventory() {
     control.disabled = !canManageInventory();
   });
   renderInventoryFilterControls(inventoryItemsForCustomer());
+  if (inventorySyncPending) {
+    if (els.inventoryCount) els.inventoryCount.textContent = "...";
+    els.inventoryList.innerHTML = `
+      <div class="inventory-sync-notice">
+        <strong>Refreshing stock counts...</strong>
+        <span>Checking SiteWorks before showing inventory quantities.</span>
+      </div>
+    `;
+    return;
+  }
   const items = visibleInventoryItems();
   if (focusedInventoryItemId && !items.some((item) => item.id === focusedInventoryItemId)) focusedInventoryItemId = "";
   if (els.inventoryCount) els.inventoryCount.textContent = items.length;
@@ -33742,29 +33758,36 @@ function applyForcedLogoutFromUrl() {
 }
 
 async function bootstrapCloudData() {
-  await loadSiteWorksProfiles({ renderAfter: false });
-  let loadedStructuredData = typeof loadStructuredDataFromServer === "function"
-    ? await loadStructuredDataFromServer({ forceReload: true })
-    : false;
-  if (!loadedStructuredData && currentUser && !state.customers.length && typeof loadStructuredDataFromServer === "function") {
-    setSyncBanner("loading", "Loading SiteWorks data", "Retrying server data load...", 1800);
-    await new Promise((resolve) => window.setTimeout(resolve, 1200));
-    loadedStructuredData = await loadStructuredDataFromServer({ forceReload: true });
+  if (currentUser && !isPublicReportUrl()) {
+    initialCloudDataLoaded = false;
   }
-  if (
-    !loadedStructuredData &&
-    typeof canUseSharedStateFallback === "function" &&
-    canUseSharedStateFallback() &&
-    typeof loadSharedStateFromServer === "function"
-  ) {
-    await loadSharedStateFromServer();
+  try {
+    await loadSiteWorksProfiles({ renderAfter: false });
+    let loadedStructuredData = typeof loadStructuredDataFromServer === "function"
+      ? await loadStructuredDataFromServer({ forceReload: true })
+      : false;
+    if (!loadedStructuredData && currentUser && !state.customers.length && typeof loadStructuredDataFromServer === "function") {
+      setSyncBanner("loading", "Loading SiteWorks data", "Retrying server data load...", 1800);
+      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      loadedStructuredData = await loadStructuredDataFromServer({ forceReload: true });
+    }
+    if (
+      !loadedStructuredData &&
+      typeof canUseSharedStateFallback === "function" &&
+      canUseSharedStateFallback() &&
+      typeof loadSharedStateFromServer === "function"
+    ) {
+      await loadSharedStateFromServer();
+    }
+    await syncPublicReportsFromServer(true);
+    if (!focusScannedAssetContext()) {
+      restoreScannedAssetSelection();
+      syncFiltersToSelectedAsset();
+    }
+  } finally {
+    initialCloudDataLoaded = true;
+    render();
   }
-  await syncPublicReportsFromServer(true);
-  if (!focusScannedAssetContext()) {
-    restoreScannedAssetSelection();
-    syncFiltersToSelectedAsset();
-  }
-  render();
 }
 
 async function refreshCloudDataFromServer() {
