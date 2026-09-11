@@ -218,6 +218,9 @@
           <button type="button" class="sidebar-nav-btn" data-open-target="workOrdersPanel" aria-expanded="false">
             <span>Open Tickets</span>
           </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="billingQueuePanel" aria-expanded="false">
+            <span>Billing Queue</span>
+          </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="serviceRequestsPanel" aria-expanded="false">
             <span>Service Requests</span>
           </button>
@@ -1101,6 +1104,34 @@
           </label>
         </div>
         <div id="workOrderList" class="work-order-list" data-panel-body></div>
+      </section>
+
+        <section id="billingQueuePanel" class="work-orders-panel billing-queue-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="billingQueuePanel">
+          <h2>Billing Queue</h2>
+          <div class="panel-title-actions">
+            <span id="billingQueueCount">0</span>
+          </div>
+        </div>
+        <div class="billing-queue-body" data-panel-body>
+          <div class="ticket-filter-bar billing-filter-bar">
+            <label>
+              Status
+              <select id="billingQueueFilter">
+                <option value="ready">Ready to bill</option>
+                <option value="draft">Draft / needs review</option>
+                <option value="billed">Billed</option>
+                <option value="all">All closed tickets</option>
+              </select>
+            </label>
+            <div class="billing-export-actions">
+              <button id="billingQueueExportBtn" type="button" class="secondary mini">Export QuickBooks CSV</button>
+              <button id="billingQueueSendQuickBooksBtn" type="button" class="secondary mini" disabled>Send to QuickBooks</button>
+            </div>
+          </div>
+          <div id="billingQueueSummary" class="billing-summary-strip"></div>
+          <div id="billingQueueList" class="work-order-list billing-queue-list"></div>
+        </div>
       </section>
 
         <section id="serviceRequestsPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">

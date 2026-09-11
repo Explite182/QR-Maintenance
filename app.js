@@ -6429,6 +6429,7 @@ let keyWizardStep = 0;
 let serviceRequestDrawerTab = "notes";
 let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
+let billingQueueFilter = "ready";
 let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
 let selectedMonitoringPanelId = "";
@@ -6904,6 +6905,12 @@ const els = {
   workOrderCount: document.getElementById("workOrderCount"),
   workOrderNumberFilter: document.getElementById("workOrderNumberFilter"),
   workOrderList: document.getElementById("workOrderList"),
+  billingQueueCount: document.getElementById("billingQueueCount"),
+  billingQueueFilter: document.getElementById("billingQueueFilter"),
+  billingQueueExportBtn: document.getElementById("billingQueueExportBtn"),
+  billingQueueSendQuickBooksBtn: document.getElementById("billingQueueSendQuickBooksBtn"),
+  billingQueueSummary: document.getElementById("billingQueueSummary"),
+  billingQueueList: document.getElementById("billingQueueList"),
   completedPmCount: document.getElementById("completedPmCount"),
   completedPmList: document.getElementById("completedPmList"),
   serviceRequestCount: document.getElementById("serviceRequestCount"),
@@ -9139,6 +9146,19 @@ els.workOrderNumberFilter?.addEventListener("change", () => {
   render();
 });
 
+els.billingQueueFilter?.addEventListener("change", () => {
+  billingQueueFilter = els.billingQueueFilter.value || "ready";
+  renderBillingQueue();
+});
+
+els.billingQueueExportBtn?.addEventListener("click", () => {
+  downloadBillingQueueCsv();
+});
+
+els.billingQueueSendQuickBooksBtn?.addEventListener("click", () => {
+  alert("Live QuickBooks Online sync is not connected yet. Use Export QuickBooks CSV for now.");
+});
+
 els.statusFilter.addEventListener("change", () => {
   assetStatusFilter = els.statusFilter.value;
   assetPage = 1;
@@ -11120,6 +11140,16 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const billingActionButton = event.target.closest("[data-work-order-billing-action]");
+  if (billingActionButton && canManageWorkOrders()) {
+    event.preventDefault();
+    updateWorkOrderBillingStatus(
+      billingActionButton.dataset.workOrderBillingAction,
+      billingActionButton.dataset.billingAction || "ready"
+    );
+    return;
+  }
+
   const contractorDeleteButton = event.target.closest("[data-delete-contractor]");
   if (contractorDeleteButton && canManageContractors()) {
     deletePreferredContractor(contractorDeleteButton.dataset.deleteContractor);
@@ -11251,6 +11281,26 @@ document.addEventListener("submit", async (event) => {
   if (photo) changes.push("Work photo added");
   addWorkOrderHistory(workOrder, "Edited", changes.join(" | ") || "No visible changes");
   addActivity("Ticket edited", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
+  saveState();
+  render();
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-billing-review-form]");
+  if (!form) return;
+  event.preventDefault();
+  if (!canManageWorkOrders()) return;
+  const workOrder = getWorkOrder(form.dataset.billingReviewForm);
+  if (!workOrder) return;
+  const formData = new FormData(form);
+  workOrder.customerPo = String(formData.get("customerPo") || "").trim();
+  workOrder.billingServiceAmount = Math.max(0, Number(formData.get("billingServiceAmount") || 0));
+  workOrder.billingMemo = String(formData.get("billingMemo") || "").trim();
+  workOrder.billingUpdatedAt = new Date().toISOString();
+  workOrder.billingUpdatedBy = currentUser?.name || currentUser?.username || "";
+  workOrder.updatedAt = workOrder.billingUpdatedAt;
+  addWorkOrderHistory(workOrder, "Billing details saved", `${workOrder.customerPo ? `PO ${workOrder.customerPo}` : "No PO"} | Service ${formatMoney(workOrder.billingServiceAmount)}`);
+  addActivity("Billing details saved", `${formatIssueNumber(workOrder)} - ${formatMoney(workOrder.billingServiceAmount)}`);
   saveState();
   render();
 });
@@ -11647,6 +11697,7 @@ function render() {
   renderAssetTableControls();
   renderAssetTable();
   renderWorkOrders();
+  renderBillingQueue();
   renderServiceRequests();
   renderInventory();
   renderKeys();
@@ -16414,11 +16465,11 @@ function renderInventoryPartDetails(item = {}) {
 function renderInventoryReceiveForm(item = {}) {
   const canUse = canManageInventoryCustomer(item.customerId);
   return `
-    <section class="inventory-action-card" aria-label="Receive stock">
-      <div class="inventory-use-heading">
+    <details class="inventory-action-card inventory-action-drawer" aria-label="Receive stock">
+      <summary>
         <strong>Receive stock</strong>
         <small>Add delivered parts and clear low-stock status when count is healthy</small>
-      </div>
+      </summary>
       <form class="inventory-inline-form" data-inventory-receive-form="${escapeAttribute(item.id)}">
         <input name="quantityReceived" type="number" min="1" step="1" value="${escapeAttribute(inventoryReorderQuantity(item))}" ${canUse ? "" : "disabled"}>
         <input name="supplier" value="${escapeAttribute(item.supplier || "")}" placeholder="Supplier" ${canUse ? "" : "disabled"}>
@@ -16426,7 +16477,7 @@ function renderInventoryReceiveForm(item = {}) {
         <input name="note" placeholder="PO, invoice, or receiving note" ${canUse ? "" : "disabled"}>
         <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Receive</button>
       </form>
-    </section>
+    </details>
   `;
 }
 
@@ -16436,17 +16487,17 @@ function renderInventoryAuditForm(item = {}) {
     ? `Last counted ${formatDateTime(item.lastAuditedAt)}${item.lastAuditedBy ? ` by ${item.lastAuditedBy}` : ""}`
     : "No count audit yet";
   return `
-    <section class="inventory-action-card" aria-label="Inventory audit">
-      <div class="inventory-use-heading">
+    <details class="inventory-action-card inventory-action-drawer" aria-label="Inventory audit">
+      <summary>
         <strong>Audit count</strong>
         <small>${escapeHtml(auditText)}</small>
-      </div>
+      </summary>
       <form class="inventory-inline-form" data-inventory-audit-form="${escapeAttribute(item.id)}">
         <input name="actualQuantity" type="number" min="0" step="1" value="${escapeAttribute(item.quantity || 0)}" ${canUse ? "" : "disabled"}>
         <input name="note" placeholder="Count note or bin checked" ${canUse ? "" : "disabled"}>
         <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Save count</button>
       </form>
-    </section>
+    </details>
   `;
 }
 
@@ -27042,6 +27093,290 @@ function renderWorkOrderNumberFilter(counts) {
   els.workOrderNumberFilter.value = currentValue;
 }
 
+function renderBillingQueue() {
+  if (!els.billingQueueList) return;
+  if (els.billingQueueFilter && els.billingQueueFilter.value !== billingQueueFilter) {
+    els.billingQueueFilter.value = billingQueueFilter;
+  }
+  const records = billingQueueRecords();
+  const filtered = records.filter((record) => {
+    if (billingQueueFilter === "all") return true;
+    return record.billingStatus === billingQueueFilter;
+  });
+  const summary = billingQueueSummary(records);
+  if (els.billingQueueCount) els.billingQueueCount.textContent = filtered.length;
+  if (els.billingQueueSummary) {
+    els.billingQueueSummary.innerHTML = `
+      <article><strong>${escapeHtml(formatInventoryNumber(summary.readyCount))}</strong><span>Ready to bill</span></article>
+      <article><strong>${escapeHtml(formatMoney(summary.readyTotal))}</strong><span>Ready total</span></article>
+      <article><strong>${escapeHtml(formatMoney(summary.draftTotal))}</strong><span>Needs review</span></article>
+      <article><strong>${escapeHtml(formatMoney(summary.billedTotal))}</strong><span>Billed</span></article>
+    `;
+  }
+  if (els.billingQueueExportBtn) els.billingQueueExportBtn.disabled = !billingQueueExportRecords().length;
+  if (els.billingQueueList) {
+    els.billingQueueList.innerHTML = filtered.length
+      ? filtered.map(renderBillingQueueItem).join("")
+      : `<p class="muted">${billingQueueFilter === "ready" ? "No tickets are ready to bill yet." : "No billing records for this view."}</p>`;
+  }
+}
+
+function billingQueueRecords() {
+  return completedTicketRecords()
+    .filter((record) => record.type === "workOrder")
+    .map((record) => buildBillingRecord(record.workOrder))
+    .filter(Boolean);
+}
+
+function buildBillingRecord(workOrder) {
+  if (!workOrder || !canSeeWorkOrder(workOrder)) return null;
+  const customer = getCustomer(workOrder.customerId);
+  const locationRecord = getLocation(workOrder.locationId);
+  const asset = getAsset(workOrder.assetId);
+  const lineItems = workOrderBillingLineItems(workOrder);
+  const subtotal = lineItems.reduce((sum, line) => sum + Number(line.amount || 0), 0);
+  const costTotal = lineItems.reduce((sum, line) => sum + Number(line.costTotal || 0), 0);
+  return {
+    workOrder,
+    customer,
+    location: locationRecord,
+    asset,
+    billingStatus: workOrder.billingStatus || "draft",
+    subtotal,
+    costTotal,
+    margin: subtotal - costTotal,
+    lineItems
+  };
+}
+
+function billingQueueSummary(records = []) {
+  return records.reduce((summary, record) => {
+    if (record.billingStatus === "ready") {
+      summary.readyCount += 1;
+      summary.readyTotal += record.subtotal;
+    } else if (record.billingStatus === "billed") {
+      summary.billedTotal += record.subtotal;
+    } else {
+      summary.draftTotal += record.subtotal;
+    }
+    return summary;
+  }, { readyCount: 0, readyTotal: 0, draftTotal: 0, billedTotal: 0 });
+}
+
+function renderBillingQueueItem(record) {
+  const { workOrder, customer, location, asset, lineItems } = record;
+  const statusLabel = billingStatusLabel(record.billingStatus);
+  const statusClass = record.billingStatus === "ready"
+    ? "badge-ok"
+    : record.billingStatus === "billed"
+      ? "badge-muted"
+      : "badge-warn";
+  return `
+    <details class="work-order-item work-order-drawer billing-queue-item">
+      <summary>
+        <div class="ticket-list-summary">
+          <strong>${escapeHtml(formatIssueNumber(workOrder))} - ${escapeHtml(workOrder.title || "Completed ticket")}</strong>
+          <span>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(location?.name || "Unknown location")} | ${escapeHtml(asset?.name || workOrder.areaName || "No equipment")}</span>
+          <div class="ticket-list-badges">
+            <span class="drawer-param-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
+            <span class="drawer-param-badge badge-muted">${escapeHtml(formatMoney(record.subtotal))}</span>
+            <span class="drawer-param-badge badge-muted">Margin ${escapeHtml(formatMoney(record.margin))}</span>
+          </div>
+        </div>
+        <div class="ticket-summary-tools">
+          <button type="button" class="secondary mini" data-open-completed-ticket="${escapeAttribute(workOrder.id)}">Open Ticket</button>
+          ${record.billingStatus !== "ready" ? `<button type="button" class="secondary mini" data-work-order-billing-action="${escapeAttribute(workOrder.id)}" data-billing-action="ready">Ready to Bill</button>` : ""}
+          ${record.billingStatus !== "billed" ? `<button type="button" class="secondary mini" data-work-order-billing-action="${escapeAttribute(workOrder.id)}" data-billing-action="billed">Mark Billed</button>` : ""}
+          ${record.billingStatus !== "draft" ? `<button type="button" class="secondary mini" data-work-order-billing-action="${escapeAttribute(workOrder.id)}" data-billing-action="draft">Needs Review</button>` : ""}
+        </div>
+      </summary>
+      <div class="ticket-drawer-body">
+        <form class="billing-review-form" data-billing-review-form="${escapeAttribute(workOrder.id)}">
+          <label>
+            Customer PO
+            <input name="customerPo" value="${escapeAttribute(workOrder.customerPo || workOrder.customerPO || "")}" placeholder="Customer PO / reference">
+          </label>
+          <label>
+            Service / labour amount
+            <input name="billingServiceAmount" type="number" min="0" step="0.01" value="${escapeAttribute(workOrder.billingServiceAmount || "")}" placeholder="0.00">
+          </label>
+          <label>
+            Billing note
+            <input name="billingMemo" value="${escapeAttribute(workOrder.billingMemo || "")}" placeholder="Optional memo for accounting">
+          </label>
+          <button type="submit" class="secondary mini">Save billing</button>
+        </form>
+        <section class="billing-line-card">
+          <header>
+            <strong>Invoice-ready lines</strong>
+            <span>${escapeHtml(formatMoney(record.subtotal))}</span>
+          </header>
+          ${lineItems.length
+            ? lineItems.map((line) => `
+              <div class="billing-line-row">
+                <span>${escapeHtml(line.type)}</span>
+                <strong>${escapeHtml(line.description)}</strong>
+                <em>${escapeHtml(formatInventoryNumber(line.quantity))} x ${escapeHtml(formatMoney(line.rate))}</em>
+                <b>${escapeHtml(formatMoney(line.amount))}</b>
+              </div>
+            `).join("")
+            : `<p class="muted">No billable lines found yet. Add parts/time notes before exporting.</p>`}
+        </section>
+      </div>
+    </details>
+  `;
+}
+
+function billingStatusLabel(status = "") {
+  if (status === "ready") return "Ready to bill";
+  if (status === "billed") return "Billed";
+  return "Needs review";
+}
+
+function updateWorkOrderBillingStatus(workOrderId, status = "ready") {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canManageWorkOrders()) return;
+  const normalized = ["draft", "ready", "billed"].includes(status) ? status : "ready";
+  const previous = workOrder.billingStatus || "draft";
+  workOrder.billingStatus = normalized;
+  workOrder.billingUpdatedAt = new Date().toISOString();
+  workOrder.billingUpdatedBy = currentUser?.name || currentUser?.username || "";
+  workOrder.updatedAt = workOrder.billingUpdatedAt;
+  addWorkOrderHistory(workOrder, "Billing status changed", `${billingStatusLabel(previous)} -> ${billingStatusLabel(normalized)}`);
+  addActivity("Billing queue updated", `${formatIssueNumber(workOrder)} - ${billingStatusLabel(normalized)}`);
+  saveState();
+  render();
+}
+
+function workOrderBillingLineItems(workOrder = {}) {
+  const lines = [];
+  const notes = String(workOrder.notes || "");
+  const usedInventoryLines = inventoryUsageLinesForWorkOrder(workOrder);
+  lines.push(...usedInventoryLines);
+  const serviceAmount = Math.max(0, Number(workOrder.billingServiceAmount || 0));
+  if (!usedInventoryLines.length && serviceAmount > 0) {
+    lines.push({
+      type: "Service",
+      itemName: "Service labour",
+      description: `${formatIssueNumber(workOrder)} - ${workOrder.title || "Completed service"}`,
+      quantity: 1,
+      rate: serviceAmount,
+      amount: serviceAmount,
+      costTotal: 0,
+      taxable: true
+    });
+  }
+  const explicitLines = parseBillingLinesFromNotes(notes);
+  lines.push(...explicitLines);
+  return lines.filter((line) => Number(line.amount || 0) > 0);
+}
+
+function inventoryUsageLinesForWorkOrder(workOrder = {}) {
+  const issueNumber = formatIssueNumber(workOrder);
+  const usageEntries = workOrderHistoryEntries(workOrder).filter((entry) =>
+    String(entry.action || "").toLowerCase().includes("inventory used") ||
+    String(entry.details || "").toLowerCase().startsWith("used ")
+  );
+  return usageEntries.map((entry) => {
+    const parsed = parseInventoryUsageText(entry.details || "");
+    const inventoryItem = findInventoryItemForBilling(workOrder.customerId, parsed.name);
+    const quantity = parsed.quantity || 1;
+    const rate = inventoryItem?.sellPrice || inventoryResolvedSellPrice(inventoryItem?.unitCost || 0, inventoryItem?.markupPercent || 0, 0);
+    const fallbackRate = rate || Math.max(0, Number(inventoryItem?.unitCost || 0));
+    return {
+      type: "Product",
+      itemName: inventoryItem?.name || parsed.name || "Inventory item",
+      description: `${inventoryItem?.description || parsed.name || "Inventory item"} (${issueNumber})`,
+      quantity,
+      rate: fallbackRate,
+      amount: quantity * fallbackRate,
+      costTotal: quantity * Math.max(0, Number(inventoryItem?.unitCost || 0)),
+      taxable: inventoryItem?.taxable !== false
+    };
+  });
+}
+
+function parseInventoryUsageText(text = "") {
+  const match = String(text || "").match(/Used\s+([\d.]+)\s+x\s+(.+?)\s+from inventory/i);
+  return {
+    quantity: Math.max(0, Number(match?.[1] || 1)),
+    name: String(match?.[2] || "").trim()
+  };
+}
+
+function findInventoryItemForBilling(customerId = "", name = "") {
+  const normalized = normalizedName(name);
+  if (!normalized) return null;
+  return (state.inventoryItems || []).find((item) =>
+    item.customerId === customerId &&
+    normalizedName(item.name || "") === normalized
+  ) || null;
+}
+
+function parseBillingLinesFromNotes(notes = "") {
+  return String(notes || "").split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^bill:/i.test(line))
+    .map((line) => {
+      const clean = line.replace(/^bill:\s*/i, "");
+      const parts = clean.split("|").map((part) => part.trim());
+      const description = parts[0] || "Billable item";
+      const quantity = Math.max(1, Number(parts[1] || 1));
+      const rate = Math.max(0, Number(parts[2] || 0));
+      return {
+        type: "Service",
+        itemName: description,
+        description,
+        quantity,
+        rate,
+        amount: quantity * rate,
+        costTotal: 0,
+        taxable: true
+      };
+    });
+}
+
+function billingQueueExportRecords() {
+  return billingQueueRecords().filter((record) => record.billingStatus === "ready");
+}
+
+function downloadBillingQueueCsv(records = billingQueueExportRecords(), filename = `siteworks-quickbooks-billing-${timestampForFile()}.csv`) {
+  const rows = [
+    ["Customer", "Customer Email", "Billing Address", "Shipping Address", "Invoice Date", "Due Date", "Customer PO", "SiteWorks Ticket", "Location", "Equipment", "Product/Service", "Description", "Quantity", "Rate", "Amount", "Taxable", "Memo"],
+    ...records.flatMap((record) => {
+      const invoiceDate = toDateInputValue(new Date(record.workOrder.resolvedAt || record.workOrder.updatedAt || new Date()));
+      const dueDate = toDateInputValue(addDays(parseLocalDate(invoiceDate), 30));
+      return record.lineItems.map((line) => [
+        record.customer?.name || "",
+        record.customer?.contactEmail || "",
+        record.customer?.contactNotes || "",
+        record.location?.address || record.location?.name || "",
+        invoiceDate,
+        dueDate,
+        record.workOrder.customerPo || record.workOrder.customerPO || "",
+        formatIssueNumber(record.workOrder),
+        record.location?.name || "",
+        record.asset?.name || record.workOrder.areaName || "",
+        line.itemName || line.type,
+        line.description,
+        line.quantity,
+        line.rate,
+        line.amount,
+        line.taxable === false ? "No" : "Yes",
+        `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed ticket"}`
+      ]);
+    })
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function renderCompletedPms() {
   const visibleRecords = completedTicketRecords();
   const focusedRecord = focusedCompletedRecordId
@@ -29866,8 +30201,12 @@ function renderWorkOrderItem(item) {
     <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Ticket</button>
     <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
   ` : "";
+  const billingAction = canManage && item.status === "Closed"
+    ? `<button class="secondary mini" type="button" data-work-order-billing-action="${escapeAttribute(item.id)}" data-billing-action="${item.billingStatus === "ready" ? "draft" : "ready"}">${item.billingStatus === "ready" ? "Needs Review" : "Ready to Bill"}</button>`
+    : "";
   const primaryActions = item.status === "Closed" ? `
     <button class="secondary mini" type="button" data-open-completed-ticket="${escapeAttribute(item.id)}">View</button>
+    ${billingAction}
     ${canManage ? `<button class="secondary mini" type="button" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
   ` : `
     ${canEditTicket ? `<button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>` : ""}
@@ -34668,6 +35007,11 @@ function normalizeState(input) {
       ...item,
       history: Array.isArray(item.history) ? item.history : [],
       photos: Array.isArray(item.photos) ? item.photos : [],
+      billingStatus: ["draft", "ready", "billed"].includes(item.billingStatus) ? item.billingStatus : "draft",
+      billingUpdatedAt: item.billingUpdatedAt || "",
+      billingUpdatedBy: item.billingUpdatedBy || "",
+      billingServiceAmount: Math.max(0, Number(item.billingServiceAmount || 0)),
+      customerPo: item.customerPo || item.customerPO || "",
       issueNumber
     };
   });
