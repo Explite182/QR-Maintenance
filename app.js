@@ -8501,6 +8501,66 @@ els.inventorySupplierPanel?.addEventListener("click", async (event) => {
   }
 });
 
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-inventory-supplier-contact-form]");
+  if (!form) return;
+  event.preventDefault();
+  if (!canManageInventory()) return;
+  const formData = new FormData(form);
+  const supplierName = String(formData.get("supplierName") || "").trim();
+  const email = String(formData.get("email") || "").trim();
+  const phone = String(formData.get("phone") || "").trim();
+  const website = String(formData.get("website") || "").trim();
+  const accountNumber = String(formData.get("accountNumber") || "").trim();
+  const notes = String(formData.get("notes") || "").trim();
+  const customerId = currentRole === "Admin"
+    ? selectedCustomerId || els.inventoryCustomer?.value || manageableInventoryCustomers()[0]?.id || ""
+    : currentUser?.customerId || "";
+  if (!supplierName || !isEmailAddress(email)) {
+    alert("Enter a supplier name and valid email address.");
+    return;
+  }
+  if (!canManageInventoryCustomer(customerId)) {
+    alert("Managers can only add supplier contacts for their assigned customer.");
+    return;
+  }
+  const existingContact = (state.preferredContractors || []).find((contact) =>
+    contact.customerId === customerId &&
+    normalizedName(contact.name) === normalizedName(supplierName)
+  );
+  const now = new Date().toISOString();
+  if (existingContact) {
+    existingContact.email = email;
+    existingContact.trade = "Supplier";
+    existingContact.phone = phone;
+    existingContact.website = website;
+    existingContact.accountNumber = accountNumber;
+    existingContact.notes = notes;
+    existingContact.contactType = "Supplier";
+    existingContact.updatedAt = now;
+  } else {
+    state.preferredContractors.push({
+      id: crypto.randomUUID(),
+      customerId,
+      name: supplierName,
+      email,
+      trade: "Supplier",
+      phone,
+      website,
+      accountNumber,
+      notes,
+      contactType: "Supplier",
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+  addActivity(existingContact ? "Supplier contact updated" : "Supplier contact added", `${supplierName} | ${email}`);
+  saveState();
+  form.reset();
+  inventorySupplierPanelOpen = true;
+  render();
+});
+
 els.inventoryCustomer?.addEventListener("change", () => {
   renderInventoryAssetOptions(els.inventoryCustomer.value || selectedCustomerId);
 });
@@ -15868,11 +15928,52 @@ function renderInventorySupplierPanel(items = inventoryItemsForCustomer()) {
       </div>
       ${inventorySupplierFilter ? `<button type="button" class="secondary mini" data-clear-inventory-supplier>Clear supplier filter</button>` : ""}
     </div>
+    ${renderInventorySupplierContactForm(supplierGroups)}
     <div class="inventory-supplier-list">
       ${supplierGroups.length
         ? supplierGroups.map(renderInventorySupplierRow).join("")
         : `<p class="muted">No suppliers saved on these inventory items yet.</p>`}
     </div>
+  `;
+}
+
+function renderInventorySupplierContactForm(groups = []) {
+  if (!canManageInventory()) return "";
+  const supplierNames = groups.map((group) => group.name).filter((name) => name && name !== "No supplier");
+  return `
+    <details class="inventory-supplier-contact-drawer">
+      <summary>Add supplier contact</summary>
+      <form class="inventory-supplier-contact-form" data-inventory-supplier-contact-form>
+        <datalist id="inventorySupplierContactNames">
+          ${supplierNames.map((name) => `<option value="${escapeAttribute(name)}"></option>`).join("")}
+        </datalist>
+        <label>
+          Supplier name
+          <input name="supplierName" list="inventorySupplierContactNames" required placeholder="Westburne">
+        </label>
+        <label>
+          Email
+          <input name="email" type="email" required placeholder="orders@example.com">
+        </label>
+        <label>
+          Phone
+          <input name="phone" placeholder="604-555-0100">
+        </label>
+        <label>
+          Website / portal
+          <input name="website" placeholder="https://supplier.example.com">
+        </label>
+        <label>
+          Account #
+          <input name="accountNumber" placeholder="Account number">
+        </label>
+        <label>
+          Notes
+          <input name="notes" placeholder="Branch, order instructions, counter notes">
+        </label>
+        <button type="submit" class="secondary mini">Save supplier</button>
+      </form>
+    </details>
   `;
 }
 
@@ -15918,7 +16019,7 @@ function renderInventorySupplierRow(group) {
   const customerIds = [...new Set(group.items.map((item) => item.customerId).filter(Boolean))];
   const contact = inventorySupplierContact(customerIds[0] || "", group.name);
   const contactLine = contact
-    ? [contact.email, contact.trade].filter(Boolean).join(" | ")
+    ? [contact.email, contact.phone, contact.website, contact.accountNumber ? `Acct ${contact.accountNumber}` : ""].filter(Boolean).join(" | ")
     : "No supplier contact saved";
   const active = inventorySupplierFilter === group.name;
   return `

@@ -14910,6 +14910,39 @@ button.asset-detail-card {
   gap: 8px;
 }
 
+.inventory-supplier-contact-drawer {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(248, 251, 250, 0.9);
+}
+
+.inventory-supplier-contact-drawer summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.inventory-supplier-contact-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.inventory-supplier-contact-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-supplier-contact-form input {
+  width: 100%;
+  min-width: 0;
+}
+
 .inventory-supplier-row {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(280px, 1.4fr) auto;
@@ -17426,6 +17459,10 @@ body.panel-schedule-open {
 
   .inventory-supplier-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inventory-supplier-contact-form {
+    grid-template-columns: 1fr;
   }
 
   .inventory-supplier-actions {
