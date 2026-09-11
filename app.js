@@ -8450,6 +8450,15 @@ els.inventoryFilterStatus?.addEventListener("change", () => {
   renderInventory();
 });
 
+els.inventorySummaryStrip?.addEventListener("click", (event) => {
+  const tile = event.target.closest("[data-inventory-summary-filter]");
+  if (!tile) return;
+  inventoryStatusFilter = tile.dataset.inventorySummaryFilter || "all";
+  inventoryQuery = "";
+  focusedInventoryItemId = "";
+  renderInventory();
+});
+
 els.inventoryCustomer?.addEventListener("change", () => {
   renderInventoryAssetOptions(els.inventoryCustomer.value || selectedCustomerId);
 });
@@ -15784,21 +15793,21 @@ function renderInventorySummaryStrip(items = inventoryItemsForCustomer()) {
   const totalQuantity = items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0)), 0);
   const totalValue = items.reduce((sum, item) => sum + inventoryStockValue(item), 0);
   const summaryTiles = [
-    { label: "Items", value: items.length, tone: "info" },
-    { label: "On hand", value: formatInventoryNumber(totalQuantity), tone: "ok" },
-    { label: "Low stock", value: lowStockItems.length, tone: lowStockItems.length ? "warn" : "ok" },
-    { label: "Ordered", value: orderedItems.length, tone: orderedItems.length ? "warn" : "info" },
-    { label: "Stock value", value: formatMoney(totalValue), tone: "info" },
-    { label: "Storage", value: uniqueStorageLocations.size, detail: `${uniqueBins.size} bin${uniqueBins.size === 1 ? "" : "s"}`, tone: "neutral" },
-    { label: "Suppliers", value: supplierCount, tone: "neutral" },
-    { label: "Barcoded", value: barcodeItems.length, tone: barcodeItems.length === items.length && items.length ? "ok" : "warn" }
+    { label: "Items", value: items.length, tone: "info", filter: "all" },
+    { label: "On hand", value: formatInventoryNumber(totalQuantity), tone: "ok", filter: "all" },
+    { label: "Low stock", value: lowStockItems.length, tone: lowStockItems.length ? "warn" : "ok", filter: "low" },
+    { label: "Ordered", value: orderedItems.length, tone: orderedItems.length ? "warn" : "info", filter: "ordered" },
+    { label: "Stock value", value: formatMoney(totalValue), tone: "info", filter: "all" },
+    { label: "Storage", value: uniqueStorageLocations.size, detail: `${uniqueBins.size} bin${uniqueBins.size === 1 ? "" : "s"}`, tone: "neutral", filter: "all" },
+    { label: "Suppliers", value: supplierCount, tone: "neutral", filter: "all" },
+    { label: "Barcoded", value: barcodeItems.length, tone: barcodeItems.length === items.length && items.length ? "ok" : "warn", filter: "barcoded" }
   ];
   els.inventorySummaryStrip.innerHTML = summaryTiles.map((tile) => `
-    <div class="inventory-summary-tile is-${escapeAttribute(tile.tone)}">
+    <button type="button" class="inventory-summary-tile is-${escapeAttribute(tile.tone)} ${inventoryStatusFilter === tile.filter ? "is-active" : ""}" data-inventory-summary-filter="${escapeAttribute(tile.filter)}">
       <strong>${escapeHtml(tile.value)}</strong>
       <span>${escapeHtml(tile.label)}</span>
       ${tile.detail ? `<small>${escapeHtml(tile.detail)}</small>` : ""}
-    </div>
+    </button>
   `).join("");
 }
 
@@ -31714,6 +31723,7 @@ function inventoryMatchesFilters(item = {}) {
   if (inventoryLocationFilter !== "all" && (item.storageLocation || "Shop") !== inventoryLocationFilter) return false;
   if (inventoryStatusFilter === "low" && !inventoryItemLowStock(item)) return false;
   if (inventoryStatusFilter === "ordered" && item.reorderStatus !== "ordered") return false;
+  if (inventoryStatusFilter === "barcoded" && !(item.supplierBarcode || item.nfcTag)) return false;
   return !inventoryQuery || inventorySearchText(item).includes(inventoryQuery);
 }
 

@@ -14814,13 +14814,27 @@ button.asset-detail-card {
 }
 
 .inventory-summary-tile {
+  appearance: none;
   display: grid;
   align-content: center;
+  text-align: left;
   min-height: 78px;
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.inventory-summary-tile:hover,
+.inventory-summary-tile.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.inventory-summary-tile:hover {
+  transform: translateY(-1px);
 }
 
 .inventory-summary-tile strong {
