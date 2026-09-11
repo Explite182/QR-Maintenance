@@ -6454,6 +6454,8 @@ let applyingSharedState = false;
 let structuredDataLoading = false;
 let structuredDataReady = false;
 let initialCloudDataLoaded = !currentUser;
+let initialCloudDataRefreshing = false;
+let initialCloudDataUnlockTimer = null;
 let structuredSyncTimer = null;
 let structuredSyncActive = false;
 let realtimeClient = null;
@@ -15700,6 +15702,7 @@ function deletePreferredContractor(contractorId) {
 function renderInventory() {
   if (!els.inventoryList) return;
   const inventorySyncPending = currentUser && !initialCloudDataLoaded && !isPublicReportUrl();
+  const inventorySyncStillRefreshing = currentUser && initialCloudDataLoaded && initialCloudDataRefreshing && !isPublicReportUrl();
   const customers = manageableInventoryCustomers();
   const selectedInventoryCustomerId = currentRole === "Admin" && customers.some((customer) => customer.id === selectedCustomerId)
     ? selectedCustomerId
@@ -15735,9 +15738,17 @@ function renderInventory() {
   const items = visibleInventoryItems();
   if (focusedInventoryItemId && !items.some((item) => item.id === focusedInventoryItemId)) focusedInventoryItemId = "";
   if (els.inventoryCount) els.inventoryCount.textContent = items.length;
+  const refreshNotice = inventorySyncStillRefreshing
+    ? `
+      <div class="inventory-sync-notice is-soft">
+        <strong>Checking latest stock counts...</strong>
+        <span>Showing saved inventory while SiteWorks finishes syncing.</span>
+      </div>
+    `
+    : "";
   els.inventoryList.innerHTML = items.length
-    ? `${renderInventoryReorderList(items)}${items.map(renderInventoryItem).join("")}`
-    : `<p class="muted">No inventory items for this view yet.</p>`;
+    ? `${refreshNotice}${renderInventoryReorderList(items)}${items.map(renderInventoryItem).join("")}`
+    : `${refreshNotice}<p class="muted">No inventory items for this view yet.</p>`;
 }
 
 function renderInventoryFilterControls(items = []) {
@@ -33820,8 +33831,17 @@ function applyForcedLogoutFromUrl() {
 }
 
 async function bootstrapCloudData() {
+  const shouldGateInitialData = currentUser && !isPublicReportUrl();
   if (currentUser && !isPublicReportUrl()) {
     initialCloudDataLoaded = false;
+    initialCloudDataRefreshing = true;
+    window.clearTimeout(initialCloudDataUnlockTimer);
+    initialCloudDataUnlockTimer = window.setTimeout(() => {
+      if (!initialCloudDataLoaded) {
+        initialCloudDataLoaded = true;
+        render();
+      }
+    }, 2000);
   }
   try {
     await loadSiteWorksProfiles({ renderAfter: false });
@@ -33841,13 +33861,20 @@ async function bootstrapCloudData() {
     ) {
       await loadSharedStateFromServer();
     }
+    if (shouldGateInitialData && !initialCloudDataLoaded) {
+      initialCloudDataLoaded = true;
+      window.clearTimeout(initialCloudDataUnlockTimer);
+      render();
+    }
     await syncPublicReportsFromServer(true);
     if (!focusScannedAssetContext()) {
       restoreScannedAssetSelection();
       syncFiltersToSelectedAsset();
     }
   } finally {
+    window.clearTimeout(initialCloudDataUnlockTimer);
     initialCloudDataLoaded = true;
+    initialCloudDataRefreshing = false;
     render();
   }
 }

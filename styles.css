@@ -14800,6 +14800,12 @@ button.asset-detail-card {
   font-weight: 700;
 }
 
+.inventory-sync-notice.is-soft {
+  padding: 12px 14px;
+  border-color: rgba(180, 95, 6, 0.24);
+  background: rgba(255, 251, 235, 0.9);
+}
+
 .inventory-filter-bar {
   display: grid;
   grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(150px, 0.6fr));
