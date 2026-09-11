@@ -2044,14 +2044,20 @@
                   <input id="inventorySupplierSku" placeholder="Vendor item number">
                 </label>
                 <label>
+                  Supplier barcode
+                  <input id="inventorySupplierBarcode" placeholder="UPC, EAN, GTIN, or vendor barcode">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
                   Specs
                   <input id="inventorySpecs" placeholder="15A, 1 pole, 600V, NC">
                 </label>
+                <label>
+                  Alternate / replacement part
+                  <input id="inventoryAlternatePart" placeholder="Approved substitute or replacement">
+                </label>
               </div>
-              <label>
-                Alternate / replacement part
-                <input id="inventoryAlternatePart" placeholder="Approved substitute or replacement">
-              </label>
               <div class="form-grid">
                 <label>
                   Linked equipment
@@ -2144,6 +2150,7 @@
               </select>
             </label>
           </div>
+          <div id="inventorySummaryStrip" class="inventory-summary-strip" aria-label="Inventory summary"></div>
           <div class="inventory-tool-bar">
             <button id="inventoryExportBtn" type="button" class="secondary mini">Export CSV</button>
             <button id="inventoryImportBtn" type="button" class="secondary mini">Import CSV</button>
@@ -2517,7 +2524,7 @@
     </button>
     <button type="button" class="mobile-tab-btn" data-mobile-tab="assetRegisterDrawer">
       <span class="mobile-tab-icon mobile-tab-equipment" aria-hidden="true"></span>
-      <span>Equipment</span>
+      <span>Equip.</span>
     </button>
     <button type="button" class="mobile-tab-btn mobile-inventory-btn" id="mobileInventoryBtn" aria-expanded="false" aria-controls="mobileInventoryMenu">
       <span class="mobile-tab-icon mobile-tab-inventory" aria-hidden="true"></span>

@@ -14806,6 +14806,58 @@ button.asset-detail-card {
   background: rgba(255, 251, 235, 0.9);
 }
 
+.inventory-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.inventory-summary-tile {
+  display: grid;
+  align-content: center;
+  min-height: 78px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.inventory-summary-tile strong {
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.inventory-summary-tile span {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.inventory-summary-tile small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.inventory-summary-tile.is-warn {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(255, 251, 235, 0.92);
+}
+
+.inventory-summary-tile.is-ok {
+  border-color: rgba(20, 184, 166, 0.24);
+  background: rgba(240, 253, 250, 0.92);
+}
+
+.inventory-summary-tile.is-info {
+  border-color: rgba(59, 130, 246, 0.2);
+  background: rgba(239, 246, 255, 0.86);
+}
+
 .inventory-filter-bar {
   display: grid;
   grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(150px, 0.6fr));
@@ -17252,6 +17304,15 @@ body.panel-schedule-open {
 
   .inventory-filter-bar {
     grid-template-columns: 1fr;
+  }
+
+  .inventory-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inventory-summary-tile {
+    min-height: 72px;
+    padding: 12px;
   }
 
   .inventory-item-drawer > summary {

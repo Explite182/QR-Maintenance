@@ -557,6 +557,7 @@ function inventoryItemFromStructuredRow(row) {
     manufacturer: payload.manufacturer || payload.brand || "",
     partNumber: payload.partNumber || payload.part_number || payload.model || "",
     supplierSku: payload.supplierSku || payload.supplier_sku || "",
+    supplierBarcode: payload.supplierBarcode || payload.supplier_barcode || payload.barcode || payload.upc || payload.ean || payload.gtin || "",
     specs: payload.specs || payload.specifications || "",
     alternatePart: payload.alternatePart || payload.alternate_part || payload.replacementPart || "",
     linkedAssetId: payload.linkedAssetId || payload.linked_asset_id || payload.assetId || "",
@@ -6906,6 +6907,7 @@ const els = {
   inventoryManufacturer: document.getElementById("inventoryManufacturer"),
   inventoryPartNumber: document.getElementById("inventoryPartNumber"),
   inventorySupplierSku: document.getElementById("inventorySupplierSku"),
+  inventorySupplierBarcode: document.getElementById("inventorySupplierBarcode"),
   inventorySpecs: document.getElementById("inventorySpecs"),
   inventoryAlternatePart: document.getElementById("inventoryAlternatePart"),
   inventoryLinkedAsset: document.getElementById("inventoryLinkedAsset"),
@@ -6930,6 +6932,7 @@ const els = {
   inventoryImportBtn: document.getElementById("inventoryImportBtn"),
   inventoryImportFile: document.getElementById("inventoryImportFile"),
   inventoryImportStatus: document.getElementById("inventoryImportStatus"),
+  inventorySummaryStrip: document.getElementById("inventorySummaryStrip"),
   inventoryList: document.getElementById("inventoryList"),
   keysPanel: document.getElementById("keysPanel"),
   keyCreateDrawer: document.getElementById("keyCreateDrawer"),
@@ -8860,6 +8863,7 @@ document.addEventListener("submit", async (event) => {
   item.manufacturer = String(formData.get("manufacturer") || "").trim();
   item.partNumber = String(formData.get("partNumber") || "").trim();
   item.supplierSku = String(formData.get("supplierSku") || "").trim();
+  item.supplierBarcode = String(formData.get("supplierBarcode") || "").trim();
   item.specs = String(formData.get("specs") || "").trim();
   item.alternatePart = String(formData.get("alternatePart") || "").trim();
   item.linkedAssetId = String(formData.get("linkedAssetId") || "").trim();
@@ -9595,6 +9599,7 @@ els.inventoryForm?.addEventListener("submit", async (event) => {
     manufacturer: els.inventoryManufacturer?.value.trim() || "",
     partNumber: els.inventoryPartNumber?.value.trim() || "",
     supplierSku: els.inventorySupplierSku?.value.trim() || "",
+    supplierBarcode: els.inventorySupplierBarcode?.value.trim() || "",
     specs: els.inventorySpecs?.value.trim() || "",
     alternatePart: els.inventoryAlternatePart?.value.trim() || "",
     linkedAssetId: els.inventoryLinkedAsset?.value || "",
@@ -15741,6 +15746,7 @@ function renderInventory() {
     control.disabled = !canManageInventory();
   });
   renderInventoryFilterControls(inventoryItemsForCustomer());
+  renderInventorySummaryStrip(inventoryItemsForCustomer());
   if (inventorySyncPending) {
     if (els.inventoryCount) els.inventoryCount.textContent = "...";
     els.inventoryList.innerHTML = `
@@ -15765,6 +15771,35 @@ function renderInventory() {
   els.inventoryList.innerHTML = items.length
     ? `${refreshNotice}${renderInventoryReorderList(items)}${items.map(renderInventoryItem).join("")}`
     : `${refreshNotice}<p class="muted">No inventory items for this view yet.</p>`;
+}
+
+function renderInventorySummaryStrip(items = inventoryItemsForCustomer()) {
+  if (!els.inventorySummaryStrip) return;
+  const lowStockItems = items.filter(inventoryItemLowStock);
+  const orderedItems = items.filter((item) => item.reorderStatus === "ordered");
+  const uniqueStorageLocations = new Set(items.map((item) => item.storageLocation || "Shop").filter(Boolean));
+  const uniqueBins = new Set(items.map((item) => item.bin || "").filter(Boolean));
+  const supplierCount = new Set(items.map((item) => item.supplier || "").filter(Boolean)).size;
+  const barcodeItems = items.filter((item) => item.supplierBarcode || item.nfcTag);
+  const totalQuantity = items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0)), 0);
+  const totalValue = items.reduce((sum, item) => sum + inventoryStockValue(item), 0);
+  const summaryTiles = [
+    { label: "Items", value: items.length, tone: "info" },
+    { label: "On hand", value: formatInventoryNumber(totalQuantity), tone: "ok" },
+    { label: "Low stock", value: lowStockItems.length, tone: lowStockItems.length ? "warn" : "ok" },
+    { label: "Ordered", value: orderedItems.length, tone: orderedItems.length ? "warn" : "info" },
+    { label: "Stock value", value: formatMoney(totalValue), tone: "info" },
+    { label: "Storage", value: uniqueStorageLocations.size, detail: `${uniqueBins.size} bin${uniqueBins.size === 1 ? "" : "s"}`, tone: "neutral" },
+    { label: "Suppliers", value: supplierCount, tone: "neutral" },
+    { label: "Barcoded", value: barcodeItems.length, tone: barcodeItems.length === items.length && items.length ? "ok" : "warn" }
+  ];
+  els.inventorySummaryStrip.innerHTML = summaryTiles.map((tile) => `
+    <div class="inventory-summary-tile is-${escapeAttribute(tile.tone)}">
+      <strong>${escapeHtml(tile.value)}</strong>
+      <span>${escapeHtml(tile.label)}</span>
+      ${tile.detail ? `<small>${escapeHtml(tile.detail)}</small>` : ""}
+    </div>
+  `).join("");
 }
 
 function renderInventoryFilterControls(items = []) {
@@ -15864,6 +15899,7 @@ function formatInventoryReorderClipboard(items = []) {
       `${item.name}`,
       item.partNumber ? `Part #: ${item.partNumber}` : "",
       item.supplierSku ? `SKU: ${item.supplierSku}` : "",
+      item.supplierBarcode ? `Barcode: ${item.supplierBarcode}` : "",
       `Qty to order: ${formatInventoryNumber(inventoryReorderQuantity(item))}`,
       `On hand: ${formatInventoryNumber(item.quantity)} / Min: ${formatInventoryNumber(item.minStock)}`,
       item.unitCost ? `Unit cost: ${formatMoney(item.unitCost)}` : "",
@@ -15895,6 +15931,7 @@ function renderInventoryReorderList(items = []) {
               <small>${escapeHtml([
                 item.supplier || "No supplier",
                 item.supplierSku ? `SKU ${item.supplierSku}` : "",
+                item.supplierBarcode ? `Barcode ${item.supplierBarcode}` : "",
                 item.bin || "No bin"
               ].filter(Boolean).join(" | "))}</small>
             </div>
@@ -16010,6 +16047,7 @@ function renderInventoryPartDetails(item = {}) {
     ["Manufacturer", item.manufacturer],
     ["Part / model #", item.partNumber],
     ["Supplier SKU", item.supplierSku],
+    ["Supplier barcode", item.supplierBarcode],
     ["Specs", item.specs],
     ["Alternate part", item.alternatePart],
     ["Linked equipment", getInventoryLinkedAssetLabel(item)],
@@ -16196,14 +16234,20 @@ function renderInventoryEditForm(item) {
           <input name="supplierSku" value="${escapeAttribute(item.supplierSku || "")}">
         </label>
         <label>
+          Supplier barcode
+          <input name="supplierBarcode" value="${escapeAttribute(item.supplierBarcode || "")}">
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
           Specs
           <input name="specs" value="${escapeAttribute(item.specs || "")}">
         </label>
+        <label>
+          Alternate / replacement part
+          <input name="alternatePart" value="${escapeAttribute(item.alternatePart || "")}">
+        </label>
       </div>
-      <label>
-        Alternate / replacement part
-        <input name="alternatePart" value="${escapeAttribute(item.alternatePart || "")}">
-      </label>
       <div class="form-grid">
         <label>
           Linked equipment
@@ -31655,12 +31699,14 @@ function inventoryItemsForCustomer(customerId = selectedCustomerId) {
 function visibleInventoryItems(customerId = selectedCustomerId) {
   return inventoryItemsForCustomer(customerId)
     .filter(inventoryMatchesFilters)
-    .sort((a, b) => {
-      const lowA = Number(a.minStock || 0) > 0 && Number(a.quantity || 0) <= Number(a.minStock || 0);
-      const lowB = Number(b.minStock || 0) > 0 && Number(b.quantity || 0) <= Number(b.minStock || 0);
-      if (lowA !== lowB) return lowA ? -1 : 1;
-      return `${a.category || ""} ${a.name || ""}`.localeCompare(`${b.category || ""} ${b.name || ""}`);
-    });
+    .sort(compareInventoryItemsAlphabetically);
+}
+
+function compareInventoryItemsAlphabetically(a = {}, b = {}) {
+  return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base", numeric: true }) ||
+    String(a.category || "").localeCompare(String(b.category || ""), undefined, { sensitivity: "base", numeric: true }) ||
+    String(a.partNumber || "").localeCompare(String(b.partNumber || ""), undefined, { sensitivity: "base", numeric: true }) ||
+    String(a.bin || "").localeCompare(String(b.bin || ""), undefined, { sensitivity: "base", numeric: true });
 }
 
 function inventoryMatchesFilters(item = {}) {
@@ -31679,6 +31725,7 @@ function inventorySearchText(item = {}) {
     item.manufacturer,
     item.partNumber,
     item.supplierSku,
+    item.supplierBarcode,
     item.specs,
     item.alternatePart,
     getInventoryLinkedAssetLabel(item),
@@ -34309,6 +34356,7 @@ function normalizeState(input) {
     manufacturer: item.manufacturer || item.brand || "",
     partNumber: item.partNumber || item.part_number || item.model || "",
     supplierSku: item.supplierSku || item.supplier_sku || "",
+    supplierBarcode: item.supplierBarcode || item.supplier_barcode || item.barcode || item.upc || item.ean || item.gtin || "",
     specs: item.specs || item.specifications || "",
     alternatePart: item.alternatePart || item.alternate_part || item.replacementPart || "",
     linkedAssetId: item.linkedAssetId || item.linked_asset_id || item.assetId || "",
@@ -35601,7 +35649,7 @@ function downloadAssetRegisterCsv(assets, filename = `asset-register-${timestamp
 
 function downloadInventoryCsv(items = visibleInventoryItems(), filename = `siteworks-inventory-${timestampForFile()}.csv`) {
   const rows = [
-    ["Customer", "Item Name", "Category", "Manufacturer", "Part Number", "Supplier SKU", "Specs", "Alternate Part", "Linked Equipment", "Quantity", "Minimum Stock", "Order Quantity", "Lead Time Days", "Last Ordered", "Expected By", "Unit Cost", "Stock Value", "Storage", "Bin", "Supplier", "NFC Tag", "Last Audited", "Last Audited By", "Notes"],
+    ["Customer", "Item Name", "Category", "Manufacturer", "Part Number", "Supplier SKU", "Supplier Barcode", "Specs", "Alternate Part", "Linked Equipment", "Quantity", "Minimum Stock", "Order Quantity", "Lead Time Days", "Last Ordered", "Expected By", "Unit Cost", "Stock Value", "Storage", "Bin", "Supplier", "NFC Tag", "Last Audited", "Last Audited By", "Notes"],
     ...items.map((item) => [
       getCustomer(item.customerId)?.name || "",
       item.name,
@@ -35609,6 +35657,7 @@ function downloadInventoryCsv(items = visibleInventoryItems(), filename = `sitew
       item.manufacturer,
       item.partNumber,
       item.supplierSku,
+      item.supplierBarcode,
       item.specs,
       item.alternatePart,
       getInventoryLinkedAssetLabel(item),
@@ -35668,6 +35717,7 @@ async function importInventoryCsv(file) {
       manufacturer: findCsvValue(row, ["Manufacturer", "Brand"]),
       partNumber: findCsvValue(row, ["Part Number", "Part #", "Model", "Model Number"]),
       supplierSku: findCsvValue(row, ["Supplier SKU", "SKU", "Vendor SKU"]),
+      supplierBarcode: findCsvValue(row, ["Supplier Barcode", "Supplier Bar Code", "Barcode", "Bar Code", "UPC", "EAN", "GTIN"]),
       specs: findCsvValue(row, ["Specs", "Specifications"]),
       alternatePart: findCsvValue(row, ["Alternate Part", "Replacement Part", "Alternate"]),
       linkedAssetId,
