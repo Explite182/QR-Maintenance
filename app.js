@@ -312,7 +312,14 @@ function mergeStructuredInventoryItemsWithLocal(structuredItems = [], localItems
   localItems.forEach((localItem) => {
     if (!localItem?.id) return;
     const remoteItem = merged.get(localItem.id);
-    if (!remoteItem) return;
+    if (!remoteItem) {
+      const isRecentLocalItem = mapUpdatedTime(localItem) > Date.now() - 10 * 60 * 1000;
+      if (isRecentLocalItem && canSyncCustomerOwnedRecord(localItem)) {
+        merged.set(localItem.id, localItem);
+        keptLocalChanges = true;
+      }
+      return;
+    }
     if (mapUpdatedTime(localItem) > mapUpdatedTime(remoteItem)) {
       merged.set(localItem.id, localItem);
       keptLocalChanges = true;
@@ -1339,21 +1346,30 @@ async function syncSingleKeyToServer(key) {
 }
 
 async function syncSingleInventoryItemToServer(item) {
-  if (!STRUCTURED_DATA_SYNC_ENABLED || !item?.id) return;
+  await syncInventoryItemsToServer([item]);
+}
+
+async function syncInventoryItemsToServer(items = []) {
+  const validItems = items.filter((item) => item?.id);
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !validItems.length) return;
   if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return;
   if (!hasAuthenticatedCloudSession()) {
     scheduleStructuredDataSync(0);
     return;
   }
   const customerId = activeCloudCustomerId();
-  if (customerId && item.customerId !== customerId) return;
+  const scopedItems = customerId
+    ? validItems.filter((item) => item.customerId === customerId)
+    : validItems;
+  if (!scopedItems.length) return;
   const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
-  if (item.customerId && !knownCustomerIds.has(item.customerId)) {
-    markSyncError("Inventory cloud save skipped because the assigned customer is missing locally.");
+  const cloudReadyItems = scopedItems.filter((item) => !item.customerId || knownCustomerIds.has(item.customerId));
+  if (!cloudReadyItems.length) {
+    markSyncError("Inventory cloud save skipped because assigned customers are missing locally.");
     return;
   }
   try {
-    await upsertStructuredRows("inventory_items", [buildStructuredInventoryItemRow(item)]);
+    await upsertStructuredRows("inventory_items", cloudReadyItems.map(buildStructuredInventoryItemRow));
     markSyncSuccess("save");
   } catch (error) {
     const message = `Inventory cloud save failed: ${error?.message || error}`;
@@ -35628,6 +35644,7 @@ async function importInventoryCsv(file) {
   const text = await file.text();
   const rows = parseCsvRows(text);
   const stats = { imported: 0, skipped: 0, customersCreated: 0, errors: [] };
+  const importedItems = [];
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
     const name = findCsvValue(row, ["Item Name", "Name", "Part", "Description"]);
@@ -35682,10 +35699,12 @@ async function importInventoryCsv(file) {
       note: "Imported from CSV"
     });
     state.inventoryItems.push(item);
+    importedItems.push(item);
     stats.imported += 1;
   });
   addActivity("Inventory CSV imported", `${stats.imported} item${stats.imported === 1 ? "" : "s"} added`);
   saveState();
+  await syncInventoryItemsToServer(importedItems);
   if (els.inventoryImportStatus) {
     els.inventoryImportStatus.textContent = stats.errors.length
       ? `Imported ${stats.imported}; skipped ${stats.skipped}.`
