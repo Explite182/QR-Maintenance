@@ -206,9 +206,14 @@ function applyStructuredState(rows, updatedAt = "") {
   const localAccessRequests = state.accessRequests || [];
   const localCurrentUserId = state.currentUserId || "";
   const localWorkOrders = state.workOrders || [];
+  const localInventoryItems = state.inventoryItems || [];
   const nextAssets = rows.assets.map(assetFromStructuredRow);
   const mergedAssetResult = mergeStructuredAssetsWithLocal(nextAssets, state.assets || []);
   const mergedAssets = mergedAssetResult.assets;
+  const mergedInventoryResult = mergeStructuredInventoryItemsWithLocal(
+    (rows.inventoryItems || []).map(inventoryItemFromStructuredRow),
+    localInventoryItems
+  );
   const historyByAsset = groupStructuredHistoryByAsset(rows.history);
   mergedAssets.forEach((asset) => {
     if (!Array.isArray(asset.history) || !asset.history.length) {
@@ -228,7 +233,7 @@ function applyStructuredState(rows, updatedAt = "") {
     ),
     serviceRequests: rows.serviceRequests.map(serviceRequestFromStructuredRow),
     preferredContractors: rows.preferredContractors.map(preferredContractorFromStructuredRow),
-    inventoryItems: (rows.inventoryItems || []).map(inventoryItemFromStructuredRow),
+    inventoryItems: mergedInventoryResult.items,
     keys: (rows.keys || []).map(keyFromStructuredRow),
     keyLogs: (rows.keyLogs || []).map(keyLogFromStructuredRow),
     siteMaps: mergeStructuredSiteMapsWithLocal(
@@ -249,7 +254,7 @@ function applyStructuredState(rows, updatedAt = "") {
   selectedId = getAssetIdFromUrl() || selectedId;
   persistLocalStateOnly(false);
   applyingSharedState = false;
-  if (mergedAssetResult.keptLocalChanges) {
+  if (mergedAssetResult.keptLocalChanges || mergedInventoryResult.keptLocalChanges) {
     scheduleStructuredDataSync(0);
   }
   render();
@@ -295,6 +300,28 @@ function mergeStructuredSiteMapsWithLocal(structuredSiteMaps = [], localSiteMaps
     }
   });
   return [...merged.values()];
+}
+
+function mergeStructuredInventoryItemsWithLocal(structuredItems = [], localItems = []) {
+  const merged = new Map();
+  let keptLocalChanges = false;
+  structuredItems.forEach((item) => {
+    if (!item?.id) return;
+    merged.set(item.id, item);
+  });
+  localItems.forEach((localItem) => {
+    if (!localItem?.id) return;
+    const remoteItem = merged.get(localItem.id);
+    if (!remoteItem) return;
+    if (mapUpdatedTime(localItem) > mapUpdatedTime(remoteItem)) {
+      merged.set(localItem.id, localItem);
+      keptLocalChanges = true;
+    }
+  });
+  return {
+    items: [...merged.values()],
+    keptLocalChanges
+  };
 }
 
 function mergeStructuredAssetsWithLocal(structuredAssets = [], localAssets = []) {
@@ -1213,6 +1240,24 @@ function buildMonitoringAlertRow(alert, cloudLocationIds = null) {
   };
 }
 
+function buildStructuredInventoryItemRow(item) {
+  return {
+    id: item.id,
+    customer_id: item.customerId || null,
+    category: item.category || "Parts",
+    name: item.name || "",
+    quantity_on_hand: Number(item.quantity || 0),
+    min_stock: Number(item.minStock || 0),
+    bin: item.bin || "",
+    supplier: item.supplier || "",
+    nfc_tag: item.nfcTag || "",
+    notes: item.notes || "",
+    created_at: item.createdAt || new Date().toISOString(),
+    updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord(item)
+  };
+}
+
 async function setMonitoringDeviceKeyOnServer(deviceId, apiKey) {
   if (!deviceId || !apiKey || !hasAuthenticatedCloudSession()) return false;
   const response = await cloudApi.rest("rpc/siteworks_monitoring_set_device_api_key", {
@@ -1290,6 +1335,30 @@ async function syncSingleKeyToServer(key) {
     setKeyNfcMessage(key, message);
     markSyncError(message);
     console.warn("Key cloud save failed.", error);
+  }
+}
+
+async function syncSingleInventoryItemToServer(item) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !item?.id) return;
+  if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return;
+  if (!hasAuthenticatedCloudSession()) {
+    scheduleStructuredDataSync(0);
+    return;
+  }
+  const customerId = activeCloudCustomerId();
+  if (customerId && item.customerId !== customerId) return;
+  const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
+  if (item.customerId && !knownCustomerIds.has(item.customerId)) {
+    markSyncError("Inventory cloud save skipped because the assigned customer is missing locally.");
+    return;
+  }
+  try {
+    await upsertStructuredRows("inventory_items", [buildStructuredInventoryItemRow(item)]);
+    markSyncSuccess("save");
+  } catch (error) {
+    const message = `Inventory cloud save failed: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn("Inventory cloud save failed.", error);
   }
 }
 
@@ -1478,21 +1547,7 @@ async function syncStructuredDataToServer() {
       console.warn(`Skipped ${skippedInventoryItems} inventory sync row(s) because their linked customer is missing locally.`);
     }
 
-    await upsertStructuredRows("inventory_items", cloudReadyInventoryItems.map((item) => ({
-      id: item.id,
-      customer_id: item.customerId || null,
-      category: item.category || "Parts",
-      name: item.name || "",
-      quantity_on_hand: Number(item.quantity || 0),
-      min_stock: Number(item.minStock || 0),
-      bin: item.bin || "",
-      supplier: item.supplier || "",
-      nfc_tag: item.nfcTag || "",
-      notes: item.notes || "",
-      created_at: item.createdAt || new Date().toISOString(),
-      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: leanCloudRecord(item)
-    })));
+    await upsertStructuredRows("inventory_items", cloudReadyInventoryItems.map(buildStructuredInventoryItemRow));
 
     const cloudReadyKeys = syncKeys.filter((key) =>
       !key.customerId || cloudCustomerIds.has(key.customerId)
@@ -8521,6 +8576,7 @@ document.addEventListener("click", async (event) => {
     item.updatedAt = new Date().toISOString();
     addActivity(item.reorderStatus === "ordered" ? "Inventory reorder marked" : "Inventory reorder cleared", item.name);
     saveState();
+    await syncSingleInventoryItemToServer(item);
     render();
     return;
   }
@@ -8546,6 +8602,7 @@ document.addEventListener("click", async (event) => {
     item.updatedAt = new Date().toISOString();
     addActivity("Inventory quantity updated", `${item.name}: ${item.quantity} on hand`);
     saveState();
+    await syncSingleInventoryItemToServer(item);
     render();
     return;
   }
@@ -8767,6 +8824,7 @@ document.addEventListener("submit", async (event) => {
     addWorkOrderHistory(workOrder, "Inventory used", note);
     addActivity("Inventory used on ticket", `${item.name} -> ${formatIssueNumber(workOrder)}`);
     saveState();
+    await syncSingleInventoryItemToServer(item);
     render();
     return;
   }
@@ -8810,10 +8868,11 @@ document.addEventListener("submit", async (event) => {
   item.updatedAt = new Date().toISOString();
   addActivity("Inventory item edited", item.name);
   saveState();
+  await syncSingleInventoryItemToServer(item);
   render();
 });
 
-document.addEventListener("submit", (event) => {
+document.addEventListener("submit", async (event) => {
   const receiveForm = event.target.closest("[data-inventory-receive-form]");
   if (!receiveForm) return;
   event.preventDefault();
@@ -8837,10 +8896,11 @@ document.addEventListener("submit", (event) => {
   item.updatedAt = new Date().toISOString();
   addActivity("Inventory stock received", `${item.name}: +${formatInventoryNumber(quantityReceived)}`);
   saveState();
+  await syncSingleInventoryItemToServer(item);
   render();
 });
 
-document.addEventListener("submit", (event) => {
+document.addEventListener("submit", async (event) => {
   const auditForm = event.target.closest("[data-inventory-audit-form]");
   if (!auditForm) return;
   event.preventDefault();
@@ -8863,6 +8923,7 @@ document.addEventListener("submit", (event) => {
   item.updatedAt = new Date().toISOString();
   addActivity("Inventory audited", `${item.name}: ${formatInventoryNumber(item.quantity)} counted`);
   saveState();
+  await syncSingleInventoryItemToServer(item);
   render();
 });
 
@@ -9546,6 +9607,7 @@ els.inventoryForm?.addEventListener("submit", async (event) => {
   state.inventoryItems.push(item);
   addActivity("Inventory item added", `${item.name} (${item.quantity} on hand)`);
   saveState();
+  await syncSingleInventoryItemToServer(item);
   els.inventoryForm.reset();
   els.inventoryQuantity.value = "0";
   els.inventoryMinStock.value = "0";
