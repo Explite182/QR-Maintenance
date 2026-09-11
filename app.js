@@ -15832,7 +15832,6 @@ function renderInventorySummaryStrip(items = inventoryItemsForCustomer()) {
   const uniqueStorageLocations = new Set(items.map((item) => item.storageLocation || "Shop").filter(Boolean));
   const uniqueBins = new Set(items.map((item) => item.bin || "").filter(Boolean));
   const supplierCount = new Set(items.map((item) => item.supplier || "").filter(Boolean)).size;
-  const barcodeItems = items.filter((item) => item.supplierBarcode || item.nfcTag);
   const totalQuantity = items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0)), 0);
   const totalValue = items.reduce((sum, item) => sum + inventoryStockValue(item), 0);
   const summaryTiles = [
@@ -15842,8 +15841,7 @@ function renderInventorySummaryStrip(items = inventoryItemsForCustomer()) {
     { label: "Ordered", value: orderedItems.length, tone: orderedItems.length ? "warn" : "info", filter: "ordered" },
     { label: "Stock value", value: formatMoney(totalValue), tone: "info", filter: "all" },
     { label: "Storage", value: uniqueStorageLocations.size, detail: `${uniqueBins.size} bin${uniqueBins.size === 1 ? "" : "s"}`, tone: "neutral", filter: "all" },
-    { label: "Suppliers", value: supplierCount, tone: "neutral", filter: "all", action: "suppliers", active: inventorySupplierPanelOpen || Boolean(inventorySupplierFilter) },
-    { label: "Barcoded", value: barcodeItems.length, tone: barcodeItems.length === items.length && items.length ? "ok" : "warn", filter: "barcoded" }
+    { label: "Suppliers", value: supplierCount, tone: "neutral", filter: "all", action: "suppliers", active: inventorySupplierPanelOpen || Boolean(inventorySupplierFilter) }
   ];
   els.inventorySummaryStrip.innerHTML = summaryTiles.map((tile) => `
     <button type="button" class="inventory-summary-tile is-${escapeAttribute(tile.tone)} ${(tile.active || (!tile.action && tile.filter !== "all" && inventoryStatusFilter === tile.filter && !inventorySupplierFilter)) ? "is-active" : ""}" data-inventory-summary-filter="${escapeAttribute(tile.filter)}"${tile.action ? ` data-inventory-summary-action="${escapeAttribute(tile.action)}"` : ""}>
@@ -26672,8 +26670,22 @@ function markSyncSuccess(type) {
 function markSyncError(message) {
   syncHealth.lastError = message || "Cloud sync failed.";
   syncHealth.lastErrorAt = new Date().toISOString();
-  setSyncBanner("error", friendlySyncErrorTitle(syncHealth.lastError), friendlySyncErrorDetail(syncHealth.lastError), 7000);
+  if (!isQuietRetryableSyncError(syncHealth.lastError)) {
+    setSyncBanner("error", friendlySyncErrorTitle(syncHealth.lastError), friendlySyncErrorDetail(syncHealth.lastError), 7000);
+  }
   renderSyncHealth();
+}
+
+function isQuietRetryableSyncError(message = "") {
+  const text = String(message || "").toLowerCase();
+  return text.includes("structured cloud load")
+    || text.includes("server data load")
+    || text.includes("server data check")
+    || text.includes("shared cloud load")
+    || text.includes("failed to fetch")
+    || text.includes("load failed")
+    || text.includes("networkerror")
+    || text.includes("network error");
 }
 
 function friendlySyncErrorTitle(message = "") {
@@ -31857,7 +31869,6 @@ function inventoryMatchesFilters(item = {}) {
   if (inventoryLocationFilter !== "all" && (item.storageLocation || "Shop") !== inventoryLocationFilter) return false;
   if (inventoryStatusFilter === "low" && !inventoryItemLowStock(item)) return false;
   if (inventoryStatusFilter === "ordered" && item.reorderStatus !== "ordered") return false;
-  if (inventoryStatusFilter === "barcoded" && !(item.supplierBarcode || item.nfcTag)) return false;
   return !inventoryQuery || inventorySearchText(item).includes(inventoryQuery);
 }
 
