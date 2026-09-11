@@ -14872,6 +14872,29 @@ button.asset-detail-card {
   background: rgba(239, 246, 255, 0.86);
 }
 
+.checkbox-grid {
+  align-items: center;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text);
+  font-weight: 900;
+}
+
+.checkbox-row input {
+  width: auto;
+  min-width: 16px;
+  margin: 0;
+}
+
 .inventory-supplier-panel {
   display: grid;
   gap: 10px;
@@ -15026,6 +15049,31 @@ button.asset-detail-card {
   flex-wrap: wrap;
   gap: 8px;
   margin: -4px 0 12px;
+}
+
+.inventory-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.inventory-pager div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inventory-pager strong {
+  color: var(--text);
 }
 
 .inventory-create-drawer {

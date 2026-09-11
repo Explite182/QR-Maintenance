@@ -553,6 +553,8 @@ function inventoryItemFromStructuredRow(row) {
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
     ...payload,
+    itemType: payload.itemType || payload.item_type || payload.type || "Product",
+    description: payload.description || "",
     storageLocation: payload.storageLocation || payload.storage_location || "Shop",
     manufacturer: payload.manufacturer || payload.brand || "",
     partNumber: payload.partNumber || payload.part_number || payload.model || "",
@@ -562,6 +564,10 @@ function inventoryItemFromStructuredRow(row) {
     alternatePart: payload.alternatePart || payload.alternate_part || payload.replacementPart || "",
     linkedAssetId: payload.linkedAssetId || payload.linked_asset_id || payload.assetId || "",
     unitCost: Number(payload.unitCost ?? payload.unit_cost ?? 0),
+    markupPercent: Number(payload.markupPercent ?? payload.markup_percent ?? 0),
+    sellPrice: Number(payload.sellPrice ?? payload.sell_price ?? payload.unitPrice ?? payload.unit_price ?? 0),
+    taxable: payload.taxable === false || payload.taxable === "false" ? false : true,
+    active: payload.active === false || payload.active === "false" ? false : true,
     reorderQuantity: Number(payload.reorderQuantity ?? payload.reorder_quantity ?? 0),
     leadTimeDays: Number(payload.leadTimeDays ?? payload.lead_time_days ?? 0),
     lastOrderedAt: payload.lastOrderedAt || payload.last_ordered_at || "",
@@ -6436,6 +6442,8 @@ let inventoryLocationFilter = "all";
 let inventoryStatusFilter = "all";
 let inventorySupplierFilter = "";
 let inventorySupplierPanelOpen = false;
+let inventoryPage = 0;
+const INVENTORY_PAGE_SIZE = 25;
 let assetStatusFilter = "all";
 let assetTemplateFilter = "all";
 let assetSort = "due";
@@ -6904,8 +6912,10 @@ const els = {
   inventoryCreateDrawer: document.getElementById("inventoryCreateDrawer"),
   inventoryForm: document.getElementById("inventoryForm"),
   inventoryCustomer: document.getElementById("inventoryCustomer"),
+  inventoryItemType: document.getElementById("inventoryItemType"),
   inventoryCategory: document.getElementById("inventoryCategory"),
   inventoryName: document.getElementById("inventoryName"),
+  inventoryDescription: document.getElementById("inventoryDescription"),
   inventoryManufacturer: document.getElementById("inventoryManufacturer"),
   inventoryPartNumber: document.getElementById("inventoryPartNumber"),
   inventorySupplierSku: document.getElementById("inventorySupplierSku"),
@@ -6914,6 +6924,10 @@ const els = {
   inventoryAlternatePart: document.getElementById("inventoryAlternatePart"),
   inventoryLinkedAsset: document.getElementById("inventoryLinkedAsset"),
   inventoryUnitCost: document.getElementById("inventoryUnitCost"),
+  inventoryMarkupPercent: document.getElementById("inventoryMarkupPercent"),
+  inventorySellPrice: document.getElementById("inventorySellPrice"),
+  inventoryTaxable: document.getElementById("inventoryTaxable"),
+  inventoryActive: document.getElementById("inventoryActive"),
   inventoryReorderQuantity: document.getElementById("inventoryReorderQuantity"),
   inventoryLeadTimeDays: document.getElementById("inventoryLeadTimeDays"),
   inventoryQuantity: document.getElementById("inventoryQuantity"),
@@ -6937,6 +6951,7 @@ const els = {
   inventorySummaryStrip: document.getElementById("inventorySummaryStrip"),
   inventorySupplierPanel: document.getElementById("inventorySupplierPanel"),
   inventoryList: document.getElementById("inventoryList"),
+  inventoryPager: document.getElementById("inventoryPager"),
   keysPanel: document.getElementById("keysPanel"),
   keyCreateDrawer: document.getElementById("keyCreateDrawer"),
   keyForm: document.getElementById("keyForm"),
@@ -8433,24 +8448,28 @@ els.inventorySearch?.addEventListener("input", () => {
   inventoryQuery = els.inventorySearch.value.trim().toLowerCase();
   focusedInventoryItemId = "";
   inventorySupplierFilter = "";
+  inventoryPage = 0;
   renderInventory();
 });
 
 els.inventoryFilterCategory?.addEventListener("change", () => {
   inventoryCategoryFilter = els.inventoryFilterCategory.value || "all";
   focusedInventoryItemId = "";
+  inventoryPage = 0;
   renderInventory();
 });
 
 els.inventoryFilterLocation?.addEventListener("change", () => {
   inventoryLocationFilter = els.inventoryFilterLocation.value || "all";
   focusedInventoryItemId = "";
+  inventoryPage = 0;
   renderInventory();
 });
 
 els.inventoryFilterStatus?.addEventListener("change", () => {
   inventoryStatusFilter = els.inventoryFilterStatus.value || "all";
   focusedInventoryItemId = "";
+  inventoryPage = 0;
   renderInventory();
 });
 
@@ -8467,6 +8486,7 @@ els.inventorySummaryStrip?.addEventListener("click", (event) => {
   inventorySupplierPanelOpen = false;
   inventoryQuery = "";
   focusedInventoryItemId = "";
+  inventoryPage = 0;
   renderInventory();
 });
 
@@ -8478,6 +8498,7 @@ els.inventorySupplierPanel?.addEventListener("click", async (event) => {
     inventoryStatusFilter = "all";
     inventoryQuery = "";
     focusedInventoryItemId = "";
+    inventoryPage = 0;
     renderInventory();
     return;
   }
@@ -8485,6 +8506,7 @@ els.inventorySupplierPanel?.addEventListener("click", async (event) => {
   if (clearButton) {
     event.preventDefault();
     inventorySupplierFilter = "";
+    inventoryPage = 0;
     renderInventory();
     return;
   }
@@ -8499,6 +8521,14 @@ els.inventorySupplierPanel?.addEventListener("click", async (event) => {
       copyButton.textContent = "Copy PO list";
     }, 1200);
   }
+});
+
+els.inventoryPager?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-inventory-page]");
+  if (!button) return;
+  inventoryPage = Math.max(0, Number(button.dataset.inventoryPage || 0));
+  focusedInventoryItemId = "";
+  renderInventory();
 });
 
 document.addEventListener("submit", (event) => {
@@ -8969,8 +8999,10 @@ document.addEventListener("submit", async (event) => {
   if (!item || !canManageInventoryCustomer(item.customerId)) return;
   const formData = new FormData(form);
   const previousQuantity = Math.max(0, Number(item.quantity || 0));
-  item.category = String(formData.get("category") || "Parts");
+  item.itemType = String(formData.get("itemType") || "Product").trim() || "Product";
+  item.category = String(formData.get("category") || "Parts").trim() || "Parts";
   item.name = String(formData.get("name") || "").trim() || item.name;
+  item.description = String(formData.get("description") || "").trim();
   item.manufacturer = String(formData.get("manufacturer") || "").trim();
   item.partNumber = String(formData.get("partNumber") || "").trim();
   item.supplierSku = String(formData.get("supplierSku") || "").trim();
@@ -8979,6 +9011,14 @@ document.addEventListener("submit", async (event) => {
   item.alternatePart = String(formData.get("alternatePart") || "").trim();
   item.linkedAssetId = String(formData.get("linkedAssetId") || "").trim();
   item.unitCost = Math.max(0, Number(formData.get("unitCost") || 0));
+  item.markupPercent = Math.max(0, Number(formData.get("markupPercent") || 0));
+  item.sellPrice = inventoryResolvedSellPrice(
+    item.unitCost,
+    item.markupPercent,
+    Math.max(0, Number(formData.get("sellPrice") || 0))
+  );
+  item.taxable = formData.get("taxable") === "on";
+  item.active = formData.get("active") === "on";
   item.reorderQuantity = Math.max(0, Number(formData.get("reorderQuantity") || 0));
   item.leadTimeDays = Math.max(0, Number(formData.get("leadTimeDays") || 0));
   item.lastOrderedAt = String(formData.get("lastOrderedAt") || "").trim();
@@ -9705,8 +9745,10 @@ els.inventoryForm?.addEventListener("submit", async (event) => {
   const item = {
     id: crypto.randomUUID(),
     customerId,
-    category: els.inventoryCategory.value || "Parts",
+    itemType: els.inventoryItemType?.value || "Product",
+    category: els.inventoryCategory?.value.trim() || "Parts",
     name,
+    description: els.inventoryDescription?.value.trim() || "",
     manufacturer: els.inventoryManufacturer?.value.trim() || "",
     partNumber: els.inventoryPartNumber?.value.trim() || "",
     supplierSku: els.inventorySupplierSku?.value.trim() || "",
@@ -9715,6 +9757,14 @@ els.inventoryForm?.addEventListener("submit", async (event) => {
     alternatePart: els.inventoryAlternatePart?.value.trim() || "",
     linkedAssetId: els.inventoryLinkedAsset?.value || "",
     unitCost: Math.max(0, Number(els.inventoryUnitCost?.value || 0)),
+    markupPercent: Math.max(0, Number(els.inventoryMarkupPercent?.value || 0)),
+    sellPrice: inventoryResolvedSellPrice(
+      Math.max(0, Number(els.inventoryUnitCost?.value || 0)),
+      Math.max(0, Number(els.inventoryMarkupPercent?.value || 0)),
+      Math.max(0, Number(els.inventorySellPrice?.value || 0))
+    ),
+    taxable: els.inventoryTaxable ? els.inventoryTaxable.checked : true,
+    active: els.inventoryActive ? els.inventoryActive.checked : true,
     reorderQuantity: Math.max(0, Number(els.inventoryReorderQuantity?.value || 0)),
     leadTimeDays: Math.max(0, Number(els.inventoryLeadTimeDays?.value || 0)),
     lastOrderedAt: "",
@@ -9745,6 +9795,8 @@ els.inventoryForm?.addEventListener("submit", async (event) => {
   els.inventoryForm.reset();
   els.inventoryQuantity.value = "0";
   els.inventoryMinStock.value = "0";
+  if (els.inventoryTaxable) els.inventoryTaxable.checked = true;
+  if (els.inventoryActive) els.inventoryActive.checked = true;
   if (els.inventoryStatus) {
     els.inventoryStatus.textContent = `Added ${item.name}.`;
     els.inventoryStatus.className = "inline-status is-ok";
@@ -15860,6 +15912,7 @@ function renderInventory() {
   renderInventorySummaryStrip(inventoryItemsForCustomer());
   if (inventorySyncPending) {
     if (els.inventoryCount) els.inventoryCount.textContent = "...";
+    if (els.inventoryPager) els.inventoryPager.innerHTML = "";
     els.inventoryList.innerHTML = `
       <div class="inventory-sync-notice">
         <strong>Refreshing stock counts...</strong>
@@ -15872,6 +15925,9 @@ function renderInventory() {
   if (focusedInventoryItemId && !items.some((item) => item.id === focusedInventoryItemId)) focusedInventoryItemId = "";
   if (els.inventoryCount) els.inventoryCount.textContent = items.length;
   renderInventorySupplierPanel(inventoryItemsForCustomer());
+  const pageCount = Math.max(1, Math.ceil(items.length / INVENTORY_PAGE_SIZE));
+  if (inventoryPage >= pageCount) inventoryPage = pageCount - 1;
+  const pagedItems = items.slice(inventoryPage * INVENTORY_PAGE_SIZE, (inventoryPage + 1) * INVENTORY_PAGE_SIZE);
   const refreshNotice = inventorySyncStillRefreshing
     ? `
       <div class="inventory-sync-notice is-soft">
@@ -15881,8 +15937,28 @@ function renderInventory() {
     `
     : "";
   els.inventoryList.innerHTML = items.length
-    ? `${refreshNotice}${renderInventoryReorderList(items)}${items.map(renderInventoryItem).join("")}`
+    ? `${refreshNotice}${renderInventoryReorderList(items)}${pagedItems.map(renderInventoryItem).join("")}`
     : `${refreshNotice}<p class="muted">No inventory items for this view yet.</p>`;
+  renderInventoryPager(items.length);
+}
+
+function renderInventoryPager(totalItems = 0) {
+  if (!els.inventoryPager) return;
+  const pageCount = Math.max(1, Math.ceil(totalItems / INVENTORY_PAGE_SIZE));
+  if (totalItems <= INVENTORY_PAGE_SIZE) {
+    els.inventoryPager.innerHTML = "";
+    return;
+  }
+  const start = inventoryPage * INVENTORY_PAGE_SIZE + 1;
+  const end = Math.min(totalItems, (inventoryPage + 1) * INVENTORY_PAGE_SIZE);
+  els.inventoryPager.innerHTML = `
+    <span>Showing ${escapeHtml(formatInventoryNumber(start))}-${escapeHtml(formatInventoryNumber(end))} of ${escapeHtml(formatInventoryNumber(totalItems))}</span>
+    <div>
+      <button type="button" class="secondary mini" data-inventory-page="${escapeAttribute(inventoryPage - 1)}" ${inventoryPage <= 0 ? "disabled" : ""}>Previous</button>
+      <strong>Page ${escapeHtml(formatInventoryNumber(inventoryPage + 1))} / ${escapeHtml(formatInventoryNumber(pageCount))}</strong>
+      <button type="button" class="secondary mini" data-inventory-page="${escapeAttribute(inventoryPage + 1)}" ${inventoryPage >= pageCount - 1 ? "disabled" : ""}>Next</button>
+    </div>
+  `;
 }
 
 function renderInventorySummaryStrip(items = inventoryItemsForCustomer()) {
@@ -16114,6 +16190,14 @@ function inventoryStockValue(item = {}) {
   return Math.max(0, Number(item.quantity || 0)) * Math.max(0, Number(item.unitCost || 0));
 }
 
+function inventoryResolvedSellPrice(unitCost = 0, markupPercent = 0, sellPrice = 0) {
+  const explicitPrice = Math.max(0, Number(sellPrice || 0));
+  if (explicitPrice > 0) return explicitPrice;
+  const cost = Math.max(0, Number(unitCost || 0));
+  const markup = Math.max(0, Number(markupPercent || 0));
+  return Math.round(cost * (1 + markup / 100) * 100) / 100;
+}
+
 function formatMoney(value) {
   const number = Math.max(0, Number(value || 0));
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "CAD", maximumFractionDigits: 2 }).format(number);
@@ -16207,10 +16291,17 @@ function renderInventoryItem(item) {
   const partNumber = item.partNumber || "";
   const linkedAsset = getAsset(item.linkedAssetId);
   const partSummary = [item.manufacturer, partNumber, item.specs].filter(Boolean).join(" | ");
+  const priceBookSummary = [
+    item.itemType || "Product",
+    item.category || "Parts",
+    item.sellPrice ? `Sell ${formatMoney(item.sellPrice)}` : "",
+    item.active === false ? "Inactive" : ""
+  ].filter(Boolean).join(" | ");
   const photoSrc = mediaSource(item.photo);
   const photoThumb = photoSrc
     ? `<button type="button" class="inventory-thumb" data-view-photo data-photo-src="${escapeAttribute(photoSrc)}" data-photo-caption="${escapeAttribute(item.photo?.name || item.name || "Inventory photo")}"><img alt="" src="${escapeAttribute(photoSrc)}"></button>`
     : `<span class="inventory-thumb inventory-thumb-empty" aria-hidden="true">${escapeHtml((item.category || "P").slice(0, 1).toUpperCase())}</span>`;
+  const descriptionPreview = item.description ? `<p>${escapeHtml(item.description)}</p>` : "";
   const notesPreview = item.notes ? `<p>${escapeHtml(item.notes)}</p>` : "";
   return `
     <details class="inventory-item inventory-item-drawer" ${item.id === focusedInventoryItemId ? "open" : ""}>
@@ -16218,8 +16309,9 @@ function renderInventoryItem(item) {
         ${photoThumb}
         <div class="inventory-main">
           <strong>${escapeHtml(item.name)}</strong>
-          <small>${escapeHtml(currentRole === "Admin" ? customerName : item.category || "Parts")}</small>
+          <small>${escapeHtml(currentRole === "Admin" ? `${customerName} | ${priceBookSummary}` : priceBookSummary)}</small>
           ${partSummary ? `<small class="inventory-part-summary">${escapeHtml(partSummary)}</small>` : ""}
+          ${descriptionPreview}
           ${notesPreview}
         </div>
         <div class="inventory-facts" aria-label="Inventory details">
@@ -16285,6 +16377,9 @@ function renderInventoryPhotoCard(item = {}) {
 
 function renderInventoryPartDetails(item = {}) {
   const details = [
+    ["Item type", item.itemType || "Product"],
+    ["Category", item.category || "Parts"],
+    ["Description", item.description],
     ["Manufacturer", item.manufacturer],
     ["Part / model #", item.partNumber],
     ["Supplier SKU", item.supplierSku],
@@ -16293,6 +16388,10 @@ function renderInventoryPartDetails(item = {}) {
     ["Alternate part", item.alternatePart],
     ["Linked equipment", getInventoryLinkedAssetLabel(item)],
     ["Unit cost", item.unitCost ? formatMoney(item.unitCost) : ""],
+    ["Markup", item.markupPercent ? `${formatInventoryNumber(item.markupPercent)}%` : ""],
+    ["Sell price", item.sellPrice ? formatMoney(item.sellPrice) : ""],
+    ["Taxable", item.taxable === false ? "No" : "Yes"],
+    ["Price book", item.active === false ? "Inactive" : "Active"],
     ["Stock value", item.unitCost ? formatMoney(inventoryStockValue(item)) : ""],
     ["Order quantity", item.reorderQuantity ? formatInventoryNumber(item.reorderQuantity) : ""],
     ["Lead time", item.leadTimeDays ? `${formatInventoryNumber(item.leadTimeDays)} day${Number(item.leadTimeDays) === 1 ? "" : "s"}` : ""],
@@ -16447,16 +16546,26 @@ function renderInventoryEditForm(item) {
     <form class="stack compact-form inventory-edit-form" data-inventory-edit-form="${escapeAttribute(item.id)}">
       <div class="form-grid">
         <label>
-          Category
-          <select name="category">
-            ${["Parts", "Material", "Tool", "Consumable"].map((category) =>
-              `<option ${item.category === category ? "selected" : ""}>${escapeHtml(category)}</option>`
+          Item type
+          <select name="itemType">
+            ${["Product", "Service", "Material", "Tool"].map((type) =>
+              `<option ${String(item.itemType || "Product") === type ? "selected" : ""}>${escapeHtml(type)}</option>`
             ).join("")}
           </select>
         </label>
         <label>
+          Category
+          <input name="category" value="${escapeAttribute(item.category || "Parts")}">
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
           Item name
           <input name="name" required value="${escapeAttribute(item.name)}">
+        </label>
+        <label>
+          Description
+          <textarea name="description" rows="2">${escapeHtml(item.description || "")}</textarea>
         </label>
       </div>
       <div class="form-grid">
@@ -16499,6 +16608,26 @@ function renderInventoryEditForm(item) {
         <label>
           Unit cost
           <input name="unitCost" type="number" min="0" step="0.01" value="${escapeAttribute(item.unitCost || "")}">
+        </label>
+      </div>
+      <div class="form-grid">
+        <label>
+          Markup %
+          <input name="markupPercent" type="number" min="0" step="0.01" value="${escapeAttribute(item.markupPercent || "")}">
+        </label>
+        <label>
+          Sell price
+          <input name="sellPrice" type="number" min="0" step="0.01" value="${escapeAttribute(item.sellPrice || "")}">
+        </label>
+      </div>
+      <div class="form-grid checkbox-grid">
+        <label class="checkbox-row">
+          <input name="taxable" type="checkbox" ${item.taxable === false ? "" : "checked"}>
+          Taxable
+        </label>
+        <label class="checkbox-row">
+          <input name="active" type="checkbox" ${item.active === false ? "" : "checked"}>
+          Active in price book
         </label>
       </div>
       <div class="form-grid">
@@ -31970,6 +32099,7 @@ function inventoryMatchesFilters(item = {}) {
   if (inventoryLocationFilter !== "all" && (item.storageLocation || "Shop") !== inventoryLocationFilter) return false;
   if (inventoryStatusFilter === "low" && !inventoryItemLowStock(item)) return false;
   if (inventoryStatusFilter === "ordered" && item.reorderStatus !== "ordered") return false;
+  if (inventoryStatusFilter === "inactive" && item.active !== false) return false;
   return !inventoryQuery || inventorySearchText(item).includes(inventoryQuery);
 }
 
@@ -31977,7 +32107,9 @@ function inventorySearchText(item = {}) {
   const customer = getCustomer(item.customerId);
   return [
     item.name,
+    item.itemType,
     item.category,
+    item.description,
     item.manufacturer,
     item.partNumber,
     item.supplierSku,
@@ -31986,6 +32118,10 @@ function inventorySearchText(item = {}) {
     item.alternatePart,
     getInventoryLinkedAssetLabel(item),
     item.unitCost ? formatMoney(item.unitCost) : "",
+    item.sellPrice ? formatMoney(item.sellPrice) : "",
+    item.markupPercent ? `${formatInventoryNumber(item.markupPercent)}%` : "",
+    item.taxable === false ? "non taxable" : "taxable",
+    item.active === false ? "inactive" : "active",
     item.storageLocation,
     item.bin,
     item.supplier,
@@ -34609,6 +34745,8 @@ function normalizeState(input) {
     quantity: Math.max(0, Number(item.quantity ?? item.quantityOnHand ?? 0)),
     minStock: Math.max(0, Number(item.minStock ?? 0)),
     storageLocation: item.storageLocation || item.storage_location || "Shop",
+    itemType: item.itemType || item.item_type || item.type || "Product",
+    description: item.description || "",
     manufacturer: item.manufacturer || item.brand || "",
     partNumber: item.partNumber || item.part_number || item.model || "",
     supplierSku: item.supplierSku || item.supplier_sku || "",
@@ -34617,6 +34755,10 @@ function normalizeState(input) {
     alternatePart: item.alternatePart || item.alternate_part || item.replacementPart || "",
     linkedAssetId: item.linkedAssetId || item.linked_asset_id || item.assetId || "",
     unitCost: Math.max(0, Number(item.unitCost ?? item.unit_cost ?? 0)),
+    markupPercent: Math.max(0, Number(item.markupPercent ?? item.markup_percent ?? 0)),
+    sellPrice: Math.max(0, Number(item.sellPrice ?? item.sell_price ?? item.unitPrice ?? item.unit_price ?? 0)),
+    taxable: item.taxable === false || item.taxable === "false" ? false : true,
+    active: item.active === false || item.active === "false" ? false : true,
     reorderQuantity: Math.max(0, Number(item.reorderQuantity ?? item.reorder_quantity ?? 0)),
     leadTimeDays: Math.max(0, Number(item.leadTimeDays ?? item.lead_time_days ?? 0)),
     lastOrderedAt: item.lastOrderedAt || item.last_ordered_at || "",
@@ -35905,10 +36047,12 @@ function downloadAssetRegisterCsv(assets, filename = `asset-register-${timestamp
 
 function downloadInventoryCsv(items = visibleInventoryItems(), filename = `siteworks-inventory-${timestampForFile()}.csv`) {
   const rows = [
-    ["Customer", "Item Name", "Category", "Manufacturer", "Part Number", "Supplier SKU", "Supplier Barcode", "Specs", "Alternate Part", "Linked Equipment", "Quantity", "Minimum Stock", "Order Quantity", "Lead Time Days", "Last Ordered", "Expected By", "Unit Cost", "Stock Value", "Storage", "Bin", "Supplier", "NFC Tag", "Last Audited", "Last Audited By", "Notes"],
+    ["Customer", "Item Type", "Item Name", "Description", "Category", "Manufacturer", "Part Number", "Supplier SKU", "Supplier Barcode", "Specs", "Alternate Part", "Linked Equipment", "Quantity", "Minimum Stock", "Order Quantity", "Lead Time Days", "Last Ordered", "Expected By", "Unit Cost", "Markup Percent", "Sell Price", "Taxable", "Active", "Stock Value", "Storage", "Bin", "Supplier", "NFC Tag", "Last Audited", "Last Audited By", "Notes"],
     ...items.map((item) => [
       getCustomer(item.customerId)?.name || "",
+      item.itemType || "Product",
       item.name,
+      item.description,
       item.category,
       item.manufacturer,
       item.partNumber,
@@ -35924,6 +36068,10 @@ function downloadInventoryCsv(items = visibleInventoryItems(), filename = `sitew
       item.lastOrderedAt,
       item.expectedBy,
       item.unitCost,
+      item.markupPercent,
+      item.sellPrice,
+      item.taxable === false ? "No" : "Yes",
+      item.active === false ? "No" : "Yes",
       inventoryStockValue(item),
       item.storageLocation,
       item.bin,
@@ -35948,11 +36096,11 @@ async function importInventoryCsv(file) {
   if (!canManageInventory()) return;
   const text = await file.text();
   const rows = parseCsvRows(text);
-  const stats = { imported: 0, skipped: 0, customersCreated: 0, errors: [] };
+  const stats = { imported: 0, updated: 0, skipped: 0, customersCreated: 0, errors: [] };
   const importedItems = [];
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
-    const name = findCsvValue(row, ["Item Name", "Name", "Part", "Description"]);
+    const name = findCsvValue(row, ["Item Name", "Name", "Part"]) || findCsvValue(row, ["Description"]);
     if (!name) {
       skipImportRow(stats, rowNumber, "Missing item name");
       return;
@@ -35965,11 +36113,19 @@ async function importInventoryCsv(file) {
     const linkedAssetId = findInventoryImportAssetId(row, customer.id);
     const now = new Date().toISOString();
     const quantity = Math.max(0, Number(findCsvValue(row, ["Quantity", "Qty", "Quantity On Hand", "On Hand"]) || 0));
-    const item = {
-      id: crypto.randomUUID(),
+    const unitCost = Math.max(0, Number(findCsvValue(row, ["Unit Cost", "Cost"]) || 0));
+    const markupPercent = Math.max(0, Number(findCsvValue(row, ["Markup Percent", "Markup %", "Markup"]) || 0));
+    const sellPrice = inventoryResolvedSellPrice(
+      unitCost,
+      markupPercent,
+      Math.max(0, Number(findCsvValue(row, ["Sell Price", "Unit Price", "Price", "Rate"]) || 0))
+    );
+    const imported = {
       customerId: customer.id,
+      itemType: findCsvValue(row, ["Item Type", "Type", "Price Book Type"]) || "Product",
       category: findCsvValue(row, ["Category"]) || "Parts",
       name,
+      description: findCsvValue(row, ["Description", "Item Description"]),
       manufacturer: findCsvValue(row, ["Manufacturer", "Brand"]),
       partNumber: findCsvValue(row, ["Part Number", "Part #", "Model", "Model Number"]),
       supplierSku: findCsvValue(row, ["Supplier SKU", "SKU", "Vendor SKU"]),
@@ -35983,7 +36139,11 @@ async function importInventoryCsv(file) {
       leadTimeDays: Math.max(0, Number(findCsvValue(row, ["Lead Time Days", "Lead Time", "Lead Days"]) || 0)),
       lastOrderedAt: findCsvValue(row, ["Last Ordered", "Last Ordered At"]),
       expectedBy: findCsvValue(row, ["Expected By", "Expected"]),
-      unitCost: Math.max(0, Number(findCsvValue(row, ["Unit Cost", "Cost"]) || 0)),
+      unitCost,
+      markupPercent,
+      sellPrice,
+      taxable: parseCsvBoolean(findCsvValue(row, ["Taxable", "Tax", "Is Taxable"]), true),
+      active: parseCsvBoolean(findCsvValue(row, ["Active", "Price Book Active", "Enabled"]), true),
       storageLocation: findCsvValue(row, ["Storage", "Storage Location"]) || "Shop",
       bin: findCsvValue(row, ["Bin", "Location / Bin", "Location Bin"]),
       supplier: findCsvValue(row, ["Supplier", "Preferred Supplier", "Vendor"]),
@@ -35993,28 +36153,56 @@ async function importInventoryCsv(file) {
       lastAuditedBy: "",
       photo: null,
       reorderStatus: "",
-      reorderMarkedAt: "",
-      createdAt: now,
-      updatedAt: now,
       movements: []
     };
-    addInventoryMovement(item, {
-      type: "initial",
-      previousQuantity: 0,
-      quantityAfter: item.quantity,
-      note: "Imported from CSV"
-    });
-    state.inventoryItems.push(item);
-    importedItems.push(item);
-    stats.imported += 1;
+    const existing = findMatchingInventoryImportItem(imported);
+    if (existing) {
+      const previousQuantity = Math.max(0, Number(existing.quantity || 0));
+      Object.assign(existing, {
+        ...imported,
+        id: existing.id,
+        createdAt: existing.createdAt || now,
+        updatedAt: now,
+        movements: existing.movements || [],
+        photo: existing.photo || null,
+        lastAuditedAt: existing.lastAuditedAt || "",
+        lastAuditedBy: existing.lastAuditedBy || "",
+        reorderMarkedAt: existing.reorderMarkedAt || ""
+      });
+      addInventoryMovement(existing, {
+        type: "edit",
+        previousQuantity,
+        quantityAfter: existing.quantity,
+        note: "Updated from CSV"
+      });
+      importedItems.push(existing);
+      stats.updated += 1;
+    } else {
+      const item = {
+        id: crypto.randomUUID(),
+        ...imported,
+        reorderMarkedAt: "",
+        createdAt: now,
+        updatedAt: now
+      };
+      addInventoryMovement(item, {
+        type: "initial",
+        previousQuantity: 0,
+        quantityAfter: item.quantity,
+        note: "Imported from CSV"
+      });
+      state.inventoryItems.push(item);
+      importedItems.push(item);
+      stats.imported += 1;
+    }
   });
-  addActivity("Inventory CSV imported", `${stats.imported} item${stats.imported === 1 ? "" : "s"} added`);
+  addActivity("Inventory CSV imported", `${stats.imported} added, ${stats.updated} updated`);
   saveState();
   await syncInventoryItemsToServer(importedItems);
   if (els.inventoryImportStatus) {
     els.inventoryImportStatus.textContent = stats.errors.length
-      ? `Imported ${stats.imported}; skipped ${stats.skipped}.`
-      : `Imported ${stats.imported} item${stats.imported === 1 ? "" : "s"}.`;
+      ? `Added ${stats.imported}; updated ${stats.updated}; skipped ${stats.skipped}.`
+      : `Added ${stats.imported}; updated ${stats.updated}.`;
     els.inventoryImportStatus.className = `inline-status ${stats.errors.length ? "is-warn" : "is-ok"}`;
   }
   render();
@@ -36030,6 +36218,30 @@ function findInventoryImportAssetId(row = {}, customerId = "") {
     (normalizedName(item.name) === normalized || normalizedName(getAssetEquipmentId(item)) === normalized)
   );
   return asset?.id || "";
+}
+
+function findMatchingInventoryImportItem(imported = {}) {
+  const customerId = imported.customerId || "";
+  const supplierBarcode = normalizedName(imported.supplierBarcode || "");
+  const supplierSku = normalizedName(imported.supplierSku || "");
+  const partNumber = normalizedName(imported.partNumber || "");
+  const supplier = normalizedName(imported.supplier || "");
+  const name = normalizedName(imported.name || "");
+  return (state.inventoryItems || []).find((item) => {
+    if (item.customerId !== customerId) return false;
+    if (supplierBarcode && normalizedName(item.supplierBarcode || "") === supplierBarcode) return true;
+    if (supplierSku && normalizedName(item.supplierSku || "") === supplierSku) return true;
+    if (partNumber && normalizedName(item.partNumber || "") === partNumber && (!supplier || normalizedName(item.supplier || "") === supplier)) return true;
+    return Boolean(name && normalizedName(item.name || "") === name && (!supplier || normalizedName(item.supplier || "") === supplier));
+  });
+}
+
+function parseCsvBoolean(value, defaultValue = true) {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return defaultValue;
+  if (["yes", "y", "true", "1", "on", "active", "enabled"].includes(text)) return true;
+  if (["no", "n", "false", "0", "off", "inactive", "disabled"].includes(text)) return false;
+  return defaultValue;
 }
 
 async function copyText(value) {

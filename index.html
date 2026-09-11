@@ -2015,18 +2015,26 @@
                   <select id="inventoryCustomer"></select>
                 </label>
                 <label>
-                  Category
-                  <select id="inventoryCategory">
-                    <option>Parts</option>
+                  Item type
+                  <select id="inventoryItemType">
+                    <option>Product</option>
+                    <option>Service</option>
                     <option>Material</option>
                     <option>Tool</option>
-                    <option>Consumable</option>
                   </select>
                 </label>
               </div>
               <label>
+                Category
+                <input id="inventoryCategory" placeholder="Electrical, HVAC, Cleaning, Safety">
+              </label>
+              <label>
                 Item name
                 <input id="inventoryName" required placeholder="Filter, belt, breaker, cleaner">
+              </label>
+              <label>
+                Description
+                <textarea id="inventoryDescription" rows="2" placeholder="Reusable quote/work order description"></textarea>
               </label>
               <div class="form-grid">
                 <label>
@@ -2068,6 +2076,26 @@
                 <label>
                   Unit cost
                   <input id="inventoryUnitCost" type="number" min="0" step="0.01" placeholder="0.00">
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Markup %
+                  <input id="inventoryMarkupPercent" type="number" min="0" step="0.01" placeholder="0">
+                </label>
+                <label>
+                  Sell price
+                  <input id="inventorySellPrice" type="number" min="0" step="0.01" placeholder="0.00">
+                </label>
+              </div>
+              <div class="form-grid checkbox-grid">
+                <label class="checkbox-row">
+                  <input id="inventoryTaxable" type="checkbox" checked>
+                  Taxable
+                </label>
+                <label class="checkbox-row">
+                  <input id="inventoryActive" type="checkbox" checked>
+                  Active in price book
                 </label>
               </div>
               <div class="form-grid">
@@ -2147,7 +2175,7 @@
                 <option value="all">All stock</option>
                 <option value="low">Low stock</option>
                 <option value="ordered">Ordered</option>
-                <option value="barcoded">Barcoded</option>
+                <option value="inactive">Inactive</option>
               </select>
             </label>
           </div>
@@ -2160,6 +2188,7 @@
             <span id="inventoryImportStatus" class="inline-status"></span>
           </div>
           <div id="inventoryList" class="inventory-list"></div>
+          <div id="inventoryPager" class="inventory-pager"></div>
           </div>
           <div id="keysPanel" class="inventory-tab-pane hidden" data-inventory-pane="keys">
             <div class="section-title inventory-subsection-title">
