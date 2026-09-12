@@ -9160,6 +9160,20 @@ document.addEventListener("submit", async (event) => {
     return;
   }
 
+  const poReceiveForm = event.target.closest("[data-inventory-po-receive-form]");
+  if (poReceiveForm) {
+    event.preventDefault();
+    if (!canManageInventory()) return;
+    const formData = new FormData(poReceiveForm);
+    await receiveInventoryPurchaseOrderLine(
+      poReceiveForm.dataset.inventoryPoReceiveForm,
+      poReceiveForm.dataset.poLineId,
+      Math.max(0, Number(formData.get("receivedQuantity") || 0)),
+      String(formData.get("receivingNote") || "").trim()
+    );
+    return;
+  }
+
   const form = event.target.closest("[data-inventory-edit-form]");
   if (!form) return;
   event.preventDefault();
@@ -11401,6 +11415,32 @@ document.addEventListener("submit", (event) => {
   event.preventDefault();
   const formData = new FormData(form);
   saveInlineAssetDetail(form.dataset.assetDetailEdit, formData.get("value"));
+});
+
+document.addEventListener("submit", (event) => {
+  const customerMapForm = event.target.closest("[data-qb-customer-map]");
+  const itemMapForm = event.target.closest("[data-qb-item-map]");
+  if (!customerMapForm && !itemMapForm) return;
+  event.preventDefault();
+  if (!canManageWorkOrders()) return;
+  const form = customerMapForm || itemMapForm;
+  const formData = new FormData(form);
+  const mappings = normalizeQuickBooksMappings(state.quickBooksMappings);
+  const payload = {
+    quickBooksName: String(formData.get("quickBooksName") || "").trim(),
+    quickBooksId: String(formData.get("quickBooksId") || "").trim(),
+    updatedAt: new Date().toISOString()
+  };
+  if (customerMapForm) {
+    mappings.customers[customerMapForm.dataset.qbCustomerMap] = payload;
+    addActivity("QuickBooks customer mapped", payload.quickBooksName || customerMapForm.dataset.qbCustomerMap);
+  } else {
+    mappings.items[itemMapForm.dataset.qbItemMap] = payload;
+    addActivity("QuickBooks item mapped", payload.quickBooksName || itemMapForm.dataset.qbItemMap);
+  }
+  state.quickBooksMappings = mappings;
+  saveState();
+  render();
 });
 
 document.addEventListener("submit", async (event) => {
@@ -16628,16 +16668,26 @@ function renderInventoryPurchaseOrderRecord(order = {}) {
       </summary>
       <div class="inventory-po-record-actions">
         <button type="button" class="secondary mini" data-inventory-po-action="ordered" data-inventory-po-id="${escapeAttribute(order.id)}" ${canManage && order.status === "Draft" ? "" : "disabled"}>Mark ordered</button>
-        <button type="button" class="secondary mini" data-inventory-po-action="received" data-inventory-po-id="${escapeAttribute(order.id)}" ${canManage && !["Received", "Closed", "Cancelled"].includes(order.status) ? "" : "disabled"}>Receive & close</button>
         <button type="button" class="secondary mini" data-inventory-po-action="cancelled" data-inventory-po-id="${escapeAttribute(order.id)}" ${canManage && !["Closed", "Cancelled"].includes(order.status) ? "" : "disabled"}>Cancel</button>
       </div>
       <div class="inventory-po-record-lines">
-        ${lines.map((line) => `
-          <span>${escapeHtml(line.supplierSku || line.partNumber || "-")}</span>
-          <strong>${escapeHtml(line.itemName)}</strong>
-          <em>${escapeHtml(formatInventoryNumber(line.receivedQuantity))}/${escapeHtml(formatInventoryNumber(line.quantity))} received</em>
-          <b>${escapeHtml(formatMoney(line.quantity * Math.max(0, Number(line.unitCost || 0))))}</b>
-        `).join("")}
+        ${lines.map((line) => {
+          const remaining = Math.max(0, Number(line.quantity || 0) - Number(line.receivedQuantity || 0));
+          const receiveDisabled = !canManage || !remaining || ["Received", "Closed", "Cancelled"].includes(order.status);
+          return `
+            <div class="inventory-po-line">
+              <span>${escapeHtml(line.supplierSku || line.partNumber || "-")}</span>
+              <strong>${escapeHtml(line.itemName)}</strong>
+              <em>Ordered ${escapeHtml(formatInventoryNumber(line.quantity))} | Received ${escapeHtml(formatInventoryNumber(line.receivedQuantity))} | Open ${escapeHtml(formatInventoryNumber(remaining))}</em>
+              <b>${escapeHtml(formatMoney(line.quantity * Math.max(0, Number(line.unitCost || 0))))}</b>
+              <form class="inventory-po-receive-form" data-inventory-po-receive-form="${escapeAttribute(order.id)}" data-po-line-id="${escapeAttribute(line.id)}">
+                <input name="receivedQuantity" type="number" min="1" max="${escapeAttribute(remaining)}" step="1" value="${escapeAttribute(remaining || 1)}" ${receiveDisabled ? "disabled" : ""}>
+                <input name="receivingNote" placeholder="Invoice, packing slip, or note" ${receiveDisabled ? "disabled" : ""}>
+                <button type="submit" class="secondary mini" ${receiveDisabled ? "disabled" : ""}>Receive line</button>
+              </form>
+            </div>
+          `;
+        }).join("")}
       </div>
       ${order.history?.length ? `
         <div class="inventory-po-history">
@@ -16831,6 +16881,49 @@ async function updateInventoryPurchaseOrderStatus(action = "", orderId = "") {
     saveState();
     render();
   }
+}
+
+async function receiveInventoryPurchaseOrderLine(orderId = "", lineId = "", receivedQuantity = 0, note = "") {
+  const order = (state.inventoryPurchaseOrders || []).find((item) => item.id === orderId);
+  if (!order || !canManageInventoryCustomer(order.customerId)) return;
+  if (["Received", "Closed", "Cancelled"].includes(order.status)) return;
+  const lines = normalizeInventoryPurchaseOrderLines(order.lines || []);
+  const lineIndex = lines.findIndex((line) => line.id === lineId);
+  if (lineIndex < 0) return;
+  const line = lines[lineIndex];
+  const remaining = Math.max(0, Number(line.quantity || 0) - Number(line.receivedQuantity || 0));
+  const quantityReceived = Math.min(remaining, Math.max(0, Number(receivedQuantity || 0)));
+  if (!quantityReceived) return;
+  const now = new Date().toISOString();
+  const item = getInventoryItem(line.itemId);
+  if (!item || !canManageInventoryCustomer(item.customerId)) return;
+
+  const previousQuantity = Math.max(0, Number(item.quantity || 0));
+  item.quantity = previousQuantity + quantityReceived;
+  item.lastOrderedAt = order.orderedAt ? toDateInputValue(new Date(order.orderedAt)) : item.lastOrderedAt || toDateInputValue(new Date());
+  addInventoryMovement(item, {
+    type: "receive",
+    previousQuantity,
+    quantityAfter: item.quantity,
+    note: [order.poNumber, order.supplier, note || "PO line received"].filter(Boolean).join(" | ")
+  });
+  item.reorderStatus = inventoryItemLowStock(item) ? item.reorderStatus || "" : "";
+  if (!inventoryItemLowStock(item)) item.expectedBy = "";
+  item.updatedAt = now;
+
+  lines[lineIndex] = {
+    ...line,
+    receivedQuantity: Number(line.receivedQuantity || 0) + quantityReceived
+  };
+  order.lines = lines;
+  const stillOpen = inventoryPurchaseOrderOpenQuantity(order);
+  order.status = stillOpen ? "Partially received" : "Received";
+  if (!stillOpen) order.receivedAt = now;
+  addInventoryPurchaseOrderHistory(order, stillOpen ? "Line received" : "Received and closed", `${formatInventoryNumber(quantityReceived)} x ${line.itemName}${note ? ` | ${note}` : ""}`);
+  addActivity("Inventory PO line received", `${order.poNumber} | ${line.itemName}: +${formatInventoryNumber(quantityReceived)}`);
+  saveState();
+  await syncSingleInventoryItemToServer(item);
+  render();
 }
 
 function inventoryReorderItemsForSupplier(supplierName = "") {
@@ -27931,7 +28024,7 @@ function renderBillingQueue() {
   if (els.billingQueueExportBtn) els.billingQueueExportBtn.disabled = !billingQueueExportRecords().length;
   if (els.billingQueueList) {
     els.billingQueueList.innerHTML = filtered.length
-      ? filtered.map(renderBillingQueueItem).join("")
+      ? `${renderQuickBooksMappingPanel(records)}${filtered.map(renderBillingQueueItem).join("")}`
       : `<p class="muted">${billingQueueFilter === "ready" ? "No tickets are ready to bill yet." : "No billing records for this view."}</p>`;
   }
 }
@@ -27978,8 +28071,122 @@ function billingQueueSummary(records = []) {
   }, { readyCount: 0, readyTotal: 0, draftTotal: 0, billedTotal: 0 });
 }
 
+function normalizeQuickBooksMappings(input = {}) {
+  const customers = input.customers && typeof input.customers === "object" ? input.customers : {};
+  const items = input.items && typeof input.items === "object" ? input.items : {};
+  return {
+    customers: Object.fromEntries(Object.entries(customers).map(([key, value]) => [
+      key,
+      {
+        quickBooksName: value?.quickBooksName || value?.name || "",
+        quickBooksId: value?.quickBooksId || value?.id || "",
+        updatedAt: value?.updatedAt || ""
+      }
+    ])),
+    items: Object.fromEntries(Object.entries(items).map(([key, value]) => [
+      key,
+      {
+        quickBooksName: value?.quickBooksName || value?.name || "",
+        quickBooksId: value?.quickBooksId || value?.id || "",
+        incomeAccount: value?.incomeAccount || "",
+        updatedAt: value?.updatedAt || ""
+      }
+    ]))
+  };
+}
+
+function billingLineMappingKey(line = {}) {
+  return line.itemId ? `inventory:${line.itemId}` : `line:${normalizedName(line.itemName || line.type || line.description || "billable-item")}`;
+}
+
+function quickBooksCustomerMapping(customerId = "") {
+  return normalizeQuickBooksMappings(state.quickBooksMappings).customers[customerId] || {};
+}
+
+function quickBooksItemMapping(line = {}) {
+  return normalizeQuickBooksMappings(state.quickBooksMappings).items[billingLineMappingKey(line)] || {};
+}
+
+function quickBooksCustomerName(customer = {}) {
+  const mapping = quickBooksCustomerMapping(customer?.id || "");
+  return mapping.quickBooksName || customer?.name || "";
+}
+
+function quickBooksItemName(line = {}) {
+  const mapping = quickBooksItemMapping(line);
+  return mapping.quickBooksName || line.itemName || line.type || "";
+}
+
+function renderQuickBooksMappingPanel(records = []) {
+  const customerRows = [...new Map(records
+    .map((record) => record.customer)
+    .filter(Boolean)
+    .map((customer) => [customer.id, customer])
+  ).values()].sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base", numeric: true }));
+  const itemRowsMap = new Map();
+  records.forEach((record) => {
+    record.lineItems.forEach((line) => {
+      const key = billingLineMappingKey(line);
+      if (!itemRowsMap.has(key)) itemRowsMap.set(key, line);
+    });
+  });
+  const itemRows = [...itemRowsMap.entries()].sort(([, a], [, b]) =>
+    String(a.itemName || a.type || "").localeCompare(String(b.itemName || b.type || ""), undefined, { sensitivity: "base", numeric: true })
+  );
+  const mappedCustomerCount = customerRows.filter((customer) => quickBooksCustomerMapping(customer.id).quickBooksName).length;
+  const mappedItemCount = itemRows.filter(([, line]) => quickBooksItemMapping(line).quickBooksName).length;
+  return `
+    <details class="quickbooks-map-panel">
+      <summary>
+        <div>
+          <strong>QuickBooks mapping</strong>
+          <small>${mappedCustomerCount}/${customerRows.length} customers mapped | ${mappedItemCount}/${itemRows.length} items mapped</small>
+        </div>
+      </summary>
+      <div class="quickbooks-map-grid">
+        <section>
+          <header>
+            <strong>Customers</strong>
+            <span>QuickBooks customer name / ID</span>
+          </header>
+          ${customerRows.length ? customerRows.map((customer) => {
+            const mapping = quickBooksCustomerMapping(customer.id);
+            return `
+              <form class="quickbooks-map-row" data-qb-customer-map="${escapeAttribute(customer.id)}">
+                <span>${escapeHtml(customer.name || "Customer")}</span>
+                <input name="quickBooksName" value="${escapeAttribute(mapping.quickBooksName || "")}" placeholder="${escapeAttribute(customer.name || "QuickBooks customer")}">
+                <input name="quickBooksId" value="${escapeAttribute(mapping.quickBooksId || "")}" placeholder="QuickBooks ID optional">
+                <button type="submit" class="secondary mini">Save</button>
+              </form>
+            `;
+          }).join("") : `<p class="muted">No customers in this billing view.</p>`}
+        </section>
+        <section>
+          <header>
+            <strong>Items / services</strong>
+            <span>QuickBooks product/service name</span>
+          </header>
+          ${itemRows.length ? itemRows.map(([key, line]) => {
+            const mapping = quickBooksItemMapping(line);
+            return `
+              <form class="quickbooks-map-row" data-qb-item-map="${escapeAttribute(key)}">
+                <span>${escapeHtml(line.itemName || line.type || "Billable item")}</span>
+                <input name="quickBooksName" value="${escapeAttribute(mapping.quickBooksName || "")}" placeholder="${escapeAttribute(line.itemName || line.type || "QuickBooks item")}">
+                <input name="quickBooksId" value="${escapeAttribute(mapping.quickBooksId || "")}" placeholder="QuickBooks ID optional">
+                <button type="submit" class="secondary mini">Save</button>
+              </form>
+            `;
+          }).join("") : `<p class="muted">No invoice lines in this billing view.</p>`}
+        </section>
+      </div>
+    </details>
+  `;
+}
+
 function renderBillingQueueItem(record) {
   const { workOrder, customer, location, asset, lineItems } = record;
+  const customerMapped = Boolean(quickBooksCustomerMapping(customer?.id || "").quickBooksName);
+  const unmappedLines = lineItems.filter((line) => !quickBooksItemMapping(line).quickBooksName).length;
   const statusLabel = billingStatusLabel(record.billingStatus);
   const statusClass = record.billingStatus === "ready"
     ? "badge-ok"
@@ -27996,6 +28203,7 @@ function renderBillingQueueItem(record) {
             <span class="drawer-param-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
             <span class="drawer-param-badge badge-muted">${escapeHtml(formatMoney(record.subtotal))}</span>
             <span class="drawer-param-badge badge-muted">Margin ${escapeHtml(formatMoney(record.margin))}</span>
+            <span class="drawer-param-badge ${customerMapped && !unmappedLines ? "badge-ok" : "badge-warn"}">${customerMapped && !unmappedLines ? "QB mapped" : `QB map ${unmappedLines + (customerMapped ? 0 : 1)} needed`}</span>
           </div>
         </div>
         <div class="ticket-summary-tools">
@@ -28273,12 +28481,13 @@ function billingQueueExportRecords() {
 
 function downloadBillingQueueCsv(records = billingQueueExportRecords(), filename = `siteworks-quickbooks-billing-${timestampForFile()}.csv`) {
   const rows = [
-    ["Customer", "Customer Email", "Billing Address", "Shipping Address", "Invoice Date", "Due Date", "Customer PO", "SiteWorks Ticket", "Location", "Equipment", "Product/Service", "Description", "Quantity", "Rate", "Amount", "Taxable", "Memo"],
+    ["Customer", "Customer Email", "Billing Address", "Shipping Address", "Invoice Date", "Due Date", "Customer PO", "SiteWorks Ticket", "Location", "Equipment", "Product/Service", "Description", "Quantity", "Rate", "Amount", "Taxable", "Memo", "QuickBooks Customer ID", "QuickBooks Item ID"],
     ...records.flatMap((record) => {
       const invoiceDate = toDateInputValue(new Date(record.workOrder.resolvedAt || record.workOrder.updatedAt || new Date()));
       const dueDate = toDateInputValue(addDays(parseLocalDate(invoiceDate), 30));
+      const customerMapping = quickBooksCustomerMapping(record.customer?.id || "");
       return record.lineItems.map((line) => [
-        record.customer?.name || "",
+        quickBooksCustomerName(record.customer),
         record.customer?.contactEmail || "",
         record.customer?.contactNotes || "",
         record.location?.address || record.location?.name || "",
@@ -28288,13 +28497,15 @@ function downloadBillingQueueCsv(records = billingQueueExportRecords(), filename
         formatIssueNumber(record.workOrder),
         record.location?.name || "",
         record.asset?.name || record.workOrder.areaName || "",
-        line.itemName || line.type,
+        quickBooksItemName(line),
         line.description,
         line.quantity,
         line.rate,
         line.amount,
         line.taxable === false ? "No" : "Yes",
-        `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed ticket"}`
+        `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed ticket"}`,
+        customerMapping.quickBooksId || "",
+        quickBooksItemMapping(line).quickBooksId || ""
       ]);
     })
   ];
@@ -35825,6 +36036,7 @@ function normalizeState(input) {
     preferredContractors: input.preferredContractors || [],
     inventoryItems: input.inventoryItems || [],
     inventoryPurchaseOrders: input.inventoryPurchaseOrders || [],
+    quickBooksMappings: input.quickBooksMappings || {},
     keys: input.keys || [],
     keyLogs: input.keyLogs || [],
     siteMaps: input.siteMaps || [],
@@ -36072,6 +36284,8 @@ function normalizeState(input) {
     history: normalizeInventoryPurchaseOrderHistory(order.history || [])
   })).filter((order) => order.customerId && order.supplier && order.lines.length);
 
+  normalized.quickBooksMappings = normalizeQuickBooksMappings(normalized.quickBooksMappings);
+
   normalized.keys = normalized.keys.map((key) => ({
     ...key,
     id: key.id || crypto.randomUUID(),
@@ -36229,6 +36443,7 @@ function emptyState() {
     preferredContractors: [],
     inventoryItems: [],
     inventoryPurchaseOrders: [],
+    quickBooksMappings: { customers: {}, items: {} },
     keys: [],
     keyLogs: [],
     siteMaps: [],
