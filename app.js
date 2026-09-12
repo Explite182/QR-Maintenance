@@ -16158,11 +16158,7 @@ function flushDeferredCloudRefreshSoon() {
 }
 
 function syncWorkDrawerBackdrop() {
-  const hasOpenWorkDrawer = Boolean(
-    focusedWorkOrderId ||
-    focusedServiceRequestId ||
-    getOpenWorkRecordDrawer()
-  );
+  const hasOpenWorkDrawer = Boolean(getOpenWorkRecordDrawer());
   els.workDrawerBackdrop?.classList.toggle("hidden", !hasOpenWorkDrawer);
 }
 
