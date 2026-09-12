@@ -15372,10 +15372,37 @@ button.asset-detail-card {
   justify-content: flex-end;
 }
 
-.service-schedule-filters .is-active {
+.service-schedule-filter-btn {
+  appearance: none;
+  min-height: 34px;
+  padding: 8px 13px;
+  border: 1px solid rgba(20, 184, 166, 0.28);
+  border-radius: 8px;
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.service-schedule-filter-btn:hover {
+  border-color: rgba(15, 118, 110, 0.55);
+  background: rgba(240, 253, 250, 0.96);
+}
+
+.service-schedule-filter-btn.is-active {
   color: #ffffff;
-  border-color: var(--primary);
-  background: var(--primary);
+  border-color: #0f766e;
+  background: #0f766e;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.18);
+}
+
+.service-schedule-filter-btn:focus-visible {
+  outline: 3px solid rgba(20, 184, 166, 0.28);
+  outline-offset: 2px;
 }
 
 .service-schedule-list,

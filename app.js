@@ -28293,7 +28293,7 @@ function renderServiceScheduleBoard(workOrders = []) {
         </div>
         <div class="service-schedule-filters">
           ${["upcoming", "today", "past", "all"].map((filter) => `
-            <button type="button" class="secondary mini ${serviceScheduleFilter === filter ? "is-active" : ""}" data-service-schedule-filter="${escapeAttribute(filter)}">${escapeHtml(filter === "past" ? "Overdue" : filter[0].toUpperCase() + filter.slice(1))}</button>
+            <button type="button" class="service-schedule-filter-btn ${serviceScheduleFilter === filter ? "is-active" : ""}" aria-pressed="${serviceScheduleFilter === filter ? "true" : "false"}" data-service-schedule-filter="${escapeAttribute(filter)}">${escapeHtml(filter === "past" ? "Overdue" : filter[0].toUpperCase() + filter.slice(1))}</button>
           `).join("")}
         </div>
       </div>
