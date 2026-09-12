@@ -71,6 +71,33 @@
     </div>
   </section>
 
+  <section id="publicQuoteScreen" class="report-screen hidden">
+    <div class="report-card public-quote-card">
+      <div>
+        <p class="eyebrow">SiteWorks quote</p>
+        <h1 id="publicQuoteTitle">Review quote</h1>
+        <p id="publicQuoteContext" class="report-context"></p>
+      </div>
+      <div id="publicQuoteBody" class="stack"></div>
+      <form id="publicQuoteForm" class="stack hidden">
+        <label>
+          Your name
+          <input id="publicQuoteName" required autocomplete="name" placeholder="Name or company">
+        </label>
+        <label>
+          Note
+          <textarea id="publicQuoteNote" rows="3" placeholder="Optional note"></textarea>
+        </label>
+        <div class="form-grid">
+          <button type="submit" name="quoteAction" value="Accepted">Accept Quote</button>
+          <button type="submit" name="quoteAction" value="Declined" class="secondary">Decline</button>
+        </div>
+        <p id="publicQuoteMessage" class="login-message"></p>
+      </form>
+      <small class="report-note">No SiteWorks login is required. This link only shows and updates this quote.</small>
+    </div>
+  </section>
+
   <section id="loginScreen" class="login-screen">
     <div class="login-card">
       <div>

@@ -6,7 +6,7 @@
 
 async function loadStructuredDataFromServer(options = {}) {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return false;
-  if (structuredDataLoading || applyingSharedState || isPublicReportUrl()) return false;
+  if (structuredDataLoading || applyingSharedState || isPublicOnlyUrl()) return false;
   if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return false;
   structuredDataLoading = true;
   try {
@@ -34,6 +34,7 @@ async function loadStructuredDataFromServer(options = {}) {
       assetRows,
       workOrderRows,
       serviceRequestRows,
+      estimateRows,
       historyRows,
       preferredContractorRows,
       inventoryItemRows,
@@ -51,6 +52,7 @@ async function loadStructuredDataFromServer(options = {}) {
       fetchStructuredRows("assets", "updated_at.asc"),
       fetchStructuredRows("work_orders", "updated_at.asc"),
       fetchStructuredRows("service_requests", "updated_at.asc"),
+      fetchOptionalStructuredRows("estimates", "updated_at.asc"),
       fetchOptionalStructuredRows("pm_history", "completed_at.asc"),
       fetchOptionalStructuredRows("preferred_contractors", "updated_at.asc"),
       fetchOptionalStructuredRows("inventory_items", "updated_at.asc"),
@@ -64,7 +66,7 @@ async function loadStructuredDataFromServer(options = {}) {
     ]);
     structuredDataLoading = false;
     structuredDataReady = true;
-    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || preferredContractorRows.length || inventoryItemRows.length || keyRows.length || keyLogRows.length || siteMapRows.length || monitoringDeviceRows.length || monitoringChannelRows.length || monitoringEventRows.length || monitoringAlertRows.length;
+    const hasRows = customerRows.length || locationRows.length || templateRows.length || assetRows.length || workOrderRows.length || serviceRequestRows.length || estimateRows.length || preferredContractorRows.length || inventoryItemRows.length || keyRows.length || keyLogRows.length || siteMapRows.length || monitoringDeviceRows.length || monitoringChannelRows.length || monitoringEventRows.length || monitoringAlertRows.length;
     if (!hasRows) {
       if (hasSharedMaintenanceData(state)) scheduleStructuredDataSync(0);
       return false;
@@ -76,6 +78,7 @@ async function loadStructuredDataFromServer(options = {}) {
       assets: assetRows,
       workOrders: workOrderRows,
       serviceRequests: serviceRequestRows,
+      estimates: estimateRows,
       history: historyRows,
       preferredContractors: preferredContractorRows,
       inventoryItems: inventoryItemRows,
@@ -158,6 +161,7 @@ async function peekStructuredCloudState() {
     { table: "assets", timestamp: "updated_at" },
     { table: "work_orders", timestamp: "updated_at" },
     { table: "service_requests", timestamp: "updated_at" },
+    { table: "estimates", timestamp: "updated_at", optional: true },
     { table: "pm_history", timestamp: "completed_at", optional: true },
     { table: "preferred_contractors", timestamp: "updated_at", optional: true },
     { table: "inventory_items", timestamp: "updated_at", optional: true },
@@ -207,6 +211,7 @@ function applyStructuredState(rows, updatedAt = "") {
   const localCurrentUserId = state.currentUserId || "";
   const localWorkOrders = state.workOrders || [];
   const localServiceRequests = state.serviceRequests || [];
+  const localEstimates = state.estimates || [];
   const localInventoryItems = state.inventoryItems || [];
   const nextAssets = rows.assets.map(assetFromStructuredRow);
   const mergedAssetResult = mergeStructuredAssetsWithLocal(nextAssets, state.assets || []);
@@ -217,6 +222,10 @@ function applyStructuredState(rows, updatedAt = "") {
   const mergedServiceRequestResult = mergeStructuredServiceRequestsWithLocal(
     rows.serviceRequests.map(serviceRequestFromStructuredRow),
     localServiceRequests
+  );
+  const mergedEstimateResult = mergeStructuredEstimatesWithLocal(
+    (rows.estimates || []).map(estimateFromStructuredRow),
+    localEstimates
   );
   const mergedAssets = mergedAssetResult.assets;
   const mergedInventoryResult = mergeStructuredInventoryItemsWithLocal(
@@ -238,6 +247,7 @@ function applyStructuredState(rows, updatedAt = "") {
     assets: mergedAssets,
     workOrders: mergedWorkOrderResult.items,
     serviceRequests: mergedServiceRequestResult.items,
+    estimates: mergedEstimateResult.items,
     preferredContractors: rows.preferredContractors.map(preferredContractorFromStructuredRow),
     inventoryItems: mergedInventoryResult.items,
     keys: (rows.keys || []).map(keyFromStructuredRow),
@@ -260,7 +270,7 @@ function applyStructuredState(rows, updatedAt = "") {
   selectedId = getAssetIdFromUrl() || selectedId;
   persistLocalStateOnly(false);
   applyingSharedState = false;
-  if (mergedAssetResult.keptLocalChanges || mergedWorkOrderResult.keptLocalChanges || mergedServiceRequestResult.keptLocalChanges || mergedInventoryResult.keptLocalChanges) {
+  if (mergedAssetResult.keptLocalChanges || mergedWorkOrderResult.keptLocalChanges || mergedServiceRequestResult.keptLocalChanges || mergedEstimateResult.keptLocalChanges || mergedInventoryResult.keptLocalChanges) {
     scheduleStructuredDataSync(0);
   }
   render();
@@ -331,6 +341,35 @@ function mergeStructuredServiceRequestsWithLocal(structuredRequests = [], localR
   localRequests.forEach((localItem) => {
     if (!localItem?.id) return;
     if (isRecentlyDeletedRecord("serviceRequests", localItem.id)) return;
+    const remoteItem = merged.get(localItem.id);
+    if (!remoteItem) {
+      const isRecentLocalItem = mapUpdatedTime(localItem) > Date.now() - 10 * 60 * 1000;
+      if (isRecentLocalItem && canSyncCustomerOwnedRecord(localItem)) {
+        merged.set(localItem.id, localItem);
+        keptLocalChanges = true;
+      }
+      return;
+    }
+    if (mapUpdatedTime(localItem) > mapUpdatedTime(remoteItem)) {
+      merged.set(localItem.id, localItem);
+      keptLocalChanges = true;
+    }
+  });
+  return {
+    items: [...merged.values()],
+    keptLocalChanges
+  };
+}
+
+function mergeStructuredEstimatesWithLocal(structuredEstimates = [], localEstimates = []) {
+  const merged = new Map();
+  let keptLocalChanges = false;
+  structuredEstimates.forEach((item) => {
+    if (!item?.id) return;
+    merged.set(item.id, item);
+  });
+  localEstimates.forEach((localItem) => {
+    if (!localItem?.id) return;
     const remoteItem = merged.get(localItem.id);
     if (!remoteItem) {
       const isRecentLocalItem = mapUpdatedTime(localItem) > Date.now() - 10 * 60 * 1000;
@@ -1060,7 +1099,7 @@ function isRemoteSharedStateNewer(remoteUpdatedAt = "") {
 
 function scheduleSharedStateSave(delay = 1200) {
   return;
-  if (!sharedStateReady || applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state) || !hasAuthenticatedCloudSession()) return;
+  if (!sharedStateReady || applyingSharedState || isPublicOnlyUrl() || !hasSharedMaintenanceData(state) || !hasAuthenticatedCloudSession()) return;
   window.clearTimeout(sharedStateSaveTimer);
   sharedStateSaveTimer = window.setTimeout(saveSharedStateToServer, delay);
 }
@@ -1101,7 +1140,7 @@ function hasAuthenticatedCloudSession() {
 }
 
 function requireServerSessionForApp(showMessage = true) {
-  if (!siteworksServerEnabled() || !currentUser || isPublicReportUrl() || isPublicKeyUrl()) return true;
+  if (!siteworksServerEnabled() || !currentUser || isPublicOnlyUrl()) return true;
   if (hasAuthenticatedCloudSession()) return true;
   currentUser = null;
   currentRole = "Customer";
@@ -1127,6 +1166,7 @@ function buildSharedStatePayload(uploadedAt) {
     assets: state.assets || [],
     workOrders: state.workOrders || [],
     serviceRequests: state.serviceRequests || [],
+    estimates: state.estimates || [],
     preferredContractors: state.preferredContractors || [],
     inventoryItems: state.inventoryItems || [],
     keys: state.keys || [],
@@ -1150,6 +1190,7 @@ function hasSharedMaintenanceData(candidate) {
     candidate?.assets?.length ||
     candidate?.workOrders?.length ||
     candidate?.serviceRequests?.length ||
+    candidate?.estimates?.length ||
     candidate?.preferredContractors?.length ||
     candidate?.inventoryItems?.length ||
     candidate?.keys?.length ||
@@ -1162,7 +1203,7 @@ function hasSharedMaintenanceData(candidate) {
 
 function scheduleStructuredDataSync(delay = 2000) {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return;
-  if (applyingSharedState || isPublicReportUrl() || !hasSharedMaintenanceData(state)) return;
+  if (applyingSharedState || isPublicOnlyUrl() || !hasSharedMaintenanceData(state)) return;
   window.clearTimeout(structuredSyncTimer);
   structuredSyncTimer = window.setTimeout(syncStructuredDataToServer, delay);
 }
@@ -1401,6 +1442,58 @@ function buildStructuredInventoryItemRow(item) {
   };
 }
 
+function estimateFromStructuredRow(row) {
+  const payload = structuredPayload(row);
+  return normalizeEstimates([{
+    id: row.id,
+    estimateNumber: row.estimate_number || payload.estimateNumber || "",
+    workOrderId: row.work_order_id || payload.workOrderId || "",
+    customerId: row.customer_id || payload.customerId || "",
+    locationId: row.location_id || payload.locationId || "",
+    assetId: row.asset_id || payload.assetId || "",
+    title: row.title || payload.title || "Estimate",
+    status: row.status || payload.status || "Draft",
+    validUntil: row.valid_until || payload.validUntil || "",
+    customerNote: row.customer_note || payload.customerNote || "",
+    lines: Array.isArray(row.lines) ? row.lines : payload.lines || [],
+    publicToken: payload.publicToken || "",
+    approvedAt: row.approved_at || payload.approvedAt || "",
+    approvedBy: row.approved_by || payload.approvedBy || "",
+    declinedAt: row.declined_at || payload.declinedAt || "",
+    declinedBy: row.declined_by || payload.declinedBy || "",
+    convertedToBillingAt: payload.convertedToBillingAt || row.converted_to_billing_at || "",
+    convertedToBillingBy: payload.convertedToBillingBy || row.converted_to_billing_by || "",
+    createdBy: payload.createdBy || row.created_by || "",
+    createdAt: row.created_at || payload.createdAt || "",
+    updatedAt: row.updated_at || payload.updatedAt || "",
+    ...payload
+  }])[0] || null;
+}
+
+function buildStructuredEstimateRow(estimate, cloudLocationIds = null) {
+  const locationId = estimate.locationId && (!cloudLocationIds || cloudLocationIds.has(estimate.locationId)) ? estimate.locationId : null;
+  return {
+    id: estimate.id,
+    estimate_number: estimate.estimateNumber || "",
+    work_order_id: estimate.workOrderId || null,
+    customer_id: estimate.customerId || null,
+    location_id: locationId,
+    asset_id: estimate.assetId || null,
+    title: estimate.title || "Estimate",
+    status: estimate.status || "Draft",
+    valid_until: estimate.validUntil || null,
+    customer_note: estimate.customerNote || "",
+    lines: normalizeEstimateLines(estimate.lines || []),
+    approved_at: estimate.approvedAt || null,
+    approved_by: estimate.approvedBy || "",
+    declined_at: estimate.declinedAt || null,
+    declined_by: estimate.declinedBy || "",
+    created_at: estimate.createdAt || new Date().toISOString(),
+    updated_at: estimate.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord({ ...estimate, locationId: locationId || estimate.locationId || "" })
+  };
+}
+
 async function setMonitoringDeviceKeyOnServer(deviceId, apiKey) {
   if (!deviceId || !apiKey || !hasAuthenticatedCloudSession()) return false;
   const response = await cloudApi.rest("rpc/siteworks_monitoring_set_device_api_key", {
@@ -1483,6 +1576,33 @@ async function syncSingleKeyToServer(key) {
 
 async function syncSingleInventoryItemToServer(item) {
   await syncInventoryItemsToServer([item]);
+}
+
+async function syncSingleEstimateToServer(estimate) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !estimate?.id) return false;
+  if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return false;
+  if (!hasAuthenticatedCloudSession()) {
+    scheduleStructuredDataSync(0);
+    return false;
+  }
+  if (!canSyncCustomerOwnedRecord(estimate)) return false;
+  const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
+  const knownWorkOrderIds = new Set((state.workOrders || []).map((workOrder) => workOrder.id).filter(Boolean));
+  if ((estimate.customerId && !knownCustomerIds.has(estimate.customerId)) || (estimate.workOrderId && !knownWorkOrderIds.has(estimate.workOrderId))) {
+    markSyncError("Estimate cloud save skipped because the linked customer or ticket is missing locally.");
+    return false;
+  }
+  const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
+  try {
+    await upsertStructuredRows("estimates", [buildStructuredEstimateRow(estimate, cloudLocationIds)]);
+    markSyncSuccess("save");
+    return true;
+  } catch (error) {
+    const message = `Estimate cloud save failed: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn("Estimate cloud save failed.", error);
+    throw error;
+  }
 }
 
 async function syncInventoryItemsToServer(items = []) {
@@ -1633,6 +1753,7 @@ async function syncStructuredDataToServer() {
     const syncAssets = (state.assets || []).filter(canSyncCustomerOwnedRecord);
     const syncWorkOrders = (state.workOrders || []).filter(canSyncCustomerOwnedRecord);
     const syncServiceRequests = (state.serviceRequests || []).filter(canSyncCustomerOwnedRecord);
+    const syncEstimates = normalizeEstimates(state.estimates || []).filter(canSyncCustomerOwnedRecord);
     const syncPreferredContractors = (state.preferredContractors || []).filter(canSyncCustomerOwnedRecord);
     const syncInventoryItems = (state.inventoryItems || []).filter(canSyncCustomerOwnedRecord);
     const syncKeys = (state.keys || []).filter(canSyncCustomerOwnedRecord);
@@ -1727,6 +1848,18 @@ async function syncStructuredDataToServer() {
     }
 
     await upsertStructuredRows("service_requests", cloudReadyServiceRequests.map((item) => buildStructuredServiceRequestRow(item, cloudLocationIds)));
+
+    const cloudWorkOrderIds = new Set(cloudReadyWorkOrders.map((item) => item.id).filter(Boolean));
+    const cloudReadyEstimates = syncEstimates.filter((estimate) =>
+      (!estimate.customerId || cloudCustomerIds.has(estimate.customerId)) &&
+      (!estimate.workOrderId || cloudWorkOrderIds.has(estimate.workOrderId))
+    );
+    const skippedEstimates = syncEstimates.length - cloudReadyEstimates.length;
+    if (skippedEstimates > 0) {
+      console.warn(`Skipped ${skippedEstimates} estimate sync row(s) because their linked customer or ticket is missing locally.`);
+    }
+
+    await upsertStructuredRows("estimates", cloudReadyEstimates.map((estimate) => buildStructuredEstimateRow(estimate, cloudLocationIds)));
 
     const cloudReadyPreferredContractors = syncPreferredContractors.filter((contractor) =>
       !contractor.customerId || cloudCustomerIds.has(contractor.customerId)
@@ -6698,6 +6831,14 @@ let publicKeyLookupState = {
   key: null,
   message: ""
 };
+let publicQuoteLookupState = {
+  id: "",
+  token: "",
+  loading: false,
+  loaded: false,
+  quote: null,
+  message: ""
+};
 let publicKeyExitTimer = null;
 let syncHealth = {
   lastCloudLoadAt: "",
@@ -6729,6 +6870,14 @@ const els = {
   publicReportNote: document.getElementById("publicReportNote"),
   publicReportContact: document.getElementById("publicReportContact"),
   publicReportMessage: document.getElementById("publicReportMessage"),
+  publicQuoteScreen: document.getElementById("publicQuoteScreen"),
+  publicQuoteTitle: document.getElementById("publicQuoteTitle"),
+  publicQuoteContext: document.getElementById("publicQuoteContext"),
+  publicQuoteBody: document.getElementById("publicQuoteBody"),
+  publicQuoteForm: document.getElementById("publicQuoteForm"),
+  publicQuoteName: document.getElementById("publicQuoteName"),
+  publicQuoteNote: document.getElementById("publicQuoteNote"),
+  publicQuoteMessage: document.getElementById("publicQuoteMessage"),
   publicKeyScreen: document.getElementById("publicKeyScreen"),
   publicKeyCard: document.getElementById("publicKeyCard"),
   publicKeyForm: document.getElementById("publicKeyForm"),
@@ -7610,6 +7759,8 @@ els.publicReportForm.addEventListener("submit", async (event) => {
 els.publicReportNote.addEventListener("invalid", () => {
   els.publicReportMessage.textContent = "Add a quick note, then tap Send to Maintenance.";
 });
+
+els.publicQuoteForm?.addEventListener("submit", submitPublicQuoteResponse);
 
 els.publicKeyCheckOutBtn?.addEventListener("click", () => submitPublicKeyAction("Check-Out"));
 els.publicKeyCheckInBtn?.addEventListener("click", () => submitPublicKeyAction("Check-In"));
@@ -11598,6 +11749,13 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const copyEstimateLinkButton = event.target.closest("[data-estimate-copy-link]");
+  if (copyEstimateLinkButton && canManageWorkOrders()) {
+    event.preventDefault();
+    copyEstimatePublicLink(copyEstimateLinkButton.dataset.estimateCopyLink);
+    return;
+  }
+
   const deleteEstimateLineButton = event.target.closest("[data-delete-estimate-line]");
   if (deleteEstimateLineButton && canManageWorkOrders()) {
     event.preventDefault();
@@ -12239,6 +12397,10 @@ function render() {
     renderPublicKeyScan();
     return;
   }
+  if (isPublicQuoteUrl()) {
+    renderPublicQuote();
+    return;
+  }
   if (isPublicReportUrl()) {
     renderPublicReport();
     return;
@@ -12343,24 +12505,26 @@ function render() {
 function renderAuth() {
   const isReport = isPublicReportUrl();
   const isPublicKey = isPublicKeyUrl();
+  const isPublicQuote = isPublicQuoteUrl();
   const isLoggedIn = Boolean(currentUser);
   const hasScannedAsset = Boolean(getAssetIdFromUrl());
-  const needsFirstAdmin = !isReport && !isPublicKey && !isLoggedIn && !hasSetupUsers();
+  const needsFirstAdmin = !isReport && !isPublicKey && !isPublicQuote && !isLoggedIn && !hasSetupUsers();
   els.publicKeyScreen?.classList.toggle("hidden", !isPublicKey);
   els.publicReportScreen.classList.toggle("hidden", !isReport);
-  els.loginScreen.classList.toggle("hidden", isReport || isPublicKey || isLoggedIn);
+  els.publicQuoteScreen?.classList.toggle("hidden", !isPublicQuote);
+  els.loginScreen.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || isLoggedIn);
   els.loginForm.classList.toggle("hidden", passwordRecoveryMode);
   els.passwordResetForm?.classList.toggle("hidden", !passwordRecoveryMode);
-  els.loginQrReportPrompt.classList.toggle("hidden", passwordRecoveryMode || isReport || isPublicKey || isLoggedIn || !hasScannedAsset);
+  els.loginQrReportPrompt.classList.toggle("hidden", passwordRecoveryMode || isReport || isPublicKey || isPublicQuote || isLoggedIn || !hasScannedAsset);
   els.userSwitcherWrap?.classList.add("hidden");
-  if (!isReport && !isPublicKey && !isLoggedIn && hasScannedAsset) {
+  if (!isReport && !isPublicKey && !isPublicQuote && !isLoggedIn && hasScannedAsset) {
     setLoginQrReportStatus(Boolean(getScannedReportAsset()));
     if (!els.loginError.textContent.trim()) setQrLoginTrace("QR ready. Log in to open equipment.");
   }
   syncLoginQrReportPrompt();
   els.firstAdminForm.classList.add("hidden");
-  els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || isPublicKey || !isLoggedIn));
-  if (isReport || isPublicKey || !isLoggedIn) return;
+  els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || !isLoggedIn));
+  if (isReport || isPublicKey || isPublicQuote || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
   els.currentUserRole.textContent = currentUser.role;
   renderUserSwitcher();
@@ -16145,7 +16309,7 @@ function isWorkRecordOpenOrFocused() {
 }
 
 function shouldDeferCloudRefresh(options = {}) {
-  if (options.forceWhileEditing || document.hidden || !currentUser || isPublicReportUrl()) return false;
+  if (options.forceWhileEditing || document.hidden || !currentUser || isPublicOnlyUrl()) return false;
   return isWorkRecordActive();
 }
 
@@ -16251,7 +16415,7 @@ function getScannedReportAsset() {
 
 function syncLoginQrReportPrompt() {
   if (!els.loginQrReportPrompt) return;
-  const isReport = isPublicReportUrl();
+  const isReport = isPublicOnlyUrl();
   const loginIsVisible = !els.loginScreen.classList.contains("hidden");
   const hasReportContext = hasScannedReportContext();
   if (isReport || !loginIsVisible || !hasReportContext) {
@@ -32904,6 +33068,7 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
         </div>
         <div class="estimate-actions">
           <button type="button" class="primary mini estimate-send-action" data-estimate-preview="${escapeAttribute(estimate.id)}">Preview</button>
+          <button type="button" class="primary mini estimate-send-action" data-estimate-copy-link="${escapeAttribute(estimate.id)}" ${lines.length ? "" : "disabled"}>Copy link</button>
           <button type="button" class="primary mini estimate-send-action" data-estimate-email="${escapeAttribute(estimate.id)}" ${lines.length ? "" : "disabled"}>Email</button>
           ${["Draft", "Sent", "Accepted", "Declined"].map((status) => `
             <button type="button" class="secondary mini" data-estimate-status="${escapeAttribute(status)}" data-estimate-id="${escapeAttribute(estimate.id)}" ${estimate.status === status ? "disabled" : ""}>${escapeHtml(status)}</button>
@@ -33230,7 +33395,60 @@ function previewEstimate(estimateId = "") {
   saveState();
 }
 
-function emailEstimate(estimateId = "") {
+function makePublicQuoteToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function getPublicQuoteUrl(estimate = {}) {
+  if (!estimate?.id || !estimate.publicToken) return "";
+  const url = new URL(getCurrentPageUrl());
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("quote", "1");
+  url.searchParams.set("e", estimate.id);
+  url.searchParams.set("t", estimate.publicToken);
+  return url.toString();
+}
+
+async function ensureEstimatePublicLink(estimateId = "") {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !workOrder) return "";
+  if (!normalizeEstimateLines(estimate.lines || []).length) {
+    alert("Add at least one estimate line before creating a customer link.");
+    return "";
+  }
+  if (!estimate.publicToken) estimate.publicToken = makePublicQuoteToken();
+  if (estimate.status === "Draft") estimate.status = "Sent";
+  estimate.linkedForCustomerAt = estimate.linkedForCustomerAt || new Date().toISOString();
+  estimate.updatedAt = new Date().toISOString();
+  addWorkOrderHistory(workOrder, "Estimate customer link prepared", `${estimate.estimateNumber} | ${formatMoney(estimateTotal(estimate, false))}`);
+  saveState();
+  try {
+    const saved = await syncSingleEstimateToServer(estimate);
+    if (!saved) throw new Error("Quote was not saved to the server.");
+  } catch (error) {
+    alert("The quote link could not be saved to the server yet. Check the connection and try again.");
+    return "";
+  }
+  return getPublicQuoteUrl(estimate);
+}
+
+async function copyEstimatePublicLink(estimateId = "") {
+  const link = await ensureEstimatePublicLink(estimateId);
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    setSyncBanner("ok", "Quote link copied", "Customer can view and accept without logging in.", 3500);
+  } catch (error) {
+    window.prompt("Copy this customer quote link:", link);
+  }
+  render();
+}
+
+async function emailEstimate(estimateId = "") {
   const details = getEstimateDetails(estimateId);
   if (!details) return;
   const { estimate, workOrder, lines, requiredTotal, fullTotal } = details;
@@ -33244,10 +33462,8 @@ function emailEstimate(estimateId = "") {
     alert("Enter a valid customer email address.");
     return;
   }
-  if (estimate.status === "Draft") {
-    estimate.status = "Sent";
-  }
-  estimate.updatedAt = new Date().toISOString();
+  const quoteLink = await ensureEstimatePublicLink(estimateId);
+  if (!quoteLink) return;
   addWorkOrderHistory(workOrder, "Estimate email draft opened", `${estimate.estimateNumber} to ${recipient.trim()}`);
   addActivity("Estimate email draft opened", `${estimate.estimateNumber} to ${recipient.trim()}`);
   saveState();
@@ -33264,13 +33480,15 @@ function emailEstimate(estimateId = "") {
     `Ticket: ${formatIssueNumber(workOrder)}`,
     `Valid until: ${estimate.validUntil ? inventoryDateLabel(estimate.validUntil) : "Not set"}`,
     "",
+    `Review and accept/decline online: ${quoteLink}`,
+    "",
     "Line items:",
     ...lines.map((line) => `- ${line.optional ? "Optional: " : ""}${line.description || line.itemName || "Estimate line"} | ${formatInventoryNumber(line.quantity)} x ${formatMoney(line.rate)} = ${formatMoney(estimateLineAmount(line))}`),
     "",
     `Required total: ${formatMoney(requiredTotal)}`,
     fullTotal !== requiredTotal ? `With options: ${formatMoney(fullTotal)}` : "",
     "",
-    "Please reply Approved or Declined, or log in to the SiteWorks customer portal to respond."
+    "Please use the link above to accept or decline the quote. No SiteWorks login is required."
   ].filter(Boolean).join("\n");
   window.location.href = `mailto:${encodeURIComponent(recipient.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
@@ -35913,9 +36131,151 @@ function isPublicReportUrl() {
   return new URLSearchParams(location.search).get("report") === "1";
 }
 
+function isPublicQuoteUrl() {
+  const params = new URLSearchParams(location.search);
+  return params.get("quote") === "1" && Boolean(params.get("e") || params.get("estimate"));
+}
+
+function isPublicOnlyUrl() {
+  return isPublicReportUrl() || isPublicKeyUrl() || isPublicQuoteUrl();
+}
+
 function isPublicKeyUrl() {
   const params = new URLSearchParams(location.search);
   return Boolean(getShortKeyUidFromPath() || params.get("kid") || params.get("keyId"));
+}
+
+function getPublicQuoteParams() {
+  const params = new URLSearchParams(location.search);
+  return {
+    id: params.get("e") || params.get("estimate") || "",
+    token: params.get("t") || params.get("token") || ""
+  };
+}
+
+async function renderPublicQuote() {
+  const { id, token } = getPublicQuoteParams();
+  if (!id || !token) {
+    els.publicQuoteTitle.textContent = "Quote link incomplete";
+    els.publicQuoteContext.textContent = "This quote link is missing details.";
+    els.publicQuoteBody.innerHTML = "";
+    els.publicQuoteForm?.classList.add("hidden");
+    return;
+  }
+  const lookupKey = `${id}:${token}`;
+  if (`${publicQuoteLookupState.id}:${publicQuoteLookupState.token}` !== lookupKey) {
+    publicQuoteLookupState = { id, token, loading: false, loaded: false, quote: null, message: "" };
+  }
+  if (!publicQuoteLookupState.loaded && !publicQuoteLookupState.loading) {
+    loadPublicQuote(id, token);
+  }
+  if (publicQuoteLookupState.loading) {
+    els.publicQuoteTitle.textContent = "Loading quote";
+    els.publicQuoteContext.textContent = "";
+    els.publicQuoteBody.innerHTML = `<p class="login-message">Loading quote...</p>`;
+    els.publicQuoteForm?.classList.add("hidden");
+    return;
+  }
+  const quote = publicQuoteLookupState.quote;
+  if (!quote) {
+    els.publicQuoteTitle.textContent = "Quote not available";
+    els.publicQuoteContext.textContent = "";
+    els.publicQuoteBody.innerHTML = `<p class="login-error">${escapeHtml(publicQuoteLookupState.message || "This quote link could not be loaded.")}</p>`;
+    els.publicQuoteForm?.classList.add("hidden");
+    return;
+  }
+  const lines = normalizeEstimateLines(quote.lines || []);
+  const requiredTotal = Number(quote.required_total ?? quote.requiredTotal ?? lines.filter((line) => !line.optional).reduce((sum, line) => sum + estimateLineAmount(line), 0));
+  const fullTotal = Number(quote.full_total ?? quote.fullTotal ?? lines.reduce((sum, line) => sum + estimateLineAmount(line), 0));
+  const isClosed = ["Accepted", "Declined"].includes(quote.status);
+  els.publicQuoteTitle.textContent = `${quote.estimate_number || quote.estimateNumber || "Quote"} | ${quote.title || "Review quote"}`;
+  els.publicQuoteContext.textContent = [quote.customer_name, quote.location_name, quote.asset_name].filter(Boolean).join(" | ");
+  els.publicQuoteBody.innerHTML = `
+    <article class="public-quote-summary">
+      <div>
+        <span>Status</span>
+        <strong>${escapeHtml(quote.status || "Sent")}</strong>
+      </div>
+      <div>
+        <span>Valid until</span>
+        <strong>${escapeHtml(quote.valid_until ? inventoryDateLabel(quote.valid_until) : "Not set")}</strong>
+      </div>
+      <div>
+        <span>Required total</span>
+        <strong>${escapeHtml(formatMoney(requiredTotal))}</strong>
+      </div>
+    </article>
+    <div class="public-quote-lines">
+      ${lines.map((line) => `
+        <div class="public-quote-line">
+          <span>${escapeHtml(line.optional ? "Optional" : line.type || "Service")}</span>
+          <strong>${escapeHtml(line.description || line.itemName || "Quote line")}</strong>
+          <em>${escapeHtml(formatInventoryNumber(line.quantity))} x ${escapeHtml(formatMoney(line.rate))}</em>
+          <b>${escapeHtml(formatMoney(estimateLineAmount(line)))}</b>
+        </div>
+      `).join("") || `<p class="muted">No quote lines were found.</p>`}
+    </div>
+    ${fullTotal !== requiredTotal ? `<p class="report-context">With optional items: ${escapeHtml(formatMoney(fullTotal))}</p>` : ""}
+  `;
+  els.publicQuoteForm?.classList.toggle("hidden", isClosed);
+  if (els.publicQuoteMessage) {
+    els.publicQuoteMessage.textContent = isClosed
+      ? `This quote has already been ${String(quote.status || "").toLowerCase()}.`
+      : publicQuoteLookupState.message || "";
+  }
+}
+
+async function loadPublicQuote(id, token) {
+  publicQuoteLookupState.loading = true;
+  renderPublicQuote();
+  try {
+    const response = await siteworksApi.loadPublicQuote(id, token);
+    if (!response.ok) throw new Error(await response.text());
+    publicQuoteLookupState.quote = await response.json();
+    publicQuoteLookupState.loaded = true;
+    publicQuoteLookupState.message = "";
+  } catch (error) {
+    console.warn("Public quote load failed.", error);
+    publicQuoteLookupState.quote = null;
+    publicQuoteLookupState.loaded = true;
+    publicQuoteLookupState.message = readableServerError(error?.message || error) || "Quote could not be loaded.";
+  } finally {
+    publicQuoteLookupState.loading = false;
+    renderPublicQuote();
+  }
+}
+
+async function submitPublicQuoteResponse(event) {
+  event.preventDefault();
+  const { id, token } = getPublicQuoteParams();
+  const action = event.submitter?.value || "Accepted";
+  const name = els.publicQuoteName?.value.trim() || "";
+  if (!name) {
+    els.publicQuoteMessage.textContent = "Enter your name before sending.";
+    els.publicQuoteName?.focus();
+    return;
+  }
+  const buttons = [...(els.publicQuoteForm?.querySelectorAll("button") || [])];
+  buttons.forEach((button) => { button.disabled = true; });
+  els.publicQuoteMessage.textContent = action === "Accepted" ? "Accepting quote..." : "Declining quote...";
+  try {
+    const response = await siteworksApi.respondPublicQuote(id, token, {
+      status: action,
+      name,
+      note: els.publicQuoteNote?.value.trim() || ""
+    });
+    if (!response.ok) throw new Error(await response.text());
+    publicQuoteLookupState.quote = await response.json();
+    publicQuoteLookupState.loaded = true;
+    publicQuoteLookupState.message = action === "Accepted" ? "Quote accepted. Thank you." : "Quote declined. Thank you.";
+    els.publicQuoteForm?.reset();
+  } catch (error) {
+    console.warn("Public quote response failed.", error);
+    publicQuoteLookupState.message = `Quote was not updated: ${readableServerError(error?.message || error) || "Try again."}`;
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+    renderPublicQuote();
+  }
 }
 
 async function renderPublicKeyScan() {
@@ -36476,7 +36836,7 @@ function structuredTableScopeQuery(table) {
   if (!customerId) return "";
   if (table === "customers") return `id=eq.${encodeURIComponent(customerId)}`;
   if (table === "pm_templates") return customerScopeQuery("customer_id", { includeShared: true });
-  if (["locations", "assets", "work_orders", "service_requests", "preferred_contractors", "inventory_items", "keys", "key_logs", "monitoring_devices", "monitoring_channels", "monitoring_events", "monitoring_alerts"].includes(table)) {
+  if (["locations", "assets", "work_orders", "service_requests", "estimates", "preferred_contractors", "inventory_items", "keys", "key_logs", "monitoring_devices", "monitoring_channels", "monitoring_events", "monitoring_alerts"].includes(table)) {
     return customerScopeQuery("customer_id");
   }
   return "";
@@ -36641,6 +37001,21 @@ const siteworksApi = {
   loadPublicReports() {
     if (siteworksServerEnabled()) return this.server("/api/public/reports?limit=50");
     return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+  },
+  loadPublicQuote(estimateId, token) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response("SiteWorks server is required for public quote links.", { status: 503 }));
+    const params = new URLSearchParams({ token: token || "" });
+    return this.server(`/api/public/quotes/${encodeURIComponent(estimateId)}?${params.toString()}`);
+  },
+  respondPublicQuote(estimateId, token, payload) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response("SiteWorks server is required for public quote links.", { status: 503 }));
+    return this.server(`/api/public/quotes/${encodeURIComponent(estimateId)}/respond`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...payload,
+        token
+      })
+    });
   },
   loadNotifications(status = "active") {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ notifications: [] }), { status: 200 }));
@@ -37468,7 +37843,7 @@ function fallbackProfileFromAuthUser(authUser) {
 }
 
 function restoreSavedSessionUser() {
-  if (currentUser || isPublicReportUrl()) return;
+  if (currentUser || isPublicOnlyUrl()) return;
   const user = getRememberedTestUser() || findStateUserForCurrentSession();
   if (!user || user.username === "scan-customer") return;
   currentUser = user;

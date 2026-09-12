@@ -98,6 +98,74 @@ html[data-theme="dark"] body {
   line-height: 1.4;
 }
 
+.public-quote-card {
+  width: min(760px, 100%);
+}
+
+.public-quote-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.public-quote-summary > div,
+.public-quote-line {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fcfb;
+}
+
+.public-quote-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+}
+
+.public-quote-summary span,
+.public-quote-line span,
+.public-quote-line em {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.public-quote-summary strong {
+  font-size: 18px;
+}
+
+.public-quote-lines {
+  display: grid;
+  gap: 10px;
+}
+
+.public-quote-line {
+  display: grid;
+  grid-template-columns: 90px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+}
+
+.public-quote-line b {
+  text-align: right;
+}
+
+@media (max-width: 680px) {
+  .public-quote-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .public-quote-line {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .public-quote-line b {
+    text-align: left;
+  }
+}
+
 .login-error {
   min-height: 18px;
   margin: 0;
