@@ -11584,6 +11584,20 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const previewEstimateButton = event.target.closest("[data-estimate-preview]");
+  if (previewEstimateButton && canManageWorkOrders()) {
+    event.preventDefault();
+    previewEstimate(previewEstimateButton.dataset.estimatePreview);
+    return;
+  }
+
+  const emailEstimateButton = event.target.closest("[data-estimate-email]");
+  if (emailEstimateButton && canManageWorkOrders()) {
+    event.preventDefault();
+    emailEstimate(emailEstimateButton.dataset.estimateEmail);
+    return;
+  }
+
   const deleteEstimateLineButton = event.target.closest("[data-delete-estimate-line]");
   if (deleteEstimateLineButton && canManageWorkOrders()) {
     event.preventDefault();
@@ -32889,6 +32903,8 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
           ${estimate.convertedToBillingAt ? `<span>Billing lines created ${escapeHtml(formatDateTime(new Date(estimate.convertedToBillingAt)))}</span>` : ""}
         </div>
         <div class="estimate-actions">
+          <button type="button" class="primary mini estimate-send-action" data-estimate-preview="${escapeAttribute(estimate.id)}">Preview</button>
+          <button type="button" class="primary mini estimate-send-action" data-estimate-email="${escapeAttribute(estimate.id)}" ${lines.length ? "" : "disabled"}>Email</button>
           ${["Draft", "Sent", "Accepted", "Declined"].map((status) => `
             <button type="button" class="secondary mini" data-estimate-status="${escapeAttribute(status)}" data-estimate-id="${escapeAttribute(estimate.id)}" ${estimate.status === status ? "disabled" : ""}>${escapeHtml(status)}</button>
           `).join("")}
@@ -33093,6 +33109,170 @@ function convertEstimateToBillingLines(estimateId = "") {
   addActivity("Estimate moved to billing", `${estimate.estimateNumber} - ${formatIssueNumber(workOrder)}`);
   saveState();
   render();
+}
+
+function getEstimateDetails(estimateId = "") {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !workOrder) return null;
+  const customer = getCustomer(estimate.customerId || workOrder.customerId);
+  const locationRecord = getLocation(estimate.locationId || workOrder.locationId);
+  const asset = getAsset(estimate.assetId || workOrder.assetId);
+  const lines = normalizeEstimateLines(estimate.lines || []);
+  return {
+    estimate,
+    workOrder,
+    customer,
+    locationRecord,
+    asset,
+    lines,
+    requiredTotal: estimateTotal(estimate, false),
+    fullTotal: estimateTotal(estimate, true),
+    customerEmail: customer?.contactEmail || locationRecord?.contactEmail || customer?.reportEmailTo || "",
+    context: [customer?.name, locationRecord?.name, asset?.name || workOrder.areaName].filter(Boolean).join(" | ")
+  };
+}
+
+function buildEstimatePreviewHtml(details) {
+  const { estimate, workOrder, customer, locationRecord, asset, lines, requiredTotal, fullTotal } = details;
+  const requiredLines = lines.filter((line) => !line.optional);
+  const optionalLines = lines.filter((line) => line.optional);
+  const lineRows = (items) => items.map((line) => `
+    <tr>
+      <td>${escapeHtml(line.type || "Service")}</td>
+      <td><strong>${escapeHtml(line.description || line.itemName || "Estimate line")}</strong></td>
+      <td>${escapeHtml(formatInventoryNumber(line.quantity))}</td>
+      <td>${escapeHtml(formatMoney(line.rate))}</td>
+      <td>${escapeHtml(formatMoney(estimateLineAmount(line)))}</td>
+    </tr>
+  `).join("");
+  return `<!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${escapeHtml(estimate.estimateNumber || "Estimate")} - ${escapeHtml(estimate.title || "Estimate")}</title>
+        <style>
+          body { margin: 0; padding: 32px; background: #eef4f2; color: #172126; font-family: Arial, sans-serif; }
+          main { max-width: 860px; margin: 0 auto; padding: 34px; border: 1px solid #d8e4e0; border-radius: 14px; background: #fff; }
+          header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 3px solid #0f766e; padding-bottom: 18px; margin-bottom: 24px; }
+          h1, h2, p { margin: 0; }
+          h1 { color: #14566b; font-size: 28px; }
+          h2 { margin-top: 28px; margin-bottom: 10px; color: #0f766e; font-size: 16px; text-transform: uppercase; letter-spacing: .04em; }
+          .meta { color: #5f7178; line-height: 1.5; }
+          .box { display: grid; gap: 6px; padding: 14px; border: 1px solid #d8e4e0; border-radius: 10px; background: #f8fcfb; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { padding: 10px; border-bottom: 1px solid #d8e4e0; text-align: left; vertical-align: top; }
+          th { color: #5f7178; font-size: 12px; text-transform: uppercase; }
+          td:nth-child(3), td:nth-child(4), td:nth-child(5), th:nth-child(3), th:nth-child(4), th:nth-child(5) { text-align: right; }
+          .totals { margin-left: auto; margin-top: 18px; width: min(340px, 100%); }
+          .totals div { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #d8e4e0; font-weight: 700; }
+          .total { color: #0f766e; font-size: 20px; }
+          .footer { margin-top: 32px; color: #5f7178; font-size: 13px; line-height: 1.5; }
+          @media print { body { background: #fff; padding: 0; } main { border: 0; border-radius: 0; } button { display: none; } }
+        </style>
+      </head>
+      <body>
+        <main>
+          <header>
+            <div>
+              <p class="meta">SiteWorks Estimate / Quote</p>
+              <h1>${escapeHtml(estimate.estimateNumber || "Estimate")}</h1>
+              <p>${escapeHtml(estimate.title || workOrder.title || "Estimate")}</p>
+            </div>
+            <div class="box">
+              <strong>${escapeHtml(estimate.status || "Draft")}</strong>
+              <span>Valid until ${escapeHtml(estimate.validUntil ? inventoryDateLabel(estimate.validUntil) : "Not set")}</span>
+              <span>Ticket ${escapeHtml(formatIssueNumber(workOrder))}</span>
+            </div>
+          </header>
+          <section class="box">
+            <strong>${escapeHtml(customer?.name || "Customer")}</strong>
+            <span>${escapeHtml(locationRecord?.name || "Location not set")}</span>
+            <span>${escapeHtml(asset?.name || workOrder.areaName || "Equipment / area")}</span>
+          </section>
+          <h2>Required Work</h2>
+          <table>
+            <thead><tr><th>Type</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+            <tbody>${requiredLines.length ? lineRows(requiredLines) : `<tr><td colspan="5">No required lines entered.</td></tr>`}</tbody>
+          </table>
+          ${optionalLines.length ? `
+            <h2>Optional Items</h2>
+            <table>
+              <thead><tr><th>Type</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+              <tbody>${lineRows(optionalLines)}</tbody>
+            </table>
+          ` : ""}
+          <section class="totals">
+            <div><span>Required total</span><strong>${escapeHtml(formatMoney(requiredTotal))}</strong></div>
+            ${fullTotal !== requiredTotal ? `<div><span>With options</span><strong>${escapeHtml(formatMoney(fullTotal))}</strong></div>` : ""}
+            <div class="total"><span>Total</span><strong>${escapeHtml(formatMoney(requiredTotal))}</strong></div>
+          </section>
+          <p class="footer">Reply to this quote to approve, decline, or ask questions. Prices are valid until the date shown above unless otherwise noted.</p>
+          <button onclick="window.print()">Print / Save PDF</button>
+        </main>
+      </body>
+    </html>`;
+}
+
+function previewEstimate(estimateId = "") {
+  const details = getEstimateDetails(estimateId);
+  if (!details) return;
+  const previewWindow = window.open("", "_blank");
+  if (!previewWindow) {
+    alert("Pop-up blocked. Please allow pop-ups for SiteWorks to preview the quote.");
+    return;
+  }
+  previewWindow.document.write(buildEstimatePreviewHtml(details));
+  previewWindow.document.close();
+  previewWindow.focus();
+  addWorkOrderHistory(details.workOrder, "Estimate preview opened", `${details.estimate.estimateNumber} | ${formatMoney(details.requiredTotal)}`);
+  addActivity("Estimate preview opened", `${details.estimate.estimateNumber} - ${details.estimate.title || details.workOrder.title || "Estimate"}`);
+  saveState();
+}
+
+function emailEstimate(estimateId = "") {
+  const details = getEstimateDetails(estimateId);
+  if (!details) return;
+  const { estimate, workOrder, lines, requiredTotal, fullTotal } = details;
+  if (!lines.length) {
+    alert("Add at least one estimate line before emailing this quote.");
+    return;
+  }
+  const recipient = window.prompt("Customer email address:", details.customerEmail || "");
+  if (recipient === null) return;
+  if (!isEmailAddress(recipient.trim())) {
+    alert("Enter a valid customer email address.");
+    return;
+  }
+  if (estimate.status === "Draft") {
+    estimate.status = "Sent";
+  }
+  estimate.updatedAt = new Date().toISOString();
+  addWorkOrderHistory(workOrder, "Estimate email draft opened", `${estimate.estimateNumber} to ${recipient.trim()}`);
+  addActivity("Estimate email draft opened", `${estimate.estimateNumber} to ${recipient.trim()}`);
+  saveState();
+  render();
+  const subject = `SiteWorks Quote ${estimate.estimateNumber}: ${estimate.title || workOrder.title || "Estimate"}`;
+  const body = [
+    `Hello,`,
+    "",
+    `Please review the quote below.`,
+    "",
+    `Quote: ${estimate.estimateNumber}`,
+    `Title: ${estimate.title || workOrder.title || "Estimate"}`,
+    `Customer / location: ${details.context || "Not set"}`,
+    `Ticket: ${formatIssueNumber(workOrder)}`,
+    `Valid until: ${estimate.validUntil ? inventoryDateLabel(estimate.validUntil) : "Not set"}`,
+    "",
+    "Line items:",
+    ...lines.map((line) => `- ${line.optional ? "Optional: " : ""}${line.description || line.itemName || "Estimate line"} | ${formatInventoryNumber(line.quantity)} x ${formatMoney(line.rate)} = ${formatMoney(estimateLineAmount(line))}`),
+    "",
+    `Required total: ${formatMoney(requiredTotal)}`,
+    fullTotal !== requiredTotal ? `With options: ${formatMoney(fullTotal)}` : "",
+    "",
+    "Please reply Approved or Declined, or log in to the SiteWorks customer portal to respond."
+  ].filter(Boolean).join("\n");
+  window.location.href = `mailto:${encodeURIComponent(recipient.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 function renderEditAssetTemplateOptions(customerId, selectedTemplateId = "") {

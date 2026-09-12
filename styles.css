@@ -15827,6 +15827,18 @@ button.asset-detail-card {
   justify-content: flex-end;
 }
 
+.estimate-actions .estimate-send-action {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.estimate-actions .estimate-send-action:disabled {
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(226, 232, 240, 0.8);
+  color: var(--muted);
+}
+
 .estimate-lines {
   display: grid;
   gap: 6px;
