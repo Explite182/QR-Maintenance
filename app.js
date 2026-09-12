@@ -6937,6 +6937,7 @@ const els = {
   billingQueueCount: document.getElementById("billingQueueCount"),
   billingQueueFilter: document.getElementById("billingQueueFilter"),
   billingQueueExportBtn: document.getElementById("billingQueueExportBtn"),
+  billingQueueExportMapBtn: document.getElementById("billingQueueExportMapBtn"),
   billingQueueSendQuickBooksBtn: document.getElementById("billingQueueSendQuickBooksBtn"),
   billingQueueSummary: document.getElementById("billingQueueSummary"),
   billingQueueList: document.getElementById("billingQueueList"),
@@ -9338,8 +9339,21 @@ els.billingQueueExportBtn?.addEventListener("click", () => {
   downloadBillingQueueCsv();
 });
 
+els.billingQueueExportMapBtn?.addEventListener("click", () => {
+  downloadQuickBooksMappingCsv();
+});
+
 els.billingQueueSendQuickBooksBtn?.addEventListener("click", () => {
-  alert("Live QuickBooks Online sync is not connected yet. Use Export QuickBooks CSV for now.");
+  const diagnostics = quickBooksExportDiagnostics();
+  alert([
+    "QuickBooks Online live sync is not connected yet.",
+    "",
+    `Ready invoices: ${diagnostics.readyRecords.length}`,
+    `Invoice lines: ${diagnostics.lineCount}`,
+    `Missing mappings: ${diagnostics.missingCustomers.length + diagnostics.missingItems.length}`,
+    "",
+    "For now, use Export QuickBooks CSV. The mapping file can be used to clean up customer and product/service names before live sync is connected."
+  ].join("\n"));
 });
 
 els.statusFilter.addEventListener("change", () => {
@@ -11520,6 +11534,7 @@ document.addEventListener("submit", (event) => {
     mappings.customers[customerMapForm.dataset.qbCustomerMap] = payload;
     addActivity("QuickBooks customer mapped", payload.quickBooksName || customerMapForm.dataset.qbCustomerMap);
   } else {
+    payload.incomeAccount = String(formData.get("incomeAccount") || "").trim();
     mappings.items[itemMapForm.dataset.qbItemMap] = payload;
     addActivity("QuickBooks item mapped", payload.quickBooksName || itemMapForm.dataset.qbItemMap);
   }
@@ -28466,13 +28481,17 @@ function renderBillingQueue() {
       <article><strong>${escapeHtml(formatMoney(summary.readyTotal))}</strong><span>Ready total</span></article>
       <article><strong>${escapeHtml(formatMoney(summary.draftTotal))}</strong><span>Needs review</span></article>
       <article><strong>${escapeHtml(formatMoney(summary.billedTotal))}</strong><span>Billed</span></article>
+      <article><strong>${escapeHtml(formatMoney(summary.readyProfit))}</strong><span>Ready profit</span></article>
     `;
   }
-  if (els.billingQueueExportBtn) els.billingQueueExportBtn.disabled = !billingQueueExportRecords().length;
+  const diagnostics = quickBooksExportDiagnostics(records);
+  if (els.billingQueueExportBtn) els.billingQueueExportBtn.disabled = !diagnostics.readyRecords.length;
+  if (els.billingQueueExportMapBtn) els.billingQueueExportMapBtn.disabled = !records.length;
   if (els.billingQueueList) {
+    const prepPanel = records.length ? `${renderQuickBooksExportReadiness(diagnostics)}${renderQuickBooksMappingPanel(records)}` : "";
     els.billingQueueList.innerHTML = filtered.length
-      ? `${renderQuickBooksMappingPanel(records)}${filtered.map(renderBillingQueueItem).join("")}`
-      : `<p class="muted">${billingQueueFilter === "ready" ? "No tickets are ready to bill yet." : "No billing records for this view."}</p>`;
+      ? `${prepPanel}${filtered.map(renderBillingQueueItem).join("")}`
+      : `${prepPanel}<p class="muted">${billingQueueFilter === "ready" ? "No tickets are ready to bill yet." : "No billing records for this view."}</p>`;
   }
 }
 
@@ -28570,13 +28589,14 @@ function billingQueueSummary(records = []) {
     if (record.billingStatus === "ready") {
       summary.readyCount += 1;
       summary.readyTotal += record.subtotal;
+      summary.readyProfit += record.margin;
     } else if (record.billingStatus === "billed") {
       summary.billedTotal += record.subtotal;
     } else {
       summary.draftTotal += record.subtotal;
     }
     return summary;
-  }, { readyCount: 0, readyTotal: 0, draftTotal: 0, billedTotal: 0 });
+  }, { readyCount: 0, readyTotal: 0, readyProfit: 0, draftTotal: 0, billedTotal: 0 });
 }
 
 function normalizeQuickBooksMappings(input = {}) {
@@ -28625,6 +28645,65 @@ function quickBooksItemName(line = {}) {
   return mapping.quickBooksName || line.itemName || line.type || "";
 }
 
+function quickBooksExportDiagnostics(records = billingQueueRecords()) {
+  const readyRecords = (records || []).filter((record) => record.billingStatus === "ready");
+  const missingCustomerMap = new Map();
+  const missingItemMap = new Map();
+  let lineCount = 0;
+  let emptyLineRecords = 0;
+  let zeroAmountLines = 0;
+  readyRecords.forEach((record) => {
+    if (!quickBooksCustomerMapping(record.customer?.id || "").quickBooksName) {
+      const key = record.customer?.id || record.customer?.name || "unknown-customer";
+      if (!missingCustomerMap.has(key)) missingCustomerMap.set(key, record.customer?.name || "Unknown customer");
+    }
+    if (!record.lineItems.length) emptyLineRecords += 1;
+    record.lineItems.forEach((line) => {
+      lineCount += 1;
+      if (!Number(line.amount || 0)) zeroAmountLines += 1;
+      if (!quickBooksItemMapping(line).quickBooksName) {
+        const key = billingLineMappingKey(line);
+        if (!missingItemMap.has(key)) missingItemMap.set(key, line.itemName || line.type || line.description || "Billable item");
+      }
+    });
+  });
+  return {
+    records: records || [],
+    readyRecords,
+    lineCount,
+    emptyLineRecords,
+    zeroAmountLines,
+    missingCustomers: [...missingCustomerMap.values()].sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: "base", numeric: true })),
+    missingItems: [...missingItemMap.values()].sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: "base", numeric: true }))
+  };
+}
+
+function renderQuickBooksExportReadiness(diagnostics = quickBooksExportDiagnostics()) {
+  const mappingGapCount = diagnostics.missingCustomers.length + diagnostics.missingItems.length;
+  const readyClass = diagnostics.readyRecords.length && !mappingGapCount && !diagnostics.emptyLineRecords && !diagnostics.zeroAmountLines
+    ? "is-ready"
+    : "is-review";
+  const warnings = [
+    diagnostics.missingCustomers.length ? `${diagnostics.missingCustomers.length} customer mapping${diagnostics.missingCustomers.length === 1 ? "" : "s"} missing` : "",
+    diagnostics.missingItems.length ? `${diagnostics.missingItems.length} product/service mapping${diagnostics.missingItems.length === 1 ? "" : "s"} missing` : "",
+    diagnostics.emptyLineRecords ? `${diagnostics.emptyLineRecords} ready ticket${diagnostics.emptyLineRecords === 1 ? "" : "s"} with no invoice lines` : "",
+    diagnostics.zeroAmountLines ? `${diagnostics.zeroAmountLines} zero-dollar line${diagnostics.zeroAmountLines === 1 ? "" : "s"}` : ""
+  ].filter(Boolean);
+  return `
+    <section class="quickbooks-export-card ${escapeAttribute(readyClass)}">
+      <div>
+        <strong>QuickBooks export readiness</strong>
+        <span>${escapeHtml(diagnostics.readyRecords.length ? `${formatInventoryNumber(diagnostics.readyRecords.length)} invoice${diagnostics.readyRecords.length === 1 ? "" : "s"} ready | ${formatInventoryNumber(diagnostics.lineCount)} line${diagnostics.lineCount === 1 ? "" : "s"}` : "No ready invoices yet")}</span>
+      </div>
+      <div class="quickbooks-export-status">
+        ${warnings.length
+          ? warnings.slice(0, 4).map((warning) => `<span>${escapeHtml(warning)}</span>`).join("")
+          : `<span>Mappings look ready for CSV export.</span>`}
+      </div>
+    </section>
+  `;
+}
+
 function renderQuickBooksMappingPanel(records = []) {
   const customerRows = [...new Map(records
     .map((record) => record.customer)
@@ -28660,7 +28739,7 @@ function renderQuickBooksMappingPanel(records = []) {
           ${customerRows.length ? customerRows.map((customer) => {
             const mapping = quickBooksCustomerMapping(customer.id);
             return `
-              <form class="quickbooks-map-row" data-qb-customer-map="${escapeAttribute(customer.id)}">
+              <form class="quickbooks-map-row is-customer-map" data-qb-customer-map="${escapeAttribute(customer.id)}">
                 <span>${escapeHtml(customer.name || "Customer")}</span>
                 <input name="quickBooksName" value="${escapeAttribute(mapping.quickBooksName || "")}" placeholder="${escapeAttribute(customer.name || "QuickBooks customer")}">
                 <input name="quickBooksId" value="${escapeAttribute(mapping.quickBooksId || "")}" placeholder="QuickBooks ID optional">
@@ -28677,10 +28756,11 @@ function renderQuickBooksMappingPanel(records = []) {
           ${itemRows.length ? itemRows.map(([key, line]) => {
             const mapping = quickBooksItemMapping(line);
             return `
-              <form class="quickbooks-map-row" data-qb-item-map="${escapeAttribute(key)}">
+              <form class="quickbooks-map-row is-item-map" data-qb-item-map="${escapeAttribute(key)}">
                 <span>${escapeHtml(line.itemName || line.type || "Billable item")}</span>
                 <input name="quickBooksName" value="${escapeAttribute(mapping.quickBooksName || "")}" placeholder="${escapeAttribute(line.itemName || line.type || "QuickBooks item")}">
                 <input name="quickBooksId" value="${escapeAttribute(mapping.quickBooksId || "")}" placeholder="QuickBooks ID optional">
+                <input name="incomeAccount" value="${escapeAttribute(mapping.incomeAccount || "")}" placeholder="Income account">
                 <button type="submit" class="secondary mini">Save</button>
               </form>
             `;
@@ -29073,12 +29153,15 @@ function billingQueueExportRecords() {
 
 function downloadBillingQueueCsv(records = billingQueueExportRecords(), filename = `siteworks-quickbooks-billing-${timestampForFile()}.csv`) {
   const rows = [
-    ["Customer", "Customer Email", "Billing Address", "Shipping Address", "Invoice Date", "Due Date", "Customer PO", "SiteWorks Ticket", "Location", "Equipment", "Product/Service", "Description", "Quantity", "Rate", "Amount", "Taxable", "Memo", "QuickBooks Customer ID", "QuickBooks Item ID"],
+    ["Invoice No", "Customer", "QuickBooks Customer", "Customer Email", "Billing Address", "Shipping Address", "Invoice Date", "Due Date", "Customer PO", "SiteWorks Ticket", "Location", "Equipment", "Product/Service", "QuickBooks Product/Service", "Description", "Quantity", "Rate", "Amount", "Taxable", "Memo", "Line Cost", "Ticket Revenue", "Ticket Cost", "Ticket Profit", "Margin %", "QuickBooks Customer ID", "QuickBooks Item ID"],
     ...records.flatMap((record) => {
       const invoiceDate = toDateInputValue(new Date(record.workOrder.resolvedAt || record.workOrder.updatedAt || new Date()));
       const dueDate = toDateInputValue(addDays(parseLocalDate(invoiceDate), 30));
       const customerMapping = quickBooksCustomerMapping(record.customer?.id || "");
+      const invoiceNo = `${formatIssueNumber(record.workOrder)}-${invoiceDate.replace(/-/g, "")}`;
       return record.lineItems.map((line) => [
+        invoiceNo,
+        record.customer?.name || "",
         quickBooksCustomerName(record.customer),
         record.customer?.contactEmail || "",
         record.customer?.contactNotes || "",
@@ -29089,16 +29172,59 @@ function downloadBillingQueueCsv(records = billingQueueExportRecords(), filename
         formatIssueNumber(record.workOrder),
         record.location?.name || "",
         record.asset?.name || record.workOrder.areaName || "",
+        line.itemName || line.type || "",
         quickBooksItemName(line),
         line.description,
         line.quantity,
         line.rate,
         line.amount,
         line.taxable === false ? "No" : "Yes",
-        `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed ticket"}`,
+        [record.workOrder.billingMemo, `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed ticket"}`].filter(Boolean).join(" | "),
+        line.costTotal || 0,
+        record.jobCost?.revenue || record.subtotal || 0,
+        record.jobCost?.totalCost || record.costTotal || 0,
+        record.jobCost?.profit || record.margin || 0,
+        record.jobCost?.marginPercent || 0,
         customerMapping.quickBooksId || "",
         quickBooksItemMapping(line).quickBooksId || ""
       ]);
+    })
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadQuickBooksMappingCsv(records = billingQueueRecords(), filename = `siteworks-quickbooks-mappings-${timestampForFile()}.csv`) {
+  const customerRows = [...new Map((records || [])
+    .map((record) => record.customer)
+    .filter(Boolean)
+    .map((customer) => [customer.id, customer])
+  ).values()].sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base", numeric: true }));
+  const itemRowsMap = new Map();
+  (records || []).forEach((record) => {
+    record.lineItems.forEach((line) => {
+      const key = billingLineMappingKey(line);
+      if (!itemRowsMap.has(key)) itemRowsMap.set(key, line);
+    });
+  });
+  const itemRows = [...itemRowsMap.entries()].sort(([, a], [, b]) =>
+    String(a.itemName || a.type || "").localeCompare(String(b.itemName || b.type || ""), undefined, { sensitivity: "base", numeric: true })
+  );
+  const rows = [
+    ["Mapping Type", "SiteWorks Name", "SiteWorks ID / Key", "QuickBooks Name", "QuickBooks ID", "Income Account", "Updated At"],
+    ...customerRows.map((customer) => {
+      const mapping = quickBooksCustomerMapping(customer.id);
+      return ["Customer", customer.name || "", customer.id || "", mapping.quickBooksName || "", mapping.quickBooksId || "", "", mapping.updatedAt || ""];
+    }),
+    ...itemRows.map(([key, line]) => {
+      const mapping = quickBooksItemMapping(line);
+      return ["Product/Service", line.itemName || line.type || "", key, mapping.quickBooksName || "", mapping.quickBooksId || "", mapping.incomeAccount || "", mapping.updatedAt || ""];
     })
   ];
   const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
