@@ -15424,6 +15424,7 @@ button.asset-detail-card {
   text-transform: uppercase;
 }
 
+.inventory-po-panel,
 .inventory-reorder-panel,
 .inventory-use-panel,
 .inventory-action-card {
@@ -15517,6 +15518,103 @@ button.asset-detail-card {
   gap: 10px;
 }
 
+.inventory-po-list {
+  display: grid;
+  gap: 8px;
+}
+
+.inventory-po-record {
+  border: 1px solid rgba(20, 184, 166, 0.26);
+  border-radius: 8px;
+  background: rgba(240, 253, 250, 0.72);
+  overflow: hidden;
+}
+
+.inventory-po-record.is-ordered {
+  border-color: rgba(245, 158, 11, 0.36);
+  background: rgba(255, 251, 235, 0.76);
+}
+
+.inventory-po-record.is-received,
+.inventory-po-record.is-closed {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: rgba(240, 253, 244, 0.72);
+}
+
+.inventory-po-record.is-cancelled {
+  border-color: var(--line);
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.inventory-po-record > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.inventory-po-record > summary::-webkit-details-marker {
+  display: none;
+}
+
+.inventory-po-record > summary div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.inventory-po-record > summary strong {
+  font-size: 14px;
+}
+
+.inventory-po-record > summary small,
+.inventory-po-record > summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.inventory-po-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+
+.inventory-po-record-lines {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(220px, 1.5fr) minmax(130px, auto) minmax(90px, auto);
+  gap: 8px;
+  padding: 0 12px 12px;
+  align-items: center;
+}
+
+.inventory-po-record-lines span,
+.inventory-po-record-lines strong,
+.inventory-po-record-lines em,
+.inventory-po-record-lines b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inventory-po-record-lines span,
+.inventory-po-record-lines em,
+.inventory-po-history small {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.inventory-po-history {
+  display: grid;
+  gap: 3px;
+  padding: 0 12px 12px;
+}
+
 .inventory-reorder-group {
   border: 1px solid rgba(245, 158, 11, 0.32);
   border-radius: 8px;
@@ -15566,55 +15664,6 @@ button.asset-detail-card {
   display: grid;
   gap: 6px;
   padding: 0 12px 12px;
-}
-
-.inventory-po-draft {
-  margin: 0 12px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.86);
-  overflow: hidden;
-}
-
-.inventory-po-draft summary {
-  padding: 8px 10px;
-  cursor: pointer;
-  font-weight: 900;
-}
-
-.inventory-po-draft-sheet {
-  display: grid;
-  gap: 10px;
-  padding: 10px;
-}
-
-.inventory-po-draft-sheet header,
-.inventory-po-draft-lines {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(220px, 1.5fr) minmax(130px, auto) minmax(90px, auto);
-  gap: 8px;
-  align-items: center;
-}
-
-.inventory-po-draft-sheet header {
-  grid-template-columns: repeat(3, minmax(130px, 1fr));
-}
-
-.inventory-po-draft-sheet header div,
-.inventory-po-draft-lines span,
-.inventory-po-draft-lines strong,
-.inventory-po-draft-lines em,
-.inventory-po-draft-lines b {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.inventory-po-draft-sheet span,
-.inventory-po-draft-lines em {
-  color: var(--muted);
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 800;
 }
 
 .inventory-reorder-row {
@@ -18054,6 +18103,16 @@ body.panel-schedule-open {
     flex-direction: column;
   }
 
+  .inventory-po-record > summary,
+  .inventory-po-record-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inventory-po-record-lines {
+    grid-template-columns: 1fr;
+  }
+
   .inventory-reorder-row {
     grid-template-columns: 1fr 1fr;
   }
@@ -18062,11 +18121,6 @@ body.panel-schedule-open {
   .inventory-reorder-group-actions {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .inventory-po-draft-sheet header,
-  .inventory-po-draft-lines {
-    grid-template-columns: 1fr;
   }
 
   .inventory-reorder-row div,

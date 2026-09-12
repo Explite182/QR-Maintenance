@@ -8780,13 +8780,21 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  const showReorderPoButton = event.target.closest("[data-show-reorder-po]");
-  if (showReorderPoButton) {
+  const createReorderPoButton = event.target.closest("[data-create-reorder-po]");
+  if (createReorderPoButton) {
     event.preventDefault();
     event.stopPropagation();
-    const supplierName = showReorderPoButton.dataset.showReorderPo || "";
-    const draft = [...document.querySelectorAll("[data-reorder-po-draft]")].find((element) => element.dataset.reorderPoDraft === supplierName);
-    if (draft) draft.open = true;
+    if (!canManageInventory()) return;
+    await createInventoryPurchaseOrderFromSupplier(createReorderPoButton.dataset.createReorderPo || "");
+    return;
+  }
+
+  const updatePoButton = event.target.closest("[data-inventory-po-action]");
+  if (updatePoButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageInventory()) return;
+    await updateInventoryPurchaseOrderStatus(updatePoButton.dataset.inventoryPoAction, updatePoButton.dataset.inventoryPoId);
     return;
   }
 
@@ -16175,8 +16183,9 @@ function renderInventory() {
       </div>
     `
     : "";
+  const purchaseOrderPanel = renderInventoryPurchaseOrderPanel(inventoryItemsForCustomer());
   els.inventoryList.innerHTML = items.length
-    ? `${refreshNotice}${renderInventoryReorderList(items)}${pagedItems.map(renderInventoryItem).join("")}`
+    ? `${refreshNotice}${purchaseOrderPanel}${renderInventoryReorderList(items)}${pagedItems.map(renderInventoryItem).join("")}`
     : `${refreshNotice}<p class="muted">No inventory items for this view yet.</p>`;
   renderInventoryPager(items.length);
 }
@@ -16425,6 +16434,74 @@ function inventoryDateLabel(value) {
   return value ? formatDate(new Date(value)) : "Not set";
 }
 
+function normalizeInventoryPurchaseOrderLines(lines = []) {
+  return Array.isArray(lines)
+    ? lines
+      .filter((line) => line && typeof line === "object")
+      .map((line) => ({
+        id: line.id || crypto.randomUUID(),
+        itemId: line.itemId || line.item_id || "",
+        itemName: line.itemName || line.item_name || line.name || "",
+        partNumber: line.partNumber || line.part_number || "",
+        supplierSku: line.supplierSku || line.supplier_sku || "",
+        quantity: Math.max(0, Number(line.quantity || line.orderQuantity || 0)),
+        receivedQuantity: Math.max(0, Number(line.receivedQuantity || line.received_quantity || 0)),
+        unitCost: Math.max(0, Number(line.unitCost || line.unit_cost || 0))
+      }))
+      .filter((line) => line.itemName && line.quantity > 0)
+    : [];
+}
+
+function normalizeInventoryPurchaseOrderHistory(history = []) {
+  return Array.isArray(history)
+    ? history
+      .filter((entry) => entry && typeof entry === "object")
+      .map((entry) => ({
+        at: entry.at || entry.createdAt || new Date().toISOString(),
+        action: entry.action || "Updated",
+        userName: entry.userName || entry.user_name || "",
+        note: entry.note || ""
+      }))
+      .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+      .slice(0, 50)
+    : [];
+}
+
+function nextInventoryPurchaseOrderNumber(orders = state?.inventoryPurchaseOrders || []) {
+  const highest = (orders || []).reduce((max, order) => {
+    const numeric = Number(String(order?.poNumber || order?.po_number || "").replace(/\D/g, ""));
+    return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
+  }, 0);
+  return `IPO-${String(highest + 1).padStart(4, "0")}`;
+}
+
+function inventoryPurchaseOrdersForCustomer(customerId = selectedCustomerId) {
+  return (state.inventoryPurchaseOrders || [])
+    .filter((order) => canSeeCustomer(order.customerId))
+    .filter((order) => !customerId || order.customerId === customerId || (currentRole === "Admin" && !getCustomer(customerId)))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+
+function inventoryPurchaseOrderTotal(order = {}) {
+  return normalizeInventoryPurchaseOrderLines(order.lines || []).reduce((sum, line) => sum + line.quantity * Math.max(0, Number(line.unitCost || 0)), 0);
+}
+
+function inventoryPurchaseOrderOpenQuantity(order = {}) {
+  return normalizeInventoryPurchaseOrderLines(order.lines || []).reduce((sum, line) => sum + Math.max(0, Number(line.quantity || 0) - Number(line.receivedQuantity || 0)), 0);
+}
+
+function addInventoryPurchaseOrderHistory(order, action, note = "") {
+  order.history = normalizeInventoryPurchaseOrderHistory([
+    {
+      at: new Date().toISOString(),
+      action,
+      userName: getCurrentUserLabel(),
+      note
+    },
+    ...(order.history || [])
+  ]);
+}
+
 function inventoryStockValue(item = {}) {
   return Math.max(0, Number(item.quantity || 0)) * Math.max(0, Number(item.unitCost || 0));
 }
@@ -16512,6 +16589,67 @@ function inventoryReorderGroups(items = []) {
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }));
 }
 
+function renderInventoryPurchaseOrderPanel(items = []) {
+  const itemIds = new Set(items.map((item) => item.id));
+  const orders = inventoryPurchaseOrdersForCustomer()
+    .filter((order) => order.lines.some((line) => itemIds.has(line.itemId)) || items.some((item) => inventorySupplierLabel(item) === order.supplier))
+    .slice(0, 8);
+  if (!orders.length) return "";
+  const openCount = orders.filter((order) => !["Closed", "Cancelled"].includes(order.status)).length;
+  return `
+    <section class="inventory-po-panel" aria-label="Inventory purchase orders">
+      <div class="inventory-reorder-heading">
+        <div>
+          <strong>Inventory purchase orders</strong>
+          <small>${orders.length} recent | ${openCount} open</small>
+        </div>
+      </div>
+      <div class="inventory-po-list">
+        ${orders.map(renderInventoryPurchaseOrderRecord).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderInventoryPurchaseOrderRecord(order = {}) {
+  const lines = normalizeInventoryPurchaseOrderLines(order.lines || []);
+  const canManage = canManageInventoryCustomer(order.customerId);
+  const total = inventoryPurchaseOrderTotal(order);
+  const openQuantity = inventoryPurchaseOrderOpenQuantity(order);
+  const statusClass = String(order.status || "Draft").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `
+    <details class="inventory-po-record is-${escapeAttribute(statusClass)}">
+      <summary>
+        <div>
+          <strong>${escapeHtml(order.poNumber || "Inventory PO")} | ${escapeHtml(order.supplier)}</strong>
+          <small>${escapeHtml(order.status)} | ${lines.length} line${lines.length === 1 ? "" : "s"} | ${escapeHtml(formatMoney(total))}${order.expectedBy ? ` | Expected ${escapeHtml(inventoryDateLabel(order.expectedBy))}` : ""}</small>
+        </div>
+        <span>${openQuantity ? `${escapeHtml(formatInventoryNumber(openQuantity))} open` : "Complete"}</span>
+      </summary>
+      <div class="inventory-po-record-actions">
+        <button type="button" class="secondary mini" data-inventory-po-action="ordered" data-inventory-po-id="${escapeAttribute(order.id)}" ${canManage && order.status === "Draft" ? "" : "disabled"}>Mark ordered</button>
+        <button type="button" class="secondary mini" data-inventory-po-action="received" data-inventory-po-id="${escapeAttribute(order.id)}" ${canManage && !["Received", "Closed", "Cancelled"].includes(order.status) ? "" : "disabled"}>Receive & close</button>
+        <button type="button" class="secondary mini" data-inventory-po-action="cancelled" data-inventory-po-id="${escapeAttribute(order.id)}" ${canManage && !["Closed", "Cancelled"].includes(order.status) ? "" : "disabled"}>Cancel</button>
+      </div>
+      <div class="inventory-po-record-lines">
+        ${lines.map((line) => `
+          <span>${escapeHtml(line.supplierSku || line.partNumber || "-")}</span>
+          <strong>${escapeHtml(line.itemName)}</strong>
+          <em>${escapeHtml(formatInventoryNumber(line.receivedQuantity))}/${escapeHtml(formatInventoryNumber(line.quantity))} received</em>
+          <b>${escapeHtml(formatMoney(line.quantity * Math.max(0, Number(line.unitCost || 0))))}</b>
+        `).join("")}
+      </div>
+      ${order.history?.length ? `
+        <div class="inventory-po-history">
+          ${normalizeInventoryPurchaseOrderHistory(order.history).slice(0, 3).map((entry) => `
+            <small>${escapeHtml(formatDateTime(entry.at))} | ${escapeHtml(entry.action)}${entry.note ? ` | ${escapeHtml(entry.note)}` : ""}</small>
+          `).join("")}
+        </div>
+      ` : ""}
+    </details>
+  `;
+}
+
 function renderInventoryReorderList(items = []) {
   const groups = inventoryReorderGroups(items);
   const lowStockCount = groups.reduce((sum, group) => sum + group.items.length, 0);
@@ -16547,10 +16685,9 @@ function renderInventoryReorderGroup(group) {
       <div class="inventory-reorder-group-actions">
         <button type="button" class="secondary mini" data-copy-reorder-supplier="${escapeAttribute(group.name)}">Copy PO list</button>
         <button type="button" class="secondary mini" data-export-reorder-supplier="${escapeAttribute(group.name)}">Export CSV</button>
-        <button type="button" class="secondary mini" data-show-reorder-po="${escapeAttribute(group.name)}">Create PO draft</button>
+        <button type="button" class="secondary mini" data-create-reorder-po="${escapeAttribute(group.name)}">Create PO</button>
         <button type="button" class="secondary mini" data-mark-supplier-ordered="${escapeAttribute(group.name)}">${allOrdered ? "Clear ordered" : "Mark all ordered"}</button>
       </div>
-      ${renderInventoryPurchaseOrderDraft(group)}
       <div class="inventory-reorder-group-lines">
         ${group.items.map((item) => `
           <article class="inventory-reorder-row">
@@ -16579,38 +16716,121 @@ function renderInventoryReorderGroup(group) {
   `;
 }
 
-function renderInventoryPurchaseOrderDraft(group) {
-  const customer = getCustomer(selectedCustomerId);
-  return `
-    <details class="inventory-po-draft" data-reorder-po-draft="${escapeAttribute(group.name)}">
-      <summary>PO draft</summary>
-      <div class="inventory-po-draft-sheet">
-        <header>
-          <div>
-            <span>Purchase order draft</span>
-            <strong>${escapeHtml(group.name)}</strong>
-          </div>
-          <div>
-            <span>Date</span>
-            <strong>${escapeHtml(toDateInputValue(new Date()))}</strong>
-          </div>
-          <div>
-            <span>Expected</span>
-            <strong>${escapeHtml(group.expectedBy || "Not set")}</strong>
-          </div>
-        </header>
-        <p>${escapeHtml(customer?.name || "Current customer")} | ${group.items.length} item${group.items.length === 1 ? "" : "s"} | Estimated ${escapeHtml(formatMoney(group.total))}</p>
-        <div class="inventory-po-draft-lines">
-          ${group.items.map((item) => `
-            <span>${escapeHtml(item.supplierSku || item.partNumber || "-")}</span>
-            <strong>${escapeHtml(item.name)}</strong>
-            <em>${escapeHtml(formatInventoryNumber(inventoryReorderQuantity(item)))} x ${escapeHtml(formatMoney(item.unitCost || 0))}</em>
-            <b>${escapeHtml(formatMoney(inventoryReorderQuantity(item) * Math.max(0, Number(item.unitCost || 0))))}</b>
-          `).join("")}
-        </div>
-      </div>
-    </details>
-  `;
+async function createInventoryPurchaseOrderFromSupplier(supplierName = "") {
+  const items = inventoryReorderItemsForSupplier(supplierName);
+  if (!items.length) return;
+  const customerId = selectedCustomerId || items[0]?.customerId || currentUser?.customerId || "";
+  const itemIds = new Set(items.map((item) => item.id));
+  const existingOpenOrder = (state.inventoryPurchaseOrders || []).find((order) =>
+    order.customerId === customerId &&
+    order.supplier === supplierName &&
+    !["Received", "Closed", "Cancelled"].includes(order.status) &&
+    normalizeInventoryPurchaseOrderLines(order.lines || []).some((line) => itemIds.has(line.itemId))
+  );
+  if (existingOpenOrder) {
+    alert(`${existingOpenOrder.poNumber} is already open for ${supplierName}.`);
+    return;
+  }
+  const now = new Date().toISOString();
+  const order = {
+    id: crypto.randomUUID(),
+    poNumber: nextInventoryPurchaseOrderNumber(),
+    customerId,
+    supplier: supplierName || "No supplier",
+    status: "Draft",
+    createdAt: now,
+    orderedAt: "",
+    expectedBy: items.reduce((latest, item) => {
+      const expected = item.leadTimeDays ? inventoryExpectedByDate(item) : "";
+      return expected && (!latest || expected > latest) ? expected : latest;
+    }, ""),
+    receivedAt: "",
+    createdBy: getCurrentUserLabel(),
+    notes: "",
+    lines: items.map((item) => ({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      itemName: item.name,
+      partNumber: item.partNumber || "",
+      supplierSku: item.supplierSku || "",
+      quantity: inventoryReorderQuantity(item),
+      receivedQuantity: 0,
+      unitCost: Math.max(0, Number(item.unitCost || 0))
+    })),
+    history: []
+  };
+  addInventoryPurchaseOrderHistory(order, "Created", `${items.length} reorder line${items.length === 1 ? "" : "s"}`);
+  state.inventoryPurchaseOrders = [order, ...(state.inventoryPurchaseOrders || [])];
+  addActivity("Inventory PO created", `${order.poNumber} | ${order.supplier}`);
+  saveState();
+  render();
+}
+
+async function updateInventoryPurchaseOrderStatus(action = "", orderId = "") {
+  const order = (state.inventoryPurchaseOrders || []).find((item) => item.id === orderId);
+  if (!order || !canManageInventoryCustomer(order.customerId)) return;
+  const now = new Date().toISOString();
+  if (action === "ordered") {
+    order.status = "Ordered";
+    order.orderedAt = order.orderedAt || now;
+    addInventoryPurchaseOrderHistory(order, "Marked ordered", "");
+    const syncedItems = [];
+    normalizeInventoryPurchaseOrderLines(order.lines || []).forEach((line) => {
+      const item = getInventoryItem(line.itemId);
+      if (!item || !canManageInventoryCustomer(item.customerId)) return;
+      item.reorderStatus = "ordered";
+      item.reorderMarkedAt = now;
+      item.lastOrderedAt = toDateInputValue(new Date());
+      item.expectedBy = order.expectedBy || inventoryExpectedByDate(item);
+      item.updatedAt = now;
+      syncedItems.push(item);
+    });
+    addActivity("Inventory PO ordered", `${order.poNumber} | ${order.supplier}`);
+    saveState();
+    await syncInventoryItemsToServer(syncedItems);
+    render();
+    return;
+  }
+  if (action === "received") {
+    const syncedItems = [];
+    order.lines = normalizeInventoryPurchaseOrderLines(order.lines || []).map((line) => {
+      const remaining = Math.max(0, Number(line.quantity || 0) - Number(line.receivedQuantity || 0));
+      const item = getInventoryItem(line.itemId);
+      if (item && remaining > 0 && canManageInventoryCustomer(item.customerId)) {
+        const previousQuantity = Math.max(0, Number(item.quantity || 0));
+        item.quantity = previousQuantity + remaining;
+        addInventoryMovement(item, {
+          type: "receive",
+          previousQuantity,
+          quantityAfter: item.quantity,
+          note: `${order.poNumber} received from ${order.supplier}`
+        });
+        item.reorderStatus = inventoryItemLowStock(item) ? item.reorderStatus || "" : "";
+        item.expectedBy = inventoryItemLowStock(item) ? item.expectedBy || "" : "";
+        item.updatedAt = now;
+        syncedItems.push(item);
+      }
+      return {
+        ...line,
+        receivedQuantity: Number(line.receivedQuantity || 0) + remaining
+      };
+    });
+    order.status = "Received";
+    order.receivedAt = now;
+    addInventoryPurchaseOrderHistory(order, "Received and closed", "");
+    addActivity("Inventory PO received", `${order.poNumber} | ${order.supplier}`);
+    saveState();
+    await syncInventoryItemsToServer(syncedItems);
+    render();
+    return;
+  }
+  if (action === "cancelled") {
+    order.status = "Cancelled";
+    addInventoryPurchaseOrderHistory(order, "Cancelled", "");
+    addActivity("Inventory PO cancelled", `${order.poNumber} | ${order.supplier}`);
+    saveState();
+    render();
+  }
 }
 
 function inventoryReorderItemsForSupplier(supplierName = "") {
@@ -35604,6 +35824,7 @@ function normalizeState(input) {
     serviceRequests: input.serviceRequests || [],
     preferredContractors: input.preferredContractors || [],
     inventoryItems: input.inventoryItems || [],
+    inventoryPurchaseOrders: input.inventoryPurchaseOrders || [],
     keys: input.keys || [],
     keyLogs: input.keyLogs || [],
     siteMaps: input.siteMaps || [],
@@ -35834,6 +36055,23 @@ function normalizeState(input) {
     updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
   })).filter((item) => item.name);
 
+  normalized.inventoryPurchaseOrders = normalized.inventoryPurchaseOrders.map((order) => ({
+    ...order,
+    id: order.id || crypto.randomUUID(),
+    poNumber: order.poNumber || order.po_number || nextInventoryPurchaseOrderNumber(input.inventoryPurchaseOrders || []),
+    customerId: order.customerId || order.customer_id || normalized.customers[0]?.id || "",
+    supplier: order.supplier || "",
+    status: ["Draft", "Ordered", "Partially received", "Received", "Closed", "Cancelled"].includes(order.status) ? order.status : "Draft",
+    createdAt: order.createdAt || order.created_at || new Date().toISOString(),
+    orderedAt: order.orderedAt || order.ordered_at || "",
+    expectedBy: order.expectedBy || order.expected_by || "",
+    receivedAt: order.receivedAt || order.received_at || "",
+    createdBy: order.createdBy || order.created_by || "",
+    notes: order.notes || "",
+    lines: normalizeInventoryPurchaseOrderLines(order.lines || order.items || []),
+    history: normalizeInventoryPurchaseOrderHistory(order.history || [])
+  })).filter((order) => order.customerId && order.supplier && order.lines.length);
+
   normalized.keys = normalized.keys.map((key) => ({
     ...key,
     id: key.id || crypto.randomUUID(),
@@ -35990,6 +36228,7 @@ function emptyState() {
     serviceRequests: [],
     preferredContractors: [],
     inventoryItems: [],
+    inventoryPurchaseOrders: [],
     keys: [],
     keyLogs: [],
     siteMaps: [],
