@@ -6621,6 +6621,12 @@ const els = {
   newServiceRequestBtn: document.getElementById("newServiceRequestBtn"),
   newInventoryBtn: document.getElementById("newInventoryBtn"),
   newKeyBtn: document.getElementById("newKeyBtn"),
+  customerPortalPanel: document.getElementById("customerPortalPanel"),
+  customerPortalTitle: document.getElementById("customerPortalTitle"),
+  customerPortalSubtitle: document.getElementById("customerPortalSubtitle"),
+  customerPortalSummary: document.getElementById("customerPortalSummary"),
+  customerPortalContent: document.getElementById("customerPortalContent"),
+  customerPortalRequestBtn: document.getElementById("customerPortalRequestBtn"),
   mobilePmBtn: document.getElementById("mobilePmBtn"),
   mobilePmMenu: document.getElementById("mobilePmMenu"),
   mobileInventoryBtn: document.getElementById("mobileInventoryBtn"),
@@ -11344,6 +11350,16 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (event.target.closest("#customerPortalRequestBtn")) {
+    event.preventDefault();
+    const drawer = document.querySelector(".portal-request-form");
+    if (drawer) {
+      drawer.open = true;
+      drawer.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    return;
+  }
+
   const deleteBillingLineButton = event.target.closest("[data-delete-billing-line]");
   if (deleteBillingLineButton && canManageWorkOrders()) {
     event.preventDefault();
@@ -11461,6 +11477,13 @@ document.addEventListener("submit", (event) => {
   }
   const formData = new FormData(lineForm);
   addEstimateLine(lineForm.dataset.estimateLineForm, formData);
+});
+
+document.addEventListener("submit", (event) => {
+  const portalRequestForm = event.target.closest("[data-customer-portal-request-form]");
+  if (!portalRequestForm) return;
+  event.preventDefault();
+  createCustomerPortalServiceRequest(new FormData(portalRequestForm));
 });
 
 document.addEventListener("submit", (event) => {
@@ -11987,6 +12010,7 @@ function render() {
   renderAssetTableControls();
   renderAssetTable();
   renderWorkOrders();
+  renderCustomerPortal();
   renderBillingQueue();
   renderServiceRequests();
   renderInventory();
@@ -28112,6 +28136,223 @@ function renderServiceScheduleVisit(visit = {}) {
       <button type="button" class="secondary mini" data-open-scheduled-ticket="${escapeAttribute(visit.workOrderId)}">Open</button>
     </article>
   `;
+}
+
+function renderCustomerPortal() {
+  if (!els.customerPortalPanel) return;
+  const isCustomerPortalUser = currentRole === "Customer";
+  els.customerPortalPanel.classList.toggle("hidden", !isCustomerPortalUser);
+  if (!isCustomerPortalUser) return;
+  const customer = getCustomer(currentUser?.customerId || selectedCustomerId);
+  const customerId = customer?.id || currentUser?.customerId || selectedCustomerId || "";
+  const assets = filteredAssets().filter((asset) => !customerId || asset.customerId === customerId);
+  const tickets = (state.workOrders || [])
+    .filter((ticket) => canSeeWorkOrder(ticket) && (!customerId || ticket.customerId === customerId))
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  const openTickets = tickets.filter((ticket) => ticket.status !== "Closed");
+  const completedTickets = tickets.filter((ticket) => ticket.status === "Closed").slice(0, 6);
+  const requests = (state.serviceRequests || [])
+    .filter((request) => canSeeServiceRequest(request) && (!customerId || request.customerId === customerId))
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  const estimates = normalizeEstimates(state.estimates || [])
+    .filter((estimate) => !customerId || estimate.customerId === customerId)
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  const visits = normalizeScheduledVisits(state.scheduledVisits || [])
+    .filter((visit) => !customerId || visit.customerId === customerId)
+    .filter((visit) => !["Completed", "Cancelled"].includes(visit.status))
+    .sort((a, b) => new Date(a.scheduledAt || 0) - new Date(b.scheduledAt || 0))
+    .slice(0, 6);
+  els.customerPortalTitle.textContent = `${customer?.name || "Customer"} Portal`;
+  els.customerPortalSubtitle.textContent = "View open work, upcoming visits, equipment, estimates, and completed service.";
+  els.customerPortalSummary.innerHTML = [
+    ["Open tickets", openTickets.length, "warn"],
+    ["Upcoming visits", visits.length, "info"],
+    ["Open requests", requests.filter((request) => !["Completed", "Declined"].includes(request.status)).length, "neutral"],
+    ["Equipment", assets.length, "ok"],
+    ["Estimates", estimates.length, "info"],
+    ["Completed", completedTickets.length, "neutral"]
+  ].map(([label, value, tone]) => `
+    <article class="portal-summary-card is-${escapeAttribute(tone)}">
+      <strong>${escapeHtml(formatInventoryNumber(value))}</strong>
+      <span>${escapeHtml(label)}</span>
+    </article>
+  `).join("");
+  els.customerPortalContent.innerHTML = `
+    ${renderCustomerPortalRequestForm(customerId, assets)}
+    ${renderCustomerPortalSection("Upcoming visits", visits, renderCustomerPortalVisit, "No visits are scheduled yet.")}
+    ${renderCustomerPortalSection("Open tickets", openTickets.slice(0, 8), renderCustomerPortalTicket, "No open tickets right now.")}
+    ${renderCustomerPortalSection("Service requests", requests.slice(0, 6), renderCustomerPortalRequest, "No service requests in this view.")}
+    ${renderCustomerPortalSection("Estimates", estimates.slice(0, 6), renderCustomerPortalEstimate, "No estimates have been created yet.")}
+    ${renderCustomerPortalSection("Equipment", assets.slice(0, 8), renderCustomerPortalAsset, "No equipment is visible for this account.")}
+    ${renderCustomerPortalSection("Completed work", completedTickets, renderCustomerPortalTicket, "No completed tickets yet.")}
+  `;
+}
+
+function renderCustomerPortalSection(title, items = [], renderer, emptyText = "Nothing to show.") {
+  return `
+    <section class="portal-section">
+      <header>
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(formatInventoryNumber(items.length))}</span>
+      </header>
+      <div class="portal-list">
+        ${items.length ? items.map(renderer).join("") : `<p class="muted">${escapeHtml(emptyText)}</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderCustomerPortalRequestForm(customerId = "", assets = []) {
+  const locations = state.locations
+    .filter((locationRecord) => locationRecord.customerId === customerId && canSeeLocation(locationRecord.id, customerId))
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base", numeric: true }));
+  return `
+    <details class="portal-section portal-request-form">
+      <summary>
+        <strong>Request work</strong>
+        <span>Create a service request</span>
+      </summary>
+      <form data-customer-portal-request-form>
+        <label>
+          Location
+          <select name="locationId" required>
+            ${locations.map((locationRecord) => `<option value="${escapeAttribute(locationRecord.id)}">${escapeHtml(locationRecord.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Equipment
+          <select name="assetId">
+            <option value="">General / area request</option>
+            ${assets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Priority
+          <select name="priority">
+            <option>Medium</option>
+            <option>High</option>
+            <option>Low</option>
+          </select>
+        </label>
+        <label>
+          Request
+          <input name="title" required placeholder="What needs attention?">
+        </label>
+        <label>
+          Details
+          <input name="notes" placeholder="Any access notes, symptoms, or timing details">
+        </label>
+        <button type="submit" class="secondary mini" ${locations.length ? "" : "disabled"}>Submit request</button>
+      </form>
+    </details>
+  `;
+}
+
+function renderCustomerPortalVisit(visit = {}) {
+  const ticket = getWorkOrder(visit.workOrderId);
+  const locationRecord = getLocation(visit.locationId || ticket?.locationId);
+  return `
+    <article class="portal-row">
+      <time>${escapeHtml(formatDateTime(visit.scheduledAt))}</time>
+      <div>
+        <strong>${escapeHtml(ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}` : "Scheduled visit")}</strong>
+        <span>${escapeHtml([locationRecord?.name, visit.assignedUserName || "Unassigned", visit.status].filter(Boolean).join(" | "))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderCustomerPortalTicket(ticket = {}) {
+  const locationRecord = getLocation(ticket.locationId);
+  const asset = getAsset(ticket.assetId);
+  return `
+    <article class="portal-row">
+      <span class="portal-status">${escapeHtml(ticket.status || "Open")}</span>
+      <div>
+        <strong>${escapeHtml(formatIssueNumber(ticket))} - ${escapeHtml(ticket.title || "Ticket")}</strong>
+        <span>${escapeHtml([locationRecord?.name, asset?.name || ticket.areaName, ticket.priority ? `${ticket.priority} priority` : ""].filter(Boolean).join(" | "))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderCustomerPortalRequest(request = {}) {
+  const locationRecord = getLocation(request.locationId);
+  return `
+    <article class="portal-row">
+      <span class="portal-status">${escapeHtml(request.status || "New")}</span>
+      <div>
+        <strong>${escapeHtml(formatServiceRequestNumber(request))} - ${escapeHtml(request.title || "Service request")}</strong>
+        <span>${escapeHtml([locationRecord?.name, request.requestedBy, request.priority].filter(Boolean).join(" | "))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderCustomerPortalEstimate(estimate = {}) {
+  return `
+    <article class="portal-row">
+      <span class="portal-status">${escapeHtml(estimate.status || "Draft")}</span>
+      <div>
+        <strong>${escapeHtml(estimate.estimateNumber || "Estimate")} - ${escapeHtml(estimate.title || "Estimate")}</strong>
+        <span>${escapeHtml(formatMoney(estimateTotal(estimate)))}${estimate.validUntil ? ` | Valid until ${escapeHtml(inventoryDateLabel(estimate.validUntil))}` : ""}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderCustomerPortalAsset(asset = {}) {
+  const due = getDueInfo(asset);
+  const locationRecord = getLocation(asset.locationId);
+  return `
+    <article class="portal-row">
+      <span class="portal-status">${escapeHtml(due.label || "PM")}</span>
+      <div>
+        <strong>${escapeHtml(asset.name || "Equipment")}</strong>
+        <span>${escapeHtml([locationRecord?.name, getAssetEquipmentId(asset), `Next PM ${formatDate(due.nextDate)}`].filter(Boolean).join(" | "))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function createCustomerPortalServiceRequest(formData = new FormData()) {
+  if (!currentUser || currentRole !== "Customer") return;
+  const customerId = currentUser.customerId || selectedCustomerId || "";
+  const locationId = String(formData.get("locationId") || "").trim();
+  if (!customerId || !locationId || !canSeeLocation(locationId, customerId)) return;
+  const assetId = String(formData.get("assetId") || "").trim();
+  const asset = assetId ? getAsset(assetId) : null;
+  if (assetId && (!asset || !canSeeAsset(asset))) return;
+  const now = new Date().toISOString();
+  const request = {
+    id: crypto.randomUUID(),
+    serviceRequestNumber: nextServiceRequestNumber(),
+    customerId,
+    locationId,
+    assetId,
+    title: String(formData.get("title") || "").trim(),
+    notes: String(formData.get("notes") || "").trim(),
+    priority: String(formData.get("priority") || "Medium").trim() || "Medium",
+    requestedBy: currentUser.name || currentUser.username || "Customer portal",
+    preferredDate: "",
+    status: "New",
+    assignedUserId: "",
+    assignedUserName: "",
+    convertedWorkOrderId: "",
+    photo: null,
+    history: [{
+      at: now,
+      action: "Created from customer portal",
+      details: currentUser.name || currentUser.username || "Customer portal"
+    }],
+    createdAt: now,
+    updatedAt: now
+  };
+  if (!request.title) return;
+  state.serviceRequests.unshift(request);
+  addActivity("Customer portal request", `${formatServiceRequestNumber(request)} - ${request.title}`);
+  saveState();
+  render();
 }
 
 function parseDateTimeLocalInput(value = "") {

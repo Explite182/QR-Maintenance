@@ -15081,6 +15081,167 @@ button.asset-detail-card {
   gap: 12px;
 }
 
+.customer-portal-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.customer-portal-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(20, 184, 166, 0.22);
+  border-radius: 8px;
+  background: rgba(240, 253, 250, 0.78);
+  box-shadow: var(--shadow);
+}
+
+.customer-portal-hero h2 {
+  margin: 0;
+}
+
+.customer-portal-hero p:last-child {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.customer-portal-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.portal-summary-card {
+  display: grid;
+  gap: 6px;
+  min-height: 78px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.portal-summary-card strong {
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.portal-summary-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.customer-portal-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.portal-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.portal-section > header,
+.portal-request-form > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.portal-request-form > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.portal-request-form > summary::-webkit-details-marker {
+  display: none;
+}
+
+.portal-section header span,
+.portal-request-form summary span,
+.portal-row span,
+.portal-row time {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portal-list {
+  display: grid;
+  gap: 6px;
+}
+
+.portal-row {
+  display: grid;
+  grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid rgba(20, 184, 166, 0.14);
+  border-radius: 8px;
+  background: rgba(248, 251, 250, 0.72);
+}
+
+.portal-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.portal-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.portal-status {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 140px;
+  padding: 5px 8px;
+  border: 1px solid rgba(20, 184, 166, 0.22);
+  border-radius: 999px;
+  background: rgba(240, 253, 250, 0.78);
+  color: var(--primary) !important;
+  font-weight: 900 !important;
+}
+
+.portal-request-form form {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(170px, 1fr) minmax(110px, auto);
+  gap: 8px;
+  align-items: end;
+}
+
+.portal-request-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.portal-request-form label:nth-of-type(4),
+.portal-request-form label:nth-of-type(5) {
+  grid-column: span 2;
+}
+
+.portal-request-form input,
+.portal-request-form select {
+  width: 100%;
+  min-width: 0;
+}
+
 .service-schedule-board {
   display: grid;
   gap: 10px;
@@ -15554,6 +15715,9 @@ button.asset-detail-card {
 
 @media (max-width: 760px) {
   .billing-filter-bar,
+  .customer-portal-hero,
+  .customer-portal-content,
+  .portal-request-form form,
   .quickbooks-map-grid,
   .quickbooks-map-row,
   .service-schedule-heading,
@@ -15572,6 +15736,11 @@ button.asset-detail-card {
   .service-schedule-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .portal-request-form label:nth-of-type(4),
+  .portal-request-form label:nth-of-type(5) {
+    grid-column: auto;
   }
 
   .service-schedule-filters {
