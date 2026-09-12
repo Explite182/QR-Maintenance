@@ -11398,6 +11398,23 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const convertEstimateButton = event.target.closest("[data-estimate-convert-billing]");
+  if (convertEstimateButton && canManageWorkOrders()) {
+    event.preventDefault();
+    convertEstimateToBillingLines(convertEstimateButton.dataset.estimateConvertBilling);
+    return;
+  }
+
+  const customerEstimateActionButton = event.target.closest("[data-customer-estimate-action]");
+  if (customerEstimateActionButton) {
+    event.preventDefault();
+    updateEstimateFromCustomerPortal(
+      customerEstimateActionButton.dataset.customerEstimateId,
+      customerEstimateActionButton.dataset.customerEstimateAction
+    );
+    return;
+  }
+
   const contractorDeleteButton = event.target.closest("[data-delete-contractor]");
   if (contractorDeleteButton && canManageContractors()) {
     deletePreferredContractor(contractorDeleteButton.dataset.deleteContractor);
@@ -28179,6 +28196,7 @@ function renderCustomerPortal() {
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
   const estimates = normalizeEstimates(state.estimates || [])
     .filter((estimate) => !customerId || estimate.customerId === customerId)
+    .filter((estimate) => estimate.status !== "Draft")
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
   const visits = normalizeScheduledVisits(state.scheduledVisits || [])
     .filter((visit) => !customerId || visit.customerId === customerId)
@@ -28313,12 +28331,27 @@ function renderCustomerPortalRequest(request = {}) {
 }
 
 function renderCustomerPortalEstimate(estimate = {}) {
+  const total = estimateTotal(estimate);
+  const requiredTotal = estimateTotal(estimate, false);
+  const canRespond = currentRole === "Customer" && estimate.status === "Sent";
+  const responseText = estimate.approvedAt
+    ? `Approved ${formatDateTime(new Date(estimate.approvedAt))}${estimate.approvedBy ? ` by ${estimate.approvedBy}` : ""}`
+    : estimate.declinedAt
+      ? `Declined ${formatDateTime(new Date(estimate.declinedAt))}${estimate.declinedBy ? ` by ${estimate.declinedBy}` : ""}`
+      : "";
   return `
-    <article class="portal-row">
+    <article class="portal-row portal-estimate-row">
       <span class="portal-status">${escapeHtml(estimate.status || "Draft")}</span>
       <div>
         <strong>${escapeHtml(estimate.estimateNumber || "Estimate")} - ${escapeHtml(estimate.title || "Estimate")}</strong>
-        <span>${escapeHtml(formatMoney(estimateTotal(estimate)))}${estimate.validUntil ? ` | Valid until ${escapeHtml(inventoryDateLabel(estimate.validUntil))}` : ""}</span>
+        <span>${escapeHtml(formatMoney(requiredTotal))}${total !== requiredTotal ? ` | With options ${escapeHtml(formatMoney(total))}` : ""}${estimate.validUntil ? ` | Valid until ${escapeHtml(inventoryDateLabel(estimate.validUntil))}` : ""}</span>
+        ${responseText ? `<span>${escapeHtml(responseText)}</span>` : ""}
+        ${canRespond ? `
+          <div class="portal-estimate-actions">
+            <button type="button" class="secondary mini" data-customer-estimate-action="Accepted" data-customer-estimate-id="${escapeAttribute(estimate.id)}">Approve</button>
+            <button type="button" class="secondary mini danger-action" data-customer-estimate-action="Declined" data-customer-estimate-id="${escapeAttribute(estimate.id)}">Decline</button>
+          </div>
+        ` : ""}
       </div>
     </article>
   `;
@@ -28374,6 +28407,46 @@ function createCustomerPortalServiceRequest(formData = new FormData()) {
   if (!request.title) return;
   state.serviceRequests.unshift(request);
   addActivity("Customer portal request", `${formatServiceRequestNumber(request)} - ${request.title}`);
+  saveState();
+  render();
+}
+
+function canCustomerRespondToEstimate(estimate = {}) {
+  if (!estimate || currentRole !== "Customer") return false;
+  const customerId = currentUser?.customerId || "";
+  if (!customerId || estimate.customerId !== customerId) return false;
+  const workOrder = getWorkOrder(estimate.workOrderId);
+  return Boolean(workOrder && canSeeWorkOrder(workOrder) && estimate.status === "Sent");
+}
+
+function updateEstimateFromCustomerPortal(estimateId = "", action = "") {
+  const estimate = getEstimate(estimateId);
+  if (!estimate || !canCustomerRespondToEstimate(estimate)) return;
+  const normalized = action === "Accepted" ? "Accepted" : action === "Declined" ? "Declined" : "";
+  if (!normalized) return;
+  const workOrder = getWorkOrder(estimate.workOrderId);
+  if (!workOrder) return;
+  const now = new Date().toISOString();
+  const actor = currentUser?.name || currentUser?.username || "Customer portal";
+  const previous = estimate.status || "Sent";
+  estimate.status = normalized;
+  estimate.updatedAt = now;
+  if (normalized === "Accepted") {
+    estimate.approvedAt = now;
+    estimate.approvedBy = actor;
+    estimate.declinedAt = "";
+    estimate.declinedBy = "";
+    workOrder.status = workOrder.status === "Closed" ? workOrder.status : "In progress";
+    workOrder.billingStatus = workOrder.billingStatus === "billed" ? workOrder.billingStatus : "draft";
+  } else {
+    estimate.declinedAt = now;
+    estimate.declinedBy = actor;
+    estimate.approvedAt = "";
+    estimate.approvedBy = "";
+  }
+  workOrder.updatedAt = now;
+  addWorkOrderHistory(workOrder, `Estimate ${normalized.toLowerCase()}`, `${estimate.estimateNumber} | ${formatMoney(estimateTotal(estimate, false))} | ${actor}`);
+  addActivity(`Estimate ${normalized.toLowerCase()}`, `${estimate.estimateNumber} - ${workOrder.title || formatIssueNumber(workOrder)}`);
   saveState();
   render();
 }
@@ -28985,6 +29058,12 @@ function normalizeEstimates(estimates = [], customers = state?.customers || []) 
     customerNote: estimate.customerNote || estimate.customer_note || "",
     lines: normalizeEstimateLines(estimate.lines || []),
     createdBy: estimate.createdBy || estimate.created_by || "",
+    approvedAt: estimate.approvedAt || estimate.approved_at || "",
+    approvedBy: estimate.approvedBy || estimate.approved_by || "",
+    declinedAt: estimate.declinedAt || estimate.declined_at || "",
+    declinedBy: estimate.declinedBy || estimate.declined_by || "",
+    convertedToBillingAt: estimate.convertedToBillingAt || estimate.converted_to_billing_at || "",
+    convertedToBillingBy: estimate.convertedToBillingBy || estimate.converted_to_billing_by || "",
     createdAt: estimate.createdAt || estimate.created_at || new Date().toISOString(),
     updatedAt: estimate.updatedAt || estimate.updated_at || estimate.createdAt || new Date().toISOString()
   })).filter((estimate) => estimate.workOrderId && estimate.customerId && (!knownCustomers.size || knownCustomers.has(estimate.customerId)));
@@ -29077,6 +29156,7 @@ function normalizeBillingLines(lines = []) {
       rate,
       amount,
       costTotal,
+      sourceEstimateId: line.sourceEstimateId || "",
       taxable: line.taxable === false ? false : true
     };
   }).filter((line) => line.quantity > 0 && line.rate >= 0 && line.description);
@@ -32338,17 +32418,26 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
   const fullTotal = estimateTotal(estimate, true);
   const itemOptions = inventoryBillingOptionItems(estimate.customerId || workOrder.customerId);
   const datalistId = `estimateLineItems-${estimate.id}`;
+  const approvalLabel = estimate.approvedAt
+    ? `Approved ${formatDateTime(new Date(estimate.approvedAt))}${estimate.approvedBy ? ` by ${estimate.approvedBy}` : ""}`
+    : estimate.declinedAt
+      ? `Declined ${formatDateTime(new Date(estimate.declinedAt))}${estimate.declinedBy ? ` by ${estimate.declinedBy}` : ""}`
+      : "";
+  const canUseForBilling = estimate.status === "Accepted" && lines.length && !estimate.convertedToBillingAt;
   return `
     <article class="estimate-record is-${escapeAttribute(String(estimate.status || "Draft").toLowerCase())}">
       <header>
         <div>
           <strong>${escapeHtml(estimate.estimateNumber)} | ${escapeHtml(estimate.title)}</strong>
           <span>${escapeHtml(estimate.status)} | Required ${escapeHtml(formatMoney(requiredTotal))}${fullTotal !== requiredTotal ? ` | With options ${escapeHtml(formatMoney(fullTotal))}` : ""}</span>
+          ${approvalLabel ? `<span>${escapeHtml(approvalLabel)}</span>` : ""}
+          ${estimate.convertedToBillingAt ? `<span>Billing lines created ${escapeHtml(formatDateTime(new Date(estimate.convertedToBillingAt)))}</span>` : ""}
         </div>
         <div class="estimate-actions">
           ${["Draft", "Sent", "Accepted", "Declined"].map((status) => `
             <button type="button" class="secondary mini" data-estimate-status="${escapeAttribute(status)}" data-estimate-id="${escapeAttribute(estimate.id)}" ${estimate.status === status ? "disabled" : ""}>${escapeHtml(status)}</button>
           `).join("")}
+          ${canUseForBilling ? `<button type="button" class="secondary mini" data-estimate-convert-billing="${escapeAttribute(estimate.id)}">Use for billing</button>` : ""}
         </div>
       </header>
       <div class="estimate-lines">
@@ -32486,8 +32575,64 @@ function updateEstimateStatus(estimateId = "", status = "Draft") {
   const previous = estimate.status || "Draft";
   estimate.status = normalized;
   estimate.updatedAt = new Date().toISOString();
+  if (normalized === "Accepted") {
+    estimate.approvedAt = estimate.approvedAt || estimate.updatedAt;
+    estimate.approvedBy = estimate.approvedBy || getCurrentUserLabel();
+    estimate.declinedAt = "";
+    estimate.declinedBy = "";
+    workOrder.status = workOrder.status === "Closed" ? workOrder.status : "In progress";
+  } else if (normalized === "Declined") {
+    estimate.declinedAt = estimate.declinedAt || estimate.updatedAt;
+    estimate.declinedBy = estimate.declinedBy || getCurrentUserLabel();
+    estimate.approvedAt = "";
+    estimate.approvedBy = "";
+  }
   addWorkOrderHistory(workOrder, "Estimate status changed", `${estimate.estimateNumber} | ${previous} -> ${normalized}`);
   addActivity("Estimate updated", `${estimate.estimateNumber} - ${normalized}`);
+  saveState();
+  render();
+}
+
+function convertEstimateToBillingLines(estimateId = "") {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !workOrder || !canManageWorkOrders()) return;
+  if (estimate.status !== "Accepted") {
+    alert("Only accepted estimates can be used for billing.");
+    return;
+  }
+  const lines = normalizeEstimateLines(estimate.lines || [])
+    .filter((line) => !line.optional)
+    .map((line) => ({
+      id: crypto.randomUUID(),
+      type: line.type || "Service",
+      itemId: line.itemId || "",
+      itemName: line.itemName || line.description || "Approved estimate line",
+      description: line.description || line.itemName || "Approved estimate line",
+      quantity: Math.max(0, Number(line.quantity || 0)),
+      rate: Math.max(0, Number(line.rate || 0)),
+      costTotal: 0,
+      sourceEstimateId: estimate.id,
+      taxable: line.taxable !== false
+    }));
+  if (!lines.length) {
+    alert("This estimate has no required lines to bill.");
+    return;
+  }
+  const now = new Date().toISOString();
+  const existingLines = normalizeBillingLines(workOrder.billingLines || [])
+    .filter((line) => line.sourceEstimateId !== estimate.id);
+  workOrder.billingLines = normalizeBillingLines([...existingLines, ...lines]);
+  workOrder.billingStatus = "ready";
+  workOrder.billingMemo = workOrder.billingMemo || `Approved estimate ${estimate.estimateNumber}`;
+  workOrder.billingUpdatedAt = now;
+  workOrder.billingUpdatedBy = getCurrentUserLabel();
+  workOrder.updatedAt = now;
+  estimate.convertedToBillingAt = now;
+  estimate.convertedToBillingBy = getCurrentUserLabel();
+  estimate.updatedAt = now;
+  addWorkOrderHistory(workOrder, "Estimate used for billing", `${estimate.estimateNumber} | ${formatMoney(estimateTotal(estimate, false))} | ${lines.length} line${lines.length === 1 ? "" : "s"}`);
+  addActivity("Estimate moved to billing", `${estimate.estimateNumber} - ${formatIssueNumber(workOrder)}`);
   saveState();
   render();
 }

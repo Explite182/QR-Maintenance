@@ -15216,6 +15216,17 @@ button.asset-detail-card {
   font-weight: 900 !important;
 }
 
+.portal-estimate-row {
+  align-items: start;
+}
+
+.portal-estimate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
 .portal-request-form form {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(170px, 1fr) minmax(110px, auto);
