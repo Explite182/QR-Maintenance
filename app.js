@@ -6615,6 +6615,9 @@ let serviceRequestDrawerTab = "notes";
 let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
 let serviceScheduleFilter = "upcoming";
+let lastWorkRecordInteractionAt = 0;
+let deferredCloudRefreshTimer = null;
+let deferredCloudRefreshPending = false;
 let billingQueueFilter = "ready";
 let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
@@ -9657,6 +9660,19 @@ els.customerFilter.addEventListener("change", () => {
 });
 
 document.addEventListener("toggle", (event) => {
+  const workDrawer = event.target.closest?.(".work-order-drawer:not(.completed-pm-item)");
+  if (workDrawer) {
+    if (workDrawer.open) {
+      markWorkRecordInteraction(workDrawer);
+    } else if (!getOpenWorkRecordDrawer()) {
+      focusedWorkOrderId = "";
+      focusedServiceRequestId = "";
+      syncWorkDrawerBackdrop();
+      flushDeferredCloudRefreshSoon();
+    }
+    return;
+  }
+
   const hvacDrawer = event.target.closest?.(".hvac-drawer");
   if (hvacDrawer) {
     updateHvacFirmwareAutoRefresh();
@@ -9695,6 +9711,12 @@ document.addEventListener("toggle", (event) => {
     openLightingControllerDiagnostics.delete(controllerId);
   }
 }, true);
+
+["pointerdown", "focusin", "input", "change", "keydown"].forEach((eventName) => {
+  document.addEventListener(eventName, (event) => {
+    markWorkRecordInteraction(event.target);
+  }, true);
+});
 
 els.newUserRole?.addEventListener("change", () => {
   renderNewUserLocationOptions();
@@ -16022,11 +16044,76 @@ function closeSelectedAssetDrawers() {
   });
 }
 
+function getOpenWorkRecordDrawer() {
+  return document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)");
+}
+
+function markWorkRecordInteraction(target = null) {
+  const drawer = target?.closest?.(".work-order-drawer:not(.completed-pm-item)");
+  if (!drawer) return;
+  lastWorkRecordInteractionAt = Date.now();
+  if (drawer.classList.contains("service-request-item")) {
+    focusedServiceRequestId = drawer.dataset.serviceRequestId || focusedServiceRequestId;
+    focusedWorkOrderId = "";
+    focusedCompletedRecordId = "";
+  } else if (drawer.classList.contains("ticket-drawer-item")) {
+    focusedWorkOrderId = drawer.dataset.workOrderId || focusedWorkOrderId;
+    focusedServiceRequestId = "";
+    focusedCompletedRecordId = "";
+  }
+  syncWorkDrawerBackdrop();
+}
+
+function isWorkRecordActive() {
+  const openDrawer = getOpenWorkRecordDrawer();
+  const activeElement = document.activeElement;
+  const activeInDrawer = Boolean(activeElement?.closest?.(".work-order-drawer:not(.completed-pm-item)"));
+  const recentlyTouched = Date.now() - lastWorkRecordInteractionAt < 90 * 1000;
+  return Boolean(openDrawer || activeInDrawer || recentlyTouched || focusedWorkOrderId || focusedServiceRequestId);
+}
+
+function isWorkRecordOpenOrFocused() {
+  const activeElement = document.activeElement;
+  return Boolean(
+    getOpenWorkRecordDrawer() ||
+    activeElement?.closest?.(".work-order-drawer:not(.completed-pm-item)") ||
+    focusedWorkOrderId ||
+    focusedServiceRequestId
+  );
+}
+
+function shouldDeferCloudRefresh(options = {}) {
+  if (options.forceWhileEditing || document.hidden || !currentUser || isPublicReportUrl()) return false;
+  return isWorkRecordActive();
+}
+
+function scheduleDeferredCloudRefresh() {
+  deferredCloudRefreshPending = true;
+  window.clearTimeout(deferredCloudRefreshTimer);
+  deferredCloudRefreshTimer = window.setTimeout(() => {
+    deferredCloudRefreshTimer = null;
+    refreshCloudDataFromServer({ deferred: true }).catch((error) => {
+      markSyncError(error?.message || "Deferred cloud refresh failed.");
+    });
+  }, 15000);
+}
+
+function flushDeferredCloudRefreshSoon() {
+  if (!deferredCloudRefreshPending || isWorkRecordOpenOrFocused()) return;
+  window.clearTimeout(deferredCloudRefreshTimer);
+  deferredCloudRefreshTimer = window.setTimeout(() => {
+    deferredCloudRefreshTimer = null;
+    refreshCloudDataFromServer({ forceWhileEditing: true }).catch((error) => {
+      markSyncError(error?.message || "Deferred cloud refresh failed.");
+    });
+  }, 1000);
+}
+
 function syncWorkDrawerBackdrop() {
   const hasOpenWorkDrawer = Boolean(
     focusedWorkOrderId ||
     focusedServiceRequestId ||
-    document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)")
+    getOpenWorkRecordDrawer()
   );
   els.workDrawerBackdrop?.classList.toggle("hidden", !hasOpenWorkDrawer);
 }
@@ -16040,6 +16127,7 @@ function closeFocusedWorkDrawer(drawer = null) {
   els.workDrawerBackdrop?.classList.add("hidden");
   closePhotoSideBay();
   render();
+  flushDeferredCloudRefreshSoon();
 }
 
 function renderPanelToggles() {
@@ -36088,7 +36176,8 @@ function handleRealtimeCloudChange(payload = {}) {
       if (table === "public_reports") {
         await syncPublicReportsFromServer(true);
       } else {
-        await refreshCloudDataFromServer();
+        const refreshed = await refreshCloudDataFromServer();
+        if (!refreshed) return;
         await syncPublicReportsFromServer(true);
       }
       render();
@@ -37323,7 +37412,13 @@ async function bootstrapCloudData() {
   }
 }
 
-async function refreshCloudDataFromServer() {
+async function refreshCloudDataFromServer(options = {}) {
+  if (shouldDeferCloudRefresh(options)) {
+    scheduleDeferredCloudRefresh();
+    setSyncBanner("refresh", "Cloud refresh paused", "Finish this ticket and SiteWorks will refresh after you close it.", 3000);
+    return false;
+  }
+  deferredCloudRefreshPending = false;
   if (currentUser && !isPublicReportUrl()) {
     setSyncBanner("loading", "Checking cloud", "", 1200);
   }
@@ -37342,6 +37437,7 @@ async function refreshCloudDataFromServer() {
   await syncPublicReportsFromServer(true);
   restoreScannedAssetSelection();
   render();
+  return true;
 }
 
 // Structured cloud sync functions now live in /js/sync.js.
