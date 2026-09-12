@@ -15085,6 +15085,10 @@ button.asset-detail-card {
   justify-content: flex-end;
 }
 
+.inventory-supplier-row > .inventory-supplier-contact-drawer {
+  grid-column: 1 / -1;
+}
+
 .inventory-filter-bar {
   display: grid;
   grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(150px, 0.6fr));

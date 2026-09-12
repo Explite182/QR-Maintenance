@@ -16433,39 +16433,41 @@ function renderInventorySupplierPanel(items = inventoryItemsForCustomer()) {
   `;
 }
 
-function renderInventorySupplierContactForm(groups = []) {
+function renderInventorySupplierContactForm(groups = [], contact = null, supplierName = "") {
   if (!canManageInventory()) return "";
   const supplierNames = groups.map((group) => group.name).filter((name) => name && name !== "No supplier");
+  const formIdSuffix = supplierName ? `-${slugify(supplierName)}` : "";
+  const resolvedName = supplierName || contact?.name || "";
   return `
     <details class="inventory-supplier-contact-drawer">
-      <summary>Add supplier contact</summary>
+      <summary>${contact || resolvedName ? "Edit supplier contact" : "Add supplier contact"}</summary>
       <form class="inventory-supplier-contact-form" data-inventory-supplier-contact-form>
-        <datalist id="inventorySupplierContactNames">
+        <datalist id="inventorySupplierContactNames${escapeAttribute(formIdSuffix)}">
           ${supplierNames.map((name) => `<option value="${escapeAttribute(name)}"></option>`).join("")}
         </datalist>
         <label>
           Supplier name
-          <input name="supplierName" list="inventorySupplierContactNames" required placeholder="Westburne">
+          <input name="supplierName" list="inventorySupplierContactNames${escapeAttribute(formIdSuffix)}" required placeholder="Westburne" value="${escapeAttribute(resolvedName)}">
         </label>
         <label>
           Email
-          <input name="email" type="email" required placeholder="orders@example.com">
+          <input name="email" type="email" required placeholder="orders@example.com" value="${escapeAttribute(contact?.email || "")}">
         </label>
         <label>
           Phone
-          <input name="phone" placeholder="604-555-0100">
+          <input name="phone" placeholder="604-555-0100" value="${escapeAttribute(contact?.phone || "")}">
         </label>
         <label>
           Website / portal
-          <input name="website" placeholder="https://supplier.example.com">
+          <input name="website" placeholder="https://supplier.example.com" value="${escapeAttribute(contact?.website || "")}">
         </label>
         <label>
           Account #
-          <input name="accountNumber" placeholder="Account number">
+          <input name="accountNumber" placeholder="Account number" value="${escapeAttribute(contact?.accountNumber || "")}">
         </label>
         <label>
           Notes
-          <input name="notes" placeholder="Branch, order instructions, counter notes">
+          <input name="notes" placeholder="Branch, order instructions, counter notes" value="${escapeAttribute(contact?.notes || "")}">
         </label>
         <button type="submit" class="secondary mini">Save supplier</button>
       </form>
@@ -16535,6 +16537,7 @@ function renderInventorySupplierRow(group) {
         <button type="button" class="secondary mini" data-filter-inventory-supplier="${escapeAttribute(group.name)}">${active ? "Filtered" : "Filter parts"}</button>
         <button type="button" class="secondary mini" data-copy-supplier-po="${escapeAttribute(group.name)}">Copy PO list</button>
       </div>
+      ${group.name !== "No supplier" ? renderInventorySupplierContactForm([], contact, group.name) : ""}
     </article>
   `;
 }
