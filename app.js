@@ -27204,7 +27204,7 @@ function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceReq
     reportedIssues: dashboardIssueItems(customerReports, "No customer reports for this view."),
     failedPmIssues: dashboardIssueItems(failedPmIssues, "No failed PM follow-ups for this view."),
     breakerTrips: dashboardBreakerTripItems(breakerTrips, "No breaker trips need confirmation."),
-    serviceRequests: dashboardServiceRequestItems(scopedServiceRequests, "No service requests for this view."),
+    serviceRequests: dashboardServiceRequestItems(scopedServiceRequests, "No customer requests for this view."),
     highPriority: dashboardIssueItems(highPriorityIssues, "No high priority tickets for this view."),
     waitingParts: dashboardIssueItems(waitingPartsIssues, "No waiting parts tickets for this view."),
     lowStockInventory: dashboardInventoryItems(lowStockInventory, "No low-stock inventory for this view."),
@@ -27485,13 +27485,12 @@ function commandPaletteCommands() {
       commandPaletteItem("command", "pmCalendarPanel", "Open PM Calendar", "Jump to monthly preventative maintenance schedule.", "Go"),
       commandPaletteItem("command", "assetRegisterDrawer", "Open Equipment Register", "Browse and select equipment.", "Go"),
       commandPaletteItem("command", "workOrdersPanel", "Open Tickets", "Review active ticket work.", "Go"),
-      commandPaletteItem("command", "serviceRequestsPanel", "Service Requests", "Review customer service requests.", "Go"),
       commandPaletteItem("command", "completedPmPanel", "Completed Tickets", "Review closed tickets and completed maintenance.", "Go")
     );
   }
   if (canAddEquipment()) commands.push(commandPaletteItem("command", "newEquipment", "New Equipment", "Create an equipment record.", "Create"));
   if (canCreateWorkOrders()) commands.push(commandPaletteItem("command", "newTicket", "New Ticket", "Create a maintenance ticket.", "Create"));
-  if (canCreateServiceRequests()) commands.push(commandPaletteItem("command", "newServiceRequest", "New Service Request", "Create a service request.", "Create"));
+  if (canCreateServiceRequests()) commands.push(commandPaletteItem("command", "newServiceRequest", "New Customer Request", "Create a customer request.", "Create"));
   return commands;
 }
 
@@ -28085,11 +28084,19 @@ function renderWorkOrders() {
   const focusedWorkOrder = focusedWorkOrderId
     ? visibleWorkOrders.find((item) => item.id === focusedWorkOrderId)
     : null;
+  const focusedServiceRequest = focusedServiceRequestId
+    ? visibleServiceRequests.find((item) => item.id === focusedServiceRequestId)
+    : null;
   if (focusedWorkOrderId && !focusedWorkOrder) {
     focusedWorkOrderId = "";
   }
+  if (focusedServiceRequestId && !focusedServiceRequest) {
+    focusedServiceRequestId = "";
+  }
   const records = focusedWorkOrder
     ? [{ type: "ticket", item: focusedWorkOrder }]
+    : focusedServiceRequest
+      ? [{ type: "service", item: focusedServiceRequest }]
     : groups[workOrderNumberFilter];
   els.workOrderCount.textContent = records.length;
   renderWorkOrderNumberFilter({
@@ -28239,7 +28246,7 @@ function renderCustomerPortal() {
     ${renderCustomerPortalRequestForm(customerId, assets)}
     ${renderCustomerPortalSection("Upcoming visits", visits, renderCustomerPortalVisit, "No visits are scheduled yet.")}
     ${renderCustomerPortalSection("Open tickets", openTickets.slice(0, 8), renderCustomerPortalTicket, "No open tickets right now.")}
-    ${renderCustomerPortalSection("Service requests", requests.slice(0, 6), renderCustomerPortalRequest, "No service requests in this view.")}
+    ${renderCustomerPortalSection("Customer requests", requests.slice(0, 6), renderCustomerPortalRequest, "No customer requests in this view.")}
     ${renderCustomerPortalSection("Estimates", estimates.slice(0, 6), renderCustomerPortalEstimate, "No estimates have been created yet.")}
     ${renderCustomerPortalSection("Equipment", assets.slice(0, 8), renderCustomerPortalAsset, "No equipment is visible for this account.")}
     ${renderCustomerPortalSection("Completed work", completedTickets, renderCustomerPortalTicket, "No completed tickets yet.")}
@@ -28268,7 +28275,7 @@ function renderCustomerPortalRequestForm(customerId = "", assets = []) {
     <details class="portal-section portal-request-form">
       <summary>
         <strong>Request work</strong>
-        <span>Create a service request</span>
+        <span>Create a customer request</span>
       </summary>
       <form data-customer-portal-request-form>
         <label>
@@ -28531,7 +28538,7 @@ function emptySwNumberFilterMessage() {
   if (workOrderNumberFilter === "sw") return "No SW tickets for this view.";
   if (workOrderNumberFilter === "sw-cu") return "No SW-CU customer tickets for this view.";
   if (workOrderNumberFilter === "sw-pm") return "No SW-PM maintenance records for this view.";
-  if (workOrderNumberFilter === "sw-sr") return "No SW-SR service requests for this view.";
+  if (workOrderNumberFilter === "sw-sr") return "No customer requests for this view.";
   return currentRole === "Technician"
     ? "No SW records assigned to you for this view."
     : "No SW records for this view.";
@@ -28548,7 +28555,7 @@ function renderWorkOrderNumberFilter(counts) {
     `<option value="sw">SW tickets (${counts.sw})</option>`,
     `<option value="sw-cu">SW-CU customer tickets (${counts.swCu})</option>`,
     `<option value="sw-pm">SW-PM maintenance records (${counts.swPm})</option>`,
-    `<option value="sw-sr">SW-SR service requests (${counts.swSr})</option>`
+    `<option value="sw-sr">Customer requests (${counts.swSr})</option>`
   ].join("");
   els.workOrderNumberFilter.value = currentValue;
 }
@@ -29655,10 +29662,10 @@ function runDashboardAction(filter) {
     focusedWorkOrderId = "";
     focusedServiceRequestId = "";
     focusedCompletedRecordId = "";
-    workOrderNumberFilter = "all";
-    const panel = document.getElementById("serviceRequestsPanel");
+    workOrderNumberFilter = "sw-sr";
+    const panel = document.getElementById("workOrdersPanel");
     const willOpen = panel?.classList.contains("is-collapsed");
-    togglePanel("serviceRequestsPanel");
+    togglePanel("workOrdersPanel");
     render();
     panel?.scrollIntoView({ behavior: "smooth", block: willOpen ? "start" : "nearest" });
     return;
@@ -29733,11 +29740,13 @@ function openDashboardResult(type, id) {
     const request = state.serviceRequests.find((item) => item.id === id);
     if (!isCurrentViewServiceRequest(request)) return;
     focusedWorkOrderId = "";
-    workOrderNumberFilter = "all";
+    workOrderNumberFilter = "sw-sr";
     focusedServiceRequestId = id;
     focusedCompletedRecordId = "";
     serviceRequestDrawerTab = "notes";
-    openPanel("serviceRequestsPanel");
+    closeOtherSidebarTargets("workOrdersPanel");
+    openPanel("workOrdersPanel");
+    setMobileTabState("workOrdersPanel");
   } else if (type === "breaker-alert") {
     const alert = monitoringTripAlertsForCurrentView().find((item) => String(item.id || "") === String(id));
     if (!alert) return;
@@ -29767,7 +29776,7 @@ function openDashboardResult(type, id) {
     : type === "ticket"
       ? document.getElementById("workOrdersPanel")
       : type === "service"
-        ? document.getElementById("serviceRequestsPanel")
+        ? document.getElementById("workOrdersPanel")
         : type === "breaker-alert"
           ? document.getElementById("monitoringPanel")
           : type === "inventory"
@@ -29891,7 +29900,7 @@ function renderServiceRequestFormOptions() {
   els.serviceRequestCustomer.value = currentCustomerId;
   els.serviceRequestCustomer.disabled = currentRole !== "Admin";
   els.serviceRequestCustomer.title = currentRole === "Admin"
-    ? "Choose the customer for this service request."
+    ? "Choose the customer for this customer request."
     : "Only admin users can choose a different customer.";
 
   const locations = locationsForCustomer(currentCustomerId);
@@ -29941,7 +29950,7 @@ function renderServiceRequests() {
           return `<article class="work-order-item"><p class="muted">A service request could not be displayed.</p></article>`;
         }
       }).join("")
-    : `<p class="muted">No service requests for this view.</p>`;
+    : `<p class="muted">No customer requests for this view.</p>`;
 }
 
 function renderWorkDrawerProfile({ title, systemId, context = "", imageSrc = "", fallback = "SW", badges = "" }) {
@@ -34582,7 +34591,7 @@ async function createIssueFromTopAction() {
 async function createServiceRequest() {
   if (!els.serviceRequestForm) return;
   if (!canCreateServiceRequests()) {
-    setServiceRequestStatus("This login cannot create service requests.");
+    setServiceRequestStatus("This login cannot create customer requests.");
     return;
   }
   let photo = null;
@@ -34622,7 +34631,7 @@ async function createServiceRequest() {
     return;
   }
   if (!request.title) {
-    setServiceRequestStatus("Enter a short service request.");
+    setServiceRequestStatus("Enter a short customer request.");
     return;
   }
   addServiceRequestHistory(request, "Created", `${formatServiceRequestNumber(request)} - ${request.title}`);
@@ -34643,11 +34652,15 @@ async function createServiceRequest() {
   els.serviceRequestForm.reset();
   const successMessage = `${formatServiceRequestNumber(request)} created.`;
   closeTopActionDrawers();
-  openPanel("serviceRequestsPanel");
+  focusedWorkOrderId = "";
+  focusedServiceRequestId = request.id;
+  focusedCompletedRecordId = "";
+  workOrderNumberFilter = "sw-sr";
+  openPanel("workOrdersPanel");
   render();
   setServiceRequestStatus(successMessage);
   showCreationConfirmation(successMessage);
-  document.getElementById("serviceRequestsPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function setServiceRequestStatus(message) {
@@ -34740,9 +34753,13 @@ function convertOpenIssueToServiceRequest(workOrderId) {
   addWorkOrderHistory(workOrder, "Converted to service request", `${formatIssueNumber(workOrder)} -> ${formatServiceRequestNumber(serviceRequest)}`);
   addActivity("Open ticket converted", `${formatIssueNumber(workOrder)} to ${formatServiceRequestNumber(serviceRequest)}`);
   saveState();
-  openPanel("serviceRequestsPanel");
+  focusedWorkOrderId = "";
+  focusedServiceRequestId = serviceRequest.id;
+  focusedCompletedRecordId = "";
+  workOrderNumberFilter = "sw-sr";
+  openPanel("workOrdersPanel");
   render();
-  document.getElementById("serviceRequestsPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("workOrdersPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function normalizePriority(value) {

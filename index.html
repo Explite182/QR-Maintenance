@@ -221,9 +221,6 @@
           <button type="button" class="sidebar-nav-btn" data-open-target="billingQueuePanel" aria-expanded="false">
             <span>Billing Queue</span>
           </button>
-          <button type="button" class="sidebar-nav-btn" data-open-target="serviceRequestsPanel" aria-expanded="false">
-            <span>Service Requests</span>
-          </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="siteMapPanel" aria-expanded="false">
             <span>Site Map</span>
           </button>
@@ -614,7 +611,7 @@
           <div id="createNewMenu" class="create-new-menu hidden">
             <button id="newEquipmentBtn" type="button">New Equipment</button>
             <button id="newIssueBtn" type="button" class="secondary">New Ticket</button>
-            <button id="newServiceRequestBtn" type="button" class="secondary">New Service Request</button>
+            <button id="newServiceRequestBtn" type="button" class="secondary">New Customer Request</button>
             <button id="newInventoryBtn" type="button" class="secondary">New Inventory Item</button>
             <button id="newKeyBtn" type="button" class="secondary">New Key</button>
           </div>
@@ -872,10 +869,10 @@
           <div class="metric-menu-wrap">
             <button type="button" class="metric-card metric-neutral" data-dashboard-filter="serviceRequests">
               <span id="serviceRequestsMetric">0</span>
-              <p>Service requests</p>
+              <p>Customer requests</p>
             </button>
             <div class="metric-dropdown hidden" data-dashboard-menu="serviceRequests">
-              <p class="metric-dropdown-empty">No service requests for this view.</p>
+              <p class="metric-dropdown-empty">No customer requests for this view.</p>
             </div>
           </div>
           <div class="metric-menu-wrap">
@@ -1138,14 +1135,14 @@
 
         <section id="serviceRequestsPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="serviceRequestsPanel">
-          <h2>Service Requests</h2>
+          <h2>Customer Requests</h2>
           <div class="panel-title-actions">
             <span id="serviceRequestCount">0</span>
           </div>
         </div>
         <div data-panel-body>
           <details id="serviceRequestCreateDrawer" class="service-request-create-drawer work-create-drawer">
-            <summary>Create Service Request</summary>
+            <summary>Create Customer Request</summary>
             <form id="serviceRequestForm" class="stack compact-form">
               <div class="form-grid">
                 <label>
@@ -1183,7 +1180,7 @@
               </div>
               <label>
                 Request
-                <input id="serviceRequestTitle" required placeholder="Short service request">
+                <input id="serviceRequestTitle" required placeholder="Short customer request">
               </label>
               <label>
                 Details
@@ -1193,7 +1190,7 @@
                 Photo
                 <input id="serviceRequestPhoto" type="file" accept="image/*">
               </label>
-              <button type="submit" class="primary">Create Service Request</button>
+              <button type="submit" class="primary">Create Customer Request</button>
               <p id="serviceRequestStatus" class="inline-status"></p>
             </form>
           </details>
