@@ -8770,6 +8770,16 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const exportInventoryHistoryButton = event.target.closest("[data-export-inventory-history]");
+  if (exportInventoryHistoryButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const item = getInventoryItem(exportInventoryHistoryButton.dataset.exportInventoryHistory);
+    if (!item || !canSeeCustomer(item.customerId)) return;
+    downloadInventoryHistoryCsv(item);
+    return;
+  }
+
   const showReorderPoButton = event.target.closest("[data-show-reorder-po]");
   if (showReorderPoButton) {
     event.preventDefault();
@@ -8903,6 +8913,12 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+document.addEventListener("change", (event) => {
+  const inventoryAuditSelect = event.target.closest("[data-inventory-audit-kind-select], [data-inventory-audit-range-select]");
+  if (!inventoryAuditSelect) return;
+  applyInventoryAuditFilters(inventoryAuditSelect.closest(".inventory-movement-log"));
+});
+
 document.addEventListener("pointerdown", (event) => {
   const form = event.target?.closest?.(PUMP_SETUP_FORM_SELECTOR);
   if (form) {
@@ -9010,13 +9026,10 @@ document.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
     const panel = auditFilterButton.closest(".inventory-movement-log");
-    const filter = auditFilterButton.dataset.inventoryAuditFilter || "all";
     panel?.querySelectorAll("[data-inventory-audit-filter]").forEach((button) => {
       button.classList.toggle("is-active", button === auditFilterButton);
     });
-    panel?.querySelectorAll("[data-audit-kind]").forEach((row) => {
-      row.classList.toggle("hidden", filter !== "all" && row.dataset.auditKind !== filter);
-    });
+    applyInventoryAuditFilters(panel, auditFilterButton.dataset.inventoryAuditFilter || "all");
     return;
   }
 
@@ -16999,6 +17012,7 @@ async function returnInventoryReservation(item, reservationId = "") {
 
 function renderInventoryMovementLog(item = {}) {
   const auditRows = inventoryAuditRows(item);
+  const recentRows = auditRows.slice(0, 6);
   const filters = [
     ["all", "All"],
     ["stock", "Stock changes"],
@@ -17010,33 +17024,82 @@ function renderInventoryMovementLog(item = {}) {
     <section class="inventory-movement-log" aria-label="Stock movement history">
       <div class="inventory-movement-heading">
         <strong>Inventory history</strong>
-        <small>${auditRows.length ? `${auditRows.length} recent` : "No movements yet"}</small>
+        <small>${auditRows.length ? `${auditRows.length} total` : "No movements yet"}</small>
       </div>
-      ${auditRows.length
+      ${recentRows.length
         ? `<div class="inventory-audit-tabs" aria-label="Inventory history filters">
             ${filters.map(([filter, label]) => `<button type="button" class="secondary mini ${filter === "all" ? "is-active" : ""}" data-inventory-audit-filter="${escapeAttribute(filter)}">${escapeHtml(label)}</button>`).join("")}
           </div>
-          <div class="inventory-movement-list">
-            <div class="inventory-movement-header">
-              <span>Action</span>
-              <span>Change</span>
-              <span>Counts after</span>
-              <span>Reference</span>
-              <span>User / notes</span>
+          ${renderInventoryAuditTable(recentRows)}
+          <details class="inventory-history-full">
+            <summary>
+              <span>View full history</span>
+              <small>${auditRows.length} record${auditRows.length === 1 ? "" : "s"}</small>
+            </summary>
+            <div class="inventory-history-tools">
+              <label>
+                Type
+                <select data-inventory-audit-kind-select>
+                  ${filters.map(([filter, label]) => `<option value="${escapeAttribute(filter)}">${escapeHtml(label)}</option>`).join("")}
+                </select>
+              </label>
+              <label>
+                Date range
+                <select data-inventory-audit-range-select>
+                  <option value="all">All dates</option>
+                  <option value="7">Last 7 days</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                </select>
+              </label>
+              <button type="button" class="secondary mini" data-export-inventory-history="${escapeAttribute(item.id)}">Export history CSV</button>
             </div>
-            ${auditRows.map((row) => `
-              <div class="inventory-movement-row" data-audit-kind="${escapeAttribute(row.kind)}">
-                <span>${escapeHtml(row.action)}<small>${escapeHtml(formatDateTime(row.at))}</small></span>
-                <strong>${escapeHtml(row.deltaLabel)}</strong>
-                <small>${escapeHtml(row.countsLabel)}</small>
-                <em>${escapeHtml(row.reference || "No reference")}</em>
-                <em>${escapeHtml([row.userName, row.note].filter(Boolean).join(" | ") || "No notes")}</em>
-              </div>
-            `).join("")}
-          </div>`
+            ${renderInventoryAuditTable(auditRows, true)}
+          </details>`
         : `<p class="muted">Quantity changes will appear here.</p>`}
     </section>
   `;
+}
+
+function renderInventoryAuditTable(rows = [], isFull = false) {
+  return `
+    <div class="inventory-movement-list${isFull ? " inventory-movement-list-full" : ""}">
+      <div class="inventory-movement-header">
+        <span>Action</span>
+        <span>Change</span>
+        <span>Counts after</span>
+        <span>Reference</span>
+        <span>User / notes</span>
+      </div>
+      ${rows.map((row) => `
+        <div class="inventory-movement-row" data-audit-kind="${escapeAttribute(row.kind)}" data-audit-at="${escapeAttribute(row.at || "")}">
+          <span>${escapeHtml(row.action)}<small>${escapeHtml(formatDateTime(row.at))}</small></span>
+          <strong>${escapeHtml(row.deltaLabel)}</strong>
+          <small>${escapeHtml(row.countsLabel)}</small>
+          <em>${escapeHtml(row.reference || "No reference")}</em>
+          <em>${escapeHtml([row.userName, row.note].filter(Boolean).join(" | ") || "No notes")}</em>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function applyInventoryAuditFilters(panel, forcedKind = "") {
+  if (!panel) return;
+  const kindSelect = panel.querySelector("[data-inventory-audit-kind-select]");
+  const rangeSelect = panel.querySelector("[data-inventory-audit-range-select]");
+  if (forcedKind && kindSelect) kindSelect.value = forcedKind;
+  const activeQuickFilter = panel.querySelector("[data-inventory-audit-filter].is-active")?.dataset.inventoryAuditFilter || "";
+  const kind = forcedKind || kindSelect?.value || activeQuickFilter || "all";
+  const rangeDays = Number(rangeSelect?.value || 0);
+  const cutoff = rangeDays > 0 ? Date.now() - rangeDays * 24 * 60 * 60 * 1000 : 0;
+  panel.querySelectorAll("[data-audit-kind]").forEach((row) => {
+    const rowKind = row.dataset.auditKind || "stock";
+    const rowTime = new Date(row.dataset.auditAt || 0).getTime();
+    const kindMatches = kind === "all" || rowKind === kind;
+    const rangeMatches = !cutoff || (Number.isFinite(rowTime) && rowTime >= cutoff);
+    row.classList.toggle("hidden", !kindMatches || !rangeMatches);
+  });
 }
 
 function inventoryAuditRows(item = {}) {
@@ -17093,8 +17156,7 @@ function inventoryAuditRows(item = {}) {
     return rows;
   });
   return [...movementRows, ...reservationRows]
-    .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
-    .slice(0, 20);
+    .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
 }
 
 function inventoryAuditKind(type = "") {
@@ -37083,6 +37145,34 @@ function downloadInventoryCsv(items = visibleInventoryItems(), filename = `sitew
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadInventoryHistoryCsv(item, filename = "") {
+  if (!item) return;
+  const safeName = String(item.name || "inventory-item").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "inventory-item";
+  const rows = [
+    ["Customer", "Item", "Date", "Type", "Action", "Change", "Counts After", "Reference", "User", "Notes"],
+    ...inventoryAuditRows(item).map((row) => [
+      getCustomer(item.customerId)?.name || "",
+      item.name || "",
+      formatDateTime(row.at),
+      row.kind,
+      row.action,
+      row.deltaLabel,
+      row.countsLabel,
+      row.reference || "",
+      row.userName || "",
+      row.note || ""
+    ])
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename || `siteworks-inventory-history-${safeName}-${timestampForFile()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
