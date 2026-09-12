@@ -14246,6 +14246,73 @@ button.asset-detail-card {
   stroke-linejoin: round;
 }
 
+.tech-flow-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(20, 184, 166, 0.24);
+  border-radius: 8px;
+  background: rgba(240, 253, 250, 0.72);
+}
+
+.tech-flow-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.tech-flow-actions button {
+  min-height: 42px;
+}
+
+.tech-flow-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(200px, 0.8fr) minmax(220px, 1fr);
+  gap: 10px;
+}
+
+.tech-flow-box {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(20, 184, 166, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.tech-flow-box > strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.tech-parts-form,
+.tech-signoff-form {
+  display: grid;
+  gap: 8px;
+}
+
+.tech-parts-form label,
+.tech-signoff-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tech-parts-form input,
+.tech-signoff-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.tech-flow-box .quick-note-box {
+  margin: 0;
+  padding: 10px;
+  box-shadow: none;
+}
+
 .ticket-stream-heading {
   display: flex;
   align-items: center;
@@ -17855,6 +17922,18 @@ body.panel-schedule-open {
   .ticket-summary-tools,
   .ticket-header-actions {
     justify-content: flex-start;
+  }
+
+  .tech-flow-actions,
+  .tech-flow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tech-flow-actions button,
+  .tech-parts-form button,
+  .tech-signoff-form button {
+    width: 100%;
+    min-height: 46px;
   }
 
   .service-request-title-row,

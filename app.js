@@ -11533,6 +11533,20 @@ document.addEventListener("submit", (event) => {
   saveJobCostForWorkOrder(form.dataset.jobCostForm, new FormData(form));
 });
 
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-tech-parts-form]");
+  if (!form) return;
+  event.preventDefault();
+  await useInventoryFromTechnicianFlow(form.dataset.techPartsForm, new FormData(form));
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-tech-signoff-form]");
+  if (!form) return;
+  event.preventDefault();
+  saveTechnicianSignoff(form.dataset.techSignoffForm, new FormData(form));
+});
+
 document.addEventListener("submit", (event) => {
   const customerMapForm = event.target.closest("[data-qb-customer-map]");
   const itemMapForm = event.target.closest("[data-qb-item-map]");
@@ -32219,6 +32233,7 @@ function renderWorkOrderItem(item) {
         <section class="ticket-profile-card">
           ${drawerProfile}
         </section>
+        ${renderTechnicianMobileFlow(item)}
         ${emailStatusPanel}
         <details class="ticket-sub-drawer" open>
           <summary>
@@ -32329,6 +32344,135 @@ function renderWorkOrderJobCostPanel(workOrder = {}) {
       </section>
     </details>
   `;
+}
+
+function renderTechnicianMobileFlow(workOrder = {}) {
+  if (!canWorkOnTicket(workOrder)) return "";
+  const itemOptions = inventoryBillingOptionItems(workOrder.customerId)
+    .filter((item) => inventoryAvailableQuantity(item) > 0);
+  const datalistId = `techFlowParts-${workOrder.id}`;
+  const signoff = workOrder.technicianSignoff || {};
+  const isClosed = workOrder.status === "Closed";
+  return `
+    <details class="ticket-sub-drawer tech-flow-panel" open>
+      <summary>
+        <h3>Technician flow</h3>
+        <span>${escapeHtml(signoff.signedAt ? "Signed off" : workOrder.status || "Open")}</span>
+      </summary>
+      <section class="tech-flow-card">
+        <div class="tech-flow-actions">
+          ${workOrder.status === "Open" ? `<button type="button" class="primary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="In progress">Arrived / start</button>` : ""}
+          ${!["Waiting parts", "Closed"].includes(workOrder.status) ? `<button type="button" class="secondary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="Waiting parts">Waiting parts</button>` : ""}
+          ${!["Resolved", "Closed"].includes(workOrder.status) ? `<button type="button" class="secondary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="Resolved">Work complete</button>` : ""}
+          ${canManageWorkOrders() && !isClosed ? `<button type="button" class="secondary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="Closed">Close ticket</button>` : ""}
+        </div>
+        <div class="tech-flow-grid">
+          <article class="tech-flow-box">
+            <strong>Work note / photo</strong>
+            ${renderQuickAddNoteBox(workOrder, "tech")}
+          </article>
+          <article class="tech-flow-box">
+            <strong>Use part</strong>
+            <form class="tech-parts-form" data-tech-parts-form="${escapeAttribute(workOrder.id)}">
+              <datalist id="${escapeAttribute(datalistId)}">
+                ${itemOptions.map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml([item.partNumber, `${formatInventoryNumber(inventoryAvailableQuantity(item))} available`, item.storageLocation, item.bin].filter(Boolean).join(" | "))}</option>`).join("")}
+              </datalist>
+              <label>
+                Part
+                <input name="itemName" list="${escapeAttribute(datalistId)}" placeholder="Search inventory part" required>
+              </label>
+              <label>
+                Qty used
+                <input name="quantityUsed" type="number" min="1" step="1" value="1">
+              </label>
+              <button type="submit" class="secondary mini" ${itemOptions.length ? "" : "disabled"}>Use part</button>
+            </form>
+            ${itemOptions.length ? "" : `<p class="muted">No available inventory parts for this customer.</p>`}
+          </article>
+          <article class="tech-flow-box">
+            <strong>Customer sign-off</strong>
+            <form class="tech-signoff-form" data-tech-signoff-form="${escapeAttribute(workOrder.id)}">
+              <label>
+                Name
+                <input name="customerName" value="${escapeAttribute(signoff.customerName || "")}" placeholder="Customer name">
+              </label>
+              <label>
+                Approval / signature note
+                <input name="signatureNote" value="${escapeAttribute(signoff.signatureNote || "")}" placeholder="Approved, initials, or verbal sign-off">
+              </label>
+              <label>
+                Completion note
+                <input name="completionNote" value="${escapeAttribute(signoff.completionNote || "")}" placeholder="Work completed, system tested, customer advised">
+              </label>
+              <button type="submit" class="secondary mini">${signoff.signedAt ? "Update sign-off" : "Save sign-off"}</button>
+            </form>
+            ${signoff.signedAt ? `<p class="muted">Signed ${escapeHtml(formatDateTime(new Date(signoff.signedAt)))}${signoff.customerName ? ` by ${escapeHtml(signoff.customerName)}` : ""}.</p>` : ""}
+          </article>
+        </div>
+      </section>
+    </details>
+  `;
+}
+
+async function useInventoryFromTechnicianFlow(workOrderId = "", formData = new FormData()) {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canWorkOnTicket(workOrder)) return;
+  const itemName = String(formData.get("itemName") || "").trim();
+  const item = findInventoryItemForBilling(workOrder.customerId, itemName);
+  if (!item || item.customerId !== workOrder.customerId || !canSeeCustomer(item.customerId)) {
+    alert("Choose an inventory part from this customer.");
+    return;
+  }
+  const previousQuantity = Math.max(0, Number(item.quantity || 0));
+  const availableQuantity = inventoryAvailableQuantity(item);
+  const quantityUsed = Math.min(availableQuantity, Math.max(1, Number(formData.get("quantityUsed") || 1)));
+  if (!quantityUsed) {
+    alert("That part has no available stock.");
+    return;
+  }
+  item.quantity = Math.max(0, previousQuantity - quantityUsed);
+  item.reorderStatus = inventoryItemLowStock(item) ? item.reorderStatus || "" : "";
+  addInventoryMovement(item, {
+    type: "use",
+    previousQuantity,
+    quantityAfter: item.quantity,
+    note: `Used from technician flow on ${formatIssueNumber(workOrder)}`
+  });
+  item.updatedAt = new Date().toISOString();
+  const note = `Used ${formatInventoryNumber(quantityUsed)} x ${item.name} from technician flow. On hand: ${formatInventoryNumber(item.quantity)}.`;
+  workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
+  workOrder.updatedAt = new Date().toISOString();
+  addWorkOrderHistory(workOrder, "Inventory used", note);
+  addActivity("Inventory used on ticket", `${item.name} -> ${formatIssueNumber(workOrder)}`);
+  saveState();
+  await syncSingleInventoryItemToServer(item);
+  render();
+}
+
+function saveTechnicianSignoff(workOrderId = "", formData = new FormData()) {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canWorkOnTicket(workOrder)) return;
+  const now = new Date().toISOString();
+  const customerName = String(formData.get("customerName") || "").trim();
+  const signatureNote = String(formData.get("signatureNote") || "").trim();
+  const completionNote = String(formData.get("completionNote") || "").trim();
+  workOrder.technicianSignoff = {
+    customerName,
+    signatureNote,
+    completionNote,
+    signedAt: now,
+    signedBy: getCurrentUserLabel()
+  };
+  if (completionNote) workOrder.notes = appendDatedWorkNote(workOrder.notes, completionNote);
+  if (workOrder.status !== "Closed") {
+    workOrder.status = "Resolved";
+    workOrder.resolvedAt = workOrder.resolvedAt || now;
+  }
+  workOrder.updatedAt = now;
+  addWorkOrderHistory(workOrder, "Customer sign-off", [customerName, signatureNote, completionNote].filter(Boolean).join(" | ") || "Sign-off saved");
+  addActivity("Ticket signed off", `${formatIssueNumber(workOrder)} - ${customerName || "Customer"}`);
+  saveState();
+  render();
 }
 
 function renderWorkOrderSchedulePanel(workOrder = {}) {
@@ -32741,9 +32885,9 @@ function renderTicketActivityTimeline(item, showHeading = true) {
   `;
 }
 
-function renderQuickAddNoteBox(item) {
+function renderQuickAddNoteBox(item, suffix = "") {
   if (!canWorkOnTicket(item)) return "";
-  const inputId = `quick-note-photo-${escapeAttribute(item.id)}`;
+  const inputId = `quick-note-photo-${escapeAttribute(item.id)}${suffix ? `-${escapeAttribute(suffix)}` : ""}`;
   return `
     <form class="quick-note-box" data-work-order-quick-note-form="${escapeAttribute(item.id)}">
       <textarea name="note" rows="3" placeholder="Type a work note or update..."></textarea>
@@ -37330,6 +37474,13 @@ function normalizeState(input) {
       jobCostNotes: item.jobCostNotes || item.costNotes || "",
       jobCostUpdatedAt: item.jobCostUpdatedAt || "",
       jobCostUpdatedBy: item.jobCostUpdatedBy || "",
+      technicianSignoff: item.technicianSignoff && typeof item.technicianSignoff === "object" ? {
+        customerName: item.technicianSignoff.customerName || "",
+        signatureNote: item.technicianSignoff.signatureNote || "",
+        completionNote: item.technicianSignoff.completionNote || "",
+        signedAt: item.technicianSignoff.signedAt || "",
+        signedBy: item.technicianSignoff.signedBy || ""
+      } : null,
       issueNumber
     };
   });
