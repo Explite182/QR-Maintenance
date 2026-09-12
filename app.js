@@ -11150,6 +11150,16 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const deleteBillingLineButton = event.target.closest("[data-delete-billing-line]");
+  if (deleteBillingLineButton && canManageWorkOrders()) {
+    event.preventDefault();
+    deleteWorkOrderBillingLine(
+      deleteBillingLineButton.dataset.deleteBillingLine,
+      deleteBillingLineButton.dataset.billingLineId
+    );
+    return;
+  }
+
   const contractorDeleteButton = event.target.closest("[data-delete-contractor]");
   if (contractorDeleteButton && canManageContractors()) {
     deletePreferredContractor(contractorDeleteButton.dataset.deleteContractor);
@@ -11301,6 +11311,29 @@ document.addEventListener("submit", (event) => {
   workOrder.updatedAt = workOrder.billingUpdatedAt;
   addWorkOrderHistory(workOrder, "Billing details saved", `${workOrder.customerPo ? `PO ${workOrder.customerPo}` : "No PO"} | Service ${formatMoney(workOrder.billingServiceAmount)}`);
   addActivity("Billing details saved", `${formatIssueNumber(workOrder)} - ${formatMoney(workOrder.billingServiceAmount)}`);
+  saveState();
+  render();
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-billing-line-form]");
+  if (!form) return;
+  event.preventDefault();
+  if (!canManageWorkOrders()) return;
+  const workOrder = getWorkOrder(form.dataset.billingLineForm);
+  if (!workOrder) return;
+  const formData = new FormData(form);
+  const line = buildBillingLineFromForm(workOrder, formData);
+  if (!line) {
+    alert("Enter a billable item with quantity and rate.");
+    return;
+  }
+  workOrder.billingLines = normalizeBillingLines([...(workOrder.billingLines || []), line]);
+  workOrder.billingUpdatedAt = new Date().toISOString();
+  workOrder.billingUpdatedBy = currentUser?.name || currentUser?.username || "";
+  workOrder.updatedAt = workOrder.billingUpdatedAt;
+  addWorkOrderHistory(workOrder, "Billing line added", `${line.description} | ${formatInventoryNumber(line.quantity)} x ${formatMoney(line.rate)}`);
+  addActivity("Billing line added", `${formatIssueNumber(workOrder)} - ${line.description}`);
   saveState();
   render();
 });
@@ -27206,6 +27239,7 @@ function renderBillingQueueItem(record) {
           </label>
           <button type="submit" class="secondary mini">Save billing</button>
         </form>
+        ${renderBillingLineEditor(record)}
         <section class="billing-line-card">
           <header>
             <strong>Invoice-ready lines</strong>
@@ -27218,6 +27252,7 @@ function renderBillingQueueItem(record) {
                 <strong>${escapeHtml(line.description)}</strong>
                 <em>${escapeHtml(formatInventoryNumber(line.quantity))} x ${escapeHtml(formatMoney(line.rate))}</em>
                 <b>${escapeHtml(formatMoney(line.amount))}</b>
+                ${line.id ? `<button type="button" class="secondary mini danger-action" data-delete-billing-line="${escapeAttribute(workOrder.id)}" data-billing-line-id="${escapeAttribute(line.id)}">Remove</button>` : ""}
               </div>
             `).join("")
             : `<p class="muted">No billable lines found yet. Add parts/time notes before exporting.</p>`}
@@ -27225,6 +27260,59 @@ function renderBillingQueueItem(record) {
       </div>
     </details>
   `;
+}
+
+function renderBillingLineEditor(record) {
+  const { workOrder } = record;
+  const itemOptions = inventoryBillingOptionItems(workOrder.customerId);
+  const datalistId = `billingLineItems-${workOrder.id}`;
+  return `
+    <details class="billing-line-editor">
+      <summary>Add product, service, or labour line</summary>
+      <form class="billing-line-form" data-billing-line-form="${escapeAttribute(workOrder.id)}">
+        <datalist id="${escapeAttribute(datalistId)}">
+          ${itemOptions.map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml([item.itemType || "Product", item.sellPrice ? formatMoney(item.sellPrice) : "", item.supplier || ""].filter(Boolean).join(" | "))}</option>`).join("")}
+        </datalist>
+        <label>
+          Type
+          <select name="lineType">
+            <option>Service</option>
+            <option>Product</option>
+            <option>Material</option>
+            <option>Labour</option>
+          </select>
+        </label>
+        <label>
+          Item
+          <input name="itemName" list="${escapeAttribute(datalistId)}" placeholder="Search inventory or enter labour">
+        </label>
+        <label>
+          Description
+          <input name="description" placeholder="Line description for invoice">
+        </label>
+        <label>
+          Qty
+          <input name="quantity" type="number" min="0.01" step="0.01" value="1">
+        </label>
+        <label>
+          Rate
+          <input name="rate" type="number" min="0" step="0.01" placeholder="0.00">
+        </label>
+        <label class="checkbox-row billing-line-taxable">
+          <input name="taxable" type="checkbox" checked>
+          Taxable
+        </label>
+        <button type="submit" class="secondary mini">Add line</button>
+      </form>
+    </details>
+  `;
+}
+
+function inventoryBillingOptionItems(customerId = "") {
+  return (state.inventoryItems || [])
+    .filter((item) => item.customerId === customerId)
+    .filter((item) => item.active !== false)
+    .sort(compareInventoryItemsAlphabetically);
 }
 
 function billingStatusLabel(status = "") {
@@ -27248,13 +27336,53 @@ function updateWorkOrderBillingStatus(workOrderId, status = "ready") {
   render();
 }
 
+function buildBillingLineFromForm(workOrder = {}, formData = new FormData()) {
+  const itemName = String(formData.get("itemName") || "").trim();
+  const descriptionInput = String(formData.get("description") || "").trim();
+  const quantity = Math.max(0, Number(formData.get("quantity") || 0));
+  const rateInput = Math.max(0, Number(formData.get("rate") || 0));
+  const matchedItem = findInventoryItemForBilling(workOrder.customerId, itemName);
+  const rate = rateInput || matchedItem?.sellPrice || inventoryResolvedSellPrice(matchedItem?.unitCost || 0, matchedItem?.markupPercent || 0, 0);
+  const description = descriptionInput || matchedItem?.description || itemName;
+  if (!description || quantity <= 0 || rate < 0) return null;
+  return {
+    id: crypto.randomUUID(),
+    type: String(formData.get("lineType") || matchedItem?.itemType || "Service").trim() || "Service",
+    itemId: matchedItem?.id || "",
+    itemName: matchedItem?.name || itemName || description,
+    description,
+    quantity,
+    rate,
+    costTotal: quantity * Math.max(0, Number(matchedItem?.unitCost || 0)),
+    taxable: matchedItem ? matchedItem.taxable !== false : formData.get("taxable") === "on"
+  };
+}
+
+function deleteWorkOrderBillingLine(workOrderId = "", lineId = "") {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !lineId || !canManageWorkOrders()) return;
+  const previousLines = normalizeBillingLines(workOrder.billingLines || []);
+  const removedLine = previousLines.find((line) => line.id === lineId);
+  workOrder.billingLines = previousLines.filter((line) => line.id !== lineId);
+  workOrder.billingUpdatedAt = new Date().toISOString();
+  workOrder.billingUpdatedBy = currentUser?.name || currentUser?.username || "";
+  workOrder.updatedAt = workOrder.billingUpdatedAt;
+  addWorkOrderHistory(workOrder, "Billing line removed", removedLine?.description || "Line removed");
+  addActivity("Billing line removed", `${formatIssueNumber(workOrder)} - ${removedLine?.description || "Billing line"}`);
+  saveState();
+  render();
+}
+
 function workOrderBillingLineItems(workOrder = {}) {
   const lines = [];
   const notes = String(workOrder.notes || "");
+  const savedLines = normalizeBillingLines(workOrder.billingLines || []);
+  lines.push(...savedLines);
+  if (savedLines.length) return lines;
   const usedInventoryLines = inventoryUsageLinesForWorkOrder(workOrder);
   lines.push(...usedInventoryLines);
   const serviceAmount = Math.max(0, Number(workOrder.billingServiceAmount || 0));
-  if (!usedInventoryLines.length && serviceAmount > 0) {
+  if (!savedLines.length && !usedInventoryLines.length && serviceAmount > 0) {
     lines.push({
       type: "Service",
       itemName: "Service labour",
@@ -27269,6 +27397,27 @@ function workOrderBillingLineItems(workOrder = {}) {
   const explicitLines = parseBillingLinesFromNotes(notes);
   lines.push(...explicitLines);
   return lines.filter((line) => Number(line.amount || 0) > 0);
+}
+
+function normalizeBillingLines(lines = []) {
+  return (Array.isArray(lines) ? lines : []).map((line) => {
+    const quantity = Math.max(0, Number(line.quantity || 0));
+    const rate = Math.max(0, Number(line.rate || 0));
+    const amount = Math.round(quantity * rate * 100) / 100;
+    const costTotal = Math.max(0, Number(line.costTotal || 0));
+    return {
+      id: line.id || crypto.randomUUID?.() || `billing-line-${Date.now()}`,
+      type: line.type || "Service",
+      itemId: line.itemId || "",
+      itemName: line.itemName || line.description || "Billable item",
+      description: line.description || line.itemName || "Billable item",
+      quantity,
+      rate,
+      amount,
+      costTotal,
+      taxable: line.taxable === false ? false : true
+    };
+  }).filter((line) => line.quantity > 0 && line.rate >= 0 && line.description);
 }
 
 function inventoryUsageLinesForWorkOrder(workOrder = {}) {
@@ -35011,6 +35160,7 @@ function normalizeState(input) {
       billingUpdatedAt: item.billingUpdatedAt || "",
       billingUpdatedBy: item.billingUpdatedBy || "",
       billingServiceAmount: Math.max(0, Number(item.billingServiceAmount || 0)),
+      billingLines: normalizeBillingLines(item.billingLines || []),
       customerPo: item.customerPo || item.customerPO || "",
       issueNumber
     };
