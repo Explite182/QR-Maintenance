@@ -15832,7 +15832,7 @@ button.asset-detail-card {
 }
 
 .estimate-line-form {
-  grid-template-columns: minmax(110px, 0.55fr) minmax(160px, 0.9fr) minmax(220px, 1.2fr) 80px 100px minmax(100px, auto) minmax(100px, auto) auto;
+  grid-template-columns: minmax(110px, 0.55fr) minmax(150px, 0.8fr) minmax(200px, 1.2fr) minmax(72px, 0.35fr) minmax(88px, 0.45fr) minmax(92px, auto) minmax(92px, auto);
   border: 0;
   border-top: 1px solid var(--line);
   border-radius: 0;
@@ -15844,6 +15844,11 @@ button.asset-detail-card {
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
+}
+
+.estimate-line-form button[type="submit"] {
+  grid-column: 1 / -1;
+  justify-self: end;
 }
 
 .job-cost-card {

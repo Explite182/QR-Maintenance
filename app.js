@@ -32688,7 +32688,10 @@ function addEstimateLine(estimateId = "", formData = new FormData()) {
   const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
   if (!estimate || !workOrder || !canManageWorkOrders()) return;
   const line = buildEstimateLineFromForm(workOrder, formData);
-  if (!line) return;
+  if (!line) {
+    alert("Enter a quote line with a description or item, quantity, and rate.");
+    return;
+  }
   estimate.lines = normalizeEstimateLines([...(estimate.lines || []), line]);
   estimate.updatedAt = new Date().toISOString();
   addWorkOrderHistory(workOrder, "Estimate line added", `${estimate.estimateNumber} | ${line.description} | ${formatMoney(estimateLineAmount(line))}`);
