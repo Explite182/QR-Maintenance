@@ -6451,6 +6451,7 @@ let keyWizardStep = 0;
 let serviceRequestDrawerTab = "notes";
 let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
+let serviceScheduleFilter = "upcoming";
 let billingQueueFilter = "ready";
 let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
@@ -11327,6 +11328,22 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const scheduleFilterButton = event.target.closest("[data-service-schedule-filter]");
+  if (scheduleFilterButton) {
+    event.preventDefault();
+    serviceScheduleFilter = scheduleFilterButton.dataset.serviceScheduleFilter || "upcoming";
+    renderWorkOrders();
+    return;
+  }
+
+  const openScheduledTicketButton = event.target.closest("[data-open-scheduled-ticket]");
+  if (openScheduledTicketButton) {
+    event.preventDefault();
+    focusedWorkOrderId = openScheduledTicketButton.dataset.openScheduledTicket || "";
+    renderWorkOrders();
+    return;
+  }
+
   const deleteBillingLineButton = event.target.closest("[data-delete-billing-line]");
   if (deleteBillingLineButton && canManageWorkOrders()) {
     event.preventDefault();
@@ -11444,6 +11461,14 @@ document.addEventListener("submit", (event) => {
   }
   const formData = new FormData(lineForm);
   addEstimateLine(lineForm.dataset.estimateLineForm, formData);
+});
+
+document.addEventListener("submit", (event) => {
+  const scheduleForm = event.target.closest("[data-ticket-schedule-form]");
+  if (!scheduleForm) return;
+  event.preventDefault();
+  if (!canManageWorkOrders()) return;
+  saveScheduledVisitForWorkOrder(scheduleForm.dataset.ticketScheduleForm, new FormData(scheduleForm));
 });
 
 document.addEventListener("submit", (event) => {
@@ -27996,12 +28021,156 @@ function renderWorkOrders() {
   els.workOrderList.innerHTML = records.length
     ? records.map(renderSwNumberRecord).join("")
     : `<p class="muted">${emptySwNumberFilterMessage()}</p>`;
+  renderServiceScheduleBoard(visibleWorkOrders);
 }
 
 function renderSwNumberRecord(record) {
   if (record.type === "service") return renderServiceRequestItem(record.item);
   if (record.type === "pm") return renderCompletedTicketItem(record.item);
   return renderWorkOrderItem(record.item);
+}
+
+function normalizeScheduledVisits(visits = []) {
+  return (Array.isArray(visits) ? visits : []).map((visit) => ({
+    ...visit,
+    id: visit.id || crypto.randomUUID(),
+    workOrderId: visit.workOrderId || visit.work_order_id || "",
+    customerId: visit.customerId || visit.customer_id || "",
+    locationId: visit.locationId || visit.location_id || "",
+    assetId: visit.assetId || visit.asset_id || "",
+    scheduledAt: visit.scheduledAt || visit.scheduled_at || "",
+    durationMinutes: Math.max(15, Number(visit.durationMinutes || visit.duration_minutes || 60)),
+    assignedUserId: visit.assignedUserId || visit.assigned_user_id || "",
+    assignedUserName: visit.assignedUserName || visit.assigned_user_name || "",
+    status: ["Scheduled", "On my way", "In progress", "Completed", "Cancelled"].includes(visit.status) ? visit.status : "Scheduled",
+    notes: visit.notes || "",
+    createdAt: visit.createdAt || visit.created_at || new Date().toISOString(),
+    updatedAt: visit.updatedAt || visit.updated_at || visit.createdAt || new Date().toISOString()
+  })).filter((visit) => visit.workOrderId && visit.scheduledAt);
+}
+
+function scheduledVisitsForWorkOrder(workOrderId = "") {
+  return normalizeScheduledVisits(state.scheduledVisits || []).filter((visit) => visit.workOrderId === workOrderId);
+}
+
+function visibleScheduledVisits(workOrders = filterWorkOrdersForView(filteredWorkOrders())) {
+  const visibleTicketIds = new Set(workOrders.map((ticket) => ticket.id));
+  const now = Date.now();
+  return normalizeScheduledVisits(state.scheduledVisits || [])
+    .filter((visit) => visibleTicketIds.has(visit.workOrderId))
+    .filter((visit) => {
+      if (serviceScheduleFilter === "all") return true;
+      if (serviceScheduleFilter === "today") return toDateInputValue(new Date(visit.scheduledAt)) === toDateInputValue(new Date());
+      if (serviceScheduleFilter === "past") return new Date(visit.scheduledAt).getTime() < now && !["Completed", "Cancelled"].includes(visit.status);
+      return new Date(visit.scheduledAt).getTime() >= now && !["Completed", "Cancelled"].includes(visit.status);
+    })
+    .sort((a, b) => new Date(a.scheduledAt || 0) - new Date(b.scheduledAt || 0));
+}
+
+function renderServiceScheduleBoard(workOrders = []) {
+  const board = document.getElementById("serviceScheduleBoard");
+  if (!board) return;
+  const visits = visibleScheduledVisits(workOrders);
+  const todayCount = normalizeScheduledVisits(state.scheduledVisits || []).filter((visit) =>
+    toDateInputValue(new Date(visit.scheduledAt)) === toDateInputValue(new Date()) &&
+    !["Completed", "Cancelled"].includes(visit.status)
+  ).length;
+  board.innerHTML = `
+    <section class="service-schedule-card" aria-label="Service schedule">
+      <div class="service-schedule-heading">
+        <div>
+          <strong>Schedule</strong>
+          <span>${escapeHtml(formatInventoryNumber(todayCount))} visit${todayCount === 1 ? "" : "s"} today</span>
+        </div>
+        <div class="service-schedule-filters">
+          ${["upcoming", "today", "past", "all"].map((filter) => `
+            <button type="button" class="secondary mini ${serviceScheduleFilter === filter ? "is-active" : ""}" data-service-schedule-filter="${escapeAttribute(filter)}">${escapeHtml(filter === "past" ? "Overdue" : filter[0].toUpperCase() + filter.slice(1))}</button>
+          `).join("")}
+        </div>
+      </div>
+      <div class="service-schedule-list">
+        ${visits.length ? visits.slice(0, 12).map(renderServiceScheduleVisit).join("") : `<p class="muted">No scheduled visits for this view yet.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderServiceScheduleVisit(visit = {}) {
+  const ticket = getWorkOrder(visit.workOrderId);
+  const customer = getCustomer(visit.customerId || ticket?.customerId);
+  const locationRecord = getLocation(visit.locationId || ticket?.locationId);
+  const asset = getAsset(visit.assetId || ticket?.assetId);
+  return `
+    <article class="service-schedule-row is-${escapeAttribute(String(visit.status || "Scheduled").toLowerCase().replace(/[^a-z0-9]+/g, "-"))}">
+      <time>${escapeHtml(formatDateTime(visit.scheduledAt))}</time>
+      <div>
+        <strong>${escapeHtml(ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}` : "Ticket not found")}</strong>
+        <span>${escapeHtml([customer?.name, locationRecord?.name, asset?.name || ticket?.areaName].filter(Boolean).join(" | "))}</span>
+      </div>
+      <span>${escapeHtml(visit.assignedUserName || "Unassigned")}</span>
+      <em>${escapeHtml(visit.status)}</em>
+      <button type="button" class="secondary mini" data-open-scheduled-ticket="${escapeAttribute(visit.workOrderId)}">Open</button>
+    </article>
+  `;
+}
+
+function parseDateTimeLocalInput(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : "";
+}
+
+function saveScheduledVisitForWorkOrder(workOrderId = "", formData = new FormData()) {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canManageWorkOrders()) return;
+  const scheduledAt = parseDateTimeLocalInput(formData.get("scheduledAt"));
+  if (!scheduledAt) return;
+  const users = getAssignableUsersForWorkOrder(workOrder);
+  const assignedUser = users.find((user) => user.id === String(formData.get("assignedUserId") || "")) || null;
+  const visitId = String(formData.get("visitId") || "").trim();
+  const now = new Date().toISOString();
+  const existingVisit = visitId
+    ? (state.scheduledVisits || []).find((visit) => visit.id === visitId)
+    : null;
+  const visit = {
+    ...(existingVisit || {}),
+    id: existingVisit?.id || crypto.randomUUID(),
+    workOrderId: workOrder.id,
+    customerId: workOrder.customerId,
+    locationId: workOrder.locationId,
+    assetId: workOrder.assetId,
+    scheduledAt,
+    durationMinutes: Math.max(15, Number(formData.get("durationMinutes") || 60)),
+    assignedUserId: assignedUser?.id || "",
+    assignedUserName: assignedUser ? assignedUser.name || assignedUser.username || "" : "",
+    status: String(formData.get("status") || "Scheduled").trim() || "Scheduled",
+    notes: String(formData.get("notes") || "").trim(),
+    createdAt: existingVisit?.createdAt || now,
+    updatedAt: now
+  };
+  state.scheduledVisits = normalizeScheduledVisits([
+    visit,
+    ...(state.scheduledVisits || []).filter((item) => item.id !== visit.id)
+  ]);
+  const previousDue = workOrder.dueAt || "";
+  workOrder.dueAt = scheduledAt;
+  if (assignedUser) {
+    workOrder.assignedUserId = assignedUser.id;
+    workOrder.assignedUserName = assignedUser.name || assignedUser.username || "";
+  }
+  workOrder.updatedAt = now;
+  addWorkOrderHistory(
+    workOrder,
+    existingVisit ? "Visit rescheduled" : "Visit scheduled",
+    `${formatDateTime(scheduledAt)}${visit.assignedUserName ? ` | ${visit.assignedUserName}` : ""}${visit.notes ? ` | ${visit.notes}` : ""}`
+  );
+  if (previousDue && previousDue !== scheduledAt) {
+    addWorkOrderHistory(workOrder, "Due date updated from schedule", `${formatDateTime(previousDue)} -> ${formatDateTime(scheduledAt)}`);
+  }
+  addActivity(existingVisit ? "Visit rescheduled" : "Visit scheduled", `${formatIssueNumber(workOrder)} - ${formatDateTime(scheduledAt)}`);
+  saveState();
+  render();
 }
 
 function emptySwNumberFilterMessage() {
@@ -31580,8 +31749,67 @@ function renderWorkOrderItem(item) {
           ${assetAction ? `<div class="work-order-header-actions">${assetAction}</div>` : ""}
         </details>
         ${renderWorkOrderEstimatePanel(item)}
+        ${renderWorkOrderSchedulePanel(item)}
         ${editAction}
       </div>
+    </details>
+  `;
+}
+
+function renderWorkOrderSchedulePanel(workOrder = {}) {
+  const canManage = canManageWorkOrders();
+  if (!canManage) return "";
+  const visits = scheduledVisitsForWorkOrder(workOrder.id);
+  const nextVisit = visits.find((visit) => !["Completed", "Cancelled"].includes(visit.status)) || visits[0] || null;
+  const users = getAssignableUsersForWorkOrder(workOrder);
+  const defaultDate = nextVisit?.scheduledAt ? formatDateTimeInput(nextVisit.scheduledAt) : "";
+  return `
+    <details class="ticket-sub-drawer schedule-panel" ${nextVisit ? "open" : ""}>
+      <summary>
+        <h3>Schedule visit</h3>
+        <span>${escapeHtml(nextVisit ? formatDateTime(nextVisit.scheduledAt) : "Not scheduled")}</span>
+      </summary>
+      <section class="schedule-ticket-card">
+        ${visits.length ? `
+          <div class="schedule-ticket-visits">
+            ${visits.map((visit) => `
+              <div class="schedule-ticket-visit">
+                <strong>${escapeHtml(formatDateTime(visit.scheduledAt))}</strong>
+                <span>${escapeHtml([visit.assignedUserName || "Unassigned", visit.status, `${formatInventoryNumber(visit.durationMinutes)} min`].join(" | "))}</span>
+              </div>
+            `).join("")}
+          </div>
+        ` : `<p class="muted">No visit scheduled yet.</p>`}
+        <form class="schedule-ticket-form" data-ticket-schedule-form="${escapeAttribute(workOrder.id)}">
+          <label>
+            Visit date/time
+            <input name="scheduledAt" type="datetime-local" value="${escapeAttribute(defaultDate)}" required>
+          </label>
+          <label>
+            Assigned to
+            <select name="assignedUserId">
+              <option value="">Unassigned</option>
+              ${users.map((user) => `<option value="${escapeAttribute(user.id)}" ${nextVisit?.assignedUserId === user.id || (!nextVisit && workOrder.assignedUserId === user.id) ? "selected" : ""}>${escapeHtml(user.name || user.username)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Duration
+            <input name="durationMinutes" type="number" min="15" step="15" value="${escapeAttribute(nextVisit?.durationMinutes || 60)}">
+          </label>
+          <label>
+            Status
+            <select name="status">
+              ${["Scheduled", "On my way", "In progress", "Completed", "Cancelled"].map((status) => `<option ${nextVisit?.status === status ? "selected" : ""}>${escapeHtml(status)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Notes
+            <input name="notes" value="${escapeAttribute(nextVisit?.notes || "")}" placeholder="Access notes or scheduling details">
+          </label>
+          <input name="visitId" type="hidden" value="${escapeAttribute(nextVisit?.id || "")}">
+          <button type="submit" class="secondary mini">${nextVisit ? "Update visit" : "Schedule visit"}</button>
+        </form>
+      </section>
     </details>
   `;
 }
@@ -36330,6 +36558,7 @@ function normalizeState(input) {
     assets: input.assets || [],
     workOrders: input.workOrders || [],
     estimates: input.estimates || [],
+    scheduledVisits: input.scheduledVisits || [],
     serviceRequests: input.serviceRequests || [],
     preferredContractors: input.preferredContractors || [],
     inventoryItems: input.inventoryItems || [],
@@ -36466,6 +36695,7 @@ function normalizeState(input) {
     usedIssueNumbers.add(issueNumberCursor);
   });
 
+  normalized.scheduledVisits = normalizeScheduledVisits(normalized.scheduledVisits);
   normalized.estimates = normalizeEstimates(normalized.estimates, normalized.customers);
 
   const usedServiceRequestNumbers = new Set();
@@ -36740,6 +36970,7 @@ function emptyState() {
     assets: [],
     workOrders: [],
     estimates: [],
+    scheduledVisits: [],
     serviceRequests: [],
     preferredContractors: [],
     inventoryItems: [],

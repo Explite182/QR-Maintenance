@@ -15081,6 +15081,125 @@ button.asset-detail-card {
   gap: 12px;
 }
 
+.service-schedule-board {
+  display: grid;
+  gap: 10px;
+}
+
+.service-schedule-card,
+.schedule-ticket-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(20, 184, 166, 0.24);
+  border-radius: 8px;
+  background: rgba(240, 253, 250, 0.72);
+}
+
+.service-schedule-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.service-schedule-heading div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.service-schedule-heading strong {
+  font-size: 15px;
+}
+
+.service-schedule-heading span,
+.service-schedule-row span,
+.service-schedule-row em,
+.schedule-ticket-visit span {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.service-schedule-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.service-schedule-filters .is-active {
+  color: #ffffff;
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.service-schedule-list,
+.schedule-ticket-visits {
+  display: grid;
+  gap: 6px;
+}
+
+.service-schedule-row {
+  display: grid;
+  grid-template-columns: minmax(140px, auto) minmax(240px, 1fr) minmax(120px, auto) minmax(100px, auto) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid rgba(20, 184, 166, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.service-schedule-row.is-cancelled {
+  opacity: 0.7;
+}
+
+.service-schedule-row time,
+.service-schedule-row strong,
+.schedule-ticket-visit strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 900;
+}
+
+.service-schedule-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.schedule-ticket-visit {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(20, 184, 166, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.schedule-ticket-form {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(150px, 0.8fr) 90px minmax(130px, 0.7fr) minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.schedule-ticket-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.schedule-ticket-form input,
+.schedule-ticket-form select {
+  width: 100%;
+  min-width: 0;
+}
+
 .billing-filter-bar {
   align-items: end;
 }
@@ -15437,6 +15556,9 @@ button.asset-detail-card {
   .billing-filter-bar,
   .quickbooks-map-grid,
   .quickbooks-map-row,
+  .service-schedule-heading,
+  .service-schedule-row,
+  .schedule-ticket-form,
   .billing-review-form,
   .billing-line-form,
   .estimate-create-form,
@@ -15445,6 +15567,15 @@ button.asset-detail-card {
   .billing-line-card header,
   .billing-line-row {
     grid-template-columns: 1fr;
+  }
+
+  .service-schedule-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .service-schedule-filters {
+    justify-content: flex-start;
   }
 
   .estimate-record > header {
