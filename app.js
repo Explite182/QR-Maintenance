@@ -6616,6 +6616,7 @@ let commandPaletteQuery = "";
 let workOrderNumberFilter = "all";
 let serviceScheduleFilter = "upcoming";
 let lastWorkRecordInteractionAt = 0;
+const workSubDrawerOpenState = new Map();
 let deferredCloudRefreshTimer = null;
 let deferredCloudRefreshPending = false;
 let billingQueueFilter = "ready";
@@ -9660,6 +9661,13 @@ els.customerFilter.addEventListener("change", () => {
 });
 
 document.addEventListener("toggle", (event) => {
+  const workSubDrawer = event.target.closest?.(".ticket-sub-drawer");
+  if (workSubDrawer?.closest?.(".work-order-drawer:not(.completed-pm-item)")) {
+    rememberWorkSubDrawerState(workSubDrawer);
+    markWorkRecordInteraction(workSubDrawer);
+    return;
+  }
+
   const workDrawer = event.target.closest?.(".work-order-drawer:not(.completed-pm-item)");
   if (workDrawer) {
     if (workDrawer.open) {
@@ -12211,6 +12219,7 @@ function renderMonitoringIfReady() {
 
 function render() {
   if (!requireServerSessionForApp()) return;
+  captureOpenWorkSubDrawers();
   renderAuth();
   if (isPublicKeyUrl()) {
     renderPublicKeyScan();
@@ -12249,6 +12258,7 @@ function render() {
   renderAssetTableControls();
   renderAssetTable();
   renderWorkOrders();
+  restoreOpenWorkSubDrawers();
   renderCustomerPortal();
   renderBillingQueue();
   renderServiceRequests();
@@ -16046,6 +16056,44 @@ function closeSelectedAssetDrawers() {
 
 function getOpenWorkRecordDrawer() {
   return document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)");
+}
+
+function workSubDrawerKey(drawer = null) {
+  if (!drawer) return "";
+  const recordDrawer = drawer.closest?.(".work-order-drawer:not(.completed-pm-item)");
+  if (!recordDrawer) return "";
+  const recordId = recordDrawer.dataset.workOrderId || recordDrawer.dataset.serviceRequestId || "";
+  if (!recordId) return "";
+  const recordType = recordDrawer.dataset.serviceRequestId ? "service" : "ticket";
+  const title = drawer.querySelector(":scope > summary h3")?.textContent?.trim()
+    || drawer.querySelector(":scope > summary")?.textContent?.trim()
+    || drawer.className
+    || "section";
+  return `${recordType}:${recordId}:${title}`;
+}
+
+function rememberWorkSubDrawerState(drawer = null) {
+  const key = workSubDrawerKey(drawer);
+  if (!key) return;
+  if (drawer.open) {
+    workSubDrawerOpenState.set(key, true);
+  } else {
+    workSubDrawerOpenState.delete(key);
+  }
+}
+
+function captureOpenWorkSubDrawers() {
+  document.querySelectorAll(".work-order-drawer:not(.completed-pm-item) .ticket-sub-drawer").forEach((drawer) => {
+    rememberWorkSubDrawerState(drawer);
+  });
+}
+
+function restoreOpenWorkSubDrawers() {
+  document.querySelectorAll(".work-order-drawer:not(.completed-pm-item) .ticket-sub-drawer").forEach((drawer) => {
+    if (workSubDrawerOpenState.has(workSubDrawerKey(drawer))) {
+      drawer.open = true;
+    }
+  });
 }
 
 function markWorkRecordInteraction(target = null) {
