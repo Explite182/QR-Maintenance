@@ -9005,6 +9005,21 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const auditFilterButton = event.target.closest("[data-inventory-audit-filter]");
+  if (auditFilterButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const panel = auditFilterButton.closest(".inventory-movement-log");
+    const filter = auditFilterButton.dataset.inventoryAuditFilter || "all";
+    panel?.querySelectorAll("[data-inventory-audit-filter]").forEach((button) => {
+      button.classList.toggle("is-active", button === auditFilterButton);
+    });
+    panel?.querySelectorAll("[data-audit-kind]").forEach((row) => {
+      row.classList.toggle("hidden", filter !== "all" && row.dataset.auditKind !== filter);
+    });
+    return;
+  }
+
   const writeKeyButton = event.target.closest("[data-write-key-nfc]");
   if (writeKeyButton) {
     event.preventDefault();
@@ -16983,27 +16998,131 @@ async function returnInventoryReservation(item, reservationId = "") {
 }
 
 function renderInventoryMovementLog(item = {}) {
-  const movements = normalizeInventoryMovements(item.movements).slice(0, 6);
+  const auditRows = inventoryAuditRows(item);
+  const filters = [
+    ["all", "All"],
+    ["stock", "Stock changes"],
+    ["reservation", "Reservations"],
+    ["purchase", "Purchasing"],
+    ["audit", "Audits"]
+  ];
   return `
     <section class="inventory-movement-log" aria-label="Stock movement history">
       <div class="inventory-movement-heading">
-        <strong>Stock movement</strong>
-        <small>${movements.length ? `${movements.length} recent` : "No movements yet"}</small>
+        <strong>Inventory history</strong>
+        <small>${auditRows.length ? `${auditRows.length} recent` : "No movements yet"}</small>
       </div>
-      ${movements.length
-        ? `<div class="inventory-movement-list">
-            ${movements.map((movement) => `
-              <div class="inventory-movement-row">
-                <span>${escapeHtml(inventoryMovementTypeLabel(movement.type))}</span>
-                <strong>${escapeHtml(inventoryMovementDeltaLabel(movement.delta))}</strong>
-                <small>${escapeHtml(formatDateTime(movement.at))}${movement.userName ? ` | ${escapeHtml(movement.userName)}` : ""}</small>
-                <em>On hand ${escapeHtml(formatInventoryNumber(movement.quantityAfter))}${movement.note ? ` | ${escapeHtml(movement.note)}` : ""}</em>
+      ${auditRows.length
+        ? `<div class="inventory-audit-tabs" aria-label="Inventory history filters">
+            ${filters.map(([filter, label]) => `<button type="button" class="secondary mini ${filter === "all" ? "is-active" : ""}" data-inventory-audit-filter="${escapeAttribute(filter)}">${escapeHtml(label)}</button>`).join("")}
+          </div>
+          <div class="inventory-movement-list">
+            <div class="inventory-movement-header">
+              <span>Action</span>
+              <span>Change</span>
+              <span>Counts after</span>
+              <span>Reference</span>
+              <span>User / notes</span>
+            </div>
+            ${auditRows.map((row) => `
+              <div class="inventory-movement-row" data-audit-kind="${escapeAttribute(row.kind)}">
+                <span>${escapeHtml(row.action)}<small>${escapeHtml(formatDateTime(row.at))}</small></span>
+                <strong>${escapeHtml(row.deltaLabel)}</strong>
+                <small>${escapeHtml(row.countsLabel)}</small>
+                <em>${escapeHtml(row.reference || "No reference")}</em>
+                <em>${escapeHtml([row.userName, row.note].filter(Boolean).join(" | ") || "No notes")}</em>
               </div>
             `).join("")}
           </div>`
         : `<p class="muted">Quantity changes will appear here.</p>`}
     </section>
   `;
+}
+
+function inventoryAuditRows(item = {}) {
+  const movementRows = normalizeInventoryMovements(item.movements || []).map((movement) => {
+    const type = String(movement.type || "").toLowerCase();
+    const quantityAfter = Math.max(0, Number(movement.quantityAfter || 0));
+    const reservedAtTime = inventoryReservedQuantityAt(item, movement.at);
+    return {
+      id: movement.id,
+      kind: inventoryAuditKind(type),
+      action: inventoryMovementTypeLabel(type),
+      at: movement.at || new Date().toISOString(),
+      deltaLabel: inventoryMovementDeltaLabel(movement.delta),
+      countsLabel: `On hand ${formatInventoryNumber(quantityAfter)} | Reserved ${formatInventoryNumber(reservedAtTime)} | Available ${formatInventoryNumber(Math.max(0, quantityAfter - reservedAtTime))}`,
+      reference: inventoryAuditReference(movement.note),
+      userName: movement.userName || "",
+      note: movement.note || ""
+    };
+  });
+  const reservationRows = normalizeInventoryReservations(item.reservations || []).flatMap((reservation) => {
+    const ticket = getWorkOrder(reservation.workOrderId);
+    const reference = ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Open ticket"}` : "Ticket not found";
+    const base = {
+      kind: "reservation",
+      deltaLabel: "0",
+      countsLabel: `Reserved ${formatInventoryNumber(reservation.quantity)}`,
+      reference,
+      userName: reservation.reservedBy || "",
+      note: reservation.note || ""
+    };
+    const rows = [{
+      ...base,
+      id: `${reservation.id}-reserved`,
+      action: "Reserved",
+      at: reservation.reservedAt || new Date().toISOString()
+    }];
+    if (reservation.usedAt) {
+      rows.push({
+        ...base,
+        id: `${reservation.id}-used`,
+        action: "Used reserved",
+        at: reservation.usedAt,
+        deltaLabel: `-${formatInventoryNumber(reservation.quantity)}`
+      });
+    }
+    if (reservation.returnedAt) {
+      rows.push({
+        ...base,
+        id: `${reservation.id}-returned`,
+        action: "Returned reservation",
+        at: reservation.returnedAt
+      });
+    }
+    return rows;
+  });
+  return [...movementRows, ...reservationRows]
+    .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+    .slice(0, 20);
+}
+
+function inventoryAuditKind(type = "") {
+  if (["receive", "use", "initial", "edit"].includes(type)) return "stock";
+  if (["reserve", "return"].includes(type)) return "reservation";
+  if (type === "audit") return "audit";
+  if (type === "ordered" || type === "purchase") return "purchase";
+  return "stock";
+}
+
+function inventoryAuditReference(note = "") {
+  const text = String(note || "");
+  const match = text.match(/(SW-[A-Z]*\d+|SW-\d+|SW[A-Z]*-\d+)/i);
+  return match?.[0] || "";
+}
+
+function inventoryReservedQuantityAt(item = {}, at = "") {
+  const target = new Date(at || Date.now()).getTime();
+  if (!Number.isFinite(target)) return inventoryReservedQuantity(item);
+  return normalizeInventoryReservations(item.reservations || []).reduce((sum, reservation) => {
+    const reservedAt = new Date(reservation.reservedAt || 0).getTime();
+    const usedAt = reservation.usedAt ? new Date(reservation.usedAt).getTime() : Infinity;
+    const returnedAt = reservation.returnedAt ? new Date(reservation.returnedAt).getTime() : Infinity;
+    if (reservedAt <= target && usedAt > target && returnedAt > target) {
+      return sum + Math.max(0, Number(reservation.quantity || 0));
+    }
+    return sum;
+  }, 0);
 }
 
 function renderInventoryEditForm(item) {

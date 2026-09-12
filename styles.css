@@ -15740,15 +15740,45 @@ button.asset-detail-card {
   font-weight: 800;
 }
 
+.inventory-audit-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inventory-audit-tabs .mini {
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
+.inventory-audit-tabs .is-active {
+  color: #ffffff;
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: 0 8px 18px rgba(5, 105, 90, 0.16);
+}
+
 .inventory-movement-list {
   display: grid;
   gap: 6px;
 }
 
+.inventory-movement-header {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 80px minmax(210px, 1.15fr) minmax(160px, 1fr) minmax(220px, 1.25fr);
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
 .inventory-movement-row {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) 70px minmax(180px, 1.2fr) minmax(180px, 1.5fr);
-  align-items: center;
+  grid-template-columns: minmax(150px, 1fr) 80px minmax(210px, 1.15fr) minmax(160px, 1fr) minmax(220px, 1.25fr);
+  align-items: start;
   gap: 8px;
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -15763,10 +15793,12 @@ button.asset-detail-card {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .inventory-movement-row span {
+  display: grid;
+  gap: 2px;
   font-weight: 900;
 }
 
@@ -15781,6 +15813,12 @@ button.asset-detail-card {
   font-size: 12px;
   font-style: normal;
   font-weight: 700;
+}
+
+.inventory-movement-row span small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .inventory-qr-card {
@@ -17982,10 +18020,24 @@ body.panel-schedule-open {
     grid-template-columns: 1fr;
   }
 
-  .inventory-movement-row {
-    grid-template-columns: 1fr auto;
+  .inventory-audit-tabs .mini {
+    flex: 1 1 120px;
   }
 
+  .inventory-movement-header {
+    display: none;
+  }
+
+  .inventory-movement-row {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-movement-row strong {
+    text-align: left;
+  }
+
+  .inventory-movement-row span,
+  .inventory-movement-row strong,
   .inventory-movement-row small,
   .inventory-movement-row em {
     grid-column: 1 / -1;
