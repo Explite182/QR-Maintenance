@@ -15713,6 +15713,79 @@ button.asset-detail-card {
   font-weight: 900;
 }
 
+.job-cost-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(20, 184, 166, 0.24);
+  border-radius: 8px;
+  background: rgba(240, 253, 250, 0.68);
+}
+
+.job-cost-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.job-cost-summary article {
+  display: grid;
+  gap: 5px;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.job-cost-summary strong {
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.job-cost-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.job-cost-summary .is-good {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: rgba(240, 253, 244, 0.84);
+}
+
+.job-cost-summary .is-watch,
+.job-cost-summary .is-neutral {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(255, 251, 235, 0.84);
+}
+
+.job-cost-summary .is-loss {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(254, 242, 242, 0.84);
+}
+
+.job-cost-form {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.7fr) minmax(130px, 0.8fr) minmax(120px, 0.8fr) minmax(220px, 1.3fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.job-cost-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.job-cost-form input {
+  width: 100%;
+  min-width: 0;
+}
+
 @media (max-width: 760px) {
   .billing-filter-bar,
   .customer-portal-hero,
@@ -15728,6 +15801,8 @@ button.asset-detail-card {
   .estimate-create-form,
   .estimate-line-form,
   .estimate-line-row,
+  .job-cost-summary,
+  .job-cost-form,
   .billing-line-card header,
   .billing-line-row {
     grid-template-columns: 1fr;

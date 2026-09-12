@@ -11495,6 +11495,14 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-job-cost-form]");
+  if (!form) return;
+  event.preventDefault();
+  if (!canManageWorkOrders()) return;
+  saveJobCostForWorkOrder(form.dataset.jobCostForm, new FormData(form));
+});
+
+document.addEventListener("submit", (event) => {
   const customerMapForm = event.target.closest("[data-qb-customer-map]");
   const itemMapForm = event.target.closest("[data-qb-item-map]");
   if (!customerMapForm && !itemMapForm) return;
@@ -28481,19 +28489,80 @@ function buildBillingRecord(workOrder) {
   const locationRecord = getLocation(workOrder.locationId);
   const asset = getAsset(workOrder.assetId);
   const lineItems = workOrderBillingLineItems(workOrder);
-  const subtotal = lineItems.reduce((sum, line) => sum + Number(line.amount || 0), 0);
-  const costTotal = lineItems.reduce((sum, line) => sum + Number(line.costTotal || 0), 0);
+  const jobCost = buildJobCostRecord(workOrder, lineItems);
   return {
     workOrder,
     customer,
     location: locationRecord,
     asset,
     billingStatus: workOrder.billingStatus || "draft",
-    subtotal,
-    costTotal,
-    margin: subtotal - costTotal,
+    subtotal: jobCost.revenue,
+    costTotal: jobCost.totalCost,
+    margin: jobCost.profit,
+    jobCost,
     lineItems
   };
+}
+
+function buildJobCostRecord(workOrder = {}, lineItems = workOrderBillingLineItems(workOrder)) {
+  const normalizedLines = normalizeBillingLines(lineItems || []);
+  const revenue = normalizedLines.reduce((sum, line) => sum + Number(line.amount || 0), 0);
+  const materialCost = normalizedLines.reduce((sum, line) => sum + Number(line.costTotal || 0), 0);
+  const laborHours = Math.max(0, Number(workOrder.jobCostLaborHours || 0));
+  const laborRate = Math.max(0, Number(workOrder.jobCostLaborRate || 0));
+  const laborCost = Math.round(laborHours * laborRate * 100) / 100;
+  const otherCost = Math.max(0, Number(workOrder.jobCostOtherCosts || 0));
+  const totalCost = Math.round((materialCost + laborCost + otherCost) * 100) / 100;
+  const profit = Math.round((revenue - totalCost) * 100) / 100;
+  const marginPercent = revenue > 0 ? Math.round((profit / revenue) * 1000) / 10 : 0;
+  return {
+    revenue,
+    materialCost,
+    laborHours,
+    laborRate,
+    laborCost,
+    otherCost,
+    totalCost,
+    profit,
+    marginPercent,
+    notes: workOrder.jobCostNotes || "",
+    updatedAt: workOrder.jobCostUpdatedAt || "",
+    updatedBy: workOrder.jobCostUpdatedBy || ""
+  };
+}
+
+function jobCostMarginClass(jobCost = {}) {
+  if (!Number(jobCost.revenue || 0)) return "is-neutral";
+  if (Number(jobCost.profit || 0) < 0) return "is-loss";
+  if (Number(jobCost.marginPercent || 0) < 20) return "is-watch";
+  return "is-good";
+}
+
+function saveJobCostForWorkOrder(workOrderId = "", formData = new FormData()) {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canManageWorkOrders()) return;
+  const before = buildJobCostRecord(workOrder);
+  workOrder.jobCostLaborHours = Math.max(0, Number(formData.get("laborHours") || 0));
+  workOrder.jobCostLaborRate = Math.max(0, Number(formData.get("laborRate") || 0));
+  workOrder.jobCostOtherCosts = Math.max(0, Number(formData.get("otherCosts") || 0));
+  workOrder.jobCostNotes = String(formData.get("costNotes") || "").trim();
+  workOrder.jobCostUpdatedAt = new Date().toISOString();
+  workOrder.jobCostUpdatedBy = getCurrentUserLabel();
+  workOrder.updatedAt = workOrder.jobCostUpdatedAt;
+  const after = buildJobCostRecord(workOrder);
+  addWorkOrderHistory(
+    workOrder,
+    "Job costing updated",
+    [
+      `Labour ${formatInventoryNumber(after.laborHours)} hr @ ${formatMoney(after.laborRate)}`,
+      `Costs ${formatMoney(after.totalCost)}`,
+      `Profit ${formatMoney(after.profit)} (${formatInventoryNumber(after.marginPercent)}%)`,
+      before.profit !== after.profit ? `Previous profit ${formatMoney(before.profit)}` : ""
+    ].filter(Boolean).join(" | ")
+  );
+  addActivity("Job costing updated", `${formatIssueNumber(workOrder)} - ${formatMoney(after.profit)} profit`);
+  saveState();
+  render();
 }
 
 function billingQueueSummary(records = []) {
@@ -31991,8 +32060,67 @@ function renderWorkOrderItem(item) {
         </details>
         ${renderWorkOrderEstimatePanel(item)}
         ${renderWorkOrderSchedulePanel(item)}
+        ${renderWorkOrderJobCostPanel(item)}
         ${editAction}
       </div>
+    </details>
+  `;
+}
+
+function renderWorkOrderJobCostPanel(workOrder = {}) {
+  if (!canManageWorkOrders()) return "";
+  const jobCost = buildJobCostRecord(workOrder);
+  const marginClass = jobCostMarginClass(jobCost);
+  return `
+    <details class="ticket-sub-drawer job-cost-panel" ${jobCost.updatedAt || jobCost.totalCost ? "open" : ""}>
+      <summary>
+        <h3>Job costing</h3>
+        <span>${escapeHtml(formatMoney(jobCost.profit))} profit | ${escapeHtml(formatInventoryNumber(jobCost.marginPercent))}%</span>
+      </summary>
+      <section class="job-cost-card">
+        <div class="job-cost-summary">
+          <article>
+            <strong>${escapeHtml(formatMoney(jobCost.revenue))}</strong>
+            <span>Revenue</span>
+          </article>
+          <article>
+            <strong>${escapeHtml(formatMoney(jobCost.materialCost))}</strong>
+            <span>Material cost</span>
+          </article>
+          <article>
+            <strong>${escapeHtml(formatMoney(jobCost.laborCost))}</strong>
+            <span>Labour cost</span>
+          </article>
+          <article>
+            <strong>${escapeHtml(formatMoney(jobCost.otherCost))}</strong>
+            <span>Other cost</span>
+          </article>
+          <article class="${escapeAttribute(marginClass)}">
+            <strong>${escapeHtml(formatMoney(jobCost.profit))}</strong>
+            <span>Profit / margin ${escapeHtml(formatInventoryNumber(jobCost.marginPercent))}%</span>
+          </article>
+        </div>
+        <form class="job-cost-form" data-job-cost-form="${escapeAttribute(workOrder.id)}">
+          <label>
+            Labour hours
+            <input name="laborHours" type="number" min="0" step="0.25" value="${escapeAttribute(jobCost.laborHours || "")}" placeholder="0">
+          </label>
+          <label>
+            Labour cost / hour
+            <input name="laborRate" type="number" min="0" step="0.01" value="${escapeAttribute(jobCost.laborRate || "")}" placeholder="0.00">
+          </label>
+          <label>
+            Other costs
+            <input name="otherCosts" type="number" min="0" step="0.01" value="${escapeAttribute(jobCost.otherCost || "")}" placeholder="0.00">
+          </label>
+          <label>
+            Cost note
+            <input name="costNotes" value="${escapeAttribute(jobCost.notes || "")}" placeholder="Parking, subcontractor, rental, disposal...">
+          </label>
+          <button type="submit" class="secondary mini">Save costing</button>
+        </form>
+        ${jobCost.updatedAt ? `<p class="muted">Last updated ${escapeHtml(formatDateTime(new Date(jobCost.updatedAt)))}${jobCost.updatedBy ? ` by ${escapeHtml(jobCost.updatedBy)}` : ""}.</p>` : ""}
+      </section>
     </details>
   `;
 }
@@ -36925,6 +37053,12 @@ function normalizeState(input) {
       billingServiceAmount: Math.max(0, Number(item.billingServiceAmount || 0)),
       billingLines: normalizeBillingLines(item.billingLines || []),
       customerPo: item.customerPo || item.customerPO || "",
+      jobCostLaborHours: Math.max(0, Number(item.jobCostLaborHours || item.laborHours || 0)),
+      jobCostLaborRate: Math.max(0, Number(item.jobCostLaborRate || item.laborRate || 0)),
+      jobCostOtherCosts: Math.max(0, Number(item.jobCostOtherCosts || item.otherCosts || 0)),
+      jobCostNotes: item.jobCostNotes || item.costNotes || "",
+      jobCostUpdatedAt: item.jobCostUpdatedAt || "",
+      jobCostUpdatedBy: item.jobCostUpdatedBy || "",
       issueNumber
     };
   });
