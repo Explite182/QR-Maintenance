@@ -30071,7 +30071,7 @@ function renderServiceRequestItem(request) {
         <section class="ticket-profile-card">
           ${drawerProfile}
         </section>
-        <details class="ticket-sub-drawer" open>
+        <details class="ticket-sub-drawer">
           <summary>
             <h3>Description</h3>
             <span>${escapeHtml(requestNumber)}</span>
@@ -30080,7 +30080,7 @@ function renderServiceRequestItem(request) {
             <p>${escapeHtml(request.title || "No description entered.")}</p>
           </section>
         </details>
-        <details class="ticket-sub-drawer" open>
+        <details class="ticket-sub-drawer">
           <summary>
             <h3>Activity & Notes</h3>
             <span>${serviceRequestHistoryEntries(request).length + (request.notes ? 1 : 0) + (hasMedia(request.photo) ? 1 : 0)}</span>
@@ -32247,7 +32247,7 @@ function renderWorkOrderItem(item) {
         </section>
         ${renderTechnicianMobileFlow(item)}
         ${emailStatusPanel}
-        <details class="ticket-sub-drawer" open>
+        <details class="ticket-sub-drawer">
           <summary>
             <h3>Description</h3>
             <span>${escapeHtml(issueNumber)}</span>
@@ -32256,7 +32256,7 @@ function renderWorkOrderItem(item) {
             <p>${escapeHtml(item.title || "No description entered.")}</p>
           </section>
         </details>
-        <details class="ticket-sub-drawer" open>
+        <details class="ticket-sub-drawer">
           <summary>
             <h3>Activity & Notes</h3>
             <span>${workOrderHistoryEntries(item).length + (String(item.notes || "").trim() ? 1 : 0) + getWorkOrderPhotos(item).length}</span>
@@ -32305,7 +32305,7 @@ function renderWorkOrderJobCostPanel(workOrder = {}) {
   const jobCost = buildJobCostRecord(workOrder);
   const marginClass = jobCostMarginClass(jobCost);
   return `
-    <details class="ticket-sub-drawer job-cost-panel" ${jobCost.updatedAt || jobCost.totalCost ? "open" : ""}>
+    <details class="ticket-sub-drawer job-cost-panel">
       <summary>
         <h3>Job costing</h3>
         <span>${escapeHtml(formatMoney(jobCost.profit))} profit | ${escapeHtml(formatInventoryNumber(jobCost.marginPercent))}%</span>
@@ -32366,7 +32366,7 @@ function renderTechnicianMobileFlow(workOrder = {}) {
   const signoff = workOrder.technicianSignoff || {};
   const isClosed = workOrder.status === "Closed";
   return `
-    <details class="ticket-sub-drawer tech-flow-panel" open>
+    <details class="ticket-sub-drawer tech-flow-panel">
       <summary>
         <h3>Technician flow</h3>
         <span>${escapeHtml(signoff.signedAt ? "Signed off" : workOrder.status || "Open")}</span>
@@ -32495,7 +32495,7 @@ function renderWorkOrderSchedulePanel(workOrder = {}) {
   const users = getAssignableUsersForWorkOrder(workOrder);
   const defaultDate = nextVisit?.scheduledAt ? formatDateTimeInput(nextVisit.scheduledAt) : "";
   return `
-    <details class="ticket-sub-drawer schedule-panel" ${nextVisit ? "open" : ""}>
+    <details class="ticket-sub-drawer schedule-panel">
       <summary>
         <h3>Schedule visit</h3>
         <span>${escapeHtml(nextVisit ? formatDateTime(nextVisit.scheduledAt) : "Not scheduled")}</span>
@@ -32549,7 +32549,7 @@ function renderWorkOrderEstimatePanel(workOrder = {}) {
   if (!canManageWorkOrders()) return "";
   const estimates = estimatesForWorkOrder(workOrder.id);
   return `
-    <details class="ticket-sub-drawer estimate-panel" ${estimates.length ? "open" : ""}>
+    <details class="ticket-sub-drawer estimate-panel">
       <summary>
         <h3>Estimates / quotes</h3>
         <span>${escapeHtml(formatInventoryNumber(estimates.length))}</span>
