@@ -11337,6 +11337,20 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const estimateStatusButton = event.target.closest("[data-estimate-status]");
+  if (estimateStatusButton && canManageWorkOrders()) {
+    event.preventDefault();
+    updateEstimateStatus(estimateStatusButton.dataset.estimateId, estimateStatusButton.dataset.estimateStatus);
+    return;
+  }
+
+  const deleteEstimateLineButton = event.target.closest("[data-delete-estimate-line]");
+  if (deleteEstimateLineButton && canManageWorkOrders()) {
+    event.preventDefault();
+    deleteEstimateLine(deleteEstimateLineButton.dataset.deleteEstimateLine, deleteEstimateLineButton.dataset.estimateLineId);
+    return;
+  }
+
   const contractorDeleteButton = event.target.closest("[data-delete-contractor]");
   if (contractorDeleteButton && canManageContractors()) {
     deletePreferredContractor(contractorDeleteButton.dataset.deleteContractor);
@@ -11415,6 +11429,21 @@ document.addEventListener("submit", (event) => {
   event.preventDefault();
   const formData = new FormData(form);
   saveInlineAssetDetail(form.dataset.assetDetailEdit, formData.get("value"));
+});
+
+document.addEventListener("submit", (event) => {
+  const createForm = event.target.closest("[data-estimate-create-form]");
+  const lineForm = event.target.closest("[data-estimate-line-form]");
+  if (!createForm && !lineForm) return;
+  event.preventDefault();
+  if (!canManageWorkOrders()) return;
+  if (createForm) {
+    const formData = new FormData(createForm);
+    createEstimateForWorkOrder(createForm.dataset.estimateCreateForm, formData);
+    return;
+  }
+  const formData = new FormData(lineForm);
+  addEstimateLine(lineForm.dataset.estimateLineForm, formData);
 });
 
 document.addEventListener("submit", (event) => {
@@ -28363,6 +28392,90 @@ function deleteWorkOrderBillingLine(workOrderId = "", lineId = "") {
   render();
 }
 
+function normalizeEstimateLines(lines = []) {
+  return (Array.isArray(lines) ? lines : []).map((line) => {
+    const quantity = Math.max(0, Number(line.quantity || 0));
+    const rate = Math.max(0, Number(line.rate || 0));
+    return {
+      id: line.id || crypto.randomUUID?.() || `estimate-line-${Date.now()}`,
+      type: line.type || "Service",
+      itemId: line.itemId || "",
+      itemName: line.itemName || line.description || "Estimate line",
+      description: line.description || line.itemName || "Estimate line",
+      quantity,
+      rate,
+      optional: line.optional === true || line.optional === "true",
+      taxable: line.taxable === false ? false : true
+    };
+  }).filter((line) => line.quantity > 0 && line.rate >= 0 && line.description);
+}
+
+function normalizeEstimates(estimates = [], customers = state?.customers || []) {
+  const knownCustomers = new Set((customers || []).map((customer) => customer.id).filter(Boolean));
+  return (Array.isArray(estimates) ? estimates : []).map((estimate) => ({
+    ...estimate,
+    id: estimate.id || crypto.randomUUID(),
+    estimateNumber: estimate.estimateNumber || estimate.estimate_number || nextEstimateNumber(estimates),
+    workOrderId: estimate.workOrderId || estimate.work_order_id || "",
+    customerId: estimate.customerId || estimate.customer_id || "",
+    locationId: estimate.locationId || estimate.location_id || "",
+    assetId: estimate.assetId || estimate.asset_id || "",
+    title: estimate.title || "Estimate",
+    status: ["Draft", "Sent", "Accepted", "Declined"].includes(estimate.status) ? estimate.status : "Draft",
+    validUntil: estimate.validUntil || estimate.valid_until || "",
+    customerNote: estimate.customerNote || estimate.customer_note || "",
+    lines: normalizeEstimateLines(estimate.lines || []),
+    createdBy: estimate.createdBy || estimate.created_by || "",
+    createdAt: estimate.createdAt || estimate.created_at || new Date().toISOString(),
+    updatedAt: estimate.updatedAt || estimate.updated_at || estimate.createdAt || new Date().toISOString()
+  })).filter((estimate) => estimate.workOrderId && estimate.customerId && (!knownCustomers.size || knownCustomers.has(estimate.customerId)));
+}
+
+function nextEstimateNumber(estimates = state?.estimates || []) {
+  const highest = (estimates || []).reduce((max, estimate) => {
+    const numeric = Number(String(estimate?.estimateNumber || estimate?.estimate_number || "").replace(/\D/g, ""));
+    return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
+  }, 0);
+  return `EST-${String(highest + 1).padStart(4, "0")}`;
+}
+
+function estimatesForWorkOrder(workOrderId = "") {
+  return normalizeEstimates(state.estimates || []).filter((estimate) => estimate.workOrderId === workOrderId);
+}
+
+function estimateLineAmount(line = {}) {
+  return Math.round(Math.max(0, Number(line.quantity || 0)) * Math.max(0, Number(line.rate || 0)) * 100) / 100;
+}
+
+function estimateTotal(estimate = {}, includeOptional = true) {
+  return normalizeEstimateLines(estimate.lines || []).reduce((sum, line) => {
+    if (!includeOptional && line.optional) return sum;
+    return sum + estimateLineAmount(line);
+  }, 0);
+}
+
+function buildEstimateLineFromForm(workOrder = {}, formData = new FormData()) {
+  const itemName = String(formData.get("itemName") || "").trim();
+  const descriptionInput = String(formData.get("description") || "").trim();
+  const quantity = Math.max(0, Number(formData.get("quantity") || 0));
+  const rateInput = Math.max(0, Number(formData.get("rate") || 0));
+  const matchedItem = findInventoryItemForBilling(workOrder.customerId, itemName);
+  const rate = rateInput || matchedItem?.sellPrice || inventoryResolvedSellPrice(matchedItem?.unitCost || 0, matchedItem?.markupPercent || 0, 0);
+  const description = descriptionInput || matchedItem?.description || itemName;
+  if (!description || quantity <= 0 || rate < 0) return null;
+  return {
+    id: crypto.randomUUID(),
+    type: String(formData.get("lineType") || matchedItem?.itemType || "Service").trim() || "Service",
+    itemId: matchedItem?.id || "",
+    itemName: matchedItem?.name || itemName || description,
+    description,
+    quantity,
+    rate,
+    optional: formData.get("optional") === "on",
+    taxable: matchedItem ? matchedItem.taxable !== false : formData.get("taxable") === "on"
+  };
+}
+
 function workOrderBillingLineItems(workOrder = {}) {
   const lines = [];
   const notes = String(workOrder.notes || "");
@@ -31466,10 +31579,194 @@ function renderWorkOrderItem(item) {
           </div>
           ${assetAction ? `<div class="work-order-header-actions">${assetAction}</div>` : ""}
         </details>
+        ${renderWorkOrderEstimatePanel(item)}
         ${editAction}
       </div>
     </details>
   `;
+}
+
+function renderWorkOrderEstimatePanel(workOrder = {}) {
+  if (!canManageWorkOrders()) return "";
+  const estimates = estimatesForWorkOrder(workOrder.id);
+  return `
+    <details class="ticket-sub-drawer estimate-panel" ${estimates.length ? "open" : ""}>
+      <summary>
+        <h3>Estimates / quotes</h3>
+        <span>${escapeHtml(formatInventoryNumber(estimates.length))}</span>
+      </summary>
+      <section class="estimate-card">
+        ${estimates.length
+          ? estimates.map((estimate) => renderEstimateRecord(estimate, workOrder)).join("")
+          : `<p class="muted">No estimate has been created for this ticket yet.</p>`}
+        <form class="estimate-create-form" data-estimate-create-form="${escapeAttribute(workOrder.id)}">
+          <input name="title" value="${escapeAttribute(workOrder.title || "Service estimate")}" placeholder="Estimate title">
+          <input name="validUntil" type="date" value="${escapeAttribute(toDateInputValue(addDays(new Date(), 30)))}">
+          <button type="submit" class="secondary mini">Create estimate</button>
+        </form>
+      </section>
+    </details>
+  `;
+}
+
+function renderEstimateRecord(estimate = {}, workOrder = {}) {
+  const lines = normalizeEstimateLines(estimate.lines || []);
+  const requiredTotal = estimateTotal(estimate, false);
+  const fullTotal = estimateTotal(estimate, true);
+  const itemOptions = inventoryBillingOptionItems(estimate.customerId || workOrder.customerId);
+  const datalistId = `estimateLineItems-${estimate.id}`;
+  return `
+    <article class="estimate-record is-${escapeAttribute(String(estimate.status || "Draft").toLowerCase())}">
+      <header>
+        <div>
+          <strong>${escapeHtml(estimate.estimateNumber)} | ${escapeHtml(estimate.title)}</strong>
+          <span>${escapeHtml(estimate.status)} | Required ${escapeHtml(formatMoney(requiredTotal))}${fullTotal !== requiredTotal ? ` | With options ${escapeHtml(formatMoney(fullTotal))}` : ""}</span>
+        </div>
+        <div class="estimate-actions">
+          ${["Draft", "Sent", "Accepted", "Declined"].map((status) => `
+            <button type="button" class="secondary mini" data-estimate-status="${escapeAttribute(status)}" data-estimate-id="${escapeAttribute(estimate.id)}" ${estimate.status === status ? "disabled" : ""}>${escapeHtml(status)}</button>
+          `).join("")}
+        </div>
+      </header>
+      <div class="estimate-lines">
+        ${lines.length ? lines.map((line) => `
+          <div class="estimate-line-row">
+            <span>${escapeHtml(line.optional ? "Optional" : line.type)}</span>
+            <strong>${escapeHtml(line.description)}</strong>
+            <em>${escapeHtml(formatInventoryNumber(line.quantity))} x ${escapeHtml(formatMoney(line.rate))}</em>
+            <b>${escapeHtml(formatMoney(estimateLineAmount(line)))}</b>
+            <button type="button" class="secondary mini danger-action" data-delete-estimate-line="${escapeAttribute(estimate.id)}" data-estimate-line-id="${escapeAttribute(line.id)}">Remove</button>
+          </div>
+        `).join("") : `<p class="muted">Add at least one line before sending this estimate.</p>`}
+      </div>
+      <details class="estimate-line-editor">
+        <summary>Add estimate line</summary>
+        <form class="estimate-line-form" data-estimate-line-form="${escapeAttribute(estimate.id)}">
+          <datalist id="${escapeAttribute(datalistId)}">
+            ${itemOptions.map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml([item.itemType || "Product", item.sellPrice ? formatMoney(item.sellPrice) : "", item.supplier || ""].filter(Boolean).join(" | "))}</option>`).join("")}
+          </datalist>
+          <label>
+            Type
+            <select name="lineType">
+              <option>Service</option>
+              <option>Product</option>
+              <option>Material</option>
+              <option>Labour</option>
+            </select>
+          </label>
+          <label>
+            Item
+            <input name="itemName" list="${escapeAttribute(datalistId)}" placeholder="Search inventory or enter service">
+          </label>
+          <label>
+            Description
+            <input name="description" placeholder="Customer-facing quote line">
+          </label>
+          <label>
+            Qty
+            <input name="quantity" type="number" min="0.01" step="0.01" value="1">
+          </label>
+          <label>
+            Rate
+            <input name="rate" type="number" min="0" step="0.01" placeholder="0.00">
+          </label>
+          <label class="checkbox-row">
+            <input name="optional" type="checkbox">
+            Optional
+          </label>
+          <label class="checkbox-row">
+            <input name="taxable" type="checkbox" checked>
+            Taxable
+          </label>
+          <button type="submit" class="secondary mini">Add line</button>
+        </form>
+      </details>
+    </article>
+  `;
+}
+
+function createEstimateForWorkOrder(workOrderId = "", formData = new FormData()) {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canManageWorkOrders()) return;
+  const now = new Date().toISOString();
+  const seedLines = workOrderBillingLineItems(workOrder).map((line) => ({
+    id: crypto.randomUUID(),
+    type: line.type || "Service",
+    itemId: line.itemId || "",
+    itemName: line.itemName || line.description || "Estimate line",
+    description: line.description || line.itemName || "Estimate line",
+    quantity: Math.max(0, Number(line.quantity || 1)),
+    rate: Math.max(0, Number(line.rate || 0)),
+    optional: false,
+    taxable: line.taxable !== false
+  }));
+  const estimate = {
+    id: crypto.randomUUID(),
+    estimateNumber: nextEstimateNumber(),
+    workOrderId: workOrder.id,
+    customerId: workOrder.customerId,
+    locationId: workOrder.locationId,
+    assetId: workOrder.assetId,
+    title: String(formData.get("title") || workOrder.title || "Service estimate").trim() || "Service estimate",
+    status: "Draft",
+    validUntil: String(formData.get("validUntil") || "").trim(),
+    customerNote: "",
+    lines: normalizeEstimateLines(seedLines),
+    createdBy: getCurrentUserLabel(),
+    createdAt: now,
+    updatedAt: now
+  };
+  state.estimates = normalizeEstimates([estimate, ...(state.estimates || [])]);
+  addWorkOrderHistory(workOrder, "Estimate created", `${estimate.estimateNumber} | ${formatMoney(estimateTotal(estimate))}`);
+  addActivity("Estimate created", `${estimate.estimateNumber} - ${workOrder.title || formatIssueNumber(workOrder)}`);
+  saveState();
+  render();
+}
+
+function getEstimate(estimateId = "") {
+  return (state.estimates || []).find((estimate) => estimate.id === estimateId) || null;
+}
+
+function addEstimateLine(estimateId = "", formData = new FormData()) {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !workOrder || !canManageWorkOrders()) return;
+  const line = buildEstimateLineFromForm(workOrder, formData);
+  if (!line) return;
+  estimate.lines = normalizeEstimateLines([...(estimate.lines || []), line]);
+  estimate.updatedAt = new Date().toISOString();
+  addWorkOrderHistory(workOrder, "Estimate line added", `${estimate.estimateNumber} | ${line.description} | ${formatMoney(estimateLineAmount(line))}`);
+  addActivity("Estimate line added", `${estimate.estimateNumber} - ${line.description}`);
+  saveState();
+  render();
+}
+
+function deleteEstimateLine(estimateId = "", lineId = "") {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !workOrder || !lineId || !canManageWorkOrders()) return;
+  const lines = normalizeEstimateLines(estimate.lines || []);
+  const removedLine = lines.find((line) => line.id === lineId);
+  estimate.lines = lines.filter((line) => line.id !== lineId);
+  estimate.updatedAt = new Date().toISOString();
+  addWorkOrderHistory(workOrder, "Estimate line removed", `${estimate.estimateNumber} | ${removedLine?.description || "Line removed"}`);
+  addActivity("Estimate line removed", `${estimate.estimateNumber} - ${removedLine?.description || "Line"}`);
+  saveState();
+  render();
+}
+
+function updateEstimateStatus(estimateId = "", status = "Draft") {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !workOrder || !canManageWorkOrders()) return;
+  const normalized = ["Draft", "Sent", "Accepted", "Declined"].includes(status) ? status : "Draft";
+  const previous = estimate.status || "Draft";
+  estimate.status = normalized;
+  estimate.updatedAt = new Date().toISOString();
+  addWorkOrderHistory(workOrder, "Estimate status changed", `${estimate.estimateNumber} | ${previous} -> ${normalized}`);
+  addActivity("Estimate updated", `${estimate.estimateNumber} - ${normalized}`);
+  saveState();
+  render();
 }
 
 function renderEditAssetTemplateOptions(customerId, selectedTemplateId = "") {
@@ -36032,6 +36329,7 @@ function normalizeState(input) {
     templates: input.templates?.length ? input.templates : seedTemplates(),
     assets: input.assets || [],
     workOrders: input.workOrders || [],
+    estimates: input.estimates || [],
     serviceRequests: input.serviceRequests || [],
     preferredContractors: input.preferredContractors || [],
     inventoryItems: input.inventoryItems || [],
@@ -36167,6 +36465,8 @@ function normalizeState(input) {
     item.issueNumber = issueNumberCursor;
     usedIssueNumbers.add(issueNumberCursor);
   });
+
+  normalized.estimates = normalizeEstimates(normalized.estimates, normalized.customers);
 
   const usedServiceRequestNumbers = new Set();
   normalized.serviceRequests = normalized.serviceRequests.map((item) => {
@@ -36439,6 +36739,7 @@ function emptyState() {
     templates: seedTemplates(),
     assets: [],
     workOrders: [],
+    estimates: [],
     serviceRequests: [],
     preferredContractors: [],
     inventoryItems: [],
