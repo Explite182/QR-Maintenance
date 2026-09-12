@@ -206,9 +206,18 @@ function applyStructuredState(rows, updatedAt = "") {
   const localAccessRequests = state.accessRequests || [];
   const localCurrentUserId = state.currentUserId || "";
   const localWorkOrders = state.workOrders || [];
+  const localServiceRequests = state.serviceRequests || [];
   const localInventoryItems = state.inventoryItems || [];
   const nextAssets = rows.assets.map(assetFromStructuredRow);
   const mergedAssetResult = mergeStructuredAssetsWithLocal(nextAssets, state.assets || []);
+  const mergedWorkOrderResult = mergeStructuredWorkOrdersWithLocal(
+    rows.workOrders.map(workOrderFromStructuredRow),
+    localWorkOrders
+  );
+  const mergedServiceRequestResult = mergeStructuredServiceRequestsWithLocal(
+    rows.serviceRequests.map(serviceRequestFromStructuredRow),
+    localServiceRequests
+  );
   const mergedAssets = mergedAssetResult.assets;
   const mergedInventoryResult = mergeStructuredInventoryItemsWithLocal(
     (rows.inventoryItems || []).map(inventoryItemFromStructuredRow),
@@ -227,11 +236,8 @@ function applyStructuredState(rows, updatedAt = "") {
     locations: rows.locations.map(locationFromStructuredRow),
     templates: rows.templates.map(templateFromStructuredRow),
     assets: mergedAssets,
-    workOrders: mergeStructuredWorkOrdersWithLocalPublicReports(
-      rows.workOrders.map(workOrderFromStructuredRow),
-      localWorkOrders
-    ),
-    serviceRequests: rows.serviceRequests.map(serviceRequestFromStructuredRow),
+    workOrders: mergedWorkOrderResult.items,
+    serviceRequests: mergedServiceRequestResult.items,
     preferredContractors: rows.preferredContractors.map(preferredContractorFromStructuredRow),
     inventoryItems: mergedInventoryResult.items,
     keys: (rows.keys || []).map(keyFromStructuredRow),
@@ -254,7 +260,7 @@ function applyStructuredState(rows, updatedAt = "") {
   selectedId = getAssetIdFromUrl() || selectedId;
   persistLocalStateOnly(false);
   applyingSharedState = false;
-  if (mergedAssetResult.keptLocalChanges || mergedInventoryResult.keptLocalChanges) {
+  if (mergedAssetResult.keptLocalChanges || mergedWorkOrderResult.keptLocalChanges || mergedServiceRequestResult.keptLocalChanges || mergedInventoryResult.keptLocalChanges) {
     scheduleStructuredDataSync(0);
   }
   render();
@@ -274,6 +280,65 @@ function mergeStructuredWorkOrdersWithLocalPublicReports(structuredWorkOrders = 
     knownRemoteReportIds.add(item.remoteReportId);
   });
   return merged;
+}
+
+function mergeStructuredWorkOrdersWithLocal(structuredWorkOrders = [], localWorkOrders = []) {
+  const merged = new Map();
+  let keptLocalChanges = false;
+  structuredWorkOrders.forEach((item) => {
+    if (!item?.id) return;
+    merged.set(item.id, item);
+  });
+  localWorkOrders.forEach((localItem) => {
+    if (!localItem?.id) return;
+    const remoteItem = merged.get(localItem.id);
+    if (!remoteItem) {
+      const isRecentLocalItem = mapUpdatedTime(localItem) > Date.now() - 10 * 60 * 1000;
+      const isPublicReport = isCustomerReportedIssue(localItem) && localItem.remoteReportId && !state.dismissedPublicReportIds.includes(localItem.remoteReportId);
+      if ((isRecentLocalItem || isPublicReport) && canSyncCustomerOwnedRecord(localItem)) {
+        merged.set(localItem.id, localItem);
+        keptLocalChanges = true;
+      }
+      return;
+    }
+    if (mapUpdatedTime(localItem) > mapUpdatedTime(remoteItem)) {
+      merged.set(localItem.id, localItem);
+      keptLocalChanges = true;
+    }
+  });
+  return {
+    items: mergeStructuredWorkOrdersWithLocalPublicReports([...merged.values()], localWorkOrders),
+    keptLocalChanges
+  };
+}
+
+function mergeStructuredServiceRequestsWithLocal(structuredRequests = [], localRequests = []) {
+  const merged = new Map();
+  let keptLocalChanges = false;
+  structuredRequests.forEach((item) => {
+    if (!item?.id) return;
+    merged.set(item.id, item);
+  });
+  localRequests.forEach((localItem) => {
+    if (!localItem?.id) return;
+    const remoteItem = merged.get(localItem.id);
+    if (!remoteItem) {
+      const isRecentLocalItem = mapUpdatedTime(localItem) > Date.now() - 10 * 60 * 1000;
+      if (isRecentLocalItem && canSyncCustomerOwnedRecord(localItem)) {
+        merged.set(localItem.id, localItem);
+        keptLocalChanges = true;
+      }
+      return;
+    }
+    if (mapUpdatedTime(localItem) > mapUpdatedTime(remoteItem)) {
+      merged.set(localItem.id, localItem);
+      keptLocalChanges = true;
+    }
+  });
+  return {
+    items: [...merged.values()],
+    keptLocalChanges
+  };
 }
 
 function mapUpdatedTime(record = {}) {
@@ -1407,6 +1472,110 @@ async function syncInventoryItemsToServer(items = []) {
   }
 }
 
+function buildStructuredWorkOrderRow(item, cloudLocationIds = null) {
+  const row = {
+    id: item.id,
+    issue_number: item.issueNumber || null,
+    asset_id: item.assetId || null,
+    customer_id: item.customerId || null,
+    location_id: item.locationId && (!cloudLocationIds || cloudLocationIds.has(item.locationId)) ? item.locationId : null,
+    title: item.title || "",
+    priority: item.priority || "Medium",
+    status: item.status || "Open",
+    source: item.source || "",
+    area_name: item.areaName || "",
+    assigned_user_id: item.assignedUserId || "",
+    assigned_user_name: item.assignedUserName || "",
+    notes: item.notes || "",
+    due_at: item.dueAt || null,
+    resolved_at: item.resolvedAt || null,
+    created_at: item.createdAt || new Date().toISOString(),
+    updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord(item)
+  };
+  if (item.locationId && !row.location_id) {
+    row.data = {
+      ...row.data,
+      missingLocationId: item.locationId
+    };
+  }
+  return row;
+}
+
+function buildStructuredServiceRequestRow(item, cloudLocationIds = null) {
+  return {
+    id: item.id,
+    service_request_number: item.serviceRequestNumber || null,
+    asset_id: item.assetId || null,
+    customer_id: item.customerId || null,
+    location_id: item.locationId && (!cloudLocationIds || cloudLocationIds.has(item.locationId)) ? item.locationId : null,
+    title: item.title || "",
+    priority: item.priority || "Medium",
+    status: item.status || "New",
+    requested_by: item.requestedBy || "",
+    preferred_date: item.preferredDate || null,
+    assigned_user_id: item.assignedUserId || "",
+    assigned_user_name: item.assignedUserName || "",
+    converted_work_order_id: item.convertedWorkOrderId || null,
+    notes: item.notes || "",
+    photo_data_url: cloudMediaSource(item.photo),
+    photo_name: item.photo?.name || "",
+    created_at: item.createdAt || new Date().toISOString(),
+    updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
+    data: leanCloudRecord(item)
+  };
+}
+
+async function syncSingleWorkOrderToServer(item) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !item?.id) return;
+  if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return;
+  if (!hasAuthenticatedCloudSession()) {
+    scheduleStructuredDataSync(0);
+    return;
+  }
+  if (!canSyncCustomerOwnedRecord(item)) return;
+  const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
+  const knownAssetIds = new Set((state.assets || []).map((asset) => asset.id).filter(Boolean));
+  if ((item.customerId && !knownCustomerIds.has(item.customerId)) || (item.assetId && !knownAssetIds.has(item.assetId))) {
+    markSyncError("Ticket cloud save skipped because the linked customer or equipment is missing locally.");
+    return;
+  }
+  const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
+  try {
+    await upsertStructuredRows("work_orders", [buildStructuredWorkOrderRow(item, cloudLocationIds)]);
+    markSyncSuccess("save");
+  } catch (error) {
+    const message = `Ticket cloud save failed: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn("Ticket cloud save failed.", error);
+  }
+}
+
+async function syncSingleServiceRequestToServer(item) {
+  if (!STRUCTURED_DATA_SYNC_ENABLED || !item?.id) return;
+  if (!siteworksServerEnabled() && (!LEGACY_CLOUD_URL || !LEGACY_CLOUD_ANON_KEY)) return;
+  if (!hasAuthenticatedCloudSession()) {
+    scheduleStructuredDataSync(0);
+    return;
+  }
+  if (!canSyncCustomerOwnedRecord(item)) return;
+  const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
+  const knownAssetIds = new Set((state.assets || []).map((asset) => asset.id).filter(Boolean));
+  if ((item.customerId && !knownCustomerIds.has(item.customerId)) || (item.assetId && !knownAssetIds.has(item.assetId))) {
+    markSyncError("Customer request cloud save skipped because the linked customer or equipment is missing locally.");
+    return;
+  }
+  const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
+  try {
+    await upsertStructuredRows("service_requests", [buildStructuredServiceRequestRow(item, cloudLocationIds)]);
+    markSyncSuccess("save");
+  } catch (error) {
+    const message = `Customer request cloud save failed: ${error?.message || error}`;
+    markSyncError(message);
+    console.warn("Customer request cloud save failed.", error);
+  }
+}
+
 async function syncStructuredDataToServer() {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return;
   if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
@@ -1504,35 +1673,7 @@ async function syncStructuredDataToServer() {
       console.warn(`Skipped ${skippedWorkOrders} ticket sync row(s) because their linked customer or equipment is missing locally.`);
     }
 
-    await upsertStructuredRows("work_orders", cloudReadyWorkOrders.map((item) => {
-      const row = {
-        id: item.id,
-        issue_number: item.issueNumber || null,
-        asset_id: item.assetId || null,
-        customer_id: item.customerId || null,
-        location_id: item.locationId && cloudLocationIds.has(item.locationId) ? item.locationId : null,
-        title: item.title || "",
-        priority: item.priority || "Medium",
-        status: item.status || "Open",
-        source: item.source || "",
-        area_name: item.areaName || "",
-        assigned_user_id: item.assignedUserId || "",
-        assigned_user_name: item.assignedUserName || "",
-        notes: item.notes || "",
-        due_at: item.dueAt || null,
-        resolved_at: item.resolvedAt || null,
-        created_at: item.createdAt || new Date().toISOString(),
-        updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
-        data: leanCloudRecord(item)
-      };
-      if (item.locationId && !row.location_id) {
-        row.data = {
-          ...row.data,
-          missingLocationId: item.locationId
-        };
-      }
-      return row;
-    }));
+    await upsertStructuredRows("work_orders", cloudReadyWorkOrders.map((item) => buildStructuredWorkOrderRow(item, cloudLocationIds)));
 
     const cloudReadyServiceRequests = syncServiceRequests.filter((item) =>
       (!item.customerId || cloudCustomerIds.has(item.customerId)) &&
@@ -1543,27 +1684,7 @@ async function syncStructuredDataToServer() {
       console.warn(`Skipped ${skippedServiceRequests} service request sync row(s) because their linked customer or equipment is missing locally.`);
     }
 
-    await upsertStructuredRows("service_requests", cloudReadyServiceRequests.map((item) => ({
-      id: item.id,
-      service_request_number: item.serviceRequestNumber || null,
-      asset_id: item.assetId || null,
-      customer_id: item.customerId || null,
-      location_id: item.locationId && cloudLocationIds.has(item.locationId) ? item.locationId : null,
-      title: item.title || "",
-      priority: item.priority || "Medium",
-      status: item.status || "New",
-      requested_by: item.requestedBy || "",
-      preferred_date: item.preferredDate || null,
-      assigned_user_id: item.assignedUserId || "",
-      assigned_user_name: item.assignedUserName || "",
-      converted_work_order_id: item.convertedWorkOrderId || null,
-      notes: item.notes || "",
-      photo_data_url: cloudMediaSource(item.photo),
-      photo_name: item.photo?.name || "",
-      created_at: item.createdAt || new Date().toISOString(),
-      updated_at: item.updatedAt || state.updatedAt || new Date().toISOString(),
-      data: leanCloudRecord(item)
-    })));
+    await upsertStructuredRows("service_requests", cloudReadyServiceRequests.map((item) => buildStructuredServiceRequestRow(item, cloudLocationIds)));
 
     const cloudReadyPreferredContractors = syncPreferredContractors.filter((contractor) =>
       !contractor.customerId || cloudCustomerIds.has(contractor.customerId)
@@ -34679,7 +34800,7 @@ function updateServiceRequestStatus(requestId, status) {
   render();
 }
 
-function convertServiceRequestToIssue(requestId) {
+async function convertServiceRequestToIssue(requestId) {
   const request = getServiceRequest(requestId);
   if (!request || request.convertedWorkOrderId) return;
   const ticket = {
@@ -34713,6 +34834,15 @@ function convertServiceRequestToIssue(requestId) {
   saveState();
   openPanel("workOrdersPanel");
   render();
+  try {
+    await Promise.all([
+      syncSingleWorkOrderToServer(ticket),
+      syncSingleServiceRequestToServer(request)
+    ]);
+  } catch (error) {
+    markSyncError(`Ticket conversion cloud save failed: ${error?.message || error}`);
+    scheduleStructuredDataSync(0);
+  }
 }
 
 function convertOpenIssueToServiceRequest(workOrderId) {
