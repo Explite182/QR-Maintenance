@@ -15578,6 +15578,42 @@ button.asset-detail-card {
   margin: 0;
 }
 
+.inventory-reservation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.inventory-reservation-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid rgba(20, 184, 166, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.inventory-reservation-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.inventory-reservation-row strong,
+.inventory-reservation-row span,
+.inventory-reservation-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inventory-reservation-row span,
+.inventory-reservation-row small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .inventory-movement-log {
   display: grid;
   gap: 10px;
@@ -17828,6 +17864,10 @@ body.panel-schedule-open {
   }
 
   .inventory-inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-reservation-row {
     grid-template-columns: 1fr;
   }
 

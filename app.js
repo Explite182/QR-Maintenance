@@ -377,6 +377,27 @@ function normalizeInventoryMovements(movements = []) {
     : [];
 }
 
+function normalizeInventoryReservations(reservations = []) {
+  return Array.isArray(reservations)
+    ? reservations
+      .filter((reservation) => reservation && typeof reservation === "object")
+      .map((reservation) => ({
+        id: reservation.id || crypto.randomUUID?.() || `inventory-res-${Date.now()}`,
+        workOrderId: reservation.workOrderId || reservation.work_order_id || "",
+        quantity: Math.max(0, Number(reservation.quantity || 0)),
+        status: ["active", "used", "returned", "cancelled"].includes(String(reservation.status || "active")) ? String(reservation.status || "active") : "active",
+        note: reservation.note || "",
+        reservedAt: reservation.reservedAt || reservation.reserved_at || reservation.createdAt || new Date().toISOString(),
+        reservedBy: reservation.reservedBy || reservation.reserved_by || reservation.userName || "",
+        usedAt: reservation.usedAt || reservation.used_at || "",
+        returnedAt: reservation.returnedAt || reservation.returned_at || ""
+      }))
+      .filter((reservation) => reservation.workOrderId && reservation.quantity > 0)
+      .sort((a, b) => new Date(b.reservedAt || 0) - new Date(a.reservedAt || 0))
+      .slice(0, 50)
+    : [];
+}
+
 function nfcTagFromStructuredRow(row) {
   const payload = structuredPayload(row);
   return normalizeAssetNfcTag(payload.nfcTag || {
@@ -577,6 +598,7 @@ function inventoryItemFromStructuredRow(row) {
     photo: withFileScope(payload.photo, { inventoryItemId: row.id }),
     reorderStatus: payload.reorderStatus || payload.reorder_status || "",
     reorderMarkedAt: payload.reorderMarkedAt || payload.reorder_marked_at || "",
+    reservations: normalizeInventoryReservations(payload.reservations || payload.reservationLog || payload.stockReservations),
     movements: normalizeInventoryMovements(payload.movements || payload.movementLog || payload.stockMovements)
   };
 }
@@ -8806,6 +8828,28 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const useReservationButton = event.target.closest("[data-use-inventory-reservation]");
+  if (useReservationButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageInventory()) return;
+    const item = getInventoryItem(useReservationButton.dataset.useInventoryReservation);
+    if (!item || !canManageInventoryCustomer(item.customerId)) return;
+    await useInventoryReservation(item, useReservationButton.dataset.reservationId);
+    return;
+  }
+
+  const returnReservationButton = event.target.closest("[data-return-inventory-reservation]");
+  if (returnReservationButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageInventory()) return;
+    const item = getInventoryItem(returnReservationButton.dataset.returnInventoryReservation);
+    if (!item || !canManageInventoryCustomer(item.customerId)) return;
+    await returnInventoryReservation(item, returnReservationButton.dataset.reservationId);
+    return;
+  }
+
   const printButton = event.target.closest("[data-print-inventory-qr]");
   if (printButton) {
     event.preventDefault();
@@ -8965,6 +9009,46 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  const reserveForm = event.target.closest("[data-inventory-reserve-form]");
+  if (reserveForm) {
+    event.preventDefault();
+    if (!canManageInventory()) return;
+    const item = getInventoryItem(reserveForm.dataset.inventoryReserveForm);
+    if (!item || !canManageInventoryCustomer(item.customerId)) return;
+    const formData = new FormData(reserveForm);
+    const workOrder = getWorkOrder(String(formData.get("workOrderId") || ""));
+    if (!workOrder || !canWorkOnTicket(workOrder)) return;
+    const availableQuantity = inventoryAvailableQuantity(item);
+    const quantityReserved = Math.min(availableQuantity, Math.max(1, Number(formData.get("quantityReserved") || 1)));
+    if (!quantityReserved) return;
+    const reservation = {
+      id: crypto.randomUUID(),
+      workOrderId: workOrder.id,
+      quantity: quantityReserved,
+      status: "active",
+      note: "",
+      reservedAt: new Date().toISOString(),
+      reservedBy: currentUser?.name || currentUser?.username || ""
+    };
+    item.reservations = normalizeInventoryReservations([reservation, ...(item.reservations || [])]);
+    addInventoryMovement(item, {
+      type: "reserve",
+      previousQuantity: item.quantity,
+      quantityAfter: item.quantity,
+      note: `Reserved ${formatInventoryNumber(quantityReserved)} for ${formatIssueNumber(workOrder)}`
+    });
+    item.updatedAt = new Date().toISOString();
+    const note = `Reserved ${formatInventoryNumber(quantityReserved)} x ${item.name} for this ticket. Available: ${formatInventoryNumber(inventoryAvailableQuantity(item))}.`;
+    workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
+    workOrder.updatedAt = item.updatedAt;
+    addWorkOrderHistory(workOrder, "Inventory reserved", note);
+    addActivity("Inventory reserved", `${item.name} -> ${formatIssueNumber(workOrder)}`);
+    saveState();
+    await syncSingleInventoryItemToServer(item);
+    render();
+    return;
+  }
+
   const useForm = event.target.closest("[data-inventory-use-form]");
   if (useForm) {
     event.preventDefault();
@@ -8975,7 +9059,8 @@ document.addEventListener("submit", async (event) => {
     const workOrder = getWorkOrder(String(formData.get("workOrderId") || ""));
     if (!workOrder || !canWorkOnTicket(workOrder)) return;
     const previousQuantity = Math.max(0, Number(item.quantity || 0));
-    const quantityUsed = Math.min(previousQuantity, Math.max(1, Number(formData.get("quantityUsed") || 1)));
+    const availableQuantity = inventoryAvailableQuantity(item);
+    const quantityUsed = Math.min(availableQuantity, Math.max(1, Number(formData.get("quantityUsed") || 1)));
     if (!quantityUsed) return;
     item.quantity = Math.max(0, previousQuantity - quantityUsed);
     item.reorderStatus = inventoryItemLowStock(item) ? item.reorderStatus || "" : "";
@@ -9800,6 +9885,7 @@ els.inventoryForm?.addEventListener("submit", async (event) => {
     notes: els.inventoryNotes.value.trim(),
     createdAt: now,
     updatedAt: now,
+    reservations: [],
     movements: []
   };
   addInventoryMovement(item, {
@@ -16274,6 +16360,18 @@ function inventoryStockValue(item = {}) {
   return Math.max(0, Number(item.quantity || 0)) * Math.max(0, Number(item.unitCost || 0));
 }
 
+function inventoryActiveReservations(item = {}) {
+  return normalizeInventoryReservations(item.reservations || []).filter((reservation) => reservation.status === "active");
+}
+
+function inventoryReservedQuantity(item = {}) {
+  return inventoryActiveReservations(item).reduce((sum, reservation) => sum + Math.max(0, Number(reservation.quantity || 0)), 0);
+}
+
+function inventoryAvailableQuantity(item = {}) {
+  return Math.max(0, Number(item.quantity || 0) - inventoryReservedQuantity(item));
+}
+
 function inventoryResolvedSellPrice(unitCost = 0, markupPercent = 0, sellPrice = 0) {
   const explicitPrice = Math.max(0, Number(sellPrice || 0));
   if (explicitPrice > 0) return explicitPrice;
@@ -16375,6 +16473,8 @@ function renderInventoryItem(item) {
   const partNumber = item.partNumber || "";
   const linkedAsset = getAsset(item.linkedAssetId);
   const partSummary = [item.manufacturer, partNumber, item.specs].filter(Boolean).join(" | ");
+  const reservedQuantity = inventoryReservedQuantity(item);
+  const availableQuantity = inventoryAvailableQuantity(item);
   const priceBookSummary = [
     item.itemType || "Product",
     item.category || "Parts",
@@ -16405,11 +16505,13 @@ function renderInventoryItem(item) {
           <span><b>Part #</b>${escapeHtml(partNumber || "Not set")}</span>
           <span><b>Used on</b>${escapeHtml(linkedAsset?.name || "Not linked")}</span>
           <span><b>Value</b>${escapeHtml(formatMoney(inventoryStockValue(item)))}</span>
+          <span><b>Reserved</b>${escapeHtml(formatInventoryNumber(reservedQuantity))}</span>
+          <span><b>Available</b>${escapeHtml(formatInventoryNumber(availableQuantity))}</span>
         </div>
         <div class="inventory-stock">
           <span>${stockBadge}</span>
           <strong>${escapeHtml(formatInventoryNumber(item.quantity))}</strong>
-          <small>Min ${escapeHtml(formatInventoryNumber(item.minStock))}</small>
+          <small>Avail ${escapeHtml(formatInventoryNumber(availableQuantity))} | Min ${escapeHtml(formatInventoryNumber(item.minStock))}</small>
         </div>
         <div class="inventory-actions">
           <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="-1" ${canManage ? "" : "disabled"}>-</button>
@@ -16476,6 +16578,9 @@ function renderInventoryPartDetails(item = {}) {
     ["Sell price", item.sellPrice ? formatMoney(item.sellPrice) : ""],
     ["Taxable", item.taxable === false ? "No" : "Yes"],
     ["Price book", item.active === false ? "Inactive" : "Active"],
+    ["On hand", formatInventoryNumber(item.quantity)],
+    ["Reserved", formatInventoryNumber(inventoryReservedQuantity(item))],
+    ["Available", formatInventoryNumber(inventoryAvailableQuantity(item))],
     ["Stock value", item.unitCost ? formatMoney(inventoryStockValue(item)) : ""],
     ["Order quantity", item.reorderQuantity ? formatInventoryNumber(item.reorderQuantity) : ""],
     ["Lead time", item.leadTimeDays ? `${formatInventoryNumber(item.leadTimeDays)} day${Number(item.leadTimeDays) === 1 ? "" : "s"}` : ""],
@@ -16544,22 +16649,51 @@ function inventoryOpenTicketsForItem(item = {}) {
 
 function renderInventoryUseOnTicket(item = {}) {
   const tickets = inventoryOpenTicketsForItem(item);
-  const canUse = canManageInventoryCustomer(item.customerId) && Number(item.quantity || 0) > 0 && tickets.length;
+  const availableQuantity = inventoryAvailableQuantity(item);
+  const reservations = inventoryActiveReservations(item);
+  const canUse = canManageInventoryCustomer(item.customerId) && availableQuantity > 0 && tickets.length;
   return `
-    <section class="inventory-use-panel" aria-label="Use inventory on ticket">
+    <section class="inventory-use-panel" aria-label="Reserve or use inventory on ticket">
       <div class="inventory-use-heading">
-        <strong>Use on ticket</strong>
-        <small>${tickets.length ? `${tickets.length} open ticket${tickets.length === 1 ? "" : "s"}` : "No open tickets for this customer"}</small>
+        <strong>Reserve / use on ticket</strong>
+        <small>${tickets.length ? `${tickets.length} open ticket${tickets.length === 1 ? "" : "s"} | ${formatInventoryNumber(availableQuantity)} available` : "No open tickets for this customer"}</small>
       </div>
+      <form class="inventory-use-form" data-inventory-reserve-form="${escapeAttribute(item.id)}">
+        <select name="workOrderId" ${canUse ? "" : "disabled"}>
+          ${tickets.length
+            ? tickets.map((ticket) => `<option value="${escapeAttribute(ticket.id)}">${escapeHtml(`${formatIssueNumber(ticket)} - ${ticket.title || "Open ticket"}`)}</option>`).join("")
+            : `<option>No open tickets</option>`}
+        </select>
+        <input name="quantityReserved" type="number" min="1" max="${escapeAttribute(availableQuantity)}" step="1" value="1" ${canUse ? "" : "disabled"}>
+        <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Reserve</button>
+      </form>
       <form class="inventory-use-form" data-inventory-use-form="${escapeAttribute(item.id)}">
         <select name="workOrderId" ${canUse ? "" : "disabled"}>
           ${tickets.length
             ? tickets.map((ticket) => `<option value="${escapeAttribute(ticket.id)}">${escapeHtml(`${formatIssueNumber(ticket)} - ${ticket.title || "Open ticket"}`)}</option>`).join("")
             : `<option>No open tickets</option>`}
         </select>
-        <input name="quantityUsed" type="number" min="1" max="${escapeAttribute(item.quantity || 0)}" step="1" value="1" ${canUse ? "" : "disabled"}>
-        <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Use part</button>
+        <input name="quantityUsed" type="number" min="1" max="${escapeAttribute(availableQuantity)}" step="1" value="1" ${canUse ? "" : "disabled"}>
+        <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Use now</button>
       </form>
+      ${reservations.length ? `
+        <div class="inventory-reservation-list">
+          ${reservations.map((reservation) => {
+            const ticket = getWorkOrder(reservation.workOrderId);
+            return `
+              <article class="inventory-reservation-row">
+                <div>
+                  <strong>${escapeHtml(formatInventoryNumber(reservation.quantity))} reserved</strong>
+                  <span>${escapeHtml(ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Open ticket"}` : "Ticket not found")}</span>
+                  <small>${escapeHtml(formatDateTime(reservation.reservedAt))}${reservation.reservedBy ? ` | ${escapeHtml(reservation.reservedBy)}` : ""}</small>
+                </div>
+                <button type="button" class="secondary mini" data-use-inventory-reservation="${escapeAttribute(item.id)}" data-reservation-id="${escapeAttribute(reservation.id)}">Use reserved</button>
+                <button type="button" class="secondary mini" data-return-inventory-reservation="${escapeAttribute(item.id)}" data-reservation-id="${escapeAttribute(reservation.id)}">Return</button>
+              </article>
+            `;
+          }).join("")}
+        </div>
+      ` : ""}
     </section>
   `;
 }
@@ -16571,6 +16705,8 @@ function inventoryMovementTypeLabel(type = "") {
   if (normalized === "use") return "Used";
   if (normalized === "receive") return "Received";
   if (normalized === "audit") return "Audit count";
+  if (normalized === "reserve") return "Reserved";
+  if (normalized === "return") return "Returned";
   return "Adjustment";
 }
 
@@ -16586,7 +16722,7 @@ function addInventoryMovement(item, { type = "adjustment", previousQuantity = 0,
   const previous = Math.max(0, Number(previousQuantity || 0));
   const next = Math.max(0, Number(quantityAfter || 0));
   const delta = next - previous;
-  if (!delta && type !== "initial") return;
+  if (!delta && !["initial", "reserve", "return"].includes(type)) return;
   const movement = {
     id: crypto.randomUUID?.() || `inventory-move-${Date.now()}`,
     at: new Date().toISOString(),
@@ -16599,6 +16735,65 @@ function addInventoryMovement(item, { type = "adjustment", previousQuantity = 0,
     userName: currentUser?.name || currentUser?.username || ""
   };
   item.movements = normalizeInventoryMovements([movement, ...(item.movements || [])]);
+}
+
+async function useInventoryReservation(item, reservationId = "") {
+  const reservations = normalizeInventoryReservations(item.reservations || []);
+  const reservation = reservations.find((entry) => entry.id === reservationId && entry.status === "active");
+  if (!reservation) return;
+  const workOrder = getWorkOrder(reservation.workOrderId);
+  const previousQuantity = Math.max(0, Number(item.quantity || 0));
+  const quantityUsed = Math.min(previousQuantity, Math.max(0, Number(reservation.quantity || 0)));
+  if (!quantityUsed) return;
+  item.quantity = Math.max(0, previousQuantity - quantityUsed);
+  reservation.status = "used";
+  reservation.usedAt = new Date().toISOString();
+  item.reservations = normalizeInventoryReservations(reservations);
+  item.reorderStatus = inventoryItemLowStock(item) ? item.reorderStatus || "" : "";
+  addInventoryMovement(item, {
+    type: "use",
+    previousQuantity,
+    quantityAfter: item.quantity,
+    note: `Used reserved stock on ${workOrder ? formatIssueNumber(workOrder) : "ticket"}`
+  });
+  item.updatedAt = new Date().toISOString();
+  if (workOrder) {
+    const note = `Used ${formatInventoryNumber(quantityUsed)} x ${item.name} from reserved inventory. On hand: ${formatInventoryNumber(item.quantity)}.`;
+    workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
+    workOrder.updatedAt = item.updatedAt;
+    addWorkOrderHistory(workOrder, "Inventory used", note);
+  }
+  addActivity("Reserved inventory used", `${item.name}${workOrder ? ` -> ${formatIssueNumber(workOrder)}` : ""}`);
+  saveState();
+  await syncSingleInventoryItemToServer(item);
+  render();
+}
+
+async function returnInventoryReservation(item, reservationId = "") {
+  const reservations = normalizeInventoryReservations(item.reservations || []);
+  const reservation = reservations.find((entry) => entry.id === reservationId && entry.status === "active");
+  if (!reservation) return;
+  const workOrder = getWorkOrder(reservation.workOrderId);
+  reservation.status = "returned";
+  reservation.returnedAt = new Date().toISOString();
+  item.reservations = normalizeInventoryReservations(reservations);
+  addInventoryMovement(item, {
+    type: "return",
+    previousQuantity: item.quantity,
+    quantityAfter: item.quantity,
+    note: `Returned reservation from ${workOrder ? formatIssueNumber(workOrder) : "ticket"}`
+  });
+  item.updatedAt = new Date().toISOString();
+  if (workOrder) {
+    const note = `Returned reserved ${formatInventoryNumber(reservation.quantity)} x ${item.name} to available stock.`;
+    workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
+    workOrder.updatedAt = item.updatedAt;
+    addWorkOrderHistory(workOrder, "Inventory reservation returned", note);
+  }
+  addActivity("Inventory reservation returned", `${item.name}${workOrder ? ` -> ${formatIssueNumber(workOrder)}` : ""}`);
+  saveState();
+  await syncSingleInventoryItemToServer(item);
+  render();
 }
 
 function renderInventoryMovementLog(item = {}) {
@@ -27446,7 +27641,7 @@ function inventoryUsageLinesForWorkOrder(workOrder = {}) {
 }
 
 function parseInventoryUsageText(text = "") {
-  const match = String(text || "").match(/Used\s+([\d.]+)\s+x\s+(.+?)\s+from inventory/i);
+  const match = String(text || "").match(/Used\s+([\d.]+)\s+x\s+(.+?)\s+from\s+(?:reserved\s+)?inventory/i);
   return {
     quantity: Math.max(0, Number(match?.[1] || 1)),
     name: String(match?.[2] || "").trim()
@@ -35266,6 +35461,7 @@ function normalizeState(input) {
     photo: item.photo || null,
     reorderStatus: item.reorderStatus || item.reorder_status || "",
     reorderMarkedAt: item.reorderMarkedAt || item.reorder_marked_at || "",
+    reservations: normalizeInventoryReservations(item.reservations || item.reservationLog || item.stockReservations),
     movements: normalizeInventoryMovements(item.movements || item.movementLog || item.stockMovements),
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
@@ -36647,6 +36843,7 @@ async function importInventoryCsv(file) {
       lastAuditedBy: "",
       photo: null,
       reorderStatus: "",
+      reservations: [],
       movements: []
     };
     const existing = findMatchingInventoryImportItem(imported);
@@ -36658,6 +36855,7 @@ async function importInventoryCsv(file) {
         createdAt: existing.createdAt || now,
         updatedAt: now,
         movements: existing.movements || [],
+        reservations: existing.reservations || imported.reservations || [],
         photo: existing.photo || null,
         lastAuditedAt: existing.lastAuditedAt || "",
         lastAuditedBy: existing.lastAuditedBy || "",
