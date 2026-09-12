@@ -15514,12 +15514,112 @@ button.asset-detail-card {
 
 .inventory-reorder-list {
   display: grid;
+  gap: 10px;
+}
+
+.inventory-reorder-group {
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 8px;
+  background: rgba(255, 251, 235, 0.72);
+  overflow: hidden;
+}
+
+.inventory-reorder-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.inventory-reorder-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.inventory-reorder-group > summary div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.inventory-reorder-group > summary strong {
+  font-size: 14px;
+}
+
+.inventory-reorder-group > summary small,
+.inventory-reorder-group > summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.inventory-reorder-group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+
+.inventory-reorder-group-lines {
+  display: grid;
   gap: 6px;
+  padding: 0 12px 12px;
+}
+
+.inventory-po-draft {
+  margin: 0 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  overflow: hidden;
+}
+
+.inventory-po-draft summary {
+  padding: 8px 10px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.inventory-po-draft-sheet {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.inventory-po-draft-sheet header,
+.inventory-po-draft-lines {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(220px, 1.5fr) minmax(130px, auto) minmax(90px, auto);
+  gap: 8px;
+  align-items: center;
+}
+
+.inventory-po-draft-sheet header {
+  grid-template-columns: repeat(3, minmax(130px, 1fr));
+}
+
+.inventory-po-draft-sheet header div,
+.inventory-po-draft-lines span,
+.inventory-po-draft-lines strong,
+.inventory-po-draft-lines em,
+.inventory-po-draft-lines b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inventory-po-draft-sheet span,
+.inventory-po-draft-lines em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .inventory-reorder-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) repeat(6, minmax(72px, auto)) auto;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(7, minmax(72px, auto)) auto;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
@@ -17852,6 +17952,17 @@ body.panel-schedule-open {
 
   .inventory-reorder-row {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .inventory-reorder-group > summary,
+  .inventory-reorder-group-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inventory-po-draft-sheet header,
+  .inventory-po-draft-lines {
+    grid-template-columns: 1fr;
   }
 
   .inventory-reorder-row div,
