@@ -287,10 +287,15 @@ function mergeStructuredWorkOrdersWithLocal(structuredWorkOrders = [], localWork
   let keptLocalChanges = false;
   structuredWorkOrders.forEach((item) => {
     if (!item?.id) return;
+    if (isRecentlyDeletedRecord("workOrders", item.id)) {
+      keptLocalChanges = true;
+      return;
+    }
     merged.set(item.id, item);
   });
   localWorkOrders.forEach((localItem) => {
     if (!localItem?.id) return;
+    if (isRecentlyDeletedRecord("workOrders", localItem.id)) return;
     const remoteItem = merged.get(localItem.id);
     if (!remoteItem) {
       const isRecentLocalItem = mapUpdatedTime(localItem) > Date.now() - 10 * 60 * 1000;
@@ -317,10 +322,15 @@ function mergeStructuredServiceRequestsWithLocal(structuredRequests = [], localR
   let keptLocalChanges = false;
   structuredRequests.forEach((item) => {
     if (!item?.id) return;
+    if (isRecentlyDeletedRecord("serviceRequests", item.id)) {
+      keptLocalChanges = true;
+      return;
+    }
     merged.set(item.id, item);
   });
   localRequests.forEach((localItem) => {
     if (!localItem?.id) return;
+    if (isRecentlyDeletedRecord("serviceRequests", localItem.id)) return;
     const remoteItem = merged.get(localItem.id);
     if (!remoteItem) {
       const isRecentLocalItem = mapUpdatedTime(localItem) > Date.now() - 10 * 60 * 1000;
@@ -344,6 +354,37 @@ function mergeStructuredServiceRequestsWithLocal(structuredRequests = [], localR
 function mapUpdatedTime(record = {}) {
   const time = Date.parse(record.updatedAt || record.updated_at || "");
   return Number.isFinite(time) ? time : 0;
+}
+
+const DELETED_RECORD_TOMBSTONE_MS = 24 * 60 * 60 * 1000;
+
+function normalizeDeletedRecordMap(value = {}) {
+  const now = Date.now();
+  return Object.fromEntries(Object.entries(value || {}).filter(([id, deletedAt]) => {
+    if (!id) return false;
+    const time = Date.parse(deletedAt || "");
+    return Number.isFinite(time) && now - time < DELETED_RECORD_TOMBSTONE_MS;
+  }));
+}
+
+function isRecentlyDeletedRecord(kind, id) {
+  if (!id) return false;
+  const maps = state.deletedRecordIds || {};
+  const deletedAt = maps[kind]?.[id];
+  const time = Date.parse(deletedAt || "");
+  return Number.isFinite(time) && Date.now() - time < DELETED_RECORD_TOMBSTONE_MS;
+}
+
+function markRecentlyDeletedRecord(kind, id) {
+  if (!id) return;
+  state.deletedRecordIds ||= {};
+  state.deletedRecordIds[kind] = normalizeDeletedRecordMap(state.deletedRecordIds[kind]);
+  state.deletedRecordIds[kind][id] = new Date().toISOString();
+}
+
+function clearRecentlyDeletedRecord(kind, id) {
+  if (!id || !state.deletedRecordIds?.[kind]) return;
+  delete state.deletedRecordIds[kind][id];
 }
 
 function siteMapMergeKey(map = {}) {
@@ -1095,6 +1136,7 @@ function buildSharedStatePayload(uploadedAt) {
     accessRequests: state.accessRequests || [],
     activityLog: state.activityLog || [],
     dismissedPublicReportIds: state.dismissedPublicReportIds || [],
+    deletedRecordIds: state.deletedRecordIds || {},
     backupLocation: state.backupLocation || defaultBackupLocation(),
     qrBaseUrl: getQrBaseUrl(),
     sharedDataUpdatedAt: uploadedAt
@@ -18318,12 +18360,14 @@ async function deleteWorkOrder(workOrderId) {
   if (workOrder.remoteReportId && !state.dismissedPublicReportIds.includes(workOrder.remoteReportId)) {
     state.dismissedPublicReportIds.push(workOrder.remoteReportId);
   }
+  markRecentlyDeletedRecord("workOrders", workOrder.id);
   state.workOrders = state.workOrders.filter((item) => item.id !== workOrder.id);
   if (focusedWorkOrderId === workOrder.id) focusedWorkOrderId = "";
   if (focusedCompletedRecordId === workOrder.id) focusedCompletedRecordId = "";
   addActivity("Ticket deleted", ticketLabel);
   saveState();
-  await finishCloudDelete("Ticket", deleteStructuredRows("work_orders", "id", [workOrder.id]));
+  const deleted = await finishCloudDelete("Ticket", deleteStructuredRows("work_orders", "id", [workOrder.id]));
+  if (!deleted) clearRecentlyDeletedRecord("workOrders", workOrder.id);
   render();
 }
 
@@ -18332,11 +18376,13 @@ async function deleteServiceRequest(requestId) {
   if (!request || !canDeleteServiceRequests()) return;
   const requestLabel = `${formatServiceRequestNumber(request)} - ${request.title || "Service request"}`;
   if (!confirm(`Delete ${requestLabel}? This cannot be undone.`)) return;
+  markRecentlyDeletedRecord("serviceRequests", request.id);
   state.serviceRequests = state.serviceRequests.filter((item) => item.id !== request.id);
   if (focusedServiceRequestId === request.id) focusedServiceRequestId = "";
   addActivity("Service request deleted", requestLabel);
   saveState();
-  await finishCloudDelete("Service request", deleteStructuredRows("service_requests", "id", [request.id]));
+  const deleted = await finishCloudDelete("Service request", deleteStructuredRows("service_requests", "id", [request.id]));
+  if (!deleted) clearRecentlyDeletedRecord("serviceRequests", request.id);
   render();
 }
 
@@ -37513,6 +37559,10 @@ function normalizeState(input) {
     accessRequests: input.accessRequests || [],
     activityLog: input.activityLog || [],
     dismissedPublicReportIds: Array.isArray(input.dismissedPublicReportIds) ? input.dismissedPublicReportIds : [],
+    deletedRecordIds: {
+      workOrders: normalizeDeletedRecordMap(input.deletedRecordIds?.workOrders),
+      serviceRequests: normalizeDeletedRecordMap(input.deletedRecordIds?.serviceRequests)
+    },
     currentUserId: input.currentUserId || "",
     backupLocation: input.backupLocation || defaultBackupLocation(),
     qrBaseUrl: normalizeQrBaseUrl(input.qrBaseUrl || guessNetworkQrUrl()),
@@ -37937,6 +37987,7 @@ function emptyState() {
     accessRequests: [],
     activityLog: [],
     dismissedPublicReportIds: [],
+    deletedRecordIds: { workOrders: {}, serviceRequests: {} },
     currentUserId: "",
     backupLocation: defaultBackupLocation(),
     qrBaseUrl: guessNetworkQrUrl(),
