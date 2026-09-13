@@ -15888,6 +15888,52 @@ button.asset-detail-card {
   font-weight: 800;
 }
 
+.estimate-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.estimate-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #eef4f2;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.estimate-status-badge.is-sent {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.estimate-status-badge.is-accepted {
+  border-color: rgba(16, 185, 129, 0.42);
+  background: #dcfce7;
+  color: #166534;
+}
+
+.estimate-status-badge.is-declined {
+  border-color: rgba(239, 68, 68, 0.42);
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.estimate-approval-note.is-accepted {
+  color: #166534;
+}
+
+.estimate-approval-note.is-declined {
+  color: #991b1b;
+}
+
 .estimate-actions {
   display: flex;
   flex-wrap: wrap;

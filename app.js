@@ -11745,7 +11745,7 @@ document.addEventListener("click", async (event) => {
   const emailEstimateButton = event.target.closest("[data-estimate-email]");
   if (emailEstimateButton && canManageWorkOrders()) {
     event.preventDefault();
-    emailEstimate(emailEstimateButton.dataset.estimateEmail);
+    emailEstimate(emailEstimateButton.dataset.estimateEmail, emailEstimateButton);
     return;
   }
 
@@ -33056,14 +33056,15 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
     : estimate.declinedAt
       ? `Declined ${formatDateTime(new Date(estimate.declinedAt))}${estimate.declinedBy ? ` by ${estimate.declinedBy}` : ""}`
       : "";
+  const estimateStatus = ["Draft", "Sent", "Accepted", "Declined"].includes(estimate.status) ? estimate.status : "Draft";
   const canUseForBilling = estimate.status === "Accepted" && lines.length && !estimate.convertedToBillingAt;
   return `
     <article class="estimate-record is-${escapeAttribute(String(estimate.status || "Draft").toLowerCase())}">
       <header>
         <div>
           <strong>${escapeHtml(estimate.estimateNumber)} | ${escapeHtml(estimate.title)}</strong>
-          <span>${escapeHtml(estimate.status)} | Required ${escapeHtml(formatMoney(requiredTotal))}${fullTotal !== requiredTotal ? ` | With options ${escapeHtml(formatMoney(fullTotal))}` : ""}</span>
-          ${approvalLabel ? `<span>${escapeHtml(approvalLabel)}</span>` : ""}
+          <span class="estimate-status-row"><span class="estimate-status-badge is-${escapeAttribute(estimateStatus.toLowerCase())}">${escapeHtml(estimateStatus)}</span><span>Required ${escapeHtml(formatMoney(requiredTotal))}${fullTotal !== requiredTotal ? ` | With options ${escapeHtml(formatMoney(fullTotal))}` : ""}</span></span>
+          ${approvalLabel ? `<span class="estimate-approval-note is-${escapeAttribute(estimateStatus.toLowerCase())}">${escapeHtml(approvalLabel)}</span>` : ""}
           ${estimate.convertedToBillingAt ? `<span>Billing lines created ${escapeHtml(formatDateTime(new Date(estimate.convertedToBillingAt)))}</span>` : ""}
         </div>
         <div class="estimate-actions">
@@ -33448,28 +33449,9 @@ async function copyEstimatePublicLink(estimateId = "") {
   render();
 }
 
-async function emailEstimate(estimateId = "") {
-  const details = getEstimateDetails(estimateId);
-  if (!details) return;
+function buildEstimateEmailBody(details, quoteLink) {
   const { estimate, workOrder, lines, requiredTotal, fullTotal } = details;
-  if (!lines.length) {
-    alert("Add at least one estimate line before emailing this quote.");
-    return;
-  }
-  const recipient = window.prompt("Customer email address:", details.customerEmail || "");
-  if (recipient === null) return;
-  if (!isEmailAddress(recipient.trim())) {
-    alert("Enter a valid customer email address.");
-    return;
-  }
-  const quoteLink = await ensureEstimatePublicLink(estimateId);
-  if (!quoteLink) return;
-  addWorkOrderHistory(workOrder, "Estimate email draft opened", `${estimate.estimateNumber} to ${recipient.trim()}`);
-  addActivity("Estimate email draft opened", `${estimate.estimateNumber} to ${recipient.trim()}`);
-  saveState();
-  render();
-  const subject = `SiteWorks Quote ${estimate.estimateNumber}: ${estimate.title || workOrder.title || "Estimate"}`;
-  const body = [
+  return [
     `Hello,`,
     "",
     `Please review the quote below.`,
@@ -33490,7 +33472,108 @@ async function emailEstimate(estimateId = "") {
     "",
     "Please use the link above to accept or decline the quote. No SiteWorks login is required."
   ].filter(Boolean).join("\n");
+}
+
+function buildEstimateEmailHtml(details, quoteLink) {
+  const { estimate, workOrder, lines, requiredTotal, fullTotal } = details;
+  return `
+    <div style="font-family:Arial,sans-serif;color:#172126;line-height:1.45;">
+      <h2 style="margin:0 0 4px;color:#14566b;">SiteWorks Quote ${escapeHtml(estimate.estimateNumber || "")}</h2>
+      <p style="margin:0 0 18px;font-weight:700;">${escapeHtml(estimate.title || workOrder.title || "Estimate")}</p>
+      <p>Please review the quote below.</p>
+      <p><a href="${escapeAttribute(quoteLink)}" style="display:inline-block;background:#08705f;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;">Review and accept quote</a></p>
+      <table style="border-collapse:collapse;width:100%;max-width:760px;margin-top:16px;">
+        <tr><td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">Customer / location</td><td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(details.context || "Not set")}</td></tr>
+        <tr><td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">Ticket</td><td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(formatIssueNumber(workOrder))}</td></tr>
+        <tr><td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">Valid until</td><td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(estimate.validUntil ? inventoryDateLabel(estimate.validUntil) : "Not set")}</td></tr>
+      </table>
+      <h3 style="margin:22px 0 8px;">Line items</h3>
+      <table style="border-collapse:collapse;width:100%;max-width:760px;">
+        ${lines.map((line) => `
+          <tr>
+            <td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(line.optional ? "Optional" : line.type || "Service")}</td>
+            <td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;">${escapeHtml(line.description || line.itemName || "Estimate line")}</td>
+            <td style="border:1px solid #dbe5e1;padding:8px;text-align:right;">${escapeHtml(formatInventoryNumber(line.quantity))} x ${escapeHtml(formatMoney(line.rate))}</td>
+            <td style="border:1px solid #dbe5e1;padding:8px;text-align:right;font-weight:700;">${escapeHtml(formatMoney(estimateLineAmount(line)))}</td>
+          </tr>
+        `).join("")}
+      </table>
+      <p style="font-size:18px;font-weight:700;">Required total: ${escapeHtml(formatMoney(requiredTotal))}</p>
+      ${fullTotal !== requiredTotal ? `<p>With optional items: ${escapeHtml(formatMoney(fullTotal))}</p>` : ""}
+      <p style="color:#68777d;">No SiteWorks login is required to accept or decline this quote.</p>
+    </div>
+  `;
+}
+
+function openEstimateEmailDraft(details, recipient, quoteLink) {
+  const { estimate, workOrder } = details;
+  const subject = `SiteWorks Quote ${estimate.estimateNumber}: ${estimate.title || workOrder.title || "Estimate"}`;
+  const body = buildEstimateEmailBody(details, quoteLink);
   window.location.href = `mailto:${encodeURIComponent(recipient.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+async function emailEstimate(estimateId = "", button = null) {
+  const details = getEstimateDetails(estimateId);
+  if (!details) return;
+  const { estimate, workOrder, lines, requiredTotal, fullTotal } = details;
+  if (!lines.length) {
+    alert("Add at least one estimate line before emailing this quote.");
+    return;
+  }
+  const recipient = window.prompt("Customer email address:", details.customerEmail || "");
+  if (recipient === null) return;
+  if (!isEmailAddress(recipient.trim())) {
+    alert("Enter a valid customer email address.");
+    return;
+  }
+  const quoteLink = await ensureEstimatePublicLink(estimateId);
+  if (!quoteLink) return;
+  const subject = `SiteWorks Quote ${estimate.estimateNumber}: ${estimate.title || workOrder.title || "Estimate"}`;
+  const originalText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sending...";
+  }
+  try {
+    const response = await sendSiteWorksEmail("quote", {
+      to: recipient.trim(),
+      subject,
+      text: buildEstimateEmailBody(details, quoteLink),
+      html: buildEstimateEmailHtml(details, quoteLink),
+      scope: {
+        id: workOrder.id,
+        issueNumber: formatIssueNumber(workOrder),
+        title: estimate.title || workOrder.title || "Estimate",
+        customerId: estimate.customerId || workOrder.customerId || "",
+        locationId: estimate.locationId || workOrder.locationId || "",
+        customer: details.customer?.name || "",
+        location: details.locationRecord?.name || "",
+        equipment: details.asset?.name || workOrder.areaName || "Quote"
+      }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getEmailFunctionError(result, "The quote email could not be sent."));
+    addWorkOrderHistory(workOrder, "Quote email sent", buildEmailHistoryDetails(recipient.trim(), result));
+    addActivity("Quote emailed", `${estimate.estimateNumber} to ${recipient.trim()}`);
+    saveState();
+    render();
+    alert(buildEmailSuccessAlert("Quote email", result));
+  } catch (error) {
+    console.warn("Quote email failed.", error);
+    addWorkOrderHistory(workOrder, "Quote email failed", error.message || "Automatic quote email could not be sent.");
+    addActivity("Quote email failed", `${estimate.estimateNumber} to ${recipient.trim()}`);
+    saveState();
+    const useDraft = confirm(buildEmailFailurePrompt(error, "customer"));
+    if (useDraft) {
+      addWorkOrderHistory(workOrder, "Quote fallback email draft opened", `Draft to ${recipient.trim()}`);
+      addActivity("Quote fallback email draft", `${estimate.estimateNumber} to ${recipient.trim()}`);
+      saveState();
+      openEstimateEmailDraft(details, recipient.trim(), quoteLink);
+    }
+    render();
+  } finally {
+    restoreEmailActionButton(button, originalText);
+  }
 }
 
 function renderEditAssetTemplateOptions(customerId, selectedTemplateId = "") {
