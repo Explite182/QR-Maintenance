@@ -7248,6 +7248,7 @@ const els = {
   printPmCalendarBtn: document.getElementById("printPmCalendarBtn"),
   emailPmCalendarBtn: document.getElementById("emailPmCalendarBtn"),
   exportPmCalendarBtn: document.getElementById("exportPmCalendarBtn"),
+  downloadPmCalendarIcsBtn: document.getElementById("downloadPmCalendarIcsBtn"),
   workOrderCount: document.getElementById("workOrderCount"),
   workOrderNumberFilter: document.getElementById("workOrderNumberFilter"),
   workOrderList: document.getElementById("workOrderList"),
@@ -10603,6 +10604,10 @@ els.emailPmCalendarBtn?.addEventListener("click", () => {
 
 els.exportPmCalendarBtn?.addEventListener("click", () => {
   exportPmCalendarCsv();
+});
+
+els.downloadPmCalendarIcsBtn?.addEventListener("click", () => {
+  downloadPmCalendarIcs();
 });
 
 els.exportAssetRegisterBtn.addEventListener("click", () => {
@@ -27863,6 +27868,141 @@ function exportPmCalendarCsv() {
   link.download = `siteworks-calendar-${pmCalendarRange}-${timestampForFile()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadPmCalendarIcs() {
+  const windowInfo = pmCalendarWindow();
+  const records = pmCalendarRecords(windowInfo);
+  if (!records.length) {
+    alert("No calendar items are scheduled for this view.");
+    return;
+  }
+  const ics = buildPmCalendarIcs(records, windowInfo);
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `siteworks-calendar-${pmCalendarRange}-${timestampForFile()}.ics`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildPmCalendarIcs(records, windowInfo = pmCalendarWindow()) {
+  const nowStamp = formatIcsDateTime(new Date());
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//SiteWorks//SiteWorks Calendar//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    `X-WR-CALNAME:${escapeIcsText(`SiteWorks - ${windowInfo.label}`)}`,
+    `X-WR-CALDESC:${escapeIcsText("SiteWorks scheduled visits and preventative maintenance")}`
+  ];
+  records.forEach((record) => {
+    lines.push(...buildPmCalendarIcsEvent(record, nowStamp));
+  });
+  lines.push("END:VCALENDAR");
+  return lines.map(foldIcsLine).join("\r\n");
+}
+
+function buildPmCalendarIcsEvent(record, nowStamp = formatIcsDateTime(new Date())) {
+  const uid = `${record.kind}-${record.kind === "scheduled" ? record.visit?.id || record.workOrder?.id : record.kind === "route" ? record.template?.id : record.asset?.id}-${toDateInputValue(record.dueDate)}@siteworks`;
+  const isTimed = record.kind === "scheduled" && record.visit?.scheduledAt;
+  const start = isTimed ? new Date(record.visit.scheduledAt) : startOfDay(record.dueDate);
+  const durationMinutes = isTimed ? Math.max(15, Number(record.visit.durationMinutes || 60)) : 24 * 60;
+  const end = addMinutes(start, durationMinutes);
+  const title = record.kind === "scheduled"
+    ? `${formatIssueNumber(record.workOrder)} - ${record.workOrder?.title || "Scheduled visit"}`
+    : record.kind === "route"
+      ? `PM Route - ${record.template?.name || "Scheduled route"}`
+      : `PM Due - ${record.asset?.name || "Equipment"}`;
+  const locationText = [record.customer?.name, record.location?.name].filter(Boolean).join(" | ");
+  const description = pmCalendarIcsDescription(record);
+  const lines = [
+    "BEGIN:VEVENT",
+    `UID:${escapeIcsText(uid)}`,
+    `DTSTAMP:${nowStamp}`,
+    `SUMMARY:${escapeIcsText(title)}`,
+    `DESCRIPTION:${escapeIcsText(description)}`,
+    `LOCATION:${escapeIcsText(locationText)}`,
+    `STATUS:${record.kind === "scheduled" && String(record.visit?.status || "").toLowerCase() === "cancelled" ? "CANCELLED" : "CONFIRMED"}`
+  ];
+  if (isTimed) {
+    lines.push(`DTSTART:${formatIcsDateTime(start)}`);
+    lines.push(`DTEND:${formatIcsDateTime(end)}`);
+  } else {
+    lines.push(`DTSTART;VALUE=DATE:${formatIcsDateOnly(start)}`);
+    lines.push(`DTEND;VALUE=DATE:${formatIcsDateOnly(addDays(start, 1))}`);
+  }
+  lines.push("END:VEVENT");
+  return lines;
+}
+
+function pmCalendarIcsDescription(record) {
+  if (record.kind === "scheduled") {
+    return [
+      `Ticket: ${formatIssueNumber(record.workOrder)}`,
+      `Title: ${record.workOrder?.title || "Scheduled visit"}`,
+      `Customer: ${record.customer?.name || ""}`,
+      `Location: ${record.location?.name || ""}`,
+      `Equipment: ${record.asset?.name || record.workOrder?.areaName || ""}`,
+      `Assigned: ${record.visit?.assignedUserName || "Unassigned"}`,
+      `Status: ${record.visit?.status || "Scheduled"}`,
+      record.visit?.notes ? `Notes: ${record.visit.notes}` : ""
+    ].filter(Boolean).join("\\n");
+  }
+  if (record.kind === "route") {
+    return [
+      `PM route: ${record.template?.name || "Scheduled route"}`,
+      `Equipment count: ${record.routeAssets?.length || 0}`,
+      `Frequency: Every ${record.route?.frequencyDays || ""} days`,
+      `Status: ${record.due?.label || ""}`
+    ].filter(Boolean).join("\\n");
+  }
+  return [
+    `PM equipment: ${record.asset?.name || ""}`,
+    `Customer: ${record.customer?.name || ""}`,
+    `Location: ${record.location?.name || ""}`,
+    `Template: ${record.template?.name || ""}`,
+    `Criticality: ${record.asset?.criticality || "Low"}`,
+    `Status: ${record.due?.label || ""}`
+  ].filter(Boolean).join("\\n");
+}
+
+function addMinutes(date, minutes) {
+  const copy = new Date((coerceValidDate(date) || today).getTime());
+  copy.setMinutes(copy.getMinutes() + (Number(minutes) || 0));
+  return copy;
+}
+
+function formatIcsDateTime(date) {
+  const safeDate = coerceValidDate(date) || new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${safeDate.getUTCFullYear()}${pad(safeDate.getUTCMonth() + 1)}${pad(safeDate.getUTCDate())}T${pad(safeDate.getUTCHours())}${pad(safeDate.getUTCMinutes())}${pad(safeDate.getUTCSeconds())}Z`;
+}
+
+function formatIcsDateOnly(date) {
+  const safeDate = coerceValidDate(date) || today;
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${safeDate.getFullYear()}${pad(safeDate.getMonth() + 1)}${pad(safeDate.getDate())}`;
+}
+
+function escapeIcsText(value) {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\r?\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+}
+
+function foldIcsLine(line) {
+  const text = String(line || "");
+  if (text.length <= 74) return text;
+  const parts = [];
+  for (let index = 0; index < text.length; index += 74) {
+    parts.push(`${index ? " " : ""}${text.slice(index, index + 74)}`);
+  }
+  return parts.join("\r\n");
 }
 
 function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceRequests, completedIssues, breakerTrips = [], lowStockInventory = [] }) {
