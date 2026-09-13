@@ -9896,6 +9896,7 @@ html[data-theme="dark"] .pm-calendar-day,
 html[data-theme="dark"] .pm-calendar-item,
 html[data-theme="dark"] .pm-calendar-equipment-card,
 html[data-theme="dark"] .pm-calendar-cell,
+html[data-theme="dark"] .pm-calendar-mode-toggle,
 html[data-theme="dark"] .dashboard-filter-bar,
 html[data-theme="dark"] .global-search-results,
 html[data-theme="dark"] .record-card {
@@ -12481,6 +12482,39 @@ html[data-theme="dark"] .site-map-empty {
   font-size: 15px;
 }
 
+.pm-calendar-mode-toggle {
+  justify-self: center;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f7fbfa;
+}
+
+.pm-calendar-mode-toggle button {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.pm-calendar-mode-toggle button:hover {
+  background: #eef7f4;
+  color: var(--ink);
+  transform: none;
+}
+
+.pm-calendar-mode-toggle button.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .pm-calendar-list {
   display: grid;
   gap: 14px;
@@ -12600,6 +12634,11 @@ html[data-theme="dark"] .site-map-empty {
   color: #fff;
 }
 
+.pm-calendar-task-scheduled {
+  background: #315fa8;
+  color: #fff;
+}
+
 .pm-calendar-more {
   padding: 3px 6px;
   border-radius: 6px;
@@ -12654,6 +12693,21 @@ html[data-theme="dark"] .site-map-empty {
 .pm-calendar-item:hover {
   border-color: var(--accent);
   background: #eef7f4;
+}
+
+.pm-calendar-scheduled-item {
+  border-color: #bdd3f5;
+  background: #f4f8ff;
+}
+
+.pm-calendar-scheduled-item:hover {
+  border-color: #315fa8;
+  background: #edf4ff;
+}
+
+.pm-calendar-scheduled-item em {
+  background: #dbeafe;
+  color: #1d4d8f;
 }
 
 .pm-calendar-item span {
@@ -19360,6 +19414,7 @@ html[data-theme="dark"] .pm-calendar-day,
 html[data-theme="dark"] .pm-calendar-item,
 html[data-theme="dark"] .pm-calendar-equipment-card,
 html[data-theme="dark"] .pm-calendar-cell,
+html[data-theme="dark"] .pm-calendar-mode-toggle,
 html[data-theme="dark"] .route-asset-option {
   background-color: var(--panel);
   border-color: var(--line);
@@ -19384,6 +19439,35 @@ html[data-theme="dark"] .inventory-main p {
 html[data-theme="dark"] .status-badge,
 html[data-theme="dark"] [class*="badge"] {
   border-color: rgba(255, 255, 255, 0.18);
+}
+
+html[data-theme="dark"] .pm-calendar-mode-toggle button {
+  color: var(--muted);
+}
+
+html[data-theme="dark"] .pm-calendar-mode-toggle button:hover {
+  background: rgba(47, 200, 170, 0.12);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .pm-calendar-mode-toggle button.is-active {
+  background: var(--accent);
+  color: #06231f;
+}
+
+html[data-theme="dark"] .pm-calendar-scheduled-item {
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(49, 95, 168, 0.16);
+}
+
+html[data-theme="dark"] .pm-calendar-scheduled-item:hover {
+  border-color: #60a5fa;
+  background: rgba(49, 95, 168, 0.22);
+}
+
+html[data-theme="dark"] .pm-calendar-scheduled-item em {
+  background: rgba(96, 165, 250, 0.18);
+  color: #bfdbfe;
 }
 
 html[data-theme="dark"] .sync-banner {

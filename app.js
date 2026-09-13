@@ -6755,6 +6755,7 @@ let deferredCloudRefreshPending = false;
 let billingQueueFilter = "ready";
 let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
+let pmCalendarMode = "all";
 let selectedMonitoringPanelId = "";
 let selectedMonitoringBreakerChannelId = "";
 let selectedMonitoringBreakerCircuit = "";
@@ -11638,6 +11639,25 @@ document.addEventListener("click", async (event) => {
     location.hash = `asset/${selectedId}`;
     render();
     document.getElementById("assetPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const pmCalendarModeButton = event.target.closest("[data-pm-calendar-mode]");
+  if (pmCalendarModeButton) {
+    event.preventDefault();
+    pmCalendarMode = pmCalendarModeButton.dataset.pmCalendarMode || "all";
+    renderPmCalendar();
+    return;
+  }
+
+  const pmCalendarScheduledButton = event.target.closest("[data-pm-calendar-scheduled]");
+  if (pmCalendarScheduledButton) {
+    event.preventDefault();
+    focusedWorkOrderId = pmCalendarScheduledButton.dataset.pmCalendarScheduled || "";
+    closeOtherSidebarTargets("workOrdersPanel");
+    openPanel("workOrdersPanel");
+    setMobileTabState("workOrdersPanel");
+    render();
     return;
   }
 
@@ -27237,6 +27257,8 @@ function renderPmCalendar() {
   if (!els.pmCalendarList) return;
   const windowInfo = pmCalendarWindow();
   const records = pmCalendarRecords(windowInfo);
+  const pmCount = records.filter((record) => record.kind !== "scheduled").length;
+  const scheduledCount = records.filter((record) => record.kind === "scheduled").length;
   if (els.pmCalendarRange) els.pmCalendarRange.value = pmCalendarRange;
   if (els.pmCalendarDate) els.pmCalendarDate.value = pmCalendarDate;
   if (els.pmCalendarCount) els.pmCalendarCount.textContent = records.length;
@@ -27245,20 +27267,30 @@ function renderPmCalendar() {
   const viewLabel = `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
   if (els.pmCalendarSummary) {
     els.pmCalendarSummary.innerHTML = `
-      <strong>${escapeHtml(windowInfo.label)}</strong>
-      <span>${escapeHtml(viewLabel)}</span>
-      <span>${records.length} upcoming PM${records.length === 1 ? "" : "s"}</span>
+      <div>
+        <strong>${escapeHtml(windowInfo.label)}</strong>
+        <span>${escapeHtml(viewLabel)}</span>
+      </div>
+      <div class="pm-calendar-mode-toggle" role="group" aria-label="Calendar type">
+        ${[
+          ["all", "All"],
+          ["pm", "PMs"],
+          ["scheduled", "Scheduled"]
+        ].map(([mode, label]) => `<button type="button" class="${pmCalendarMode === mode ? "is-active" : ""}" data-pm-calendar-mode="${escapeAttribute(mode)}">${escapeHtml(label)}</button>`).join("")}
+      </div>
+      <span>${records.length} item${records.length === 1 ? "" : "s"} | ${pmCount} PM${pmCount === 1 ? "" : "s"} | ${scheduledCount} scheduled</span>
     `;
   }
   if (!records.length) {
+    const emptyKind = pmCalendarMode === "scheduled" ? "scheduled visits" : pmCalendarMode === "pm" ? "PMs" : "calendar items";
     if (pmCalendarRange === "month") {
       els.pmCalendarList.innerHTML = `
         ${renderPmCalendarMonthGrid(records, windowInfo)}
-        <p class="muted">No PMs are scheduled in this forward month for the current view.</p>
+        <p class="muted">No ${escapeHtml(emptyKind)} are scheduled in this forward month for the current view.</p>
       `;
       return;
     }
-    els.pmCalendarList.innerHTML = `<p class="muted">No PMs are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
+    els.pmCalendarList.innerHTML = `<p class="muted">No ${escapeHtml(emptyKind)} are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
     return;
   }
   const schedule = pmCalendarRange === "month"
@@ -27269,6 +27301,7 @@ function renderPmCalendar() {
 
 function pmCalendarWindow() {
   const baseDate = parseLocalDate(pmCalendarDate) || today;
+  const calendarLabel = pmCalendarMode === "scheduled" ? "scheduled visits" : pmCalendarMode === "pm" ? "PM schedule" : "SiteWorks calendar";
   let start;
   let end;
   let label;
@@ -27280,11 +27313,11 @@ function pmCalendarWindow() {
   } else if (pmCalendarRange === "year") {
     start = new Date(baseDate.getFullYear(), 0, 1);
     end = new Date(baseDate.getFullYear(), 11, 31);
-    label = `${baseDate.getFullYear()} PM schedule`;
+    label = `${baseDate.getFullYear()} ${calendarLabel}`;
   } else {
     start = baseDate;
     end = addDays(start, 30);
-    label = `${formatDate(start)} - ${formatDate(end)} PM schedule`;
+    label = `${formatDate(start)} - ${formatDate(end)} ${calendarLabel}`;
   }
 
   return { start: startOfDay(start), end: startOfDay(end), label };
@@ -27297,7 +27330,7 @@ function startOfWeek(date) {
 }
 
 function pmCalendarRecords(windowInfo = pmCalendarWindow()) {
-  const assetRecords = filteredAssets()
+  const assetRecords = pmCalendarMode === "scheduled" ? [] : filteredAssets()
     .map((asset) => {
       const due = getDueInfo(asset);
       return {
@@ -27311,9 +27344,31 @@ function pmCalendarRecords(windowInfo = pmCalendarWindow()) {
       };
     })
     .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end);
-  const routeRecords = scheduledRouteCalendarRecords(windowInfo);
-  return [...assetRecords, ...routeRecords]
+  const routeRecords = pmCalendarMode === "scheduled" ? [] : scheduledRouteCalendarRecords(windowInfo);
+  const scheduledRecords = pmCalendarMode === "pm" ? [] : scheduledVisitCalendarRecords(windowInfo);
+  return [...assetRecords, ...routeRecords, ...scheduledRecords]
     .sort((a, b) => a.dueDate - b.dueDate || pmCalendarRecordName(a).localeCompare(pmCalendarRecordName(b)));
+}
+
+function scheduledVisitCalendarRecords(windowInfo = pmCalendarWindow()) {
+  return normalizeScheduledVisits(state.scheduledVisits || [])
+    .map((visit) => {
+      const workOrder = getWorkOrder(visit.workOrderId);
+      if (!workOrder || !isCurrentViewWorkOrder(workOrder)) return null;
+      if (!visit.scheduledAt) return null;
+      const dueDate = startOfDay(new Date(visit.scheduledAt));
+      return {
+        kind: "scheduled",
+        visit,
+        workOrder,
+        dueDate,
+        customer: getCustomer(workOrder.customerId),
+        location: getLocation(workOrder.locationId),
+        asset: getAsset(workOrder.assetId) || getRawAsset(workOrder.assetId)
+      };
+    })
+    .filter(Boolean)
+    .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end);
 }
 
 function scheduledRouteCalendarRecords(windowInfo = pmCalendarWindow()) {
@@ -27351,10 +27406,12 @@ function scheduledRouteCalendarRecords(windowInfo = pmCalendarWindow()) {
 }
 
 function pmCalendarRecordName(record) {
+  if (record.kind === "scheduled") return `${record.workOrder?.title || "Scheduled visit"} ${record.visit?.scheduledAt || ""}`;
   return record.kind === "route" ? record.template?.name || "PM route" : record.asset?.name || "PM";
 }
 
 function pmCalendarRecordEquipmentLabel(record) {
+  if (record.kind === "scheduled") return `${formatIssueNumber(record.workOrder)} - ${record.workOrder?.title || "Scheduled visit"}`;
   if (record.kind === "route") {
     return `${record.template?.name || "PM route"} (${record.routeAssets?.length || 0} equipment)`;
   }
@@ -27362,13 +27419,21 @@ function pmCalendarRecordEquipmentLabel(record) {
 }
 
 function pmCalendarRecordCriticality(record) {
+  if (record.kind === "scheduled") return "Scheduled visit";
   if (record.kind === "route") return "Route";
   return record.asset?.criticality || "Low";
 }
 
 function pmCalendarRecordStatus(record) {
+  if (record.kind === "scheduled") return record.visit?.status || "Scheduled";
   if (record.kind === "route") return `${record.routeAssets?.length || 0} equipment`;
   return openWorkOrdersForAsset(record.asset.id).length ? "Open ticket" : "Clear";
+}
+
+function pmCalendarShortTime(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 function renderPmCalendarGroups(records) {
@@ -27380,7 +27445,7 @@ function renderPmCalendarGroups(records) {
       <article class="pm-calendar-day">
         <div class="pm-calendar-day-heading">
           <h3>${escapeHtml(formatDate(date))}</h3>
-          <span>${items.length} PM${items.length === 1 ? "" : "s"}</span>
+          <span>${items.length} item${items.length === 1 ? "" : "s"}</span>
         </div>
         <div class="pm-calendar-items">
           ${items.map(renderPmCalendarItem).join("")}
@@ -27437,6 +27502,13 @@ function renderPmCalendarMonthGrid(records, windowInfo) {
 
 function renderPmCalendarTask(record) {
   const tone = pmCalendarTone(record);
+  if (record.kind === "scheduled") {
+    return `
+      <button type="button" class="pm-calendar-task pm-calendar-task-${tone}" data-pm-calendar-scheduled="${escapeAttribute(record.workOrder.id)}">
+        ${escapeHtml(`${pmCalendarShortTime(record.visit.scheduledAt)} ${formatIssueNumber(record.workOrder)}`)}
+      </button>
+    `;
+  }
   if (record.kind === "route") {
     return `
       <button type="button" class="pm-calendar-task pm-calendar-task-${tone}" data-pm-calendar-route="${escapeAttribute(record.template.id)}">
@@ -27452,6 +27524,14 @@ function renderPmCalendarTask(record) {
 }
 
 function pmCalendarTone(record) {
+  if (record.kind === "scheduled") {
+    const status = String(record.visit?.status || "").toLowerCase();
+    const scheduledAt = new Date(record.visit?.scheduledAt || Date.now());
+    if (status === "cancelled") return "danger";
+    if (scheduledAt < new Date() && !["completed", "cancelled"].includes(status)) return "danger";
+    if (toDateInputValue(scheduledAt) === toDateInputValue(today)) return "warning";
+    return "scheduled";
+  }
   if (record.kind === "route") {
     const text = `${record.template?.name || ""}`.toLowerCase();
     if (record.due.daysUntil < 0) return "danger";
@@ -27468,7 +27548,7 @@ function pmCalendarTone(record) {
 
 function renderPmCalendarKeyEquipment(records) {
   const seen = new Set();
-  const uniqueRecords = records.filter((record) => record.kind !== "route" && record.asset).filter((record) => {
+  const uniqueRecords = records.filter((record) => record.kind !== "route" && record.kind !== "scheduled" && record.asset).filter((record) => {
     if (seen.has(record.asset.id)) return false;
     seen.add(record.asset.id);
     return true;
@@ -27510,6 +27590,21 @@ function renderPmCalendarEquipmentCard(record) {
 }
 
 function renderPmCalendarItem(record) {
+  if (record.kind === "scheduled") {
+    return `
+      <button type="button" class="pm-calendar-item pm-calendar-scheduled-item" data-pm-calendar-scheduled="${escapeAttribute(record.workOrder.id)}">
+        <span>
+          <strong>${escapeHtml(`${pmCalendarShortTime(record.visit.scheduledAt)} | ${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Scheduled visit"}`)}</strong>
+          <small>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</small>
+        </span>
+        <span>
+          <small>${escapeHtml(record.asset?.name || record.workOrder.areaName || "Equipment / area")}</small>
+          <small>${escapeHtml(record.visit.assignedUserName || "Unassigned")} | ${escapeHtml(formatInventoryNumber(record.visit.durationMinutes || 60))} min</small>
+        </span>
+        <em>${escapeHtml(record.visit.status || "Scheduled")}</em>
+      </button>
+    `;
+  }
   if (record.kind === "route") {
     return `
       <button type="button" class="pm-calendar-item pm-calendar-route-item" data-pm-calendar-route="${escapeAttribute(record.template.id)}">
@@ -27546,7 +27641,7 @@ function printPmCalendar() {
   const windowInfo = pmCalendarWindow();
   const records = pmCalendarRecords(windowInfo);
   if (!records.length) {
-    alert("No PMs are scheduled for this view.");
+    alert("No calendar items are scheduled for this view.");
     return;
   }
   const currentCustomer = getCustomer(selectedCustomerId);
@@ -27558,11 +27653,11 @@ function printPmCalendar() {
   }
   const rows = records.map((record) => `
     <tr>
-      <td>${escapeHtml(formatDate(record.dueDate))}</td>
+      <td>${escapeHtml(record.kind === "scheduled" ? formatDateTime(new Date(record.visit.scheduledAt)) : formatDate(record.dueDate))}</td>
       <td>${escapeHtml(pmCalendarRecordEquipmentLabel(record))}</td>
       <td>${escapeHtml(record.customer?.name || "")}</td>
       <td>${escapeHtml(record.location?.name || "")}</td>
-      <td>${escapeHtml(record.template?.name || "")}</td>
+      <td>${escapeHtml(record.kind === "scheduled" ? "Scheduled visit" : record.template?.name || "")}</td>
       <td>${escapeHtml(pmCalendarRecordCriticality(record))}</td>
       <td>${escapeHtml(pmCalendarRecordStatus(record))}</td>
     </tr>
@@ -27571,7 +27666,7 @@ function printPmCalendar() {
     <!doctype html>
     <html>
       <head>
-        <title>SiteWorks PM Calendar</title>
+        <title>SiteWorks Calendar</title>
         <style>
           body { font-family: Arial, sans-serif; color: #142023; padding: 32px; }
           h1 { margin: 0 0 8px; font-size: 28px; }
@@ -27582,7 +27677,7 @@ function printPmCalendar() {
         </style>
       </head>
       <body>
-        <h1>SiteWorks PM Calendar</h1>
+        <h1>SiteWorks Calendar</h1>
         <div class="meta">
           ${escapeHtml(windowInfo.label)}<br>
           ${escapeHtml(currentCustomer?.name || "No customer selected")} | ${escapeHtml(currentLocation?.name || "All locations")}<br>
@@ -27591,7 +27686,7 @@ function printPmCalendar() {
         <table>
           <thead>
             <tr>
-              <th>PM Date</th>
+              <th>Date / Time</th>
               <th>Equipment</th>
               <th>Customer</th>
               <th>Location</th>
@@ -27614,25 +27709,28 @@ function emailPmCalendarList() {
   const windowInfo = pmCalendarWindow();
   const records = pmCalendarRecords(windowInfo);
   if (!records.length) {
-    alert("No PMs are scheduled for this view.");
+    alert("No calendar items are scheduled for this view.");
     return;
   }
   const currentCustomer = getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
-  const subject = `SiteWorks PM Calendar - ${windowInfo.label}`;
+  const subject = `SiteWorks Calendar - ${windowInfo.label}`;
   const lines = [
-    "SiteWorks PM Calendar",
+    "SiteWorks Calendar",
     windowInfo.label,
     `${currentCustomer?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`,
-    `${records.length} upcoming PM${records.length === 1 ? "" : "s"}`,
+    `${records.length} calendar item${records.length === 1 ? "" : "s"}`,
     "",
     ...records.map((record) => {
+      if (record.kind === "scheduled") {
+        return `${formatDateTime(new Date(record.visit.scheduledAt))} - Scheduled visit - ${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Ticket"} - ${record.location?.name || "No location"} - ${record.visit.assignedUserName || "Unassigned"} - ${record.visit.status || "Scheduled"}`;
+      }
       const openTicketCount = record.kind === "route" ? 0 : openWorkOrdersForAsset(record.asset.id).length;
       const ticketText = openTicketCount ? ` | ${openTicketCount} open ticket${openTicketCount === 1 ? "" : "s"}` : "";
       return `${toDateInputValue(record.dueDate)} - ${pmCalendarRecordEquipmentLabel(record)} - ${record.location?.name || "No location"} - ${record.template?.name || "No template"} - ${pmCalendarRecordCriticality(record)}${ticketText}`;
     })
   ];
-  addActivity("PM calendar email draft opened", `${windowInfo.label} | ${records.length} PMs`);
+  addActivity("Calendar email draft opened", `${windowInfo.label} | ${records.length} item${records.length === 1 ? "" : "s"}`);
   saveState();
   window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n"))}`;
 }
@@ -27641,17 +27739,18 @@ function exportPmCalendarCsv() {
   const windowInfo = pmCalendarWindow();
   const records = pmCalendarRecords(windowInfo);
   const rows = [
-    ["PM Date", "Customer", "Location", "Equipment", "Template", "Criticality", "Frequency Days", "Last Completed PM", "Open Tickets"],
+    ["Date / Time", "Type", "Customer", "Location", "Equipment / Ticket", "Template / Assigned", "Priority / Criticality", "Frequency / Duration", "Last Completed PM", "Open Tickets / Status"],
     ...records.map((record) => [
-      toDateInputValue(record.dueDate),
+      record.kind === "scheduled" ? formatDateTime(new Date(record.visit.scheduledAt)) : toDateInputValue(record.dueDate),
+      record.kind === "scheduled" ? "Scheduled visit" : record.kind === "route" ? "PM route" : "PM",
       record.customer?.name || "",
       record.location?.name || "",
       pmCalendarRecordEquipmentLabel(record),
-      record.template?.name || "",
+      record.kind === "scheduled" ? record.visit.assignedUserName || "Unassigned" : record.template?.name || "",
       pmCalendarRecordCriticality(record),
-      record.kind === "route" ? record.route.frequencyDays : record.asset.frequencyDays,
-      record.kind === "route" ? "" : record.asset.history?.[0]?.completedAt || "",
-      record.kind === "route" ? "" : openWorkOrdersForAsset(record.asset.id).length
+      record.kind === "scheduled" ? `${record.visit.durationMinutes || 60} minutes` : record.kind === "route" ? record.route.frequencyDays : record.asset.frequencyDays,
+      record.kind === "scheduled" || record.kind === "route" ? "" : record.asset.history?.[0]?.completedAt || "",
+      record.kind === "scheduled" ? record.visit.status || "Scheduled" : record.kind === "route" ? "" : openWorkOrdersForAsset(record.asset.id).length
     ])
   ];
   const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
@@ -27659,7 +27758,7 @@ function exportPmCalendarCsv() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `pm-calendar-${pmCalendarRange}-${timestampForFile()}.csv`;
+  link.download = `siteworks-calendar-${pmCalendarRange}-${timestampForFile()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
