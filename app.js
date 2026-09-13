@@ -372,8 +372,8 @@ function mergeStructuredEstimatesWithLocal(structuredEstimates = [], localEstima
     if (!localItem?.id) return;
     const remoteItem = merged.get(localItem.id);
     if (!remoteItem) {
-      const isRecentLocalItem = mapUpdatedTime(localItem) > Date.now() - 10 * 60 * 1000;
-      if (isRecentLocalItem && canSyncCustomerOwnedRecord(localItem)) {
+      const linkedTicketExists = !localItem.workOrderId || (state.workOrders || []).some((workOrder) => workOrder.id === localItem.workOrderId);
+      if (linkedTicketExists && canSyncCustomerOwnedRecord(localItem)) {
         merged.set(localItem.id, localItem);
         keptLocalChanges = true;
       }
