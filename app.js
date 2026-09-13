@@ -27295,7 +27295,11 @@ function renderPmCalendar() {
   }
   const schedule = pmCalendarRange === "month"
     ? renderPmCalendarMonthGrid(records, windowInfo)
-    : renderPmCalendarGroups(records);
+    : pmCalendarRange === "week"
+      ? renderPmCalendarWeekBoard(records, windowInfo)
+      : pmCalendarRange === "day"
+        ? renderPmCalendarDayBoard(records, windowInfo)
+        : renderPmCalendarGroups(records);
   els.pmCalendarList.innerHTML = `${schedule}${renderPmCalendarKeyEquipment(records)}`;
 }
 
@@ -27306,10 +27310,14 @@ function pmCalendarWindow() {
   let end;
   let label;
 
-  if (pmCalendarRange === "week") {
+  if (pmCalendarRange === "day") {
+    start = baseDate;
+    end = baseDate;
+    label = `${formatDate(start)} ${calendarLabel}`;
+  } else if (pmCalendarRange === "week") {
     start = startOfWeek(baseDate);
     end = addDays(start, 6);
-    label = `Week of ${formatDate(start)}`;
+    label = `Week of ${formatDate(start)} ${calendarLabel}`;
   } else if (pmCalendarRange === "year") {
     start = new Date(baseDate.getFullYear(), 0, 1);
     end = new Date(baseDate.getFullYear(), 11, 31);
@@ -27462,6 +27470,100 @@ function groupPmCalendarRecords(records) {
     map.get(key).push(record);
     return map;
   }, new Map());
+}
+
+function renderPmCalendarWeekBoard(records, windowInfo) {
+  const groups = groupPmCalendarRecords(records);
+  const days = [];
+  for (let day = windowInfo.start; day <= windowInfo.end; day = addDays(day, 1)) {
+    const date = startOfDay(day);
+    const key = toDateInputValue(date);
+    const items = (groups.get(key) || []).slice().sort(pmCalendarRecordTimeSort);
+    days.push(`
+      <section class="pm-calendar-week-column${key === toDateInputValue(today) ? " is-today" : ""}">
+        <div class="pm-calendar-week-heading">
+          <strong>${escapeHtml(date.toLocaleDateString([], { weekday: "short" }))}</strong>
+          <span>${escapeHtml(formatDate(date))}</span>
+          <em>${items.length}</em>
+        </div>
+        <div class="pm-calendar-board-events">
+          ${items.length ? items.map(renderPmCalendarBoardEvent).join("") : `<p class="pm-calendar-board-empty">No visits or PMs</p>`}
+        </div>
+      </section>
+    `);
+  }
+  return `<section class="pm-calendar-week-board">${days.join("")}</section>`;
+}
+
+function renderPmCalendarDayBoard(records, windowInfo) {
+  const dayRecords = records
+    .filter((record) => toDateInputValue(record.dueDate) === toDateInputValue(windowInfo.start))
+    .sort(pmCalendarRecordTimeSort);
+  const scheduledGroups = new Map();
+  const pmDue = [];
+  dayRecords.forEach((record) => {
+    if (record.kind === "scheduled") {
+      const lane = record.visit.assignedUserName || "Unassigned";
+      if (!scheduledGroups.has(lane)) scheduledGroups.set(lane, []);
+      scheduledGroups.get(lane).push(record);
+      return;
+    }
+    pmDue.push(record);
+  });
+  if (pmDue.length) scheduledGroups.set("PM due", pmDue);
+  const lanes = [...scheduledGroups.entries()];
+  return `
+    <section class="pm-calendar-day-board">
+      ${lanes.map(([lane, items]) => `
+        <section class="pm-calendar-tech-lane">
+          <div class="pm-calendar-tech-heading">
+            <strong>${escapeHtml(lane)}</strong>
+            <span>${items.length} item${items.length === 1 ? "" : "s"}</span>
+          </div>
+          <div class="pm-calendar-board-events">
+            ${items.map(renderPmCalendarBoardEvent).join("")}
+          </div>
+        </section>
+      `).join("")}
+    </section>
+  `;
+}
+
+function pmCalendarRecordTimeSort(a, b) {
+  return pmCalendarRecordTimeValue(a) - pmCalendarRecordTimeValue(b) || pmCalendarRecordName(a).localeCompare(pmCalendarRecordName(b));
+}
+
+function pmCalendarRecordTimeValue(record) {
+  if (record.kind === "scheduled" && record.visit?.scheduledAt) {
+    const value = new Date(record.visit.scheduledAt).getTime();
+    return Number.isFinite(value) ? value : record.dueDate.getTime();
+  }
+  return record.dueDate.getTime() + 12 * 60 * 60 * 1000;
+}
+
+function pmCalendarRecordTargetAttribute(record) {
+  if (record.kind === "scheduled") return `data-pm-calendar-scheduled="${escapeAttribute(record.workOrder.id)}"`;
+  if (record.kind === "route") return `data-pm-calendar-route="${escapeAttribute(record.template.id)}"`;
+  return `data-pm-calendar-asset="${escapeAttribute(record.asset.id)}"`;
+}
+
+function renderPmCalendarBoardEvent(record) {
+  const tone = pmCalendarTone(record);
+  const timeLabel = record.kind === "scheduled" ? pmCalendarShortTime(record.visit.scheduledAt) : "PM";
+  const title = record.kind === "scheduled"
+    ? `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Scheduled visit"}`
+    : pmCalendarRecordEquipmentLabel(record);
+  const meta = [
+    record.location?.name || "",
+    record.kind === "scheduled" ? record.visit.assignedUserName || "Unassigned" : record.template?.name || pmCalendarRecordCriticality(record)
+  ].filter(Boolean).join(" | ");
+  return `
+    <button type="button" class="pm-calendar-board-event pm-calendar-board-event-${tone}" ${pmCalendarRecordTargetAttribute(record)}>
+      <span>${escapeHtml(timeLabel)}</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${escapeHtml(meta || pmCalendarRecordStatus(record))}</small>
+    </button>
+  `;
 }
 
 function renderPmCalendarMonthGrid(records, windowInfo) {
@@ -28065,7 +28167,7 @@ function commandPaletteCommands() {
   const commands = [];
   if (currentRole !== "Customer") {
     commands.push(
-      commandPaletteItem("command", "pmCalendarPanel", "Open PM Calendar", "Jump to monthly preventative maintenance schedule.", "Go"),
+      commandPaletteItem("command", "pmCalendarPanel", "Open Calendar", "Jump to scheduled visits and preventative maintenance.", "Go"),
       commandPaletteItem("command", "assetRegisterDrawer", "Open Equipment Register", "Browse and select equipment.", "Go"),
       commandPaletteItem("command", "workOrdersPanel", "Open Tickets", "Review active ticket work.", "Go"),
       commandPaletteItem("command", "completedPmPanel", "Completed Tickets", "Review closed tickets and completed maintenance.", "Go")

@@ -997,7 +997,7 @@
 
       <section id="pmCalendarPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="pmCalendarPanel">
-          <h2>PM Calendar</h2>
+          <h2>Calendar</h2>
           <span class="panel-title-actions">
             <span id="pmCalendarCount">0</span>
           </span>
@@ -1007,6 +1007,7 @@
             <label>
               View
               <select id="pmCalendarRange">
+                <option value="day">Day</option>
                 <option value="week">Week</option>
                 <option value="month" selected>Month</option>
                 <option value="year">Year</option>
@@ -1017,7 +1018,7 @@
               <input id="pmCalendarDate" type="date">
             </label>
             <div class="pm-calendar-actions">
-              <button id="printPmCalendarBtn" type="button" class="secondary mini">Print PM List</button>
+              <button id="printPmCalendarBtn" type="button" class="secondary mini">Print Calendar</button>
               <button id="emailPmCalendarBtn" type="button" class="secondary mini">Email List</button>
               <button id="exportPmCalendarBtn" type="button" class="secondary mini">Export CSV</button>
             </div>
@@ -2651,7 +2652,7 @@
       <button type="button" data-mobile-create-action="newKey">Add Key</button>
     </div>
     <div id="mobilePmMenu" class="mobile-create-menu hidden" aria-label="Preventive maintenance">
-      <button type="button" data-mobile-pm-target="pmCalendarPanel">PM Calendar</button>
+      <button type="button" data-mobile-pm-target="pmCalendarPanel">Calendar</button>
       <button type="button" data-mobile-pm-target="templatesPanel" data-template-nav>Templates</button>
       <button type="button" data-mobile-pm-target="siteMapPanel">Site Map</button>
       <button type="button" data-mobile-pm-target="monitoringPanel">Panel Monitor</button>
