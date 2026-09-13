@@ -15519,8 +15519,8 @@ button.asset-detail-card {
 
 .schedule-ticket-form {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(150px, 0.8fr) 90px minmax(130px, 0.7fr) minmax(180px, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(150px, 1fr) minmax(90px, 0.55fr) minmax(140px, 0.8fr);
+  gap: 10px;
   align-items: end;
 }
 
@@ -15536,6 +15536,35 @@ button.asset-detail-card {
 .schedule-ticket-form select {
   width: 100%;
   min-width: 0;
+}
+
+.schedule-ticket-form label:nth-of-type(5) {
+  grid-column: span 3;
+}
+
+.schedule-ticket-form button {
+  min-height: 38px;
+  white-space: normal;
+}
+
+@media (max-width: 920px) {
+  .schedule-ticket-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .schedule-ticket-form label:nth-of-type(5) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .schedule-ticket-form {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-ticket-form label:nth-of-type(5) {
+    grid-column: auto;
+  }
 }
 
 .billing-filter-bar {
