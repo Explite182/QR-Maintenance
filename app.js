@@ -11708,6 +11708,13 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const sendScheduleButton = event.target.closest("[data-ticket-schedule-email]");
+  if (sendScheduleButton && canManageWorkOrders()) {
+    event.preventDefault();
+    sendScheduledVisitEmail(sendScheduleButton.dataset.ticketScheduleEmail, sendScheduleButton);
+    return;
+  }
+
   if (event.target.closest("#customerPortalRequestBtn")) {
     event.preventDefault();
     const drawer = document.querySelector(".portal-request-form");
@@ -33016,6 +33023,7 @@ function renderWorkOrderSchedulePanel(workOrder = {}) {
           </label>
           <input name="visitId" type="hidden" value="${escapeAttribute(nextVisit?.id || "")}">
           <button type="submit" class="secondary mini">${nextVisit ? "Update visit" : "Schedule visit"}</button>
+          ${nextVisit ? `<button type="button" class="primary mini" data-ticket-schedule-email="${escapeAttribute(workOrder.id)}">Send schedule</button>` : ""}
         </form>
       </section>
     </details>
@@ -33904,6 +33912,130 @@ function openIssueEmailDraft(details, recipient) {
     "If a PDF copy is needed, use the PDF Form button in SiteWorks and attach the saved PDF to this email."
   ].join("\n");
   window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function getCustomerScheduleEmail(workOrder = {}) {
+  const customer = getCustomer(workOrder.customerId);
+  const locationRecord = getLocation(workOrder.locationId);
+  return locationRecord?.contactEmail || customer?.reportEmailTo || customer?.contactEmail || "";
+}
+
+function buildScheduleEmailParts(details, visit = {}) {
+  const scheduledAt = visit.scheduledAt ? formatDateTime(new Date(visit.scheduledAt)) : "Not scheduled";
+  const assignedTo = visit.assignedUserName || details.assignedTo || "Unassigned";
+  const duration = `${formatInventoryNumber(visit.durationMinutes || 60)} minutes`;
+  const subject = `SiteWorks Scheduled Visit: ${details.issueNumber} - ${details.equipment}`;
+  const text = [
+    "Hello,",
+    "",
+    "A SiteWorks visit has been scheduled.",
+    "",
+    `Ticket: ${details.issueNumber} - ${details.title}`,
+    `Customer: ${details.customer}`,
+    `Location: ${details.location}`,
+    `Equipment / area: ${details.equipment}`,
+    `Scheduled for: ${scheduledAt}`,
+    `Assigned to: ${assignedTo}`,
+    `Duration: ${duration}`,
+    visit.notes ? `Notes: ${visit.notes}` : "",
+    "",
+    "Please reply to this email if this time needs to change."
+  ].filter(Boolean).join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#172126;line-height:1.45;">
+      <h2 style="margin:0 0 4px;color:#14566b;">SiteWorks Scheduled Visit</h2>
+      <p style="margin:0 0 18px;font-weight:700;">${escapeHtml(details.issueNumber)} - ${escapeHtml(details.title)}</p>
+      <table style="border-collapse:collapse;width:100%;max-width:720px;">
+        ${[
+          ["Scheduled for", scheduledAt],
+          ["Assigned to", assignedTo],
+          ["Duration", duration],
+          ["Customer", details.customer],
+          ["Location", details.location],
+          ["Equipment / area", details.equipment],
+          ["Ticket", details.issueNumber],
+          ["Notes", visit.notes || "None"]
+        ].map(([label, value]) => `
+          <tr>
+            <td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">${escapeHtml(label)}</td>
+            <td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(value)}</td>
+          </tr>
+        `).join("")}
+      </table>
+      <p style="color:#68777d;">Please reply to this email if this time needs to change.</p>
+    </div>
+  `;
+  return { subject, text, html };
+}
+
+function openScheduleEmailDraft(details, visit, recipient) {
+  const parts = buildScheduleEmailParts(details, visit);
+  window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(parts.subject)}&body=${encodeURIComponent(parts.text)}`;
+}
+
+async function sendScheduledVisitEmail(workOrderId = "", button = null) {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canManageWorkOrders()) return;
+  const visits = scheduledVisitsForWorkOrder(workOrder.id);
+  const visit = visits.find((item) => !["Completed", "Cancelled"].includes(item.status)) || visits[0];
+  if (!visit) {
+    alert("Schedule a visit before sending the schedule to the customer.");
+    return;
+  }
+  const details = getIssueReportDetails(workOrder);
+  const suggested = getCustomerScheduleEmail(workOrder);
+  const recipient = window.prompt("Customer email address:", suggested || "");
+  if (recipient === null) return;
+  if (!isEmailAddress(recipient.trim())) {
+    alert("Enter a valid customer email address.");
+    return;
+  }
+  const parts = buildScheduleEmailParts(details, visit);
+  const originalText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sending...";
+  }
+  try {
+    const response = await sendSiteWorksEmail("schedule", {
+      to: recipient.trim(),
+      subject: parts.subject,
+      text: parts.text,
+      html: parts.html,
+      scope: {
+        id: workOrder.id,
+        issueNumber: details.issueNumber,
+        title: details.title,
+        customerId: workOrder.customerId || "",
+        locationId: workOrder.locationId || "",
+        customer: details.customer,
+        location: details.location,
+        equipment: details.equipment
+      }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getEmailFunctionError(result, "The schedule email could not be sent."));
+    addWorkOrderHistory(workOrder, "Schedule email sent", `${formatDateTime(new Date(visit.scheduledAt))} to ${recipient.trim()} | ${buildEmailHistoryDetails(recipient.trim(), result)}`);
+    addActivity("Schedule emailed", `${details.issueNumber} to ${recipient.trim()}`);
+    saveState();
+    render();
+    alert(buildEmailSuccessAlert("Schedule email", result));
+  } catch (error) {
+    console.warn("Schedule email failed.", error);
+    addWorkOrderHistory(workOrder, "Schedule email failed", error.message || "Automatic schedule email could not be sent.");
+    addActivity("Schedule email failed", `${details.issueNumber} to ${recipient.trim()}`);
+    saveState();
+    const useDraft = confirm(buildEmailFailurePrompt(error, "customer"));
+    if (useDraft) {
+      addWorkOrderHistory(workOrder, "Schedule fallback email draft opened", `Draft to ${recipient.trim()}`);
+      addActivity("Schedule fallback email draft", `${details.issueNumber} to ${recipient.trim()}`);
+      saveState();
+      openScheduleEmailDraft(details, visit, recipient.trim());
+    }
+    render();
+  } finally {
+    restoreEmailActionButton(button, originalText);
+  }
 }
 
 async function sendIssuePdfEmail(item, button) {
