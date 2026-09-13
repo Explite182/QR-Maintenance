@@ -15724,6 +15724,17 @@ button.asset-detail-card {
   background: rgba(255, 255, 255, 0.86);
 }
 
+.schedule-ticket-visit em {
+  justify-self: start;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e6f4ef;
+  color: #08705f;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .schedule-ticket-form {
   display: grid;
   grid-template-columns: minmax(180px, 1.2fr) minmax(150px, 1fr) minmax(90px, 0.55fr) minmax(140px, 0.8fr);

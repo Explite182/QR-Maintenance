@@ -1634,6 +1634,116 @@ async function handlePublicQuotes(request, response, pathname) {
   return false;
 }
 
+function publicScheduleTokenMatches(schedule = {}, token = "") {
+  const rawToken = schedule.token || schedule.publicToken || "";
+  if (rawToken && safeTextCompare(rawToken, token)) return true;
+  const hash = schedule.tokenHash || schedule.publicTokenHash || "";
+  return Boolean(hash && safeTextCompare(hash, publicQuoteTokenHash(token)));
+}
+
+function publicScheduleFromRow(row = {}, visitId = "") {
+  const data = row.data && typeof row.data === "object" ? row.data : {};
+  const confirmations = data.scheduleConfirmations && typeof data.scheduleConfirmations === "object"
+    ? data.scheduleConfirmations
+    : {};
+  const schedule = confirmations[visitId] || {};
+  return {
+    work_order_id: row.id,
+    visit_id: visitId,
+    issue_number: row.issue_number ? `SW-${String(row.issue_number).padStart(4, "0")}` : "",
+    title: row.title || data.title || "Scheduled visit",
+    status: schedule.status || "Scheduled",
+    scheduled_at: schedule.scheduledAt || "",
+    duration_minutes: schedule.durationMinutes || 60,
+    assigned_user_name: schedule.assignedUserName || row.assigned_user_name || "",
+    notes: schedule.notes || "",
+    response_status: schedule.responseStatus || "",
+    response_name: schedule.responseName || "",
+    response_note: schedule.responseNote || "",
+    responded_at: schedule.respondedAt || "",
+    customer_name: row.customer_name || "",
+    location_name: row.location_name || "",
+    asset_name: row.asset_name || data.areaName || ""
+  };
+}
+
+async function loadPublicScheduleRow(workOrderId) {
+  const result = await db.query(`
+    SELECT w.*,
+      c.name AS customer_name,
+      l.name AS location_name,
+      a.name AS asset_name
+    FROM work_orders w
+    LEFT JOIN customers c ON c.id::text = w.customer_id::text
+    LEFT JOIN locations l ON l.id::text = w.location_id::text
+    LEFT JOIN assets a ON a.id::text = w.asset_id::text
+    WHERE w.id::text = $1
+    LIMIT 1
+  `, [workOrderId]);
+  return result.rows[0] || null;
+}
+
+async function handlePublicSchedules(request, response, pathname) {
+  const scheduleMatch = pathname.match(/^\/api\/public\/schedules\/([^/]+)\/([^/]+)$/);
+  const responseMatch = pathname.match(/^\/api\/public\/schedules\/([^/]+)\/([^/]+)\/respond$/);
+  const workOrderId = scheduleMatch?.[1] || responseMatch?.[1] || "";
+  const visitId = scheduleMatch?.[2] || responseMatch?.[2] || "";
+  if (!workOrderId || !visitId) return false;
+  if (!requireDatabase(response)) return true;
+
+  const url = new URL(request.url, `http://${request.headers.host}`);
+  const body = request.method === "POST" ? await getRequestBody(request) : {};
+  const token = request.method === "POST" ? body.token || "" : url.searchParams.get("token") || "";
+  const row = await loadPublicScheduleRow(workOrderId);
+  const data = row?.data && typeof row.data === "object" ? row.data : {};
+  const confirmations = data.scheduleConfirmations && typeof data.scheduleConfirmations === "object"
+    ? data.scheduleConfirmations
+    : {};
+  const schedule = confirmations[visitId] || {};
+  if (!row || !schedule || !publicScheduleTokenMatches(schedule, token)) {
+    return sendError(response, 404, "Schedule link not found.");
+  }
+
+  if (scheduleMatch && request.method === "GET") {
+    return sendJson(response, 200, publicScheduleFromRow(row, visitId), { "Cache-Control": "no-store" });
+  }
+
+  if (responseMatch && request.method === "POST") {
+    const responseStatus = ["Confirmed", "Change requested", "Cancelled"].includes(body.status)
+      ? body.status
+      : "Confirmed";
+    const actorName = String(body.name || "").trim();
+    if (!actorName) return sendError(response, 400, "Name is required.");
+    const now = new Date().toISOString();
+    const nextSchedule = {
+      ...schedule,
+      status: responseStatus === "Cancelled" ? "Cancelled" : schedule.status || "Scheduled",
+      responseStatus,
+      responseName: actorName,
+      responseNote: String(body.note || "").trim(),
+      respondedAt: now,
+      updatedAt: now
+    };
+    const nextData = {
+      ...data,
+      scheduleConfirmations: {
+        ...confirmations,
+        [visitId]: nextSchedule
+      }
+    };
+    await db.query(`
+      UPDATE work_orders
+      SET updated_at = $2,
+        data = $3::jsonb
+      WHERE id = $1
+    `, [workOrderId, now, JSON.stringify(nextData)]);
+    const updated = await loadPublicScheduleRow(workOrderId);
+    return sendJson(response, 200, publicScheduleFromRow(updated, visitId), { "Cache-Control": "no-store" });
+  }
+
+  return false;
+}
+
 function publicKeyFromRow(row = {}) {
   const data = row.data && typeof row.data === "object" ? row.data : {};
   return {
@@ -2296,6 +2406,7 @@ async function handleRequest(request, response) {
       || await handleMonitoring(request, response, pathname)
       || await handlePublicReports(request, response, pathname)
       || await handlePublicQuotes(request, response, pathname)
+      || await handlePublicSchedules(request, response, pathname)
       || await handlePublicKeys(request, response, pathname)
       || await handleSharedState(request, response, pathname)
       || await handleData(request, response, pathname)

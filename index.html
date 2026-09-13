@@ -98,6 +98,34 @@
     </div>
   </section>
 
+  <section id="publicScheduleScreen" class="report-screen hidden">
+    <div class="report-card public-quote-card">
+      <div>
+        <p class="eyebrow">SiteWorks scheduled visit</p>
+        <h1 id="publicScheduleTitle">Review scheduled visit</h1>
+        <p id="publicScheduleContext" class="report-context"></p>
+      </div>
+      <div id="publicScheduleBody" class="stack"></div>
+      <form id="publicScheduleForm" class="stack hidden">
+        <label>
+          Your name
+          <input id="publicScheduleName" required autocomplete="name" placeholder="Name or company">
+        </label>
+        <label>
+          Note
+          <textarea id="publicScheduleNote" rows="3" placeholder="Optional note or requested time"></textarea>
+        </label>
+        <div class="form-grid">
+          <button type="submit" name="scheduleAction" value="Confirmed">Confirm Visit</button>
+          <button type="submit" name="scheduleAction" value="Change requested" class="secondary">Request Change</button>
+          <button type="submit" name="scheduleAction" value="Cancelled" class="secondary">Cancel</button>
+        </div>
+        <p id="publicScheduleMessage" class="login-message"></p>
+      </form>
+      <small class="report-note">No SiteWorks login is required. This link only shows and updates this scheduled visit.</small>
+    </div>
+  </section>
+
   <section id="loginScreen" class="login-screen">
     <div class="login-card">
       <div>

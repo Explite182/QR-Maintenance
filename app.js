@@ -6840,6 +6840,15 @@ let publicQuoteLookupState = {
   quote: null,
   message: ""
 };
+let publicScheduleLookupState = {
+  workOrderId: "",
+  visitId: "",
+  token: "",
+  loading: false,
+  loaded: false,
+  schedule: null,
+  message: ""
+};
 let publicKeyExitTimer = null;
 let syncHealth = {
   lastCloudLoadAt: "",
@@ -6879,6 +6888,14 @@ const els = {
   publicQuoteName: document.getElementById("publicQuoteName"),
   publicQuoteNote: document.getElementById("publicQuoteNote"),
   publicQuoteMessage: document.getElementById("publicQuoteMessage"),
+  publicScheduleScreen: document.getElementById("publicScheduleScreen"),
+  publicScheduleTitle: document.getElementById("publicScheduleTitle"),
+  publicScheduleContext: document.getElementById("publicScheduleContext"),
+  publicScheduleBody: document.getElementById("publicScheduleBody"),
+  publicScheduleForm: document.getElementById("publicScheduleForm"),
+  publicScheduleName: document.getElementById("publicScheduleName"),
+  publicScheduleNote: document.getElementById("publicScheduleNote"),
+  publicScheduleMessage: document.getElementById("publicScheduleMessage"),
   publicKeyScreen: document.getElementById("publicKeyScreen"),
   publicKeyCard: document.getElementById("publicKeyCard"),
   publicKeyForm: document.getElementById("publicKeyForm"),
@@ -7763,6 +7780,7 @@ els.publicReportNote.addEventListener("invalid", () => {
 });
 
 els.publicQuoteForm?.addEventListener("submit", submitPublicQuoteResponse);
+els.publicScheduleForm?.addEventListener("submit", submitPublicScheduleResponse);
 
 els.publicKeyCheckOutBtn?.addEventListener("click", () => submitPublicKeyAction("Check-Out"));
 els.publicKeyCheckInBtn?.addEventListener("click", () => submitPublicKeyAction("Check-In"));
@@ -12433,6 +12451,10 @@ function render() {
     renderPublicQuote();
     return;
   }
+  if (isPublicScheduleUrl()) {
+    renderPublicSchedule();
+    return;
+  }
   if (isPublicReportUrl()) {
     renderPublicReport();
     return;
@@ -12538,25 +12560,27 @@ function renderAuth() {
   const isReport = isPublicReportUrl();
   const isPublicKey = isPublicKeyUrl();
   const isPublicQuote = isPublicQuoteUrl();
+  const isPublicSchedule = isPublicScheduleUrl();
   const isLoggedIn = Boolean(currentUser);
   const hasScannedAsset = Boolean(getAssetIdFromUrl());
-  const needsFirstAdmin = !isReport && !isPublicKey && !isPublicQuote && !isLoggedIn && !hasSetupUsers();
+  const needsFirstAdmin = !isReport && !isPublicKey && !isPublicQuote && !isPublicSchedule && !isLoggedIn && !hasSetupUsers();
   els.publicKeyScreen?.classList.toggle("hidden", !isPublicKey);
   els.publicReportScreen.classList.toggle("hidden", !isReport);
   els.publicQuoteScreen?.classList.toggle("hidden", !isPublicQuote);
-  els.loginScreen.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || isLoggedIn);
+  els.publicScheduleScreen?.classList.toggle("hidden", !isPublicSchedule);
+  els.loginScreen.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || isPublicSchedule || isLoggedIn);
   els.loginForm.classList.toggle("hidden", passwordRecoveryMode);
   els.passwordResetForm?.classList.toggle("hidden", !passwordRecoveryMode);
-  els.loginQrReportPrompt.classList.toggle("hidden", passwordRecoveryMode || isReport || isPublicKey || isPublicQuote || isLoggedIn || !hasScannedAsset);
+  els.loginQrReportPrompt.classList.toggle("hidden", passwordRecoveryMode || isReport || isPublicKey || isPublicQuote || isPublicSchedule || isLoggedIn || !hasScannedAsset);
   els.userSwitcherWrap?.classList.add("hidden");
-  if (!isReport && !isPublicKey && !isPublicQuote && !isLoggedIn && hasScannedAsset) {
+  if (!isReport && !isPublicKey && !isPublicQuote && !isPublicSchedule && !isLoggedIn && hasScannedAsset) {
     setLoginQrReportStatus(Boolean(getScannedReportAsset()));
     if (!els.loginError.textContent.trim()) setQrLoginTrace("QR ready. Log in to open equipment.");
   }
   syncLoginQrReportPrompt();
   els.firstAdminForm.classList.add("hidden");
-  els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || !isLoggedIn));
-  if (isReport || isPublicKey || isPublicQuote || !isLoggedIn) return;
+  els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || isPublicSchedule || !isLoggedIn));
+  if (isReport || isPublicKey || isPublicQuote || isPublicSchedule || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
   els.currentUserRole.textContent = currentUser.role;
   renderUserSwitcher();
@@ -28956,6 +28980,14 @@ function normalizeScheduledVisits(visits = []) {
     assignedUserId: visit.assignedUserId || visit.assigned_user_id || "",
     assignedUserName: visit.assignedUserName || visit.assigned_user_name || "",
     status: ["Scheduled", "On my way", "In progress", "Completed", "Cancelled"].includes(visit.status) ? visit.status : "Scheduled",
+    publicToken: visit.publicToken || visit.public_token || "",
+    publicTokenHash: visit.publicTokenHash || visit.public_token_hash || "",
+    confirmationStatus: visit.confirmationStatus || visit.confirmation_status || "",
+    confirmationName: visit.confirmationName || visit.confirmation_name || "",
+    confirmationNote: visit.confirmationNote || visit.confirmation_note || "",
+    confirmedAt: visit.confirmedAt || visit.confirmed_at || "",
+    changeRequestedAt: visit.changeRequestedAt || visit.change_requested_at || "",
+    cancelledByCustomerAt: visit.cancelledByCustomerAt || visit.cancelled_by_customer_at || "",
     notes: visit.notes || "",
     createdAt: visit.createdAt || visit.created_at || new Date().toISOString(),
     updatedAt: visit.updatedAt || visit.updated_at || visit.createdAt || new Date().toISOString()
@@ -33328,12 +33360,19 @@ function renderWorkOrderSchedulePanel(workOrder = {}) {
       <section class="schedule-ticket-card">
         ${visits.length ? `
           <div class="schedule-ticket-visits">
-            ${visits.map((visit) => `
-              <div class="schedule-ticket-visit">
-                <strong>${escapeHtml(formatDateTime(visit.scheduledAt))}</strong>
-                <span>${escapeHtml([visit.assignedUserName || "Unassigned", visit.status, `${formatInventoryNumber(visit.durationMinutes)} min`].join(" | "))}</span>
-              </div>
-            `).join("")}
+            ${visits.map((visit) => {
+              const response = workOrder.scheduleConfirmations?.[visit.id] || {};
+              const responseStatus = visit.confirmationStatus || response.responseStatus || "";
+              const responseName = visit.confirmationName || response.responseName || "";
+              const responseNote = visit.confirmationNote || response.responseNote || "";
+              return `
+                <div class="schedule-ticket-visit">
+                  <strong>${escapeHtml(formatDateTime(visit.scheduledAt))}</strong>
+                  <span>${escapeHtml([visit.assignedUserName || "Unassigned", visit.status, `${formatInventoryNumber(visit.durationMinutes)} min`].join(" | "))}</span>
+                  ${responseStatus ? `<em>${escapeHtml([responseStatus, responseName, responseNote].filter(Boolean).join(" | "))}</em>` : ""}
+                </div>
+              `;
+            }).join("")}
           </div>
         ` : `<p class="muted">No visit scheduled yet.</p>`}
         <form class="schedule-ticket-form" data-ticket-schedule-form="${escapeAttribute(workOrder.id)}">
@@ -34261,10 +34300,45 @@ function getCustomerScheduleEmail(workOrder = {}) {
   return locationRecord?.contactEmail || customer?.reportEmailTo || customer?.contactEmail || "";
 }
 
+function ensureScheduledVisitPublicLink(workOrder = {}, visit = {}) {
+  if (!workOrder?.id || !visit?.id) return "";
+  const token = visit.publicToken || crypto.randomUUID();
+  visit.publicToken = token;
+  const now = new Date().toISOString();
+  workOrder.scheduleConfirmations = {
+    ...(workOrder.scheduleConfirmations || {}),
+    [visit.id]: {
+      ...(workOrder.scheduleConfirmations?.[visit.id] || {}),
+      token,
+      visitId: visit.id,
+      workOrderId: workOrder.id,
+      scheduledAt: visit.scheduledAt || "",
+      durationMinutes: visit.durationMinutes || 60,
+      assignedUserId: visit.assignedUserId || "",
+      assignedUserName: visit.assignedUserName || "",
+      notes: visit.notes || "",
+      status: visit.status || "Scheduled",
+      responseStatus: visit.confirmationStatus || workOrder.scheduleConfirmations?.[visit.id]?.responseStatus || "",
+      responseName: visit.confirmationName || workOrder.scheduleConfirmations?.[visit.id]?.responseName || "",
+      responseNote: visit.confirmationNote || workOrder.scheduleConfirmations?.[visit.id]?.responseNote || "",
+      respondedAt: visit.confirmedAt || visit.changeRequestedAt || visit.cancelledByCustomerAt || workOrder.scheduleConfirmations?.[visit.id]?.respondedAt || "",
+      updatedAt: now
+    }
+  };
+  const params = new URLSearchParams({
+    schedule: "1",
+    w: workOrder.id,
+    v: visit.id,
+    t: token
+  });
+  return `${location.origin}${location.pathname}?${params.toString()}`;
+}
+
 function buildScheduleEmailParts(details, visit = {}) {
   const scheduledAt = visit.scheduledAt ? formatDateTime(new Date(visit.scheduledAt)) : "Not scheduled";
   const assignedTo = visit.assignedUserName || details.assignedTo || "Unassigned";
   const duration = `${formatInventoryNumber(visit.durationMinutes || 60)} minutes`;
+  const confirmationLink = visit.confirmationLink || "";
   const subject = `SiteWorks Scheduled Visit: ${details.issueNumber} - ${details.equipment}`;
   const text = [
     "Hello,",
@@ -34279,8 +34353,9 @@ function buildScheduleEmailParts(details, visit = {}) {
     `Assigned to: ${assignedTo}`,
     `Duration: ${duration}`,
     visit.notes ? `Notes: ${visit.notes}` : "",
+    confirmationLink ? `Confirm, request a change, or cancel: ${confirmationLink}` : "",
     "",
-    "Please reply to this email if this time needs to change."
+    confirmationLink ? "Please use the link above to respond to this scheduled visit." : "Please reply to this email if this time needs to change."
   ].filter(Boolean).join("\n");
   const html = `
     <div style="font-family:Arial,sans-serif;color:#172126;line-height:1.45;">
@@ -34295,6 +34370,7 @@ function buildScheduleEmailParts(details, visit = {}) {
           ["Location", details.location],
           ["Equipment / area", details.equipment],
           ["Ticket", details.issueNumber],
+          ["Confirmation link", confirmationLink || "Reply to this email"],
           ["Notes", visit.notes || "None"]
         ].map(([label, value]) => `
           <tr>
@@ -34303,7 +34379,8 @@ function buildScheduleEmailParts(details, visit = {}) {
           </tr>
         `).join("")}
       </table>
-      <p style="color:#68777d;">Please reply to this email if this time needs to change.</p>
+      ${confirmationLink ? `<p><a href="${escapeAttribute(confirmationLink)}" style="display:inline-block;padding:10px 14px;background:#08705f;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;">Confirm or request a change</a></p>` : ""}
+      <p style="color:#68777d;">${confirmationLink ? "No SiteWorks login is required to respond." : "Please reply to this email if this time needs to change."}</p>
     </div>
   `;
   return { subject, text, html };
@@ -34318,7 +34395,8 @@ async function sendScheduledVisitEmail(workOrderId = "", button = null) {
   const workOrder = getWorkOrder(workOrderId);
   if (!workOrder || !canManageWorkOrders()) return;
   const visits = scheduledVisitsForWorkOrder(workOrder.id);
-  const visit = visits.find((item) => !["Completed", "Cancelled"].includes(item.status)) || visits[0];
+  const selectedVisit = visits.find((item) => !["Completed", "Cancelled"].includes(item.status)) || visits[0];
+  const visit = (state.scheduledVisits || []).find((item) => item.id === selectedVisit?.id) || selectedVisit;
   if (!visit) {
     alert("Schedule a visit before sending the schedule to the customer.");
     return;
@@ -34331,6 +34409,12 @@ async function sendScheduledVisitEmail(workOrderId = "", button = null) {
     alert("Enter a valid customer email address.");
     return;
   }
+  const confirmationLink = ensureScheduledVisitPublicLink(workOrder, visit);
+  visit.confirmationLink = confirmationLink;
+  workOrder.updatedAt = new Date().toISOString();
+  state.scheduledVisits = normalizeScheduledVisits(state.scheduledVisits || []);
+  saveState();
+  await syncSingleWorkOrderToServer(workOrder);
   const parts = buildScheduleEmailParts(details, visit);
   const originalText = button?.textContent || "";
   if (button) {
@@ -36692,8 +36776,13 @@ function isPublicQuoteUrl() {
   return params.get("quote") === "1" && Boolean(params.get("e") || params.get("estimate"));
 }
 
+function isPublicScheduleUrl() {
+  const params = new URLSearchParams(location.search);
+  return params.get("schedule") === "1" && Boolean(params.get("w") || params.get("workOrder"));
+}
+
 function isPublicOnlyUrl() {
-  return isPublicReportUrl() || isPublicKeyUrl() || isPublicQuoteUrl();
+  return isPublicReportUrl() || isPublicKeyUrl() || isPublicQuoteUrl() || isPublicScheduleUrl();
 }
 
 function isPublicKeyUrl() {
@@ -36705,6 +36794,15 @@ function getPublicQuoteParams() {
   const params = new URLSearchParams(location.search);
   return {
     id: params.get("e") || params.get("estimate") || "",
+    token: params.get("t") || params.get("token") || ""
+  };
+}
+
+function getPublicScheduleParams() {
+  const params = new URLSearchParams(location.search);
+  return {
+    workOrderId: params.get("w") || params.get("workOrder") || "",
+    visitId: params.get("v") || params.get("visit") || "",
     token: params.get("t") || params.get("token") || ""
   };
 }
@@ -36778,6 +36876,127 @@ async function renderPublicQuote() {
     els.publicQuoteMessage.textContent = isClosed
       ? `This quote has already been ${String(quote.status || "").toLowerCase()}.`
       : publicQuoteLookupState.message || "";
+  }
+}
+
+async function renderPublicSchedule() {
+  const { workOrderId, visitId, token } = getPublicScheduleParams();
+  if (!workOrderId || !visitId || !token) {
+    els.publicScheduleTitle.textContent = "Schedule link incomplete";
+    els.publicScheduleContext.textContent = "This schedule link is missing details.";
+    els.publicScheduleBody.innerHTML = "";
+    els.publicScheduleForm?.classList.add("hidden");
+    return;
+  }
+  const lookupKey = `${workOrderId}:${visitId}:${token}`;
+  if (`${publicScheduleLookupState.workOrderId}:${publicScheduleLookupState.visitId}:${publicScheduleLookupState.token}` !== lookupKey) {
+    publicScheduleLookupState = { workOrderId, visitId, token, loading: false, loaded: false, schedule: null, message: "" };
+  }
+  if (!publicScheduleLookupState.loaded && !publicScheduleLookupState.loading) {
+    loadPublicSchedule(workOrderId, visitId, token);
+  }
+  if (publicScheduleLookupState.loading) {
+    els.publicScheduleTitle.textContent = "Loading visit";
+    els.publicScheduleContext.textContent = "";
+    els.publicScheduleBody.innerHTML = `<p class="login-message">Loading scheduled visit...</p>`;
+    els.publicScheduleForm?.classList.add("hidden");
+    return;
+  }
+  const schedule = publicScheduleLookupState.schedule;
+  if (!schedule) {
+    els.publicScheduleTitle.textContent = "Visit not available";
+    els.publicScheduleContext.textContent = "";
+    els.publicScheduleBody.innerHTML = `<p class="login-error">${escapeHtml(publicScheduleLookupState.message || "This schedule link could not be loaded.")}</p>`;
+    els.publicScheduleForm?.classList.add("hidden");
+    return;
+  }
+  const isClosed = ["Confirmed", "Change requested", "Cancelled"].includes(schedule.response_status || schedule.responseStatus || "");
+  els.publicScheduleTitle.textContent = `${schedule.issue_number || schedule.issueNumber || "Ticket"} | ${schedule.title || "Scheduled visit"}`;
+  els.publicScheduleContext.textContent = [schedule.customer_name, schedule.location_name, schedule.asset_name].filter(Boolean).join(" | ");
+  els.publicScheduleBody.innerHTML = `
+    <article class="public-quote-summary">
+      <div>
+        <span>Scheduled for</span>
+        <strong>${escapeHtml(schedule.scheduled_at ? formatDateTime(new Date(schedule.scheduled_at)) : "Not set")}</strong>
+      </div>
+      <div>
+        <span>Assigned to</span>
+        <strong>${escapeHtml(schedule.assigned_user_name || "Unassigned")}</strong>
+      </div>
+      <div>
+        <span>Status</span>
+        <strong>${escapeHtml(schedule.response_status || schedule.status || "Awaiting confirmation")}</strong>
+      </div>
+    </article>
+    <div class="public-quote-lines">
+      <div class="public-quote-line">
+        <span>Ticket</span>
+        <strong>${escapeHtml(schedule.title || "Scheduled visit")}</strong>
+        <em>${escapeHtml(schedule.issue_number || "")}</em>
+        <b>${escapeHtml(schedule.duration_minutes ? `${schedule.duration_minutes} min` : "")}</b>
+      </div>
+      ${schedule.notes ? `<p class="report-context">${escapeHtml(schedule.notes)}</p>` : ""}
+      ${schedule.response_note ? `<p class="report-context">Response note: ${escapeHtml(schedule.response_note)}</p>` : ""}
+    </div>
+  `;
+  els.publicScheduleForm?.classList.toggle("hidden", isClosed);
+  if (els.publicScheduleMessage) {
+    els.publicScheduleMessage.textContent = isClosed
+      ? `This visit has already been marked: ${schedule.response_status}.`
+      : publicScheduleLookupState.message || "";
+  }
+}
+
+async function loadPublicSchedule(workOrderId, visitId, token) {
+  publicScheduleLookupState.loading = true;
+  renderPublicSchedule();
+  try {
+    const response = await siteworksApi.loadPublicSchedule(workOrderId, visitId, token);
+    if (!response.ok) throw new Error(await response.text());
+    publicScheduleLookupState.schedule = await response.json();
+    publicScheduleLookupState.loaded = true;
+    publicScheduleLookupState.message = "";
+  } catch (error) {
+    console.warn("Public schedule load failed.", error);
+    publicScheduleLookupState.schedule = null;
+    publicScheduleLookupState.loaded = true;
+    publicScheduleLookupState.message = readableServerError(error?.message || error) || "Scheduled visit could not be loaded.";
+  } finally {
+    publicScheduleLookupState.loading = false;
+    renderPublicSchedule();
+  }
+}
+
+async function submitPublicScheduleResponse(event) {
+  event.preventDefault();
+  const { workOrderId, visitId, token } = getPublicScheduleParams();
+  const action = event.submitter?.value || "Confirmed";
+  const name = els.publicScheduleName?.value.trim() || "";
+  if (!name) {
+    els.publicScheduleMessage.textContent = "Enter your name before sending.";
+    els.publicScheduleName?.focus();
+    return;
+  }
+  const buttons = [...(els.publicScheduleForm?.querySelectorAll("button") || [])];
+  buttons.forEach((button) => { button.disabled = true; });
+  els.publicScheduleMessage.textContent = action === "Confirmed" ? "Confirming visit..." : "Sending response...";
+  try {
+    const response = await siteworksApi.respondPublicSchedule(workOrderId, visitId, token, {
+      status: action,
+      name,
+      note: els.publicScheduleNote?.value.trim() || ""
+    });
+    if (!response.ok) throw new Error(await response.text());
+    publicScheduleLookupState.schedule = await response.json();
+    publicScheduleLookupState.loaded = true;
+    publicScheduleLookupState.message = action === "Confirmed" ? "Visit confirmed. Thank you." : "Response sent. Thank you.";
+    els.publicScheduleForm?.reset();
+  } catch (error) {
+    console.warn("Public schedule response failed.", error);
+    publicScheduleLookupState.message = `Schedule was not updated: ${readableServerError(error?.message || error) || "Try again."}`;
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+    renderPublicSchedule();
   }
 }
 
@@ -37566,6 +37785,21 @@ const siteworksApi = {
   respondPublicQuote(estimateId, token, payload) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response("SiteWorks server is required for public quote links.", { status: 503 }));
     return this.server(`/api/public/quotes/${encodeURIComponent(estimateId)}/respond`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...payload,
+        token
+      })
+    });
+  },
+  loadPublicSchedule(workOrderId, visitId, token) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response("SiteWorks server is required for public schedule links.", { status: 503 }));
+    const params = new URLSearchParams({ token: token || "" });
+    return this.server(`/api/public/schedules/${encodeURIComponent(workOrderId)}/${encodeURIComponent(visitId)}?${params.toString()}`);
+  },
+  respondPublicSchedule(workOrderId, visitId, token, payload) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response("SiteWorks server is required for public schedule links.", { status: 503 }));
+    return this.server(`/api/public/schedules/${encodeURIComponent(workOrderId)}/${encodeURIComponent(visitId)}/respond`, {
       method: "POST",
       body: JSON.stringify({
         ...payload,
