@@ -16080,7 +16080,7 @@ button.asset-detail-card {
 .estimate-create-form,
 .estimate-line-form {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(140px, auto) auto;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 0.45fr) auto;
   gap: 8px;
   align-items: end;
   padding: 12px;
@@ -16092,7 +16092,7 @@ button.asset-detail-card {
 .estimate-record {
   display: grid;
   gap: 10px;
-  padding: 12px;
+  padding: 14px;
   border: 1px solid rgba(20, 184, 166, 0.24);
   border-radius: 8px;
   background: rgba(240, 253, 250, 0.68);
@@ -16114,9 +16114,9 @@ button.asset-detail-card {
 }
 
 .estimate-record > header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
 }
 
@@ -16186,12 +16186,17 @@ button.asset-detail-card {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+  max-width: 330px;
 }
 
 .estimate-actions .estimate-send-action {
   border-color: #0f766e;
   background: #0f766e;
   color: #ffffff;
+}
+
+.estimate-actions button {
+  white-space: nowrap;
 }
 
 .estimate-actions .estimate-send-action:disabled {
@@ -16207,7 +16212,7 @@ button.asset-detail-card {
 
 .estimate-line-row {
   display: grid;
-  grid-template-columns: 90px minmax(220px, 1fr) minmax(130px, auto) minmax(90px, auto) auto;
+  grid-template-columns: minmax(74px, 0.6fr) minmax(180px, 1.7fr) minmax(120px, 0.85fr) minmax(90px, 0.7fr) auto;
   gap: 8px;
   align-items: center;
   padding: 8px 10px;
@@ -16236,7 +16241,7 @@ button.asset-detail-card {
 }
 
 .estimate-line-form {
-  grid-template-columns: minmax(110px, 0.55fr) minmax(150px, 0.8fr) minmax(200px, 1.2fr) minmax(72px, 0.35fr) minmax(88px, 0.45fr) minmax(92px, auto) minmax(92px, auto);
+  grid-template-columns: minmax(110px, 0.75fr) minmax(170px, 1.1fr) minmax(220px, 1.6fr) minmax(76px, 0.55fr) minmax(100px, 0.7fr);
   border: 0;
   border-top: 1px solid var(--line);
   border-radius: 0;
@@ -16245,9 +16250,20 @@ button.asset-detail-card {
 .estimate-line-form label {
   display: grid;
   gap: 4px;
+  min-width: 0;
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
+}
+
+.estimate-line-form .checkbox-row {
+  align-self: center;
+}
+
+.estimate-line-form input,
+.estimate-line-form select {
+  min-width: 0;
+  width: 100%;
 }
 
 .estimate-line-form button[type="submit"] {
@@ -16326,6 +16342,42 @@ button.asset-detail-card {
 .job-cost-form input {
   width: 100%;
   min-width: 0;
+}
+
+@media (max-width: 1040px) {
+  .estimate-record > header {
+    grid-template-columns: 1fr;
+  }
+
+  .estimate-actions {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .estimate-line-form {
+    grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1fr) minmax(220px, 1.4fr);
+  }
+
+  .estimate-line-form label:nth-of-type(4),
+  .estimate-line-form label:nth-of-type(5),
+  .estimate-line-form .checkbox-row {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 900px) {
+  .estimate-line-form {
+    grid-template-columns: minmax(130px, 0.8fr) minmax(220px, 1.2fr);
+  }
+
+  .estimate-line-row {
+    grid-template-columns: minmax(70px, 0.7fr) minmax(180px, 1.5fr) minmax(120px, 0.8fr) auto;
+  }
+
+  .estimate-line-row button {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
 }
 
 @media (max-width: 760px) {
