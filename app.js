@@ -7266,6 +7266,7 @@ const els = {
   emailPmCalendarBtn: document.getElementById("emailPmCalendarBtn"),
   exportPmCalendarBtn: document.getElementById("exportPmCalendarBtn"),
   downloadPmCalendarIcsBtn: document.getElementById("downloadPmCalendarIcsBtn"),
+  copyPmCalendarFeedBtn: document.getElementById("copyPmCalendarFeedBtn"),
   workOrderCount: document.getElementById("workOrderCount"),
   workOrderNumberFilter: document.getElementById("workOrderNumberFilter"),
   workOrderList: document.getElementById("workOrderList"),
@@ -10626,6 +10627,10 @@ els.exportPmCalendarBtn?.addEventListener("click", () => {
 
 els.downloadPmCalendarIcsBtn?.addEventListener("click", () => {
   downloadPmCalendarIcs();
+});
+
+els.copyPmCalendarFeedBtn?.addEventListener("click", () => {
+  copyPmCalendarFeedLink();
 });
 
 els.exportAssetRegisterBtn.addEventListener("click", () => {
@@ -27911,6 +27916,37 @@ function downloadPmCalendarIcs() {
   URL.revokeObjectURL(url);
 }
 
+async function copyPmCalendarFeedLink() {
+  if (!canManageWorkOrders()) return;
+  const button = els.copyPmCalendarFeedBtn;
+  const originalText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Creating...";
+  }
+  try {
+    const response = await siteworksApi.createCalendarFeedLink({
+      scope: "company",
+      customerId: selectedCustomerId || "",
+      locationId: selectedLocationId || "",
+      mode: "scheduled"
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.url) throw new Error(readableServerError(result?.error || result?.message || "") || "Calendar feed link could not be created.");
+    await copyText(result.url);
+    addActivity("Calendar feed link copied", result.customerId ? "Current customer/location view" : "Company schedule");
+    alert("Calendar feed link copied. Paste it into Outlook, Apple Calendar, Google Calendar, or your phone calendar as a subscribed calendar.");
+  } catch (error) {
+    console.warn("Calendar feed link failed.", error);
+    alert(`Calendar feed link could not be created: ${readableServerError(error?.message || error) || "Try again."}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
 function buildPmCalendarIcs(records, windowInfo = pmCalendarWindow()) {
   const nowStamp = formatIcsDateTime(new Date());
   const lines = [
@@ -29377,6 +29413,7 @@ function saveScheduledVisitForWorkOrder(workOrderId = "", formData = new FormDat
     workOrder.assignedUserId = assignedUser.id;
     workOrder.assignedUserName = assignedUser.name || assignedUser.username || "";
   }
+  ensureScheduledVisitSnapshot(workOrder, visit);
   workOrder.updatedAt = now;
   addWorkOrderHistory(
     workOrder,
@@ -29388,6 +29425,7 @@ function saveScheduledVisitForWorkOrder(workOrderId = "", formData = new FormDat
   }
   addActivity(existingVisit ? "Visit rescheduled" : "Visit scheduled", `${formatIssueNumber(workOrder)} - ${formatDateTime(scheduledAt)}`);
   saveState();
+  syncSingleWorkOrderToServer(workOrder);
   render();
 }
 
@@ -34300,16 +34338,14 @@ function getCustomerScheduleEmail(workOrder = {}) {
   return locationRecord?.contactEmail || customer?.reportEmailTo || customer?.contactEmail || "";
 }
 
-function ensureScheduledVisitPublicLink(workOrder = {}, visit = {}) {
+function ensureScheduledVisitSnapshot(workOrder = {}, visit = {}) {
   if (!workOrder?.id || !visit?.id) return "";
-  const token = visit.publicToken || crypto.randomUUID();
-  visit.publicToken = token;
   const now = new Date().toISOString();
+  const existing = workOrder.scheduleConfirmations?.[visit.id] || {};
   workOrder.scheduleConfirmations = {
     ...(workOrder.scheduleConfirmations || {}),
     [visit.id]: {
-      ...(workOrder.scheduleConfirmations?.[visit.id] || {}),
-      token,
+      ...existing,
       visitId: visit.id,
       workOrderId: workOrder.id,
       scheduledAt: visit.scheduledAt || "",
@@ -34318,13 +34354,23 @@ function ensureScheduledVisitPublicLink(workOrder = {}, visit = {}) {
       assignedUserName: visit.assignedUserName || "",
       notes: visit.notes || "",
       status: visit.status || "Scheduled",
-      responseStatus: visit.confirmationStatus || workOrder.scheduleConfirmations?.[visit.id]?.responseStatus || "",
-      responseName: visit.confirmationName || workOrder.scheduleConfirmations?.[visit.id]?.responseName || "",
-      responseNote: visit.confirmationNote || workOrder.scheduleConfirmations?.[visit.id]?.responseNote || "",
-      respondedAt: visit.confirmedAt || visit.changeRequestedAt || visit.cancelledByCustomerAt || workOrder.scheduleConfirmations?.[visit.id]?.respondedAt || "",
+      responseStatus: visit.confirmationStatus || existing.responseStatus || "",
+      responseName: visit.confirmationName || existing.responseName || "",
+      responseNote: visit.confirmationNote || existing.responseNote || "",
+      respondedAt: visit.confirmedAt || visit.changeRequestedAt || visit.cancelledByCustomerAt || existing.respondedAt || "",
       updatedAt: now
     }
   };
+  return workOrder.scheduleConfirmations[visit.id];
+}
+
+function ensureScheduledVisitPublicLink(workOrder = {}, visit = {}) {
+  if (!workOrder?.id || !visit?.id) return "";
+  const scheduleSnapshot = ensureScheduledVisitSnapshot(workOrder, visit);
+  const token = visit.publicToken || scheduleSnapshot.token || crypto.randomUUID();
+  visit.publicToken = token;
+  scheduleSnapshot.token = token;
+  scheduleSnapshot.updatedAt = new Date().toISOString();
   const params = new URLSearchParams({
     schedule: "1",
     w: workOrder.id,
@@ -37806,6 +37852,16 @@ const siteworksApi = {
         token
       })
     });
+  },
+  createCalendarFeedLink(options = {}) {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response("SiteWorks server is required for calendar feeds.", { status: 503 }));
+    const params = new URLSearchParams({
+      scope: options.scope || "company",
+      customer_id: options.customerId || "",
+      location_id: options.locationId || "",
+      mode: options.mode || "scheduled"
+    });
+    return this.server(`/api/calendar/feed-link?${params.toString()}`);
   },
   loadNotifications(status = "active") {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ notifications: [] }), { status: 200 }));
