@@ -29598,6 +29598,7 @@ function schedulePmForAsset(assetId = "", formData = new FormData()) {
   const scheduledAt = parseDateTimeLocalInput(formData.get("scheduledAt"));
   if (!scheduledAt) return;
   const now = new Date().toISOString();
+  const activeSchedule = getActiveScheduledPmForAsset(asset.id);
   const assigneeValue = String(formData.get("assignee") || "").trim();
   const { user, contractor } = resolvePmScheduleAssignee(asset, assigneeValue);
   const assigneeName = user
@@ -29607,7 +29608,7 @@ function schedulePmForAsset(assetId = "", formData = new FormData()) {
       : "";
   const template = getTemplate(asset.templateId);
   const due = getDueInfo(asset);
-  const workOrder = {
+  const workOrder = activeSchedule?.workOrder || {
     id: crypto.randomUUID(),
     issueNumber: nextIssueNumber(),
     assetId: asset.id,
@@ -29617,19 +29618,25 @@ function schedulePmForAsset(assetId = "", formData = new FormData()) {
     title: `PM: ${asset.name}`,
     priority: asset.criticality === "High" || due.daysUntil < 0 ? "High" : "Medium",
     status: "Open",
-    assignedUserId: user?.id || "",
-    assignedUserName: assigneeName,
-    dueAt: scheduledAt,
-    notes: [
-      `Scheduled PM${template?.name ? ` - ${template.name}` : ""}.`,
-      String(formData.get("notes") || "").trim()
-    ].filter(Boolean).join("\n"),
+    assignedUserId: "",
+    assignedUserName: "",
+    dueAt: "",
+    notes: `Scheduled PM${template?.name ? ` - ${template.name}` : ""}.`,
     history: [],
     createdAt: now,
     updatedAt: now
   };
+  const scheduleNotes = String(formData.get("notes") || "").trim();
+  workOrder.assignedUserId = user?.id || "";
+  workOrder.assignedUserName = assigneeName;
+  workOrder.dueAt = scheduledAt;
+  workOrder.notes = scheduleNotes
+    ? appendDatedWorkNote(workOrder.notes || `Scheduled PM${template?.name ? ` - ${template.name}` : ""}.`, scheduleNotes)
+    : workOrder.notes || `Scheduled PM${template?.name ? ` - ${template.name}` : ""}.`;
+  workOrder.updatedAt = now;
   const visit = {
-    id: crypto.randomUUID(),
+    ...(activeSchedule?.visit || {}),
+    id: activeSchedule?.visit?.id || crypto.randomUUID(),
     workOrderId: workOrder.id,
     customerId: asset.customerId,
     locationId: asset.locationId,
@@ -29638,19 +29645,24 @@ function schedulePmForAsset(assetId = "", formData = new FormData()) {
     durationMinutes: Math.max(15, Number(formData.get("durationMinutes") || 60)),
     assignedUserId: user?.id || "",
     assignedUserName: assigneeName,
-    status: "Scheduled",
-    notes: String(formData.get("notes") || "").trim(),
-    createdAt: now,
+    status: activeSchedule?.visit?.status || "Scheduled",
+    notes: scheduleNotes,
+    createdAt: activeSchedule?.visit?.createdAt || now,
     updatedAt: now
   };
-  state.workOrders.unshift(workOrder);
-  state.scheduledVisits = normalizeScheduledVisits([visit, ...(state.scheduledVisits || [])]);
+  if (!activeSchedule?.workOrder) {
+    state.workOrders.unshift(workOrder);
+  }
+  state.scheduledVisits = normalizeScheduledVisits([
+    visit,
+    ...(state.scheduledVisits || []).filter((item) => item.id !== visit.id)
+  ]);
   ensureScheduledVisitSnapshot(workOrder, visit);
-  addWorkOrderHistory(workOrder, "Scheduled PM created", `${formatDateTime(scheduledAt)}${assigneeName ? ` | ${assigneeName}` : ""}`);
+  addWorkOrderHistory(workOrder, activeSchedule ? "Scheduled PM updated" : "Scheduled PM created", `${formatDateTime(scheduledAt)}${assigneeName ? ` | ${assigneeName}` : ""}`);
   if (contractor) {
     addWorkOrderHistory(workOrder, "Assigned contractor", `${contractor.name}${contractor.email ? ` | ${contractor.email}` : ""}${contractor.trade ? ` | ${contractor.trade}` : ""}`);
   }
-  addActivity("PM scheduled", `${formatIssueNumber(workOrder)} - ${asset.name}`);
+  addActivity(activeSchedule ? "PM schedule updated" : "PM scheduled", `${formatIssueNumber(workOrder)} - ${asset.name}`);
   focusedWorkOrderId = workOrder.id;
   saveState();
   syncSingleWorkOrderToServer(workOrder);
@@ -29672,26 +29684,40 @@ function resolvePmScheduleAssignee(asset = {}, value = "") {
   return { user: getUser(value), contractor: null };
 }
 
-function getPmScheduleAssigneeOptions(asset = {}) {
+function getPmScheduleAssigneeOptions(asset = {}, selectedValue = "") {
   const pseudoWorkOrder = { customerId: asset.customerId };
   const users = getAssignableUsersForWorkOrder(pseudoWorkOrder);
   const contractors = visiblePreferredContractors(asset.customerId);
   return [
-    `<option value="">Unassigned</option>`,
-    ...users.map((user) => `<option value="user:${escapeAttribute(user.id)}">${escapeHtml(user.name || user.username)}${user.role ? ` | ${escapeHtml(user.role)}` : ""}</option>`),
-    ...contractors.map((contractor) => `<option value="contractor:${escapeAttribute(contractor.id)}">${escapeHtml(contractor.name)}${contractor.trade ? ` | ${escapeHtml(contractor.trade)}` : " | Contractor"}</option>`)
+    `<option value="" ${!selectedValue ? "selected" : ""}>Unassigned</option>`,
+    ...users.map((user) => {
+      const value = `user:${user.id}`;
+      return `<option value="${escapeAttribute(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(user.name || user.username)}${user.role ? ` | ${escapeHtml(user.role)}` : ""}</option>`;
+    }),
+    ...contractors.map((contractor) => {
+      const value = `contractor:${contractor.id}`;
+      return `<option value="${escapeAttribute(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(contractor.name)}${contractor.trade ? ` | ${escapeHtml(contractor.trade)}` : " | Contractor"}</option>`;
+    })
   ].join("");
 }
 
-function hasActiveScheduledPmForAsset(assetId = "") {
+function getActiveScheduledPmForAsset(assetId = "") {
   if (!assetId) return false;
-  return normalizeScheduledVisits(state.scheduledVisits || []).some((visit) => {
+  const visits = normalizeScheduledVisits(state.scheduledVisits || [])
+    .filter((visit) => {
     if (visit.assetId !== assetId) return false;
     if (["Completed", "Cancelled"].includes(visit.status)) return false;
     const workOrder = getWorkOrder(visit.workOrderId);
     if (!workOrder || workOrder.source !== "Scheduled PM") return false;
     return true;
-  });
+    })
+    .sort((a, b) => new Date(a.scheduledAt || 0) - new Date(b.scheduledAt || 0));
+  const visit = visits[0] || null;
+  return visit ? { visit, workOrder: getWorkOrder(visit.workOrderId) } : null;
+}
+
+function hasActiveScheduledPmForAsset(assetId = "") {
+  return Boolean(getActiveScheduledPmForAsset(assetId));
 }
 
 function emptySwNumberFilterMessage() {
@@ -33724,12 +33750,22 @@ function renderSchedulePmPanel(asset = {}) {
     return;
   }
   const due = getDueInfo(asset);
-  const defaultTime = new Date(due.nextDate);
-  defaultTime.setHours(8, 0, 0, 0);
-  const alreadyScheduled = hasActiveScheduledPmForAsset(asset.id, due.nextDate);
+  const activeSchedule = getActiveScheduledPmForAsset(asset.id);
+  const defaultTime = activeSchedule?.visit?.scheduledAt ? new Date(activeSchedule.visit.scheduledAt) : new Date(due.nextDate);
+  if (!activeSchedule?.visit?.scheduledAt) defaultTime.setHours(8, 0, 0, 0);
+  const assignedContractor = activeSchedule?.visit?.assignedUserName
+    ? visiblePreferredContractors(asset.customerId).find((contractor) =>
+        String(contractor.name || "").trim().toLowerCase() === String(activeSchedule.visit.assignedUserName || "").trim().toLowerCase()
+      )
+    : null;
+  const selectedAssignee = activeSchedule?.visit?.assignedUserId
+    ? `user:${activeSchedule.visit.assignedUserId}`
+    : assignedContractor
+      ? `contractor:${assignedContractor.id}`
+      : "";
   els.schedulePmPanel.innerHTML = `
     <form class="schedule-pm-form" data-schedule-pm-asset="${escapeAttribute(asset.id)}">
-      ${alreadyScheduled ? `<p class="schedule-pm-notice">This equipment already has an active scheduled PM visit.</p>` : ""}
+      ${activeSchedule ? `<p class="schedule-pm-notice">This equipment already has an active scheduled PM visit. Saving will update it.</p>` : ""}
       <label>
         Visit date/time
         <input name="scheduledAt" type="datetime-local" value="${escapeAttribute(formatDateTimeInput(defaultTime))}" required>
@@ -33737,18 +33773,18 @@ function renderSchedulePmPanel(asset = {}) {
       <label>
         Tech or contractor
         <select name="assignee">
-          ${getPmScheduleAssigneeOptions(asset)}
+          ${getPmScheduleAssigneeOptions(asset, selectedAssignee)}
         </select>
       </label>
       <label>
         Duration
-        <input name="durationMinutes" type="number" min="15" step="15" value="60">
+        <input name="durationMinutes" type="number" min="15" step="15" value="${escapeAttribute(activeSchedule?.visit?.durationMinutes || 60)}">
       </label>
       <label>
         Notes
-        <input name="notes" placeholder="Access notes or scheduling details">
+        <input name="notes" value="${escapeAttribute(activeSchedule?.visit?.notes || "")}" placeholder="Access notes or scheduling details">
       </label>
-      <button type="submit" class="primary mini">Schedule PM</button>
+      <button type="submit" class="primary mini">${activeSchedule ? "Update Scheduled PM" : "Schedule PM"}</button>
     </form>
   `;
 }
