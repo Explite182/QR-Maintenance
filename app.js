@@ -12249,6 +12249,15 @@ document.addEventListener("submit", async (event) => {
 });
 
 document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-customer-update-form]");
+  if (!form) return;
+  event.preventDefault();
+  const workOrder = getWorkOrder(form.dataset.customerUpdateForm);
+  if (!workOrder || !canWorkOnTicket(workOrder)) return;
+  await sendCustomerTicketUpdate(workOrder, new FormData(form), form.querySelector("button[type='submit']"));
+});
+
+document.addEventListener("submit", async (event) => {
   const form = event.target.closest("[data-service-request-edit-form]");
   if (!form) return;
   event.preventDefault();
@@ -34354,6 +34363,7 @@ function renderWorkOrderItem(item) {
         </section>
         ${renderTechnicianMobileFlow(item)}
         ${emailStatusPanel}
+        ${renderCustomerCommunicationPanel(item)}
         <details class="ticket-sub-drawer">
           <summary>
             <h3>Description</h3>
@@ -35305,7 +35315,7 @@ async function emailEstimate(estimateId = "", button = null) {
     addWorkOrderHistory(workOrder, "Quote email failed", error.message || "Automatic quote email could not be sent.");
     addActivity("Quote email failed", `${estimate.estimateNumber} to ${recipient.trim()}`);
     saveState();
-    const useDraft = confirm(buildEmailFailurePrompt(error, "customer"));
+    const useDraft = confirm(buildCustomerUpdateFailurePrompt(error, "customer"));
     if (useDraft) {
       addWorkOrderHistory(workOrder, "Quote fallback email draft opened", `Draft to ${recipient.trim()}`);
       addActivity("Quote fallback email draft", `${estimate.estimateNumber} to ${recipient.trim()}`);
@@ -35559,6 +35569,48 @@ function renderCompactWorkOrderAssignmentControl(item) {
   `;
 }
 
+function renderCustomerCommunicationPanel(item = {}) {
+  if (!canWorkOnTicket(item)) return "";
+  const suggestedEmail = getCustomerScheduleEmail(item);
+  const updates = Array.isArray(item.customerUpdates) ? item.customerUpdates : [];
+  return `
+    <details class="ticket-sub-drawer customer-update-panel">
+      <summary>
+        <h3>Customer Updates</h3>
+        <span>${escapeHtml(updates.length ? `${updates.length} sent` : "Send update")}</span>
+      </summary>
+      <section class="customer-update-card">
+        <form class="customer-update-form" data-customer-update-form="${escapeAttribute(item.id)}">
+          <label>
+            Update type
+            <select name="updateType">
+              ${customerUpdateTemplateOptions().map(([value, label]) => `<option value="${escapeAttribute(value)}">${escapeHtml(label)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Customer email
+            <input name="recipient" type="email" value="${escapeAttribute(suggestedEmail)}" placeholder="customer@example.com" required>
+          </label>
+          <label class="customer-update-message">
+            Message note
+            <textarea name="message" rows="3" placeholder="Optional note for this update"></textarea>
+          </label>
+          <button type="submit" class="primary mini">Send Update</button>
+        </form>
+        <div class="customer-update-history">
+          ${updates.length ? updates.slice(0, 5).map((update) => `
+            <article>
+              <strong>${escapeHtml(update.label || customerUpdateTemplateLabel(update.type))}</strong>
+              <span>${escapeHtml([update.recipient, update.sentAt ? formatDateTime(new Date(update.sentAt)) : "", update.sentBy].filter(Boolean).join(" | "))}</span>
+              ${update.message ? `<p>${escapeHtml(update.message)}</p>` : ""}
+            </article>
+          `).join("") : `<p class="muted">No customer updates sent from this ticket yet.</p>`}
+        </div>
+      </section>
+    </details>
+  `;
+}
+
 function getIssueReportDetails(item) {
   const asset = getAsset(item.assetId) || getRawAsset(item.assetId);
   const customer = getCustomer(item.customerId);
@@ -35646,6 +35698,153 @@ function openIssueEmailDraft(details, recipient) {
     "If a PDF copy is needed, use the PDF Form button in SiteWorks and attach the saved PDF to this email."
   ].join("\n");
   window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function customerUpdateTemplateOptions() {
+  return [
+    ["scheduled", "Scheduled"],
+    ["reminder", "Reminder"],
+    ["on-way", "On the way"],
+    ["waiting-parts", "Waiting on parts"],
+    ["complete", "Work complete"],
+    ["general", "General update"]
+  ];
+}
+
+function customerUpdateTemplateLabel(kind = "general") {
+  return customerUpdateTemplateOptions().find(([value]) => value === kind)?.[1] || "General update";
+}
+
+function buildCustomerUpdateParts(workOrder = {}, formData = new FormData()) {
+  const details = getIssueReportDetails(workOrder);
+  const updateType = String(formData.get("updateType") || "general").trim() || "general";
+  const note = String(formData.get("message") || "").trim();
+  const visits = scheduledVisitsForWorkOrder(workOrder.id);
+  const visit = visits.find((item) => !["Completed", "Cancelled"].includes(item.status)) || visits[0] || null;
+  const scheduledAt = visit?.scheduledAt ? formatDateTime(new Date(visit.scheduledAt)) : "";
+  const templateLabel = customerUpdateTemplateLabel(updateType);
+  const introByType = {
+    scheduled: scheduledAt ? `Your SiteWorks visit is scheduled for ${scheduledAt}.` : "Your SiteWorks visit has been scheduled.",
+    reminder: scheduledAt ? `This is a reminder for your SiteWorks visit on ${scheduledAt}.` : "This is a reminder for your upcoming SiteWorks visit.",
+    "on-way": "Your SiteWorks technician is on the way.",
+    "waiting-parts": "This work is waiting on parts. We will update you once parts are available or the next visit is scheduled.",
+    complete: "The SiteWorks work has been marked complete.",
+    general: "Here is an update from SiteWorks."
+  };
+  const subject = `SiteWorks ${templateLabel}: ${details.issueNumber} - ${details.equipment}`;
+  const text = [
+    "Hello,",
+    "",
+    introByType[updateType] || introByType.general,
+    note ? "" : "",
+    note || "",
+    "",
+    `Ticket: ${details.issueNumber} - ${details.title}`,
+    `Status: ${details.status}`,
+    `Customer: ${details.customer}`,
+    `Location: ${details.location}`,
+    `Equipment / area: ${details.equipment}`,
+    scheduledAt ? `Scheduled visit: ${scheduledAt}` : "",
+    "",
+    "Please reply to this email if you have questions or access notes."
+  ].filter((line, index, lines) => line || lines[index - 1]).join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#172126;line-height:1.45;">
+      <h2 style="margin:0 0 4px;color:#14566b;">SiteWorks ${escapeHtml(templateLabel)}</h2>
+      <p style="margin:0 0 18px;font-weight:700;">${escapeHtml(details.issueNumber)} - ${escapeHtml(details.title)}</p>
+      <p style="margin:0 0 12px;">${escapeHtml(introByType[updateType] || introByType.general)}</p>
+      ${note ? `<p style="margin:0 0 18px;white-space:pre-line;">${escapeHtml(note)}</p>` : ""}
+      <table style="border-collapse:collapse;width:100%;max-width:720px;">
+        ${[
+          ["Ticket", `${details.issueNumber} - ${details.title}`],
+          ["Status", details.status],
+          ["Customer", details.customer],
+          ["Location", details.location],
+          ["Equipment / area", details.equipment],
+          ["Scheduled visit", scheduledAt || "Not scheduled"]
+        ].map(([label, value]) => `
+          <tr>
+            <td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">${escapeHtml(label)}</td>
+            <td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(value)}</td>
+          </tr>
+        `).join("")}
+      </table>
+      <p style="color:#68777d;">Please reply to this email if you have questions or access notes.</p>
+    </div>
+  `;
+  return { details, updateType, templateLabel, subject, text, html };
+}
+
+function openCustomerUpdateEmailDraft(parts = {}, recipient = "") {
+  window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(parts.subject || "SiteWorks update")}&body=${encodeURIComponent(parts.text || "")}`;
+}
+
+async function sendCustomerTicketUpdate(workOrder = {}, formData = new FormData(), button = null) {
+  const recipient = String(formData.get("recipient") || "").trim();
+  if (!isEmailAddress(recipient)) {
+    alert("Enter a valid customer email address.");
+    return;
+  }
+  const parts = buildCustomerUpdateParts(workOrder, formData);
+  const originalText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sending...";
+  }
+  try {
+    const response = await sendSiteWorksEmail("schedule", {
+      to: recipient,
+      subject: parts.subject,
+      text: parts.text,
+      html: parts.html,
+      scope: {
+        id: workOrder.id,
+        issueNumber: parts.details.issueNumber,
+        title: parts.details.title,
+        customerId: workOrder.customerId || "",
+        locationId: workOrder.locationId || "",
+        customer: parts.details.customer,
+        location: parts.details.location,
+        equipment: parts.details.equipment
+      }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getEmailFunctionError(result, "The customer update email could not be sent."));
+    const now = new Date().toISOString();
+    workOrder.customerUpdates = [
+      {
+        id: crypto.randomUUID(),
+        type: parts.updateType,
+        label: parts.templateLabel,
+        recipient,
+        message: String(formData.get("message") || "").trim(),
+        sentAt: now,
+        sentBy: getCurrentUserLabel()
+      },
+      ...(Array.isArray(workOrder.customerUpdates) ? workOrder.customerUpdates : [])
+    ].slice(0, 20);
+    workOrder.updatedAt = now;
+    addWorkOrderHistory(workOrder, `Customer update sent: ${parts.templateLabel}`, buildEmailHistoryDetails(recipient, result));
+    addActivity("Customer update sent", `${parts.details.issueNumber} to ${recipient}`);
+    saveState();
+    syncSingleWorkOrderToServer(workOrder);
+    render();
+    alert(buildEmailSuccessAlert("Customer update", result));
+  } catch (error) {
+    console.warn("Customer update email failed.", error);
+    addWorkOrderHistory(workOrder, `Customer update failed: ${parts.templateLabel}`, error.message || "Automatic customer update could not be sent.");
+    addActivity("Customer update failed", `${parts.details.issueNumber} to ${recipient}`);
+    saveState();
+    const useDraft = confirm(buildEmailFailurePrompt(error, "customer"));
+    if (useDraft) {
+      addWorkOrderHistory(workOrder, `Customer update draft opened: ${parts.templateLabel}`, `Draft to ${recipient}`);
+      saveState();
+      openCustomerUpdateEmailDraft(parts, recipient);
+    }
+    render();
+  } finally {
+    restoreEmailActionButton(button, originalText);
+  }
 }
 
 function getCustomerScheduleEmail(workOrder = {}) {
@@ -36104,6 +36303,19 @@ function buildEmailFailurePrompt(error, contactLabel = "contact") {
     `Reason: ${message}`,
     "",
     "This usually means the SiteWorks email service is not configured, the Resend API key is missing, the sender address is not allowed by Resend, the sender domain is not verified, or the photo/PDF was rejected.",
+    "",
+    `Open a regular email draft to this ${contactLabel} instead?`
+  ].join("\n");
+}
+
+function buildCustomerUpdateFailurePrompt(error, contactLabel = "customer") {
+  const message = String(error?.message || "No error detail was returned.").trim();
+  return [
+    "The automatic customer update could not be sent.",
+    "",
+    `Reason: ${message}`,
+    "",
+    "This usually means the SiteWorks email service is not configured, the sender address is not verified, or your role cannot send this update automatically.",
     "",
     `Open a regular email draft to this ${contactLabel} instead?`
   ].join("\n");

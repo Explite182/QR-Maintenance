@@ -15350,6 +15350,66 @@ button.asset-detail-card {
   text-align: left;
 }
 
+.customer-update-card {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.customer-update-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1fr) minmax(260px, 1.4fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.customer-update-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.customer-update-form input,
+.customer-update-form select,
+.customer-update-form textarea {
+  width: 100%;
+}
+
+.customer-update-form textarea {
+  min-height: 42px;
+  resize: vertical;
+}
+
+.customer-update-history {
+  display: grid;
+  gap: 8px;
+}
+
+.customer-update-history article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(220, 230, 227, 0.9);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.customer-update-history strong {
+  color: var(--ink);
+}
+
+.customer-update-history span,
+.customer-update-history p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .ticket-meta-card span,
 .ticket-assignment-panel > span,
 .ticket-description-block > span,
@@ -19070,6 +19130,7 @@ body.panel-schedule-open {
   .pm-compliance-grid,
   .pm-compliance-row,
   .pm-compliance-exception,
+  .customer-update-form,
   .pm-calendar-day-heading,
   .pm-calendar-item,
   .filters {
