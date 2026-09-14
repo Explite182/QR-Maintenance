@@ -12579,6 +12579,34 @@ html[data-theme="dark"] .site-map-empty {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.pm-calendar-day-board-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+
+.pm-calendar-day-board-header div {
+  display: grid;
+  gap: 3px;
+}
+
+.pm-calendar-day-board-header strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.pm-calendar-day-board-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .pm-calendar-week-column,
 .pm-calendar-tech-lane {
   min-height: 280px;
@@ -12764,30 +12792,6 @@ html[data-theme="dark"] .site-map-empty {
   font-size: 12px;
   font-weight: 900;
   color: var(--muted);
-}
-
-.pm-calendar-cell-add {
-  position: absolute;
-  top: 5px;
-  left: 7px;
-  width: 24px;
-  height: 24px;
-  min-height: 24px;
-  padding: 0;
-  border-radius: 999px;
-  border: 1px solid rgba(10, 124, 108, 0.2);
-  background: #fff;
-  color: var(--brand);
-  box-shadow: none;
-  font-size: 16px;
-  line-height: 1;
-  opacity: 0;
-  transform: none;
-}
-
-.pm-calendar-cell:hover .pm-calendar-cell-add,
-.pm-calendar-cell-add:focus-visible {
-  opacity: 1;
 }
 
 .pm-calendar-cell-items {

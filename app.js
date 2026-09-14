@@ -11722,17 +11722,17 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  const pmCalendarDayButton = event.target.closest("[data-pm-calendar-day-add]");
-  if (pmCalendarDayButton) {
+  const pmCalendarAddOnDayButton = event.target.closest("[data-pm-calendar-add-on-day]");
+  if (pmCalendarAddOnDayButton) {
     event.preventDefault();
-    openQuickCalendarCreate(pmCalendarDayButton.dataset.pmCalendarDayAdd || "");
+    openQuickCalendarCreate(pmCalendarAddOnDayButton.dataset.pmCalendarAddOnDay || "");
     return;
   }
 
   const pmCalendarDayCell = event.target.closest("[data-pm-calendar-day]");
   if (pmCalendarDayCell && !event.target.closest("button, a, input, select, textarea, summary, details")) {
     event.preventDefault();
-    openQuickCalendarCreate(pmCalendarDayCell.dataset.pmCalendarDay || "");
+    openPmCalendarDay(pmCalendarDayCell.dataset.pmCalendarDay || "");
     return;
   }
 
@@ -27479,6 +27479,10 @@ function renderPmCalendar() {
       `;
       return;
     }
+    if (pmCalendarRange === "day") {
+      els.pmCalendarList.innerHTML = renderPmCalendarDayBoard(records, windowInfo);
+      return;
+    }
     els.pmCalendarList.innerHTML = `<p class="muted">No ${escapeHtml(emptyKind)} are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
     return;
   }
@@ -27518,6 +27522,14 @@ function pmCalendarWindow() {
   }
 
   return { start: startOfDay(start), end: startOfDay(end), label };
+}
+
+function openPmCalendarDay(dateKey = "") {
+  const date = parseLocalDate(dateKey) || today;
+  pmCalendarDate = toDateInputValue(date);
+  pmCalendarRange = "day";
+  closeQuickCalendarCreate();
+  renderPmCalendar();
 }
 
 function startOfWeek(date) {
@@ -27722,9 +27734,17 @@ function renderPmCalendarDayBoard(records, windowInfo) {
   });
   if (pmDue.length) scheduledGroups.set("PM due", pmDue);
   const lanes = [...scheduledGroups.entries()];
+  const dateKey = toDateInputValue(windowInfo.start);
   return `
     <section class="pm-calendar-day-board">
-      ${lanes.map(([lane, items]) => `
+      <div class="pm-calendar-day-board-header">
+        <div>
+          <strong>${escapeHtml(formatDate(windowInfo.start))}</strong>
+          <span>${dayRecords.length} item${dayRecords.length === 1 ? "" : "s"} scheduled or due</span>
+        </div>
+        <button type="button" data-pm-calendar-add-on-day="${escapeAttribute(dateKey)}">Add ticket or service call</button>
+      </div>
+      ${lanes.length ? lanes.map(([lane, items]) => `
         <section class="pm-calendar-tech-lane">
           <div class="pm-calendar-tech-heading">
             <strong>${escapeHtml(lane)}</strong>
@@ -27734,7 +27754,7 @@ function renderPmCalendarDayBoard(records, windowInfo) {
             ${items.map(renderPmCalendarBoardEvent).join("")}
           </div>
         </section>
-      `).join("")}
+      `).join("") : `<p class="pm-calendar-board-empty">No visits or PMs on this day yet.</p>`}
     </section>
   `;
 }
@@ -27793,7 +27813,6 @@ function renderPmCalendarMonthGrid(records, windowInfo) {
     cells.push(`
       <div class="pm-calendar-cell${outsideClass}${todayClass}" data-pm-calendar-day="${escapeAttribute(key)}">
         <div class="pm-calendar-cell-date">${cellDate.getDate()}</div>
-        <button type="button" class="pm-calendar-cell-add" data-pm-calendar-day-add="${escapeAttribute(key)}" aria-label="Add ticket or service call on ${escapeAttribute(formatDate(cellDate))}">+</button>
         <div class="pm-calendar-cell-items">
           ${items.slice(0, 4).map(renderPmCalendarTask).join("")}
           ${items.length > 4 ? `<span class="pm-calendar-more">+${items.length - 4} more</span>` : ""}
