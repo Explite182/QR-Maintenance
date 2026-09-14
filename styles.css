@@ -16345,6 +16345,10 @@ button.asset-detail-card {
 }
 
 @media (max-width: 1040px) {
+  .work-order-drawer[open]:not(.completed-pm-item) {
+    width: min(920px, calc(100vw - 20px));
+  }
+
   .estimate-record > header {
     grid-template-columns: 1fr;
   }
@@ -16366,6 +16370,10 @@ button.asset-detail-card {
 }
 
 @media (max-width: 900px) {
+  .work-order-drawer[open]:not(.completed-pm-item) {
+    width: 100vw;
+  }
+
   .estimate-line-form {
     grid-template-columns: minmax(130px, 0.8fr) minmax(220px, 1.2fr);
   }
@@ -17533,7 +17541,7 @@ html[data-theme="dark"] .ticket-email-status-panel.badge-danger {
   bottom: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  width: min(780px, 100vw);
+  width: min(980px, calc(100vw - 36px));
   height: 100vh;
   max-height: none;
   overflow-y: auto;
