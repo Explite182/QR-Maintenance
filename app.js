@@ -12025,6 +12025,42 @@ document.addEventListener("change", (event) => {
   renderQuickCalendarCreateForm();
 });
 
+document.addEventListener("dragstart", (event) => {
+  const dispatchJob = event.target.closest("[data-dispatch-work-order]");
+  if (!dispatchJob || !canManageWorkOrders()) return;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", dispatchJob.dataset.dispatchWorkOrder || "");
+  dispatchJob.classList.add("is-dragging");
+});
+
+document.addEventListener("dragend", (event) => {
+  event.target.closest("[data-dispatch-work-order]")?.classList.remove("is-dragging");
+  document.querySelectorAll(".pm-calendar-tech-lane.is-drop-target").forEach((lane) => lane.classList.remove("is-drop-target"));
+});
+
+document.addEventListener("dragover", (event) => {
+  const lane = event.target.closest("[data-dispatch-assignee]");
+  if (!lane || !canManageWorkOrders() || lane.dataset.dispatchAssignee === "pm-due") return;
+  event.preventDefault();
+  lane.classList.add("is-drop-target");
+  event.dataTransfer.dropEffect = "move";
+});
+
+document.addEventListener("dragleave", (event) => {
+  const lane = event.target.closest("[data-dispatch-assignee]");
+  if (!lane || lane.contains(event.relatedTarget)) return;
+  lane.classList.remove("is-drop-target");
+});
+
+document.addEventListener("drop", (event) => {
+  const lane = event.target.closest("[data-dispatch-assignee]");
+  if (!lane || !canManageWorkOrders() || lane.dataset.dispatchAssignee === "pm-due") return;
+  event.preventDefault();
+  lane.classList.remove("is-drop-target");
+  const workOrderId = event.dataTransfer.getData("text/plain");
+  assignScheduledVisitFromDispatch(workOrderId, lane.dataset.dispatchAssignee || "", lane.dataset.dispatchAssigneeLabel || "");
+});
+
 document.addEventListener("submit", (event) => {
   const form = event.target.closest("[data-job-cost-form]");
   if (!form) return;
@@ -27736,7 +27772,7 @@ function renderPmCalendarDayBoard(records, windowInfo) {
   const workload = pmCalendarDayWorkload(dayRecords);
   dayRecords.forEach((record) => {
     if (record.kind === "scheduled") {
-      const lane = record.assigneeLabel || "Unassigned";
+      const lane = pmCalendarDispatchAssigneeKey(record);
       if (!scheduledGroups.has(lane)) scheduledGroups.set(lane, []);
       scheduledGroups.get(lane).push(record);
       return;
@@ -27744,7 +27780,6 @@ function renderPmCalendarDayBoard(records, windowInfo) {
     pmDue.push(record);
   });
   if (pmDue.length) scheduledGroups.set("PM due", pmDue);
-  const lanes = [...scheduledGroups.entries()];
   const dateKey = toDateInputValue(windowInfo.start);
   return `
     <section class="pm-calendar-day-board">
@@ -27762,7 +27797,7 @@ function renderPmCalendarDayBoard(records, windowInfo) {
         <button type="button" data-pm-calendar-add-on-day="${escapeAttribute(dateKey)}">Add ticket or service call</button>
       </div>
       <div class="pm-calendar-dispatch-lanes">
-        ${lanes.length ? lanes.map(([lane, items]) => renderPmCalendarDispatchLane(lane, items)).join("") : `<p class="pm-calendar-board-empty">No visits or PMs on this day yet.</p>`}
+        ${pmCalendarDispatchLanes(dayRecords, scheduledGroups, pmDue).map((lane) => renderPmCalendarDispatchLane(lane)).join("")}
       </div>
     </section>
   `;
@@ -27792,20 +27827,130 @@ function pmCalendarDayWorkload(records = []) {
 }
 
 function renderPmCalendarDispatchLane(lane = "Unassigned", items = []) {
+  if (typeof lane === "object" && lane) {
+    items = lane.items || [];
+  }
+  const laneKey = typeof lane === "object" && lane ? lane.key : "unassigned";
+  const laneLabel = typeof lane === "object" && lane ? lane.label : lane;
   const scheduled = items.filter((record) => record.kind === "scheduled");
   const totalMinutes = scheduled.reduce((sum, record) => sum + Math.max(0, Number(record.visit?.durationMinutes || 0)), 0);
   const hourText = totalMinutes ? `${formatInventoryNumber(Math.round((totalMinutes / 60) * 10) / 10)} hrs` : "";
   return `
-    <section class="pm-calendar-tech-lane${lane === "Unassigned" ? " is-unassigned" : ""}">
+    <section class="pm-calendar-tech-lane${laneKey === "unassigned" ? " is-unassigned" : ""}" data-dispatch-assignee="${escapeAttribute(laneKey)}" data-dispatch-assignee-label="${escapeAttribute(laneLabel)}">
       <div class="pm-calendar-tech-heading">
-        <strong>${escapeHtml(lane)}</strong>
+        <strong>${escapeHtml(laneLabel)}</strong>
         <span>${items.length} item${items.length === 1 ? "" : "s"}${hourText ? ` | ${escapeHtml(hourText)}` : ""}</span>
       </div>
       <div class="pm-calendar-board-events">
-        ${items.map(renderPmCalendarBoardEvent).join("")}
+        ${items.length ? items.map(renderPmCalendarBoardEvent).join("") : `<p class="pm-calendar-board-empty">No assigned jobs</p>`}
       </div>
     </section>
   `;
+}
+
+function pmCalendarDispatchAssigneeKey(record = {}) {
+  const visit = record.visit || {};
+  if (visit.assignedUserId) return `user:${visit.assignedUserId}`;
+  const label = String(record.assigneeLabel || visit.assignedUserName || "").trim();
+  if (!label || label === "Unassigned") return "unassigned";
+  return `name:${label.toLowerCase()}`;
+}
+
+function pmCalendarDispatchLanes(dayRecords = [], scheduledGroups = new Map(), pmDue = []) {
+  const lanes = new Map();
+  const addLane = (key, label) => {
+    if (!lanes.has(key)) lanes.set(key, { key, label, items: [] });
+    return lanes.get(key);
+  };
+  addLane("unassigned", "Unassigned");
+  pmCalendarDispatchAssigneeOptions(dayRecords).forEach((assignee) => addLane(assignee.key, assignee.label));
+  scheduledGroups.forEach((items, key) => {
+    const label = key === "unassigned" ? "Unassigned" : items[0]?.assigneeLabel || key.replace(/^name:/, "");
+    addLane(key, label).items.push(...items);
+  });
+  if (pmDue.length) addLane("pm-due", "PM due").items.push(...pmDue);
+  return [...lanes.values()]
+    .filter((lane) => lane.items.length || lane.key !== "pm-due")
+    .sort((a, b) => {
+      if (a.key === "unassigned") return -1;
+      if (b.key === "unassigned") return 1;
+      if (a.key === "pm-due") return 1;
+      if (b.key === "pm-due") return -1;
+      return a.label.localeCompare(b.label);
+    });
+}
+
+function pmCalendarDispatchAssigneeOptions(dayRecords = []) {
+  const customerIds = new Set();
+  dayRecords.forEach((record) => {
+    const customerId = record.workOrder?.customerId || record.asset?.customerId || record.customer?.id || "";
+    if (customerId && canSeeCustomer(customerId)) customerIds.add(customerId);
+  });
+  if (selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS && canSeeCustomer(selectedCustomerId)) {
+    customerIds.add(selectedCustomerId);
+  }
+  const users = state.users
+    .filter((user) => user.username !== "scan-customer")
+    .filter((user) => user.role === "Admin" || !customerIds.size || customerIds.has(user.customerId))
+    .map((user) => ({ key: `user:${user.id}`, label: user.name || user.username || "Unnamed tech" }));
+  const contractors = [...customerIds].flatMap((customerId) => visiblePreferredContractors(customerId))
+    .map((contractor) => ({ key: `contractor:${contractor.id}`, label: contractor.name || contractor.email || "Contractor" }));
+  const seen = new Set();
+  return [...users, ...contractors]
+    .filter((assignee) => {
+      if (seen.has(assignee.key)) return false;
+      seen.add(assignee.key);
+      return true;
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function resolveDispatchAssignee(value = "", customerId = "", fallbackLabel = "") {
+  if (!value || value === "unassigned") return { user: null, contractor: null, label: "" };
+  if (value.startsWith("user:")) {
+    const user = getUser(value.slice(5));
+    return { user, contractor: null, label: user?.name || user?.username || "" };
+  }
+  if (value.startsWith("contractor:")) {
+    const contractorId = value.slice(11);
+    const contractor = visiblePreferredContractors(customerId).find((item) => item.id === contractorId)
+      || visiblePreferredContractors().find((item) => item.id === contractorId)
+      || null;
+    return { user: null, contractor, label: contractor?.name || contractor?.email || "" };
+  }
+  if (value.startsWith("name:")) {
+    return { user: null, contractor: null, label: fallbackLabel || value.slice(5) };
+  }
+  return { user: null, contractor: null, label: "" };
+}
+
+function assignScheduledVisitFromDispatch(workOrderId = "", assigneeValue = "", fallbackLabel = "") {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canManageWorkOrders()) return;
+  const visit = normalizeScheduledVisits(state.scheduledVisits || []).find((item) => item.workOrderId === workOrder.id);
+  if (!visit) return;
+  const { user, contractor, label } = resolveDispatchAssignee(assigneeValue, workOrder.customerId, fallbackLabel);
+  const previous = pmCalendarAssigneeLabel(visit, workOrder);
+  visit.assignedUserId = user?.id || "";
+  visit.assignedUserName = label;
+  visit.updatedAt = new Date().toISOString();
+  workOrder.assignedUserId = user?.id || "";
+  workOrder.assignedUserName = label;
+  workOrder.updatedAt = new Date().toISOString();
+  state.scheduledVisits = normalizeScheduledVisits([
+    visit,
+    ...(state.scheduledVisits || []).filter((item) => item.id !== visit.id)
+  ]);
+  ensureScheduledVisitSnapshot(workOrder, visit);
+  addWorkOrderHistory(workOrder, "Dispatch reassigned", `${previous || "Unassigned"} -> ${label || "Unassigned"}`);
+  if (contractor) {
+    addWorkOrderHistory(workOrder, "Assigned contractor", `${contractor.name}${contractor.email ? ` | ${contractor.email}` : ""}${contractor.trade ? ` | ${contractor.trade}` : ""}`);
+  }
+  addActivity("Dispatch updated", `${formatIssueNumber(workOrder)} - ${label || "Unassigned"}`);
+  focusedWorkOrderId = workOrder.id;
+  saveState();
+  syncSingleWorkOrderToServer(workOrder);
+  render();
 }
 
 function pmCalendarRecordTimeSort(a, b) {
@@ -27837,8 +27982,11 @@ function renderPmCalendarBoardEvent(record) {
     record.location?.name || "",
     record.kind === "scheduled" ? record.assigneeLabel || "Unassigned" : record.template?.name || pmCalendarRecordCriticality(record)
   ].filter(Boolean).join(" | ");
+  const dispatchAttrs = record.kind === "scheduled" && canManageWorkOrders()
+    ? `draggable="true" data-dispatch-work-order="${escapeAttribute(record.workOrder.id)}"`
+    : "";
   return `
-    <button type="button" class="pm-calendar-board-event pm-calendar-board-event-${tone}" ${pmCalendarRecordTargetAttribute(record)}>
+    <button type="button" class="pm-calendar-board-event pm-calendar-board-event-${tone}" ${pmCalendarRecordTargetAttribute(record)} ${dispatchAttrs}>
       <span>${escapeHtml(timeLabel)}</span>
       <strong>${escapeHtml(title)}</strong>
       <small>${escapeHtml(meta || pmCalendarRecordStatus(record))}</small>
@@ -29375,37 +29523,66 @@ function renderServiceScheduleVisit(visit = {}) {
 function renderCustomerPortal() {
   if (!els.customerPortalPanel) return;
   const isCustomerPortalUser = currentRole === "Customer";
-  els.customerPortalPanel.classList.toggle("hidden", !isCustomerPortalUser);
-  if (!isCustomerPortalUser) return;
-  const customer = getCustomer(currentUser?.customerId || selectedCustomerId);
-  const customerId = customer?.id || currentUser?.customerId || selectedCustomerId || "";
-  const assets = filteredAssets().filter((asset) => !customerId || asset.customerId === customerId);
+  const canPreviewPortal = isCustomerPortalUser || canManageWorkOrders();
+  if (!canPreviewPortal) {
+    els.customerPortalPanel.classList.add("hidden", "is-collapsed");
+    return;
+  }
+  if (isCustomerPortalUser) {
+    els.customerPortalPanel.classList.remove("hidden", "is-collapsed");
+  }
+  const customerId = isCustomerPortalUser
+    ? currentUser?.customerId || selectedCustomerId || ""
+    : selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS
+      ? selectedCustomerId
+      : visibleCustomers()[0]?.id || "";
+  const customer = getCustomer(customerId);
+  const locationId = selectedLocationId && selectedLocationId !== ALL_LOCATIONS ? selectedLocationId : "";
+  if (!customerId || !customer) {
+    els.customerPortalTitle.textContent = "Customer Portal";
+    els.customerPortalSubtitle.textContent = "Choose a customer to preview their portal.";
+    els.customerPortalSummary.innerHTML = "";
+    els.customerPortalContent.innerHTML = `<section class="portal-section"><p class="muted">Select a customer first.</p></section>`;
+    return;
+  }
+  const locationRecord = locationId ? getLocation(locationId) : null;
+  const assets = state.assets
+    .filter((asset) => canSeeAsset(asset) && asset.customerId === customerId)
+    .filter((asset) => !locationId || asset.locationId === locationId);
   const tickets = (state.workOrders || [])
     .filter((ticket) => canSeeWorkOrder(ticket) && (!customerId || ticket.customerId === customerId))
+    .filter((ticket) => !locationId || ticket.locationId === locationId)
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
   const openTickets = tickets.filter((ticket) => ticket.status !== "Closed");
   const completedTickets = tickets.filter((ticket) => ticket.status === "Closed").slice(0, 6);
   const requests = (state.serviceRequests || [])
     .filter((request) => canSeeServiceRequest(request) && (!customerId || request.customerId === customerId))
+    .filter((request) => !locationId || request.locationId === locationId)
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
   const estimates = normalizeEstimates(state.estimates || [])
     .filter((estimate) => !customerId || estimate.customerId === customerId)
+    .filter((estimate) => !locationId || estimate.locationId === locationId)
     .filter((estimate) => estimate.status !== "Draft")
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
   const visits = normalizeScheduledVisits(state.scheduledVisits || [])
     .filter((visit) => !customerId || visit.customerId === customerId)
+    .filter((visit) => !locationId || visit.locationId === locationId)
     .filter((visit) => !["Completed", "Cancelled"].includes(visit.status))
     .sort((a, b) => new Date(a.scheduledAt || 0) - new Date(b.scheduledAt || 0))
     .slice(0, 6);
   els.customerPortalTitle.textContent = `${customer?.name || "Customer"} Portal`;
-  els.customerPortalSubtitle.textContent = "View open work, upcoming visits, equipment, estimates, and completed service.";
+  els.customerPortalSubtitle.textContent = [
+    locationRecord?.name || "All locations",
+    isCustomerPortalUser ? "Customer view" : "Internal preview"
+  ].filter(Boolean).join(" | ");
   els.customerPortalSummary.innerHTML = [
     ["Open tickets", openTickets.length, "warn"],
     ["Upcoming visits", visits.length, "info"],
     ["Open requests", requests.filter((request) => !["Completed", "Declined"].includes(request.status)).length, "neutral"],
     ["Equipment", assets.length, "ok"],
     ["Estimates", estimates.length, "info"],
-    ["Completed", completedTickets.length, "neutral"]
+    ["Completed", completedTickets.length, "neutral"],
+    ["PM due soon", assets.filter((asset) => getDueInfo(asset).daysUntil <= 14).length, "warn"]
   ].map(([label, value, tone]) => `
     <article class="portal-summary-card is-${escapeAttribute(tone)}">
       <strong>${escapeHtml(formatInventoryNumber(value))}</strong>
@@ -29414,6 +29591,7 @@ function renderCustomerPortal() {
   `).join("");
   els.customerPortalContent.innerHTML = `
     ${renderCustomerPortalRequestForm(customerId, assets)}
+    ${renderCustomerPortalSection("Portal overview", [customerPortalOverviewRecord(customerId, locationId, openTickets, visits, estimates, assets)], renderCustomerPortalOverview, "No portal summary available.")}
     ${renderCustomerPortalSection("Upcoming visits", visits, renderCustomerPortalVisit, "No visits are scheduled yet.")}
     ${renderCustomerPortalSection("Open tickets", openTickets.slice(0, 8), renderCustomerPortalTicket, "No open tickets right now.")}
     ${renderCustomerPortalSection("Customer requests", requests.slice(0, 6), renderCustomerPortalRequest, "No customer requests in this view.")}
@@ -29434,6 +29612,47 @@ function renderCustomerPortalSection(title, items = [], renderer, emptyText = "N
         ${items.length ? items.map(renderer).join("") : `<p class="muted">${escapeHtml(emptyText)}</p>`}
       </div>
     </section>
+  `;
+}
+
+function customerPortalOverviewRecord(customerId = "", locationId = "", openTickets = [], visits = [], estimates = [], assets = []) {
+  const urgentTickets = openTickets.filter((ticket) => ticket.priority === "High").length;
+  const nextVisit = visits[0] || null;
+  const pendingEstimates = estimates.filter((estimate) => estimate.status === "Sent").length;
+  const overdueAssets = assets.filter((asset) => getDueInfo(asset).daysUntil < 0).length;
+  return {
+    customerId,
+    locationId,
+    urgentTickets,
+    nextVisit,
+    pendingEstimates,
+    overdueAssets
+  };
+}
+
+function renderCustomerPortalOverview(record = {}) {
+  const nextVisitText = record.nextVisit?.scheduledAt
+    ? formatDateTime(record.nextVisit.scheduledAt)
+    : "No upcoming visit";
+  return `
+    <article class="portal-overview-row">
+      <div>
+        <span>Next visit</span>
+        <strong>${escapeHtml(nextVisitText)}</strong>
+      </div>
+      <div>
+        <span>High priority</span>
+        <strong>${escapeHtml(formatInventoryNumber(record.urgentTickets || 0))}</strong>
+      </div>
+      <div>
+        <span>Quotes waiting</span>
+        <strong>${escapeHtml(formatInventoryNumber(record.pendingEstimates || 0))}</strong>
+      </div>
+      <div>
+        <span>Overdue PMs</span>
+        <strong>${escapeHtml(formatInventoryNumber(record.overdueAssets || 0))}</strong>
+      </div>
+    </article>
   `;
 }
 
@@ -29566,8 +29785,14 @@ function renderCustomerPortalAsset(asset = {}) {
 }
 
 function createCustomerPortalServiceRequest(formData = new FormData()) {
-  if (!currentUser || currentRole !== "Customer") return;
-  const customerId = currentUser.customerId || selectedCustomerId || "";
+  if (!currentUser) return;
+  const isCustomerPortalUser = currentRole === "Customer";
+  if (!isCustomerPortalUser && !canManageWorkOrders()) return;
+  const customerId = isCustomerPortalUser
+    ? currentUser.customerId || selectedCustomerId || ""
+    : selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS
+      ? selectedCustomerId
+      : "";
   const locationId = String(formData.get("locationId") || "").trim();
   if (!customerId || !locationId || !canSeeLocation(locationId, customerId)) return;
   const assetId = String(formData.get("assetId") || "").trim();
@@ -29583,7 +29808,9 @@ function createCustomerPortalServiceRequest(formData = new FormData()) {
     title: String(formData.get("title") || "").trim(),
     notes: String(formData.get("notes") || "").trim(),
     priority: String(formData.get("priority") || "Medium").trim() || "Medium",
-    requestedBy: currentUser.name || currentUser.username || "Customer portal",
+    requestedBy: isCustomerPortalUser
+      ? currentUser.name || currentUser.username || "Customer portal"
+      : `${getCurrentUserLabel()} for ${getCustomer(customerId)?.name || "customer"}`,
     preferredDate: "",
     status: "New",
     assignedUserId: "",

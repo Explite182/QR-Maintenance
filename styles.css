@@ -12660,6 +12660,12 @@ html[data-theme="dark"] .site-map-empty {
   scroll-snap-align: start;
 }
 
+.pm-calendar-tech-lane.is-drop-target {
+  border-color: rgba(8, 112, 95, 0.65);
+  background: #eefbf7;
+  box-shadow: inset 0 0 0 2px rgba(8, 112, 95, 0.18);
+}
+
 .pm-calendar-tech-lane.is-unassigned {
   border-color: rgba(180, 105, 0, 0.35);
   background: #fffaf0;
@@ -12713,6 +12719,25 @@ html[data-theme="dark"] .site-map-empty {
   display: grid;
   align-content: start;
   gap: 7px;
+}
+
+.pm-calendar-board-event[draggable="true"] {
+  cursor: grab;
+}
+
+.pm-calendar-board-event.is-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+html[data-theme="dark"] .pm-calendar-tech-lane.is-drop-target {
+  border-color: rgba(48, 199, 169, 0.72);
+  background: #11342f;
+}
+
+html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: #2b2112;
 }
 
 .pm-calendar-board-event {
@@ -15881,6 +15906,33 @@ button.asset-detail-card {
   margin-top: 5px;
 }
 
+.portal-overview-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portal-overview-row div {
+  display: grid;
+  gap: 4px;
+  min-height: 70px;
+  padding: 10px;
+  border: 1px solid rgba(20, 184, 166, 0.14);
+  border-radius: 8px;
+  background: rgba(248, 251, 250, 0.72);
+}
+
+.portal-overview-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.portal-overview-row strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
 .portal-request-form form {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(170px, 1fr) minmax(110px, auto);
@@ -16700,6 +16752,7 @@ button.asset-detail-card {
   .billing-filter-bar,
   .customer-portal-hero,
   .customer-portal-content,
+  .portal-overview-row,
   .portal-request-form form,
   .quickbooks-map-grid,
   .quickbooks-map-row,
