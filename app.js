@@ -15103,6 +15103,10 @@ async function saveLightingFirmwareFromForm(form) {
   const firmwareFile = formData.get("firmwareFile");
   const firmware = {
     id: crypto.randomUUID?.() || `firmware-${Date.now()}`,
+    customerId: selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS ? selectedCustomerId : "",
+    customer_id: selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS ? selectedCustomerId : "",
+    locationId: selectedLocationId && selectedLocationId !== ALL_LOCATIONS ? selectedLocationId : "",
+    location_id: selectedLocationId && selectedLocationId !== ALL_LOCATIONS ? selectedLocationId : "",
     version: String(formData.get("version") || "").trim(),
     deviceFamily: String(formData.get("deviceFamily") || "waveshare-esp32-s3-poe-8di-8ro").trim(),
     fileName: String(formData.get("fileName") || "").trim(),
