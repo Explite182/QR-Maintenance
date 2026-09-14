@@ -14856,36 +14856,79 @@ button.asset-detail-card {
 
 .tech-flow-card {
   display: grid;
-  gap: 12px;
-  padding: 12px;
+  gap: 14px;
+  padding: 14px;
   border: 1px solid rgba(20, 184, 166, 0.24);
-  border-radius: 8px;
+  border-radius: 12px;
   background: rgba(240, 253, 250, 0.72);
+}
+
+.tech-flow-progress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tech-flow-progress span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid rgba(13, 148, 136, 0.18);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tech-flow-progress i {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #b8c7c4;
+  border-radius: 999px;
+}
+
+.tech-flow-progress .is-done {
+  color: var(--accent);
+  border-color: rgba(13, 148, 136, 0.32);
+  background: rgba(213, 247, 238, 0.58);
+}
+
+.tech-flow-progress .is-done i {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 3px #ffffff;
 }
 
 .tech-flow-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
 }
 
 .tech-flow-actions button {
-  min-height: 42px;
+  width: 100%;
+  min-height: 46px;
+  justify-content: center;
 }
 
 .tech-flow-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1.2fr) minmax(200px, 0.8fr) minmax(220px, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(220px, 0.8fr) minmax(240px, 1fr);
+  gap: 12px;
 }
 
 .tech-flow-box {
   display: grid;
   gap: 8px;
   min-width: 0;
-  padding: 12px;
+  align-content: start;
+  padding: 14px;
   border: 1px solid rgba(20, 184, 166, 0.16);
-  border-radius: 8px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.88);
 }
 
@@ -14897,7 +14940,7 @@ button.asset-detail-card {
 .tech-parts-form,
 .tech-signoff-form {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .tech-parts-form label,
@@ -14912,6 +14955,7 @@ button.asset-detail-card {
 .tech-parts-form input,
 .tech-signoff-form input {
   width: 100%;
+  min-height: 42px;
   min-width: 0;
 }
 
@@ -14919,6 +14963,38 @@ button.asset-detail-card {
   margin: 0;
   padding: 10px;
   box-shadow: none;
+}
+
+@media (max-width: 920px) {
+  .tech-flow-progress {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tech-flow-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .tech-flow-card {
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  .tech-flow-progress {
+    grid-template-columns: 1fr;
+  }
+
+  .tech-flow-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .tech-flow-actions button,
+  .tech-parts-form button,
+  .tech-signoff-form button,
+  .tech-flow-box .quick-note-box button {
+    min-height: 48px;
+  }
 }
 
 .ticket-stream-heading {

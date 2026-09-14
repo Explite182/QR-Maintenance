@@ -11921,6 +11921,7 @@ document.addEventListener("click", async (event) => {
   addWorkOrderHistory(workOrder, "Status changed", `${previousStatus} -> ${workOrder.status}`);
   addActivity("Work order updated", `${workOrder.title} - ${workOrder.status}`);
   saveState();
+  syncSingleWorkOrderToServer(workOrder);
   render();
 });
 
@@ -12234,6 +12235,7 @@ document.addEventListener("submit", async (event) => {
   workOrder.updatedAt = new Date().toISOString();
   addActivity("Ticket note added", `${formatIssueNumber(workOrder)} - ${workOrder.title || "Open ticket"}`);
   saveState();
+  syncSingleWorkOrderToServer(workOrder);
   render();
 });
 
@@ -34164,13 +34166,31 @@ function renderTechnicianMobileFlow(workOrder = {}) {
   const datalistId = `techFlowParts-${workOrder.id}`;
   const signoff = workOrder.technicianSignoff || {};
   const isClosed = workOrder.status === "Closed";
+  const history = workOrderHistoryEntries(workOrder);
+  const hasWorkNote = Boolean(String(workOrder.notes || "").trim()) || history.some((entry) => ["Work note", "Edited"].includes(entry.action));
+  const hasPhoto = getWorkOrderPhotos(workOrder).length > 0;
+  const hasInventory = history.some((entry) => entry.action === "Inventory used");
+  const progressItems = [
+    { label: "Arrive", done: workOrder.status !== "Open" },
+    { label: "Notes / photos", done: hasWorkNote || hasPhoto },
+    { label: "Parts", done: hasInventory },
+    { label: "Sign-off", done: Boolean(signoff.signedAt) || ["Resolved", "Closed"].includes(workOrder.status) }
+  ];
   return `
-    <details class="ticket-sub-drawer tech-flow-panel">
+    <details class="ticket-sub-drawer tech-flow-panel" open>
       <summary>
         <h3>Technician flow</h3>
         <span>${escapeHtml(signoff.signedAt ? "Signed off" : workOrder.status || "Open")}</span>
       </summary>
       <section class="tech-flow-card">
+        <div class="tech-flow-progress" aria-label="Technician workflow checklist">
+          ${progressItems.map((item) => `
+            <span class="${item.done ? "is-done" : ""}">
+              <i aria-hidden="true"></i>
+              ${escapeHtml(item.label)}
+            </span>
+          `).join("")}
+        </div>
         <div class="tech-flow-actions">
           ${workOrder.status === "Open" ? `<button type="button" class="primary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="In progress">Arrived / start</button>` : ""}
           ${!["Waiting parts", "Closed"].includes(workOrder.status) ? `<button type="button" class="secondary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="Waiting parts">Waiting parts</button>` : ""}
@@ -34257,6 +34277,7 @@ async function useInventoryFromTechnicianFlow(workOrderId = "", formData = new F
   addActivity("Inventory used on ticket", `${item.name} -> ${formatIssueNumber(workOrder)}`);
   saveState();
   await syncSingleInventoryItemToServer(item);
+  syncSingleWorkOrderToServer(workOrder);
   render();
 }
 
@@ -34283,6 +34304,7 @@ function saveTechnicianSignoff(workOrderId = "", formData = new FormData()) {
   addWorkOrderHistory(workOrder, "Customer sign-off", [customerName, signatureNote, completionNote].filter(Boolean).join(" | ") || "Sign-off saved");
   addActivity("Ticket signed off", `${formatIssueNumber(workOrder)} - ${customerName || "Customer"}`);
   saveState();
+  syncSingleWorkOrderToServer(workOrder);
   render();
 }
 
