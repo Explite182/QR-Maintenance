@@ -13341,12 +13341,12 @@ function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
     };
   }
   return {
-    label: "Offline",
-    className: "is-offline",
+    label: "Last seen",
+    className: "is-warning",
     lastSeenAt,
     ageMs,
     relativeText,
-    detail: "No recent heartbeat."
+    detail: "No live heartbeat; showing last known controller data."
   };
 }
 
@@ -25679,8 +25679,8 @@ function renderAutomationHvac() {
     if (!Number.isFinite(heatValue) || !Number.isFinite(coolValue)) return fallback;
     return `${hvacTemperatureLabel(heatValue)} / ${hvacTemperatureLabel(coolValue)}`;
   };
-  const roomDisplayDirectTempLabel = roomDisplayDirectOnline && roomDisplayDirectTemp !== null
-    ? `${hvacTemperatureLabel(roomDisplayDirectTemp)} - direct`
+  const roomDisplayDirectTempLabel = roomDisplayDirectTemp !== null
+    ? `${hvacTemperatureLabel(roomDisplayDirectTemp)}${roomDisplayDirectOnline ? " - direct" : " - last known"}`
     : roomDisplayDirect.source ? "Not ready" : "Not seen";
   const roomDisplayDirectStatus = roomDisplayDirect.source
     ? roomDisplayDirectOnline ? "Online" : "Stale"
@@ -25710,12 +25710,16 @@ function renderAutomationHvac() {
     : "Not reported";
   const localRoomAge = numberOrNull(localAutoRoomSensor.ageSeconds);
   const localRoomFresh = Boolean(localAutoRoomSensor.fresh);
-  const localRoomAvailable = Boolean(localAutoRoomSensor.available);
+  const localRoomAvailable = Boolean(localAutoRoomSensor.available || roomDisplayTemp !== null || roomDisplayDirectTemp !== null);
+  const roomDisplayLastSeenLabel = roomDisplay.lastSeenAt ? formatDateTime(roomDisplay.lastSeenAt) : "";
+  const roomDisplayDirectLastSeenLabel = roomDisplayDirect.lastSeenAt ? formatDateTime(roomDisplayDirect.lastSeenAt) : "";
   const localRoomLinkLabel = !Object.keys(localAuto).length
     ? "Not reported"
     : !localRoomAvailable
       ? "No room sensor"
-      : `${localRoomFresh ? "Fresh" : "Stale"}${localRoomAge !== null ? `, ${Math.round(localRoomAge)} sec old` : ""}`;
+      : localRoomFresh && hvacControllerIsFresh(primaryController)
+        ? `Fresh${localRoomAge !== null ? `, ${Math.round(localRoomAge)} sec old` : ""}`
+        : `Last known${roomDisplayDirectLastSeenLabel ? ` ${roomDisplayDirectLastSeenLabel}` : roomDisplayLastSeenLabel ? ` ${roomDisplayLastSeenLabel}` : ""}`;
   const localAutoSetpointLabel = hvacSetpointPairLabel(localAutoSetpoints.heatF, localAutoSetpoints.coolF, "Not reported");
   const expansionIo = liveHvac.expansionIo && typeof liveHvac.expansionIo === "object" ? liveHvac.expansionIo : {};
   const expansionOnline = Boolean(expansionIo.online);
@@ -26596,16 +26600,17 @@ function hvacIssueNotificationsForController(controller = {}) {
   const alertScope = [location?.name || normalized.area || "", equipment?.name || ""].filter(Boolean).join(" | ");
   const roomDisplaySeenMs = roomDisplay.lastSeenAt ? new Date(roomDisplay.lastSeenAt).getTime() : 0;
   const roomDisplaySeenAgeMs = roomDisplaySeenMs && Number.isFinite(roomDisplaySeenMs) ? Date.now() - roomDisplaySeenMs : 0;
+  const roomDisplayHasLastKnownReading = numberOrNull(roomDisplay.temperatureF) !== null || numberOrNull(directRoom.temperatureF) !== null;
   const sensorReadAgeSeconds = numberOrNull(roomDisplayDiagnostics.sensorReadAgeSeconds);
   const displayUptimeMs = numberOrNull(roomDisplay.uptimeMs);
-  const roomDisplaySensorMissingLongEnough = roomDisplay.sensorOnline === false && (
+  const roomDisplaySensorMissingLongEnough = !roomDisplayHasLastKnownReading && roomDisplay.sensorOnline === false && (
     sensorReadAgeSeconds !== null
       ? sensorReadAgeSeconds >= 120
       : displayUptimeMs !== null
         ? displayUptimeMs >= 120 * 1000
         : false
   );
-  const roomDisplayStaleLongEnough = roomDisplaySeenAgeMs > 3 * 60 * 1000;
+  const roomDisplayStaleLongEnough = !roomDisplayHasLastKnownReading && roomDisplaySeenAgeMs > 3 * 60 * 1000;
   const directRoomAgeSeconds = numberOrNull(roomSensor.ageSeconds ?? directRoom.lastSeenMsAgo / 1000);
   const directRoomStaleLongEnough = directRoomAgeSeconds === null ? true : directRoomAgeSeconds >= 60;
   const controllerWasOnline = String(normalized.onlineStatus || normalized.online_status || "").toLowerCase() === "online";
