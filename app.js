@@ -27405,7 +27405,6 @@ function renderPmCalendar() {
   if (!els.pmCalendarList) return;
   const windowInfo = pmCalendarWindow();
   const records = pmCalendarRecords(windowInfo);
-  const overdueRecords = overduePmCalendarRecords();
   const pmCount = records.filter((record) => ["asset", "route"].includes(record.kind)).length;
   const scheduledCount = records.filter((record) => record.kind === "scheduled").length;
   const completedCount = records.filter((record) => record.kind === "completed").length;
@@ -27432,18 +27431,16 @@ function renderPmCalendar() {
       ${completedCount ? `<span>${completedCount} completed</span>` : ""}
     `;
   }
-  const overdueStrip = renderPmCalendarOverdueStrip(overdueRecords);
   if (!records.length) {
     const emptyKind = pmCalendarMode === "scheduled" ? "scheduled visits" : pmCalendarMode === "pm" ? "PMs" : "calendar items";
     if (pmCalendarRange === "month") {
       els.pmCalendarList.innerHTML = `
-        ${overdueStrip}
         ${renderPmCalendarMonthGrid(records, windowInfo)}
         <p class="muted">No ${escapeHtml(emptyKind)} are scheduled in this forward month for the current view.</p>
       `;
       return;
     }
-    els.pmCalendarList.innerHTML = `${overdueStrip}<p class="muted">No ${escapeHtml(emptyKind)} are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
+    els.pmCalendarList.innerHTML = `<p class="muted">No ${escapeHtml(emptyKind)} are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
     return;
   }
   const schedule = pmCalendarRange === "month"
@@ -27453,7 +27450,7 @@ function renderPmCalendar() {
       : pmCalendarRange === "day"
         ? renderPmCalendarDayBoard(records, windowInfo)
         : renderPmCalendarGroups(records);
-  els.pmCalendarList.innerHTML = `${overdueStrip}${schedule}${renderPmCalendarKeyEquipment(records)}`;
+  els.pmCalendarList.innerHTML = `${schedule}${renderPmCalendarKeyEquipment(records)}`;
 }
 
 function pmCalendarWindow() {
@@ -27525,31 +27522,6 @@ function completedPmCalendarRecords(windowInfo = pmCalendarWindow()) {
     })
     .filter(Boolean)
     .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end);
-}
-
-function overduePmCalendarRecords() {
-  if (pmCalendarMode === "scheduled") return [];
-  const assetRecords = filteredAssets()
-    .map((asset) => {
-      const due = getDueInfo(asset);
-      return {
-        kind: "asset",
-        asset,
-        due,
-        dueDate: startOfDay(due.nextDate),
-        customer: getCustomer(asset.customerId),
-        location: getLocation(asset.locationId),
-        template: getTemplate(asset.templateId)
-      };
-    })
-    .filter((record) => record.due.daysUntil < 0);
-  const routeRecords = scheduledRouteCalendarRecords({
-    start: new Date(0),
-    end: addDays(today, -1)
-  }).filter((record) => record.due.daysUntil < 0);
-  return [...assetRecords, ...routeRecords]
-    .sort((a, b) => a.dueDate - b.dueDate || pmCalendarRecordName(a).localeCompare(pmCalendarRecordName(b)))
-    .slice(0, 10);
 }
 
 function scheduledVisitCalendarRecords(windowInfo = pmCalendarWindow()) {
@@ -27853,26 +27825,6 @@ function pmCalendarTone(record) {
   if (text.includes("fire") || text.includes("life") || text.includes("safety") || criticality === "medium") return "warning";
   if (text.includes("boiler") || text.includes("pump") || text.includes("hvac")) return "info";
   return "success";
-}
-
-function renderPmCalendarOverdueStrip(records) {
-  if (!records.length) return "";
-  return `
-    <section class="pm-calendar-overdue-strip" aria-label="Overdue PMs">
-      <div class="pm-calendar-overdue-heading">
-        <strong>Overdue PMs</strong>
-        <span>${records.length}${records.length === 10 ? "+" : ""} needs attention</span>
-      </div>
-      <div class="pm-calendar-overdue-list">
-        ${records.map((record) => `
-          <button type="button" class="pm-calendar-overdue-item" ${pmCalendarRecordTargetAttribute(record)}>
-            <strong>${escapeHtml(pmCalendarRecordEquipmentLabel(record))}</strong>
-            <span>${escapeHtml([record.customer?.name || "Unknown customer", record.location?.name || "Unknown location", record.due?.label || "Overdue"].filter(Boolean).join(" | "))}</span>
-          </button>
-        `).join("")}
-      </div>
-    </section>
-  `;
 }
 
 function renderPmCalendarKeyEquipment(records) {
