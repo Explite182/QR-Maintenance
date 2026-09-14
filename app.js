@@ -11708,10 +11708,11 @@ document.addEventListener("click", async (event) => {
   if (pmCalendarScheduledButton) {
     event.preventDefault();
     focusedWorkOrderId = pmCalendarScheduledButton.dataset.pmCalendarScheduled || "";
-    closeOtherSidebarTargets("workOrdersPanel");
-    openPanel("workOrdersPanel");
-    setMobileTabState("workOrdersPanel");
+    focusedServiceRequestId = "";
+    focusedCompletedRecordId = "";
+    lastWorkRecordInteractionAt = Date.now();
     render();
+    syncWorkDrawerBackdrop();
     return;
   }
 
