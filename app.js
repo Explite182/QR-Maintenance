@@ -7273,6 +7273,10 @@ const els = {
   exportPmCalendarBtn: document.getElementById("exportPmCalendarBtn"),
   downloadPmCalendarIcsBtn: document.getElementById("downloadPmCalendarIcsBtn"),
   copyPmCalendarFeedBtn: document.getElementById("copyPmCalendarFeedBtn"),
+  pmComplianceCount: document.getElementById("pmComplianceCount"),
+  pmComplianceSummary: document.getElementById("pmComplianceSummary"),
+  pmComplianceContent: document.getElementById("pmComplianceContent"),
+  exportPmComplianceBtn: document.getElementById("exportPmComplianceBtn"),
   workOrderCount: document.getElementById("workOrderCount"),
   workOrderNumberFilter: document.getElementById("workOrderNumberFilter"),
   workOrderList: document.getElementById("workOrderList"),
@@ -10655,6 +10659,10 @@ els.copyPmCalendarFeedBtn?.addEventListener("click", () => {
   copyPmCalendarFeedLink();
 });
 
+els.exportPmComplianceBtn?.addEventListener("click", () => {
+  exportPmComplianceCsv();
+});
+
 els.exportAssetRegisterBtn.addEventListener("click", () => {
   downloadAssetRegisterCsv(assetTableAssets());
 });
@@ -12606,6 +12614,7 @@ function render() {
   renderSiteMapIfReady();
   renderMonitoringIfReady();
   renderPmCalendar();
+  renderPmCompliance();
   renderBackupStatus();
   renderSyncHealth();
   renderQrSettings();
@@ -16437,7 +16446,7 @@ function setMobileTabState(targetId) {
   document.querySelectorAll("[data-mobile-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.mobileTab === targetId);
   });
-  els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "siteMapPanel" || targetId === "monitoringPanel" || targetId === "automationHvacPanel" || targetId === "automationLightingPanel");
+  els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "pmCompliancePanel" || targetId === "siteMapPanel" || targetId === "monitoringPanel" || targetId === "automationHvacPanel" || targetId === "automationLightingPanel");
   els.mobileInventoryBtn?.classList.toggle("is-active", targetId === "inventoryPanel");
 }
 
@@ -28326,6 +28335,293 @@ function exportPmCalendarCsv() {
   const link = document.createElement("a");
   link.href = url;
   link.download = `siteworks-calendar-${pmCalendarRange}-${timestampForFile()}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function pmComplianceWindow() {
+  const end = endOfDay(today);
+  const start = startOfDay(addDays(today, -29));
+  return { start, end, label: "Last 30 days" };
+}
+
+function pmComplianceRecords() {
+  const windowInfo = pmComplianceWindow();
+  const assets = filteredAssets();
+  const scheduledByAsset = new Map();
+  normalizeScheduledVisits(state.scheduledVisits || [])
+    .filter((visit) => !["Completed", "Cancelled"].includes(visit.status))
+    .forEach((visit) => {
+      if (!visit.assetId) return;
+      if (!scheduledByAsset.has(visit.assetId)) scheduledByAsset.set(visit.assetId, []);
+      scheduledByAsset.get(visit.assetId).push(visit);
+    });
+  const completed = completedPmRecords()
+    .filter((record) => {
+      const completedAt = new Date(record.history.completedAt || 0);
+      return completedAt >= windowInfo.start && completedAt <= windowInfo.end;
+    })
+    .map((record) => {
+      const completedAt = new Date(record.history.completedAt || 0);
+      return {
+        type: "completed",
+        status: String(record.history.result || "Completed"),
+        asset: record.asset,
+        customer: record.customer,
+        location: record.location,
+        technician: record.history.technician || record.history.completedBy || "",
+        completedAt,
+        onTime: true,
+        notes: record.history.notes || ""
+      };
+    });
+  const assetStatus = assets.map((asset) => {
+    const due = getDueInfo(asset);
+    const visits = scheduledByAsset.get(asset.id) || [];
+    const openTickets = openWorkOrdersForAsset(asset.id);
+    const failedTickets = openFailedPmTicketsForAsset(asset.id);
+    return {
+      type: "asset",
+      asset,
+      customer: getCustomer(asset.customerId),
+      location: getLocation(asset.locationId),
+      template: getTemplate(asset.templateId),
+      due,
+      visits,
+      openTickets,
+      failedTickets
+    };
+  });
+  return { windowInfo, assets, completed, assetStatus };
+}
+
+function pmComplianceStatusBuckets(report = pmComplianceRecords()) {
+  const scheduledAssetIds = new Set();
+  report.assetStatus.forEach((record) => {
+    if (record.visits.length) scheduledAssetIds.add(record.asset.id);
+  });
+  const completedCount = report.completed.length;
+  const failedCount = report.completed.filter((record) => /failed/i.test(record.status)).length;
+  const needsAttentionCount = report.completed.filter((record) => /needs attention|failed/i.test(record.status)).length;
+  const overdueCount = report.assetStatus.filter((record) => record.due.daysUntil < 0 && !scheduledAssetIds.has(record.asset.id)).length;
+  const dueSoonCount = report.assetStatus.filter((record) => record.due.daysUntil >= 0 && record.due.daysUntil <= 14 && !scheduledAssetIds.has(record.asset.id)).length;
+  const scheduledCount = scheduledAssetIds.size;
+  const onTimeCount = report.completed.filter((record) => record.onTime).length;
+  const scoreBase = completedCount + overdueCount;
+  const score = scoreBase ? Math.round((onTimeCount / scoreBase) * 100) : 100;
+  return {
+    score,
+    completedCount,
+    onTimeCount,
+    failedCount,
+    needsAttentionCount,
+    overdueCount,
+    dueSoonCount,
+    scheduledCount,
+    equipmentCount: report.assets.length
+  };
+}
+
+function incrementPmComplianceRollup(map, key, label, patch = {}) {
+  const id = key || "unassigned";
+  if (!map.has(id)) {
+    map.set(id, {
+      id,
+      label: label || "Unassigned",
+      completed: 0,
+      failed: 0,
+      needsAttention: 0,
+      overdue: 0,
+      dueSoon: 0,
+      scheduled: 0
+    });
+  }
+  const record = map.get(id);
+  Object.entries(patch).forEach(([field, value]) => {
+    record[field] = (record[field] || 0) + Number(value || 0);
+  });
+  return record;
+}
+
+function pmComplianceRollups(report = pmComplianceRecords()) {
+  const byLocation = new Map();
+  const byTech = new Map();
+  report.completed.forEach((record) => {
+    const failed = /failed/i.test(record.status) ? 1 : 0;
+    const needsAttention = /needs attention|failed/i.test(record.status) ? 1 : 0;
+    incrementPmComplianceRollup(byLocation, record.location?.id, record.location?.name || "Unknown location", {
+      completed: 1,
+      failed,
+      needsAttention
+    });
+    incrementPmComplianceRollup(byTech, normalizedName(record.technician), record.technician || "Unassigned", {
+      completed: 1,
+      failed,
+      needsAttention
+    });
+  });
+  report.assetStatus.forEach((record) => {
+    const scheduled = record.visits.length ? 1 : 0;
+    const overdue = record.due.daysUntil < 0 && !scheduled ? 1 : 0;
+    const dueSoon = record.due.daysUntil >= 0 && record.due.daysUntil <= 14 && !scheduled ? 1 : 0;
+    incrementPmComplianceRollup(byLocation, record.location?.id, record.location?.name || "Unknown location", {
+      scheduled,
+      overdue,
+      dueSoon
+    });
+    record.visits.forEach((visit) => {
+      incrementPmComplianceRollup(byTech, normalizedName(visit.assignedUserName), visit.assignedUserName || "Unassigned", {
+        scheduled: 1
+      });
+    });
+  });
+  const sorter = (a, b) =>
+    (b.overdue + b.failed + b.needsAttention + b.dueSoon) - (a.overdue + a.failed + a.needsAttention + a.dueSoon)
+    || b.completed - a.completed
+    || a.label.localeCompare(b.label);
+  return {
+    locations: [...byLocation.values()].sort(sorter),
+    technicians: [...byTech.values()].sort(sorter)
+  };
+}
+
+function pmComplianceExceptions(report = pmComplianceRecords()) {
+  const completedExceptions = report.completed
+    .filter((record) => /needs attention|failed/i.test(record.status))
+    .map((record) => ({
+      severity: /failed/i.test(record.status) ? "High" : "Watch",
+      type: /failed/i.test(record.status) ? "Failed PM" : "Needs attention",
+      asset: record.asset,
+      customer: record.customer,
+      location: record.location,
+      date: record.completedAt,
+      owner: record.technician || "Unassigned",
+      detail: record.status
+    }));
+  const dueExceptions = report.assetStatus
+    .filter((record) => record.due.daysUntil < 0 || record.failedTickets.length || (!record.visits.length && record.due.daysUntil <= 14))
+    .map((record) => ({
+      severity: record.failedTickets.length || record.due.daysUntil < 0 ? "High" : "Watch",
+      type: record.failedTickets.length ? "Failed follow-up open" : record.due.daysUntil < 0 ? "Overdue PM" : "Due soon",
+      asset: record.asset,
+      customer: record.customer,
+      location: record.location,
+      date: record.due.nextDate,
+      owner: record.visits[0]?.assignedUserName || "Unassigned",
+      detail: record.failedTickets.length
+        ? `${record.failedTickets.length} open follow-up${record.failedTickets.length === 1 ? "" : "s"}`
+        : record.due.label
+    }));
+  return [...dueExceptions, ...completedExceptions]
+    .sort((a, b) => (a.severity === "High" ? -1 : 1) - (b.severity === "High" ? -1 : 1) || new Date(a.date) - new Date(b.date))
+    .slice(0, 12);
+}
+
+function renderPmCompliance() {
+  if (!els.pmComplianceSummary || !els.pmComplianceContent) return;
+  const report = pmComplianceRecords();
+  const buckets = pmComplianceStatusBuckets(report);
+  const rollups = pmComplianceRollups(report);
+  const exceptions = pmComplianceExceptions(report);
+  if (els.pmComplianceCount) els.pmComplianceCount.textContent = `${buckets.score}%`;
+  els.pmComplianceSummary.innerHTML = `
+    <article class="${buckets.score >= 90 ? "is-good" : buckets.score >= 75 ? "is-watch" : "is-risk"}">
+      <strong>${escapeHtml(`${buckets.score}%`)}</strong>
+      <span>Compliance score</span>
+    </article>
+    <article><strong>${escapeHtml(formatInventoryNumber(buckets.completedCount))}</strong><span>Completed</span></article>
+    <article><strong>${escapeHtml(formatInventoryNumber(buckets.overdueCount))}</strong><span>Overdue unscheduled</span></article>
+    <article><strong>${escapeHtml(formatInventoryNumber(buckets.scheduledCount))}</strong><span>Scheduled</span></article>
+    <article><strong>${escapeHtml(formatInventoryNumber(buckets.needsAttentionCount))}</strong><span>Needs attention</span></article>
+    <article><strong>${escapeHtml(formatInventoryNumber(buckets.equipmentCount))}</strong><span>Equipment tracked</span></article>
+  `;
+  els.pmComplianceContent.innerHTML = `
+    <section class="pm-compliance-grid">
+      ${renderPmComplianceRollup("By location", rollups.locations, "No location data for this view.")}
+      ${renderPmComplianceRollup("By tech / contractor", rollups.technicians, "No tech activity for this view.")}
+    </section>
+    <section class="pm-compliance-exceptions">
+      <header>
+        <strong>Exceptions</strong>
+        <span>${escapeHtml(formatInventoryNumber(exceptions.length))} shown</span>
+      </header>
+      ${exceptions.length ? exceptions.map(renderPmComplianceException).join("") : `<p class="muted">No overdue, failed, or attention PMs for this view.</p>`}
+    </section>
+  `;
+}
+
+function renderPmComplianceRollup(title = "", records = [], emptyText = "") {
+  return `
+    <article class="pm-compliance-card">
+      <header>
+        <strong>${escapeHtml(title)}</strong>
+      </header>
+      ${records.length ? records.slice(0, 8).map((record) => `
+        <div class="pm-compliance-row">
+          <strong>${escapeHtml(record.label)}</strong>
+          <span>${escapeHtml([
+            record.completed ? `${record.completed} done` : "",
+            record.scheduled ? `${record.scheduled} scheduled` : "",
+            record.overdue ? `${record.overdue} overdue` : "",
+            record.failed ? `${record.failed} failed` : "",
+            record.needsAttention ? `${record.needsAttention} attention` : ""
+          ].filter(Boolean).join(" | ") || "No current PM activity")}</span>
+        </div>
+      `).join("") : `<p class="muted">${escapeHtml(emptyText)}</p>`}
+    </article>
+  `;
+}
+
+function renderPmComplianceException(item = {}) {
+  const severityClass = item.severity === "High" ? "is-risk" : item.severity === "Medium" ? "is-watch" : "";
+  return `
+    <article class="pm-compliance-exception ${severityClass}">
+      <div>
+        <strong>${escapeHtml(item.asset?.name || "Equipment")}</strong>
+        <span>${escapeHtml([item.customer?.name, item.location?.name, item.type].filter(Boolean).join(" | "))}</span>
+      </div>
+      <div>
+        <strong>${escapeHtml(item.detail || "")}</strong>
+        <span>${escapeHtml(`${formatDate(item.date)} | ${item.owner || "Unassigned"}`)}</span>
+      </div>
+    </article>
+  `;
+}
+
+function exportPmComplianceCsv() {
+  const report = pmComplianceRecords();
+  const exceptions = pmComplianceExceptions(report);
+  const rows = [
+    ["Type", "Severity", "Customer", "Location", "Equipment", "Date", "Owner", "Detail"],
+    ...exceptions.map((item) => [
+      item.type,
+      item.severity,
+      item.customer?.name || "",
+      item.location?.name || "",
+      item.asset?.name || "",
+      item.date ? formatDate(item.date) : "",
+      item.owner || "",
+      item.detail || ""
+    ]),
+    [],
+    ["Completed PM", "Result", "Customer", "Location", "Equipment", "Completed At", "Technician", "Notes"],
+    ...report.completed.map((record) => [
+      "Completed PM",
+      record.status,
+      record.customer?.name || "",
+      record.location?.name || "",
+      record.asset?.name || "",
+      formatDateTime(record.completedAt),
+      record.technician || "",
+      record.notes || ""
+    ])
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `siteworks-pm-compliance-${timestampForFile()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -41978,6 +42274,12 @@ function addDays(date, days) {
 function startOfDay(date) {
   const safeDate = coerceValidDate(date) || today;
   return new Date(safeDate.getFullYear(), safeDate.getMonth(), safeDate.getDate());
+}
+
+function endOfDay(date) {
+  const safeDate = startOfDay(date);
+  safeDate.setHours(23, 59, 59, 999);
+  return safeDate;
 }
 
 function parseLocalDate(value) {

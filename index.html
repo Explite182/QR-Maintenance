@@ -260,6 +260,9 @@
           <button type="button" class="sidebar-nav-btn" data-open-target="pmCalendarPanel" aria-expanded="false">
             <span>Calendar</span>
           </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="pmCompliancePanel" aria-expanded="false">
+            <span>PM Compliance</span>
+          </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="assetRegisterDrawer" aria-expanded="false">
             <span>Equipment Register</span>
           </button>
@@ -1054,6 +1057,23 @@
           </div>
           <div id="pmCalendarSummary" class="pm-calendar-summary"></div>
           <div id="pmCalendarList" class="pm-calendar-list"></div>
+        </div>
+      </section>
+
+      <section id="pmCompliancePanel" class="work-orders-panel pm-compliance-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="pmCompliancePanel">
+          <h2>PM Compliance</h2>
+          <span class="panel-title-actions">
+            <span id="pmComplianceCount">0</span>
+          </span>
+        </div>
+        <div class="pm-compliance-body" data-panel-body>
+          <div class="pm-compliance-toolbar">
+            <span>Last 30 days</span>
+            <button id="exportPmComplianceBtn" type="button" class="secondary mini">Export CSV</button>
+          </div>
+          <div id="pmComplianceSummary" class="pm-compliance-summary"></div>
+          <div id="pmComplianceContent" class="pm-compliance-content"></div>
         </div>
       </section>
 
@@ -2690,6 +2710,7 @@
     </div>
     <div id="mobilePmMenu" class="mobile-create-menu hidden" aria-label="Preventive maintenance">
       <button type="button" data-mobile-pm-target="pmCalendarPanel">Calendar</button>
+      <button type="button" data-mobile-pm-target="pmCompliancePanel">PM Compliance</button>
       <button type="button" data-mobile-pm-target="siteMapPanel">Site Map</button>
       <button type="button" data-mobile-pm-target="monitoringPanel">Panel Monitor</button>
       <button type="button" data-mobile-pm-target="automationHvacPanel">HVAC</button>
