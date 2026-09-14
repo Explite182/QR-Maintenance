@@ -29858,7 +29858,7 @@ function updateEstimateFromCustomerPortal(estimateId = "", action = "") {
     estimate.declinedAt = "";
     estimate.declinedBy = "";
     workOrder.status = workOrder.status === "Closed" ? workOrder.status : "In progress";
-    workOrder.billingStatus = workOrder.billingStatus === "billed" ? workOrder.billingStatus : "draft";
+    applyAcceptedEstimateToBilling(estimate, workOrder, { actor, automatic: true });
   } else {
     estimate.declinedAt = now;
     estimate.declinedBy = actor;
@@ -34437,7 +34437,15 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
       ? `Declined ${formatDateTime(new Date(estimate.declinedAt))}${estimate.declinedBy ? ` by ${estimate.declinedBy}` : ""}`
       : "";
   const estimateStatus = ["Draft", "Sent", "Accepted", "Declined"].includes(estimate.status) ? estimate.status : "Draft";
-  const canUseForBilling = estimate.status === "Accepted" && lines.length && !estimate.convertedToBillingAt;
+  const requiredLineCount = lines.filter((line) => !line.optional).length;
+  const canUseForBilling = estimate.status === "Accepted" && requiredLineCount && !estimate.convertedToBillingAt;
+  const billingHandoffNote = estimate.status === "Accepted"
+    ? estimate.convertedToBillingAt
+      ? `Billing lines created ${formatDateTime(new Date(estimate.convertedToBillingAt))}`
+      : requiredLineCount
+        ? "Ready to move into billing"
+        : "Accepted, but no required lines are available for billing"
+    : "";
   return `
     <article class="estimate-record is-${escapeAttribute(String(estimate.status || "Draft").toLowerCase())}">
       <header>
@@ -34445,7 +34453,7 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
           <strong>${escapeHtml(estimate.estimateNumber)} | ${escapeHtml(estimate.title)}</strong>
           <span class="estimate-status-row"><span class="estimate-status-badge is-${escapeAttribute(estimateStatus.toLowerCase())}">${escapeHtml(estimateStatus)}</span><span>Required ${escapeHtml(formatMoney(requiredTotal))}${fullTotal !== requiredTotal ? ` | With options ${escapeHtml(formatMoney(fullTotal))}` : ""}</span></span>
           ${approvalLabel ? `<span class="estimate-approval-note is-${escapeAttribute(estimateStatus.toLowerCase())}">${escapeHtml(approvalLabel)}</span>` : ""}
-          ${estimate.convertedToBillingAt ? `<span>Billing lines created ${escapeHtml(formatDateTime(new Date(estimate.convertedToBillingAt)))}</span>` : ""}
+          ${billingHandoffNote ? `<span>${escapeHtml(billingHandoffNote)}</span>` : ""}
         </div>
         <div class="estimate-actions">
           <button type="button" class="primary mini estimate-send-action" data-estimate-preview="${escapeAttribute(estimate.id)}">Preview</button>
@@ -34601,6 +34609,7 @@ function updateEstimateStatus(estimateId = "", status = "Draft") {
     estimate.declinedAt = "";
     estimate.declinedBy = "";
     workOrder.status = workOrder.status === "Closed" ? workOrder.status : "In progress";
+    applyAcceptedEstimateToBilling(estimate, workOrder, { automatic: true });
   } else if (normalized === "Declined") {
     estimate.declinedAt = estimate.declinedAt || estimate.updatedAt;
     estimate.declinedBy = estimate.declinedBy || getCurrentUserLabel();
@@ -34613,15 +34622,8 @@ function updateEstimateStatus(estimateId = "", status = "Draft") {
   render();
 }
 
-function convertEstimateToBillingLines(estimateId = "") {
-  const estimate = getEstimate(estimateId);
-  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
-  if (!estimate || !workOrder || !canManageWorkOrders()) return;
-  if (estimate.status !== "Accepted") {
-    alert("Only accepted estimates can be used for billing.");
-    return;
-  }
-  const lines = normalizeEstimateLines(estimate.lines || [])
+function estimateBillingLines(estimate = {}) {
+  return normalizeEstimateLines(estimate.lines || [])
     .filter((line) => !line.optional)
     .map((line) => ({
       id: crypto.randomUUID(),
@@ -34635,24 +34637,54 @@ function convertEstimateToBillingLines(estimateId = "") {
       sourceEstimateId: estimate.id,
       taxable: line.taxable !== false
     }));
+}
+
+function applyAcceptedEstimateToBilling(estimate = {}, workOrder = {}, options = {}) {
+  if (!estimate?.id || !workOrder?.id || estimate.status !== "Accepted") {
+    return { converted: false, reason: "not-accepted", lineCount: 0 };
+  }
+  if (estimate.convertedToBillingAt && !options.force) {
+    return { converted: false, reason: "already-converted", lineCount: 0 };
+  }
+  const lines = estimateBillingLines(estimate);
   if (!lines.length) {
-    alert("This estimate has no required lines to bill.");
-    return;
+    return { converted: false, reason: "no-required-lines", lineCount: 0 };
   }
   const now = new Date().toISOString();
+  const actor = options.actor || getCurrentUserLabel();
   const existingLines = normalizeBillingLines(workOrder.billingLines || [])
     .filter((line) => line.sourceEstimateId !== estimate.id);
   workOrder.billingLines = normalizeBillingLines([...existingLines, ...lines]);
-  workOrder.billingStatus = "ready";
+  workOrder.billingStatus = workOrder.billingStatus === "billed" ? "billed" : "ready";
   workOrder.billingMemo = workOrder.billingMemo || `Approved estimate ${estimate.estimateNumber}`;
   workOrder.billingUpdatedAt = now;
-  workOrder.billingUpdatedBy = getCurrentUserLabel();
+  workOrder.billingUpdatedBy = actor;
   workOrder.updatedAt = now;
   estimate.convertedToBillingAt = now;
-  estimate.convertedToBillingBy = getCurrentUserLabel();
+  estimate.convertedToBillingBy = actor;
   estimate.updatedAt = now;
-  addWorkOrderHistory(workOrder, "Estimate used for billing", `${estimate.estimateNumber} | ${formatMoney(estimateTotal(estimate, false))} | ${lines.length} line${lines.length === 1 ? "" : "s"}`);
-  addActivity("Estimate moved to billing", `${estimate.estimateNumber} - ${formatIssueNumber(workOrder)}`);
+  addWorkOrderHistory(workOrder, options.automatic ? "Accepted estimate prepared for billing" : "Estimate used for billing", `${estimate.estimateNumber} | ${formatMoney(estimateTotal(estimate, false))} | ${lines.length} line${lines.length === 1 ? "" : "s"}`);
+  addActivity(options.automatic ? "Quote ready for billing" : "Estimate moved to billing", `${estimate.estimateNumber} - ${formatIssueNumber(workOrder)}`);
+  syncSingleWorkOrderToServer(workOrder);
+  syncSingleEstimateToServer(estimate).catch((error) => {
+    console.warn("Estimate billing handoff cloud save failed.", error);
+  });
+  return { converted: true, reason: "converted", lineCount: lines.length };
+}
+
+function convertEstimateToBillingLines(estimateId = "") {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !workOrder || !canManageWorkOrders()) return;
+  if (estimate.status !== "Accepted") {
+    alert("Only accepted estimates can be used for billing.");
+    return;
+  }
+  const result = applyAcceptedEstimateToBilling(estimate, workOrder, { force: true });
+  if (result.reason === "no-required-lines") {
+    alert("This estimate has no required lines to bill.");
+    return;
+  }
   saveState();
   render();
 }
