@@ -10848,7 +10848,7 @@ document.addEventListener("click", async (event) => {
   const pmMenuToggle = event.target.closest("[data-pm-menu-toggle]");
   if (pmMenuToggle) {
     event.preventDefault();
-    togglePmSidebarMenu();
+    openPmSidebarTab("calendar");
     return;
   }
 
