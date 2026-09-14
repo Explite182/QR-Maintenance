@@ -27591,6 +27591,7 @@ function scheduledVisitCalendarRecords(windowInfo = pmCalendarWindow()) {
         kind: "scheduled",
         visit,
         workOrder,
+        assigneeLabel: pmCalendarAssigneeLabel(visit, workOrder),
         dueDate,
         customer: getCustomer(workOrder.customerId),
         location: getLocation(workOrder.locationId),
@@ -27599,6 +27600,11 @@ function scheduledVisitCalendarRecords(windowInfo = pmCalendarWindow()) {
     })
     .filter(Boolean)
     .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end);
+}
+
+function pmCalendarAssigneeLabel(visit = {}, workOrder = {}) {
+  const user = getUser(visit.assignedUserId || workOrder.assignedUserId || "");
+  return user?.name || user?.username || visit.assignedUserName || workOrder.assignedUserName || "Unassigned";
 }
 
 function scheduledRouteCalendarRecords(windowInfo = pmCalendarWindow()) {
@@ -27730,7 +27736,7 @@ function renderPmCalendarDayBoard(records, windowInfo) {
   const workload = pmCalendarDayWorkload(dayRecords);
   dayRecords.forEach((record) => {
     if (record.kind === "scheduled") {
-      const lane = record.visit.assignedUserName || "Unassigned";
+      const lane = record.assigneeLabel || "Unassigned";
       if (!scheduledGroups.has(lane)) scheduledGroups.set(lane, []);
       scheduledGroups.get(lane).push(record);
       return;
@@ -27768,8 +27774,8 @@ function pmCalendarDayWorkload(records = []) {
   let unassignedCount = 0;
   let totalMinutes = 0;
   scheduled.forEach((record) => {
-    const assignee = String(record.visit?.assignedUserName || "").trim();
-    if (assignee) assignedTechs.add(assignee.toLowerCase());
+    const assignee = String(record.assigneeLabel || "").trim();
+    if (assignee && assignee !== "Unassigned") assignedTechs.add(assignee.toLowerCase());
     else unassignedCount += 1;
     totalMinutes += Math.max(0, Number(record.visit?.durationMinutes || 0));
   });
@@ -27829,7 +27835,7 @@ function renderPmCalendarBoardEvent(record) {
     : pmCalendarRecordEquipmentLabel(record);
   const meta = [
     record.location?.name || "",
-    record.kind === "scheduled" ? record.visit.assignedUserName || "Unassigned" : record.template?.name || pmCalendarRecordCriticality(record)
+    record.kind === "scheduled" ? record.assigneeLabel || "Unassigned" : record.template?.name || pmCalendarRecordCriticality(record)
   ].filter(Boolean).join(" | ");
   return `
     <button type="button" class="pm-calendar-board-event pm-calendar-board-event-${tone}" ${pmCalendarRecordTargetAttribute(record)}>
@@ -28006,7 +28012,7 @@ function renderPmCalendarItem(record) {
         </span>
         <span>
           <small>${escapeHtml(record.asset?.name || record.workOrder.areaName || "Equipment / area")}</small>
-          <small>${escapeHtml(record.visit.assignedUserName || "Unassigned")} | ${escapeHtml(formatInventoryNumber(record.visit.durationMinutes || 60))} min</small>
+          <small>${escapeHtml(record.assigneeLabel || "Unassigned")} | ${escapeHtml(formatInventoryNumber(record.visit.durationMinutes || 60))} min</small>
         </span>
         <em>${escapeHtml(record.visit.status || "Scheduled")}</em>
       </button>
@@ -28130,7 +28136,7 @@ function emailPmCalendarList() {
     "",
     ...records.map((record) => {
       if (record.kind === "scheduled") {
-        return `${formatDateTime(new Date(record.visit.scheduledAt))} - Scheduled visit - ${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Ticket"} - ${record.location?.name || "No location"} - ${record.visit.assignedUserName || "Unassigned"} - ${record.visit.status || "Scheduled"}`;
+        return `${formatDateTime(new Date(record.visit.scheduledAt))} - Scheduled visit - ${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Ticket"} - ${record.location?.name || "No location"} - ${record.assigneeLabel || "Unassigned"} - ${record.visit.status || "Scheduled"}`;
       }
       const openTicketCount = record.kind === "route" ? 0 : openWorkOrdersForAsset(record.asset.id).length;
       const ticketText = openTicketCount ? ` | ${openTicketCount} open ticket${openTicketCount === 1 ? "" : "s"}` : "";
@@ -28153,7 +28159,7 @@ function exportPmCalendarCsv() {
       record.customer?.name || "",
       record.location?.name || "",
       pmCalendarRecordEquipmentLabel(record),
-      record.kind === "scheduled" ? record.visit.assignedUserName || "Unassigned" : record.template?.name || "",
+      record.kind === "scheduled" ? record.assigneeLabel || "Unassigned" : record.template?.name || "",
       pmCalendarRecordCriticality(record),
       record.kind === "scheduled" ? `${record.visit.durationMinutes || 60} minutes` : record.kind === "route" ? record.route.frequencyDays : record.asset.frequencyDays,
       record.kind === "scheduled" || record.kind === "route" ? "" : record.asset.history?.[0]?.completedAt || "",
@@ -28277,7 +28283,7 @@ function pmCalendarIcsDescription(record) {
       `Customer: ${record.customer?.name || ""}`,
       `Location: ${record.location?.name || ""}`,
       `Equipment: ${record.asset?.name || record.workOrder?.areaName || ""}`,
-      `Assigned: ${record.visit?.assignedUserName || "Unassigned"}`,
+      `Assigned: ${record.assigneeLabel || "Unassigned"}`,
       `Status: ${record.visit?.status || "Scheduled"}`,
       record.visit?.notes ? `Notes: ${record.visit.notes}` : ""
     ].filter(Boolean).join("\\n");
