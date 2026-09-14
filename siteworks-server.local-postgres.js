@@ -1461,6 +1461,156 @@ async function handlePublicReports(request, response, pathname) {
   return false;
 }
 
+async function ensureAutomationControllerSchema() {
+  if (!db) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS automation_controllers (
+      id uuid PRIMARY KEY,
+      system_type text NOT NULL,
+      customer_id uuid,
+      location_id uuid,
+      name text,
+      device_uid text,
+      controller_type text,
+      data jsonb NOT NULL DEFAULT '{}'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  const alters = [
+    "ADD COLUMN IF NOT EXISTS system_type text NOT NULL DEFAULT 'lighting'",
+    "ADD COLUMN IF NOT EXISTS customer_id uuid",
+    "ADD COLUMN IF NOT EXISTS location_id uuid",
+    "ADD COLUMN IF NOT EXISTS name text",
+    "ADD COLUMN IF NOT EXISTS device_uid text",
+    "ADD COLUMN IF NOT EXISTS controller_type text",
+    "ADD COLUMN IF NOT EXISTS data jsonb NOT NULL DEFAULT '{}'::jsonb",
+    "ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()",
+    "ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()"
+  ];
+  for (const alter of alters) {
+    await db.query(`ALTER TABLE automation_controllers ${alter}`);
+  }
+  await db.query("CREATE INDEX IF NOT EXISTS automation_controllers_scope_idx ON automation_controllers(system_type, customer_id, location_id)");
+}
+
+function normalizeAutomationSystemType(value = "") {
+  return String(value || "").toLowerCase() === "hvac" ? "hvac" : "lighting";
+}
+
+function automationControllerFromRow(row = {}) {
+  const data = row.data && typeof row.data === "object" ? row.data : {};
+  return {
+    ...data,
+    id: row.id || data.id || "",
+    customerId: row.customer_id || data.customerId || "",
+    customer_id: row.customer_id || data.customer_id || "",
+    locationId: row.location_id || data.locationId || "",
+    location_id: row.location_id || data.location_id || "",
+    name: row.name || data.name || "",
+    uid: data.uid || row.device_uid || data.deviceUid || data.device_uid || "",
+    device_uid: row.device_uid || data.device_uid || data.uid || "",
+    type: data.type || row.controller_type || data.controllerType || data.controller_type || "",
+    controller_type: row.controller_type || data.controller_type || data.type || "",
+    createdAt: data.createdAt || row.created_at || "",
+    created_at: row.created_at || data.created_at || "",
+    updatedAt: row.updated_at || data.updatedAt || "",
+    updated_at: row.updated_at || data.updated_at || "",
+    data
+  };
+}
+
+async function handleAutomationControllers(request, response, pathname) {
+  const match = pathname.match(/^\/api\/automation\/(lighting|hvac)\/controllers(?:\/([^/]+))?$/);
+  if (!match) return false;
+  if (!requireDatabase(response)) return true;
+  await ensureAutomationControllerSchema();
+
+  const systemType = normalizeAutomationSystemType(match[1]);
+  const controllerId = match[2] ? decodeURIComponent(match[2]) : "";
+  const actor = await getRequestActor(request);
+  const viewer = policies.normalizeUser(actor);
+
+  if (request.method === "GET" && !controllerId) {
+    policies.assertAllowed(Boolean(viewer.id || viewer.email), "Login required.");
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    const customerId = url.searchParams.get("customer_id") || url.searchParams.get("customerId") || "";
+    const locationId = url.searchParams.get("location_id") || url.searchParams.get("locationId") || "";
+    policies.assertAllowed(!customerId || policies.canSeeLocation(viewer, locationId, customerId), "This controller view is outside the user's scope.");
+    const params = [systemType];
+    const where = ["system_type = $1"];
+    if (customerId) where.push(`customer_id::text = ${addParam(params, customerId)}`);
+    if (locationId) where.push(`location_id::text = ${addParam(params, locationId)}`);
+    if (!policies.isAdmin(viewer) && !customerId) {
+      policies.assertAllowed(viewer.customerId, "This user does not have a customer scope.");
+      where.push(`customer_id::text = ${addParam(params, viewer.customerId)}`);
+      if (viewer.locationId) where.push(`location_id::text = ${addParam(params, viewer.locationId)}`);
+    }
+    const result = await db.query(`
+      SELECT *
+      FROM automation_controllers
+      WHERE ${where.join(" AND ")}
+      ORDER BY updated_at DESC, name ASC
+      LIMIT 200
+    `, params);
+    return sendJson(response, 200, { ok: true, controllers: result.rows.map(automationControllerFromRow) }, { "Cache-Control": "no-store" });
+  }
+
+  if (request.method === "POST" && !controllerId) {
+    const body = await getRequestBody(request);
+    const customerId = body.customer_id || body.customerId || "";
+    const locationId = body.location_id || body.locationId || "";
+    policies.assertAllowed(policies.canManageTickets(viewer, { customerId, customer_id: customerId, locationId, location_id: locationId }), "Only Admin or Manager users can save automation controllers.");
+    const id = body.id || randomUUID();
+    const now = new Date().toISOString();
+    const data = {
+      ...body,
+      id,
+      customerId,
+      customer_id: customerId,
+      locationId,
+      location_id: locationId,
+      updatedAt: now,
+      updated_at: now,
+      createdAt: body.createdAt || body.created_at || now,
+      created_at: body.created_at || body.createdAt || now
+    };
+    const name = body.name || `${systemType === "hvac" ? "HVAC" : "Lighting"} Controller`;
+    const deviceUid = body.device_uid || body.deviceUid || body.uid || "";
+    const controllerType = body.controller_type || body.controllerType || body.type || "";
+    await db.query(`
+      INSERT INTO automation_controllers (
+        id, system_type, customer_id, location_id, name, device_uid, controller_type, data, created_at, updated_at
+      )
+      VALUES ($1, $2, NULLIF($3, '')::uuid, NULLIF($4, '')::uuid, $5, $6, $7, $8, COALESCE($9::timestamptz, now()), now())
+      ON CONFLICT (id)
+      DO UPDATE SET
+        system_type = EXCLUDED.system_type,
+        customer_id = EXCLUDED.customer_id,
+        location_id = EXCLUDED.location_id,
+        name = EXCLUDED.name,
+        device_uid = EXCLUDED.device_uid,
+        controller_type = EXCLUDED.controller_type,
+        data = EXCLUDED.data,
+        updated_at = now()
+      RETURNING *
+    `, [id, systemType, customerId, locationId, name, deviceUid, controllerType, JSON.stringify(data), data.created_at || null]);
+    const result = await db.query("SELECT * FROM automation_controllers WHERE id = $1 LIMIT 1", [id]);
+    return sendJson(response, 200, { ok: true, controller: automationControllerFromRow(result.rows[0]) }, { "Cache-Control": "no-store" });
+  }
+
+  if (request.method === "DELETE" && controllerId) {
+    policies.assertAllowed(policies.isAdmin(viewer) || policies.isManager(viewer), "Only Admin or Manager users can delete automation controllers.");
+    const result = await db.query(
+      "DELETE FROM automation_controllers WHERE id::text = $1 AND system_type = $2 RETURNING id",
+      [controllerId, systemType]
+    );
+    return sendJson(response, 200, { ok: true, deleted: result.rowCount || 0 });
+  }
+
+  return false;
+}
+
 async function ensureEstimatesSchema() {
   if (!db) return;
   await db.query(`
@@ -2606,6 +2756,7 @@ async function handleRequest(request, response) {
     const handled = await handleAuth(request, response, pathname)
       || await handleUsers(request, response, pathname)
       || await handleMonitoring(request, response, pathname)
+      || await handleAutomationControllers(request, response, pathname)
       || await handlePublicReports(request, response, pathname)
       || await handlePublicQuotes(request, response, pathname)
       || await handlePublicSchedules(request, response, pathname)

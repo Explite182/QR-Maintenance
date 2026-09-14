@@ -13780,8 +13780,27 @@ async function loadLightingControllersForCurrentScope({ force = false } = {}) {
     const response = await siteworksApi.loadLightingControllers(selectedCustomerId, selectedLocationId);
     if (!response.ok) throw new Error(`Lighting controller load failed: ${response.status}`);
     const payload = await response.json();
-    lightingControllersCache = Array.isArray(payload.controllers) ? payload.controllers : [];
+    const serverControllers = Array.isArray(payload.controllers) ? payload.controllers : [];
+    const localScopeControllers = getLightingControllers().filter((controller) => (
+      controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId
+    ));
+    lightingControllersCache = serverControllers.length || !localScopeControllers.length
+      ? serverControllers
+      : localScopeControllers;
     lightingControllersLoadedScope = scopeKey;
+    const localOtherScopes = getLightingControllers().filter((controller) => (
+      controller.customerId !== selectedCustomerId || controller.locationId !== selectedLocationId
+    ));
+    saveLightingControllers([...lightingControllersCache, ...localOtherScopes]);
+    if (!serverControllers.length && localScopeControllers.length) {
+      Promise.allSettled(localScopeControllers.map((controller) => siteworksApi.saveLightingController({
+        ...controller,
+        customer_id: controller.customerId || controller.customer_id || selectedCustomerId,
+        location_id: controller.locationId || controller.location_id || selectedLocationId,
+        device_uid: controller.device_uid || controller.deviceUid || controller.uid || "",
+        controller_type: controller.controller_type || controller.controllerType || controller.type || ""
+      }))).catch((error) => console.warn("Local lighting controllers could not be promoted to the server.", error));
+    }
     loadServerNotifications();
     if (status) status.textContent = "";
   } catch (error) {
@@ -23498,6 +23517,15 @@ async function loadHvacControllersForCurrentScope(force = false) {
     hvacControllersServerLoadedAt = hvacControllersLoadedAt;
     const localOtherScopes = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` !== scopeKey);
     saveHvacControllers([...hvacControllersCache, ...localOtherScopes], { sync: false });
+    if (!serverControllers.length && localScopeControllers.length) {
+      Promise.allSettled(localScopeControllers.map((controller) => siteworksApi.saveHvacController({
+        ...controller,
+        customer_id: controller.customerId || controller.customer_id || selectedCustomerId,
+        location_id: controller.locationId || controller.location_id || selectedLocationId,
+        device_uid: controller.device_uid || controller.deviceUid || controller.uid || "",
+        controller_type: controller.controller_type || controller.controllerType || controller.type || ""
+      }))).catch((error) => console.warn("Local HVAC controllers could not be promoted to the server.", error));
+    }
   } catch (error) {
     console.warn("HVAC controllers could not be loaded from the server.", error);
     hvacControllersCache = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` === scopeKey);
