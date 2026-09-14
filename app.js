@@ -13597,9 +13597,10 @@ function getLatestLightingCommandForZone(zoneId) {
 
 function isLightingCommandStale(command = {}) {
   const status = String(command.status || "pending").toLowerCase();
-  if (!["pending", "acknowledged"].includes(status)) return false;
+  if (!["pending", "acknowledged", "queued"].includes(status)) return false;
   const createdAt = Date.parse(command.createdAt || command.created_at || "");
-  return Number.isFinite(createdAt) && Date.now() - createdAt > LIGHTING_COMMAND_STALE_MS;
+  if (!Number.isFinite(createdAt)) return true;
+  return Date.now() - createdAt > LIGHTING_COMMAND_STALE_MS;
 }
 
 function getLightingCommandStatusHtml(zone) {
