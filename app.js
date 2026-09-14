@@ -6759,6 +6759,7 @@ let billingQueueFilter = "ready";
 let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
 let pmCalendarMode = "all";
+let quickCalendarCreateDraft = null;
 let selectedMonitoringPanelId = "";
 let selectedMonitoringBreakerChannelId = "";
 let selectedMonitoringBreakerCircuit = "";
@@ -11720,6 +11721,27 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const pmCalendarDayButton = event.target.closest("[data-pm-calendar-day-add]");
+  if (pmCalendarDayButton) {
+    event.preventDefault();
+    openQuickCalendarCreate(pmCalendarDayButton.dataset.pmCalendarDayAdd || "");
+    return;
+  }
+
+  const pmCalendarDayCell = event.target.closest("[data-pm-calendar-day]");
+  if (pmCalendarDayCell && !event.target.closest("button, a, input, select, textarea, summary, details")) {
+    event.preventDefault();
+    openQuickCalendarCreate(pmCalendarDayCell.dataset.pmCalendarDay || "");
+    return;
+  }
+
+  const quickCalendarCloseButton = event.target.closest("[data-quick-calendar-close]");
+  if (quickCalendarCloseButton) {
+    event.preventDefault();
+    closeQuickCalendarCreate();
+    return;
+  }
+
   const serviceActionButton = event.target.closest("[data-service-request-action]");
   if (serviceActionButton && canManageWorkOrders()) {
     event.preventDefault();
@@ -11986,6 +12008,20 @@ document.addEventListener("submit", (event) => {
   if (!schedulePmForm) return;
   event.preventDefault();
   schedulePmForAsset(schedulePmForm.dataset.schedulePmAsset, new FormData(schedulePmForm));
+});
+
+document.addEventListener("submit", (event) => {
+  const quickCalendarForm = event.target.closest("[data-quick-calendar-create-form]");
+  if (!quickCalendarForm) return;
+  event.preventDefault();
+  createQuickCalendarWorkOrder(new FormData(quickCalendarForm));
+});
+
+document.addEventListener("change", (event) => {
+  const field = event.target.closest("[data-quick-calendar-field]");
+  if (!field) return;
+  updateQuickCalendarCreateDraft(field.form || field.closest("form"));
+  renderQuickCalendarCreateForm();
 });
 
 document.addEventListener("submit", (event) => {
@@ -27754,8 +27790,9 @@ function renderPmCalendarMonthGrid(records, windowInfo) {
     const outsideClass = cellDate >= windowInfo.start && cellDate <= windowInfo.end ? "" : " is-outside";
     const todayClass = key === toDateInputValue(today) ? " is-today" : "";
     cells.push(`
-      <div class="pm-calendar-cell${outsideClass}${todayClass}">
+      <div class="pm-calendar-cell${outsideClass}${todayClass}" data-pm-calendar-day="${escapeAttribute(key)}">
         <div class="pm-calendar-cell-date">${cellDate.getDate()}</div>
+        <button type="button" class="pm-calendar-cell-add" data-pm-calendar-day-add="${escapeAttribute(key)}" aria-label="Add ticket or service call on ${escapeAttribute(formatDate(cellDate))}">+</button>
         <div class="pm-calendar-cell-items">
           ${items.slice(0, 4).map(renderPmCalendarTask).join("")}
           ${items.length > 4 ? `<span class="pm-calendar-more">+${items.length - 4} more</span>` : ""}
@@ -29699,6 +29736,278 @@ function getPmScheduleAssigneeOptions(asset = {}, selectedValue = "") {
       return `<option value="${escapeAttribute(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(contractor.name)}${contractor.trade ? ` | ${escapeHtml(contractor.trade)}` : " | Contractor"}</option>`;
     })
   ].join("");
+}
+
+function openQuickCalendarCreate(dateKey = "") {
+  if (!canCreateWorkOrders()) return;
+  const selectedDate = parseLocalDate(dateKey) || new Date();
+  const customerId = selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS
+    ? selectedCustomerId
+    : visibleCustomers()[0]?.id || "";
+  const locations = quickCalendarLocationsForCustomer(customerId);
+  const locationId = selectedLocationId && selectedLocationId !== ALL_LOCATIONS && locations.some((locationRecord) => locationRecord.id === selectedLocationId)
+    ? selectedLocationId
+    : locations[0]?.id || "";
+  quickCalendarCreateDraft = {
+    kind: "ticket",
+    date: toDateInputValue(selectedDate),
+    time: "08:00",
+    customerId,
+    locationId,
+    assetId: "",
+    assignee: "",
+    durationMinutes: 60,
+    priority: "Medium",
+    title: "",
+    notes: ""
+  };
+  renderQuickCalendarCreateForm();
+}
+
+function closeQuickCalendarCreate() {
+  quickCalendarCreateDraft = null;
+  document.getElementById("quickCalendarCreateOverlay")?.remove();
+}
+
+function updateQuickCalendarCreateDraft(form) {
+  if (!form || !quickCalendarCreateDraft) return;
+  const formData = new FormData(form);
+  const previousCustomerId = quickCalendarCreateDraft.customerId || "";
+  const previousLocationId = quickCalendarCreateDraft.locationId || "";
+  const customerId = String(formData.get("customerId") || previousCustomerId || "").trim();
+  const locations = quickCalendarLocationsForCustomer(customerId);
+  const locationIdCandidate = String(formData.get("locationId") || previousLocationId || "").trim();
+  const locationId = locations.some((locationRecord) => locationRecord.id === locationIdCandidate)
+    ? locationIdCandidate
+    : locations[0]?.id || "";
+  const assets = quickCalendarAssetsForScope(customerId, locationId);
+  const assetIdCandidate = String(formData.get("assetId") || "").trim();
+  const assetId = assets.some((asset) => asset.id === assetIdCandidate) ? assetIdCandidate : "";
+  quickCalendarCreateDraft = {
+    ...quickCalendarCreateDraft,
+    kind: String(formData.get("kind") || "ticket"),
+    date: String(formData.get("date") || quickCalendarCreateDraft.date || toDateInputValue(new Date())),
+    time: String(formData.get("time") || quickCalendarCreateDraft.time || "08:00"),
+    customerId,
+    locationId,
+    assetId,
+    assignee: customerId === previousCustomerId ? String(formData.get("assignee") || "") : "",
+    durationMinutes: Math.max(15, Number(formData.get("durationMinutes") || quickCalendarCreateDraft.durationMinutes || 60)),
+    priority: normalizePriority(formData.get("priority")),
+    title: String(formData.get("title") || "").trim(),
+    notes: String(formData.get("notes") || "").trim()
+  };
+}
+
+function renderQuickCalendarCreateForm() {
+  if (!quickCalendarCreateDraft) return;
+  let overlay = document.getElementById("quickCalendarCreateOverlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "quickCalendarCreateOverlay";
+    overlay.className = "quick-calendar-overlay";
+    document.body.appendChild(overlay);
+  }
+  const draft = quickCalendarCreateDraft;
+  const customers = visibleCustomers();
+  const customerId = customers.some((customer) => customer.id === draft.customerId) ? draft.customerId : customers[0]?.id || "";
+  const locations = quickCalendarLocationsForCustomer(customerId);
+  const locationId = locations.some((locationRecord) => locationRecord.id === draft.locationId) ? draft.locationId : locations[0]?.id || "";
+  const assets = quickCalendarAssetsForScope(customerId, locationId);
+  const assigneeOptions = getQuickCalendarAssigneeOptions(customerId, draft.assignee);
+  const selectedAsset = assets.find((asset) => asset.id === draft.assetId) || null;
+  const selectedLocation = getLocation(locationId);
+  const fallbackTitle = draft.kind === "service"
+    ? `Service call: ${selectedAsset?.name || selectedLocation?.name || "Site visit"}`
+    : `Ticket: ${selectedAsset?.name || selectedLocation?.name || "Site issue"}`;
+  overlay.innerHTML = `
+    <section class="quick-calendar-card" role="dialog" aria-modal="true" aria-labelledby="quickCalendarCreateTitle">
+      <header class="quick-calendar-header">
+        <div>
+          <p class="eyebrow">${escapeHtml(formatDate(parseLocalDate(draft.date) || new Date()))}</p>
+          <h3 id="quickCalendarCreateTitle">Add to calendar</h3>
+        </div>
+        <button type="button" class="icon-btn" data-quick-calendar-close aria-label="Close quick calendar form">X</button>
+      </header>
+      <form class="quick-calendar-form" data-quick-calendar-create-form>
+        <input type="hidden" name="date" value="${escapeAttribute(draft.date)}">
+        <label>
+          Type
+          <select name="kind" data-quick-calendar-field>
+            <option value="ticket" ${draft.kind !== "service" ? "selected" : ""}>Open ticket</option>
+            <option value="service" ${draft.kind === "service" ? "selected" : ""}>Service call</option>
+          </select>
+        </label>
+        <label>
+          Time
+          <input name="time" type="time" value="${escapeAttribute(draft.time || "08:00")}" data-quick-calendar-field>
+        </label>
+        <label>
+          Customer
+          <select name="customerId" data-quick-calendar-field>
+            ${customers.map((customer) => `<option value="${escapeAttribute(customer.id)}" ${customer.id === customerId ? "selected" : ""}>${escapeHtml(customer.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Location
+          <select name="locationId" data-quick-calendar-field>
+            ${locations.map((locationRecord) => `<option value="${escapeAttribute(locationRecord.id)}" ${locationRecord.id === locationId ? "selected" : ""}>${escapeHtml(locationRecord.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Equipment
+          <select name="assetId" data-quick-calendar-field>
+            <option value="">No equipment</option>
+            ${assets.map((asset) => `<option value="${escapeAttribute(asset.id)}" ${asset.id === draft.assetId ? "selected" : ""}>${escapeHtml(asset.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Tech or contractor
+          <select name="assignee" data-quick-calendar-field>${assigneeOptions}</select>
+        </label>
+        <label class="quick-calendar-title-field">
+          Title
+          <input name="title" value="${escapeAttribute(draft.title)}" placeholder="${escapeAttribute(fallbackTitle)}">
+        </label>
+        <label>
+          Priority
+          <select name="priority">
+            ${["Low", "Medium", "High"].map((priority) => `<option value="${priority}" ${normalizePriority(draft.priority) === priority ? "selected" : ""}>${priority}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          Duration
+          <input name="durationMinutes" type="number" min="15" step="15" value="${escapeAttribute(draft.durationMinutes || 60)}">
+        </label>
+        <label class="quick-calendar-notes-field">
+          Notes
+          <textarea name="notes" rows="3" placeholder="Access notes or quick details">${escapeHtml(draft.notes || "")}</textarea>
+        </label>
+        <div class="quick-calendar-actions">
+          <button type="button" class="ghost" data-quick-calendar-close>Cancel</button>
+          <button type="submit">${draft.kind === "service" ? "Create service call" : "Create open ticket"}</button>
+        </div>
+      </form>
+    </section>
+  `;
+}
+
+function quickCalendarLocationsForCustomer(customerId = "") {
+  if (!customerId) return [];
+  return state.locations
+    .filter((locationRecord) => locationRecord.customerId === customerId && canSeeLocation(locationRecord.id, customerId))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+}
+
+function quickCalendarAssetsForScope(customerId = "", locationId = "") {
+  if (!customerId || !locationId) return [];
+  return state.assets
+    .filter((asset) => asset.customerId === customerId && asset.locationId === locationId && canSeeAsset(asset))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+}
+
+function resolveQuickCalendarAssignee(customerId = "", value = "") {
+  if (!value) return { user: null, contractor: null };
+  if (value.startsWith("user:")) {
+    return { user: getUser(value.slice(5)), contractor: null };
+  }
+  if (value.startsWith("contractor:")) {
+    const contractorId = value.slice(11);
+    return {
+      user: null,
+      contractor: visiblePreferredContractors(customerId).find((contractor) => contractor.id === contractorId) || null
+    };
+  }
+  return { user: getUser(value), contractor: null };
+}
+
+function getQuickCalendarAssigneeOptions(customerId = "", selectedValue = "") {
+  const users = getAssignableUsersForWorkOrder({ customerId });
+  const contractors = visiblePreferredContractors(customerId);
+  return [
+    `<option value="" ${!selectedValue ? "selected" : ""}>Unassigned</option>`,
+    ...users.map((user) => {
+      const value = `user:${user.id}`;
+      return `<option value="${escapeAttribute(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(user.name || user.username)}${user.role ? ` | ${escapeHtml(user.role)}` : ""}</option>`;
+    }),
+    ...contractors.map((contractor) => {
+      const value = `contractor:${contractor.id}`;
+      return `<option value="${escapeAttribute(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(contractor.name)}${contractor.trade ? ` | ${escapeHtml(contractor.trade)}` : " | Contractor"}</option>`;
+    })
+  ].join("");
+}
+
+function createQuickCalendarWorkOrder(formData = new FormData()) {
+  if (!canCreateWorkOrders()) return;
+  const customerId = String(formData.get("customerId") || "").trim();
+  const locationId = String(formData.get("locationId") || "").trim();
+  if (!customerId || !locationId || !canSeeLocation(locationId, customerId)) return;
+  const assetId = String(formData.get("assetId") || "").trim();
+  const asset = assetId ? getAsset(assetId) : null;
+  if (assetId && (!asset || !canSeeAsset(asset))) return;
+  const locationRecord = getLocation(locationId);
+  const kind = String(formData.get("kind") || "ticket") === "service" ? "service" : "ticket";
+  const scheduledAt = parseDateTimeLocalInput(`${String(formData.get("date") || toDateInputValue(new Date()))}T${String(formData.get("time") || "08:00")}`);
+  if (!scheduledAt) return;
+  const { user, contractor } = resolveQuickCalendarAssignee(customerId, String(formData.get("assignee") || ""));
+  const assigneeName = user
+    ? user.name || user.username || ""
+    : contractor
+      ? contractor.name || contractor.email || ""
+      : "";
+  const fallbackTitle = kind === "service"
+    ? `Service call: ${asset?.name || locationRecord?.name || "Site visit"}`
+    : `Ticket: ${asset?.name || locationRecord?.name || "Site issue"}`;
+  const now = new Date().toISOString();
+  const notes = String(formData.get("notes") || "").trim();
+  const workOrder = {
+    id: crypto.randomUUID(),
+    issueNumber: nextIssueNumber(),
+    assetId: asset?.id || "",
+    customerId,
+    locationId,
+    areaName: asset ? "" : locationRecord?.name || "",
+    source: kind === "service" ? "Service call" : "Manual ticket",
+    title: String(formData.get("title") || "").trim() || fallbackTitle,
+    priority: normalizePriority(formData.get("priority")),
+    status: "Open",
+    assignedUserId: user?.id || "",
+    assignedUserName: assigneeName,
+    dueAt: scheduledAt,
+    notes: notes || "Created from the PM calendar.",
+    history: [],
+    createdAt: now,
+    updatedAt: now
+  };
+  const visit = {
+    id: crypto.randomUUID(),
+    workOrderId: workOrder.id,
+    customerId,
+    locationId,
+    assetId: asset?.id || "",
+    scheduledAt,
+    durationMinutes: Math.max(15, Number(formData.get("durationMinutes") || 60)),
+    assignedUserId: user?.id || "",
+    assignedUserName: assigneeName,
+    status: "Scheduled",
+    notes,
+    createdAt: now,
+    updatedAt: now
+  };
+  state.workOrders.unshift(workOrder);
+  state.scheduledVisits = normalizeScheduledVisits([visit, ...(state.scheduledVisits || [])]);
+  ensureScheduledVisitSnapshot(workOrder, visit);
+  addWorkOrderHistory(workOrder, kind === "service" ? "Service call created" : "Open ticket created", `${formatDateTime(scheduledAt)}${assigneeName ? ` | ${assigneeName}` : ""}`);
+  if (contractor) {
+    addWorkOrderHistory(workOrder, "Assigned contractor", `${contractor.name}${contractor.email ? ` | ${contractor.email}` : ""}${contractor.trade ? ` | ${contractor.trade}` : ""}`);
+  }
+  addActivity(kind === "service" ? "Service call created" : "Ticket created", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
+  focusedWorkOrderId = workOrder.id;
+  workOrderViewFilter = "active";
+  closeQuickCalendarCreate();
+  saveState();
+  syncSingleWorkOrderToServer(workOrder);
+  render();
 }
 
 function getActiveScheduledPmForAsset(assetId = "") {
