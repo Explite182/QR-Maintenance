@@ -11640,6 +11640,19 @@ textarea {
   grid-template-columns: 1fr;
 }
 
+.asset-side-sheet .schedule-pm-form {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.asset-side-sheet .schedule-pm-form label:nth-of-type(4),
+.asset-side-sheet .schedule-pm-form button {
+  grid-column: 1 / -1;
+}
+
+.asset-side-sheet .schedule-pm-form button {
+  justify-self: stretch;
+}
+
 .next-maintenance-card {
   display: grid;
   gap: 12px;
@@ -13464,6 +13477,38 @@ html[data-theme="dark"] .site-map-empty {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel);
+}
+
+.asset-nfc-card > summary {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.asset-nfc-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.asset-nfc-card > summary .label,
+.asset-nfc-card > summary strong {
+  display: inline-flex;
+  align-items: center;
+}
+
+.asset-nfc-card > summary strong {
+  color: var(--ink);
+}
+
+.asset-nfc-card:not([open]) {
+  grid-template-columns: 1fr;
+}
+
+.asset-nfc-card:not([open]) > :not(summary) {
+  display: none;
 }
 
 .asset-nfc-card strong,

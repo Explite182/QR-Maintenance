@@ -31910,17 +31910,19 @@ function renderAssetNfcPanel(asset) {
     `
     : `<p class="asset-nfc-mobile-note">NFC writing uses the local PC writer. Tap written tags with this phone to open SiteWorks.</p>`;
   return `
-    <div class="asset-nfc-card" data-nfc-status="${escapeAttribute(status.key)}">
-      <div>
+    <details class="asset-nfc-card asset-nfc-drawer" data-nfc-status="${escapeAttribute(status.key)}">
+      <summary>
         <span class="label">NFC tag</span>
         <strong>${escapeHtml(status.label)}</strong>
+      </summary>
+      <div>
         <small>UID: ${escapeHtml(uid)}</small>
         <small>Last written: ${escapeHtml(written)}</small>
         <small>Last verified: ${escapeHtml(verified)}</small>
       </div>
       ${writerControls}
       <p>${escapeHtml(tag.message || nfcUrlLabel)}</p>
-    </div>
+    </details>
   `;
 }
 
