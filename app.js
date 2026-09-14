@@ -6760,6 +6760,7 @@ let pmCalendarRange = "month";
 let pmCalendarDate = toDateInputValue(today);
 let pmCalendarMode = "all";
 let quickCalendarCreateDraft = null;
+let pmScheduleFeedback = null;
 let selectedMonitoringPanelId = "";
 let selectedMonitoringBreakerChannelId = "";
 let selectedMonitoringBreakerCircuit = "";
@@ -30007,6 +30008,12 @@ function schedulePmForAsset(assetId = "", formData = new FormData()) {
   }
   addActivity(activeSchedule ? "PM schedule updated" : "PM scheduled", `${formatIssueNumber(workOrder)} - ${asset.name}`);
   focusedWorkOrderId = workOrder.id;
+  pmScheduleFeedback = {
+    assetId: asset.id,
+    message: activeSchedule ? "Scheduled PM updated." : "Scheduled PM created.",
+    detail: `${formatDateTime(scheduledAt)}${assigneeName ? ` | ${assigneeName}` : ""}`,
+    updatedAt: now
+  };
   saveState();
   syncSingleWorkOrderToServer(workOrder);
   render();
@@ -34398,9 +34405,11 @@ function renderSchedulePmPanel(asset = {}) {
     : assignedContractor
       ? `contractor:${assignedContractor.id}`
       : "";
+  const feedback = pmScheduleFeedback?.assetId === asset.id ? pmScheduleFeedback : null;
   els.schedulePmPanel.innerHTML = `
     <form class="schedule-pm-form" data-schedule-pm-asset="${escapeAttribute(asset.id)}">
-      ${activeSchedule ? `<p class="schedule-pm-notice">This equipment already has an active scheduled PM visit. Saving will update it.</p>` : ""}
+      ${feedback ? `<p class="schedule-pm-notice is-success"><strong>${escapeHtml(feedback.message)}</strong>${feedback.detail ? `<span>${escapeHtml(feedback.detail)}</span>` : ""}</p>` : ""}
+      ${activeSchedule ? `<p class="schedule-pm-notice is-info"><strong>Editing active PM visit.</strong><span>Saving will update the existing scheduled PM, not create a duplicate.</span></p>` : ""}
       <label>
         Visit date/time
         <input name="scheduledAt" type="datetime-local" value="${escapeAttribute(formatDateTimeInput(defaultTime))}" required>
