@@ -1584,6 +1584,116 @@ async function selectScopedAutomationRows(table, actor, options = {}) {
   }
 }
 
+async function getAutomationTableColumns(table) {
+  const result = await db.query(
+    `
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = $1
+    `,
+    [table]
+  );
+  return new Map(result.rows.map((row) => [row.column_name, row.data_type]));
+}
+
+function automationBodyValue(body = {}, data = {}, column = "") {
+  const camelName = column.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  const directValue = body[column] ?? body[camelName] ?? data[column] ?? data[camelName];
+  if (directValue !== undefined) return directValue;
+  if (column === "zone_name") return body.zoneName || data.zoneName || "";
+  if (column === "controller_id") return body.controllerId || data.controllerId || "";
+  if (column === "output_number") return body.outputNumber ?? data.outputNumber ?? null;
+  if (column === "desired_state") return body.desiredState || data.desiredState || "";
+  if (column === "on_time") return body.onTime || data.onTime || "";
+  if (column === "off_time") return body.offTime || data.offTime || "";
+  if (column === "on_mode") return body.onMode || data.onMode || "";
+  if (column === "off_mode") return body.offMode || data.offMode || "";
+  if (column === "on_offset_minutes") return body.onOffsetMinutes ?? data.onOffsetMinutes ?? 0;
+  if (column === "off_offset_minutes") return body.offOffsetMinutes ?? data.offOffsetMinutes ?? 0;
+  if (column === "brightness_level") return body.brightnessLevel ?? data.brightnessLevel ?? null;
+  return undefined;
+}
+
+function automationColumnValue(column, body, data, now) {
+  if (column === "id") return data.id;
+  if (column === "customer_id") return data.customer_id || null;
+  if (column === "location_id") return data.location_id || null;
+  if (column === "created_at") return data.created_at || now;
+  if (column === "updated_at") return now;
+  if (column === "data") return JSON.stringify(data);
+  if (column === "enabled") return body.enabled !== false && body.enabled !== "false";
+  const value = automationBodyValue(body, data, column);
+  return value === "" && /_id$/.test(column) ? null : value;
+}
+
+async function upsertAutomationSupportRecord(table, resource, body = {}) {
+  const columns = await getAutomationTableColumns(table);
+  if (!columns.size) return null;
+  const now = new Date().toISOString();
+  const id = body.id || randomUUID();
+  const customerId = body.customer_id || body.customerId || "";
+  const locationId = body.location_id || body.locationId || "";
+  const data = {
+    ...body,
+    id,
+    customerId,
+    customer_id: customerId,
+    locationId,
+    location_id: locationId,
+    createdAt: body.createdAt || body.created_at || now,
+    created_at: body.created_at || body.createdAt || now,
+    updatedAt: now,
+    updated_at: now
+  };
+  const preferredColumns = [
+    "id",
+    "customer_id",
+    "location_id",
+    "zone_id",
+    "controller_id",
+    "output_number",
+    "name",
+    "days",
+    "on_time",
+    "off_time",
+    "on_mode",
+    "off_mode",
+    "on_offset_minutes",
+    "off_offset_minutes",
+    "desired_state",
+    "brightness_level",
+    "enabled",
+    "notes",
+    "data",
+    "created_at",
+    "updated_at"
+  ].filter((column) => columns.has(column));
+  const values = preferredColumns.map((column) => automationColumnValue(column, body, data, now));
+  const placeholders = values.map((_, index) => `$${index + 1}`);
+  const updateColumns = preferredColumns.filter((column) => column !== "id" && column !== "created_at");
+  await db.query(
+    `
+      INSERT INTO ${quoteIdent(table)} (${preferredColumns.map(quoteIdent).join(", ")})
+      VALUES (${placeholders.join(", ")})
+      ON CONFLICT (id)
+      DO UPDATE SET ${updateColumns.map((column) => `${quoteIdent(column)} = EXCLUDED.${quoteIdent(column)}`).join(", ")}
+    `,
+    values
+  );
+  const result = await db.query(`SELECT * FROM ${quoteIdent(table)} WHERE id = $1 LIMIT 1`, [id]);
+  return automationRecordFromRow(result.rows[0] || data);
+}
+
+async function deleteAutomationSupportRecord(table, recordId) {
+  try {
+    const result = await db.query(`DELETE FROM ${quoteIdent(table)} WHERE id::text = $1 RETURNING id`, [recordId]);
+    return result.rowCount || 0;
+  } catch (error) {
+    if (error?.code === "42P01" || error?.code === "42703") return 0;
+    throw error;
+  }
+}
+
 async function handleAutomationSupport(request, response, pathname) {
   const match = pathname.match(/^\/api\/automation\/(lighting|hvac|pumps?)\/(zones|inputs|schedules|overrides|commands|events|firmware)(?:\/([^/]+)(?:\/(run-now))?)?$/);
   if (!match) return false;
@@ -1668,11 +1778,13 @@ async function handleAutomationSupport(request, response, pathname) {
 
   if (request.method === "POST" && !recordId) {
     const body = await getRequestBody(request);
-    return sendJson(response, 200, { ok: true, [resource.slice(0, -1) || "record"]: body });
+    const savedRecord = await upsertAutomationSupportRecord(table, resource, body);
+    return sendJson(response, 200, { ok: true, [resource.slice(0, -1) || "record"]: savedRecord || body });
   }
 
   if (request.method === "DELETE" && recordId) {
-    return sendJson(response, 200, { ok: true, deleted: 0 });
+    const deleted = await deleteAutomationSupportRecord(table, recordId);
+    return sendJson(response, 200, { ok: true, deleted });
   }
 
   return false;
