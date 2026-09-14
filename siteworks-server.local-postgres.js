@@ -404,6 +404,18 @@ function sendJson(response, status, body, extraHeaders = {}) {
   return true;
 }
 
+function sendText(response, status, body, contentType = "text/plain; charset=utf-8", extraHeaders = {}) {
+  response.writeHead(status, {
+    "Content-Type": contentType,
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-UID, X-API-Key",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    ...extraHeaders
+  });
+  response.end(String(body || ""));
+  return true;
+}
+
 function sendError(response, status, message, detail = "") {
   return sendJson(response, status, { error: message, detail });
 }
@@ -1744,6 +1756,196 @@ async function handlePublicSchedules(request, response, pathname) {
   return false;
 }
 
+function signCalendarFeedPayload(payload = {}) {
+  const encodedPayload = base64UrlJson({
+    typ: "siteworks-calendar-feed",
+    scope: payload.scope || "company",
+    customerId: payload.customerId || "",
+    locationId: payload.locationId || "",
+    mode: payload.mode || "scheduled",
+    iat: Math.floor(Date.now() / 1000)
+  });
+  return `${encodedPayload}.${createHmac("sha256", LOCAL_AUTH_SECRET).update(encodedPayload).digest("base64url")}`;
+}
+
+function verifyCalendarFeedToken(token = "") {
+  const [encodedPayload, signature] = String(token || "").split(".");
+  if (!encodedPayload || !signature) return null;
+  const expected = createHmac("sha256", LOCAL_AUTH_SECRET).update(encodedPayload).digest("base64url");
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signature);
+  if (expectedBuffer.length !== signatureBuffer.length || !timingSafeEqual(expectedBuffer, signatureBuffer)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+    return payload.typ === "siteworks-calendar-feed" ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function calendarFeedBaseUrl(request) {
+  const proto = String(request.headers["x-forwarded-proto"] || "").split(",")[0] || "https";
+  const host = request.headers["x-forwarded-host"] || request.headers.host || "";
+  return `${proto}://${host}`;
+}
+
+function normalizeCalendarFeedMode(mode = "") {
+  return ["all", "scheduled", "pm"].includes(mode) ? mode : "scheduled";
+}
+
+function calendarFeedUid(value = "") {
+  return String(value || "").replace(/[^a-z0-9_.-]+/gi, "-") || randomUUID();
+}
+
+function escapeIcsText(value = "") {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\r?\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+}
+
+function foldIcsLine(line = "") {
+  const text = String(line || "");
+  if (text.length <= 74) return text;
+  const parts = [];
+  for (let index = 0; index < text.length; index += 74) {
+    parts.push(`${index ? " " : ""}${text.slice(index, index + 74)}`);
+  }
+  return parts.join("\r\n");
+}
+
+function formatIcsDateTime(date) {
+  const safeDate = date instanceof Date && Number.isFinite(date.getTime()) ? date : new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${safeDate.getUTCFullYear()}${pad(safeDate.getUTCMonth() + 1)}${pad(safeDate.getUTCDate())}T${pad(safeDate.getUTCHours())}${pad(safeDate.getUTCMinutes())}${pad(safeDate.getUTCSeconds())}Z`;
+}
+
+function addCalendarMinutes(date, minutes) {
+  const copy = new Date(date.getTime());
+  copy.setMinutes(copy.getMinutes() + Math.max(15, Number(minutes || 60)));
+  return copy;
+}
+
+function scheduleEventsFromWorkOrderRow(row = {}) {
+  const data = row.data && typeof row.data === "object" ? row.data : {};
+  const confirmations = data.scheduleConfirmations && typeof data.scheduleConfirmations === "object"
+    ? data.scheduleConfirmations
+    : {};
+  return Object.entries(confirmations)
+    .map(([visitId, schedule]) => {
+      if (!schedule?.scheduledAt) return null;
+      const start = new Date(schedule.scheduledAt);
+      if (!Number.isFinite(start.getTime())) return null;
+      const title = `${row.issue_number ? `SW-${String(row.issue_number).padStart(4, "0")} - ` : ""}${row.title || data.title || "Scheduled visit"}`;
+      return {
+        uid: `schedule-${calendarFeedUid(row.id)}-${calendarFeedUid(visitId)}@siteworks`,
+        start,
+        end: addCalendarMinutes(start, schedule.durationMinutes || 60),
+        title,
+        location: [row.customer_name, row.location_name].filter(Boolean).join(" | "),
+        description: [
+          `Ticket: ${row.issue_number ? `SW-${String(row.issue_number).padStart(4, "0")}` : row.id}`,
+          `Customer: ${row.customer_name || ""}`,
+          `Location: ${row.location_name || ""}`,
+          `Equipment: ${row.asset_name || data.areaName || ""}`,
+          `Assigned: ${schedule.assignedUserName || row.assigned_user_name || "Unassigned"}`,
+          `Status: ${schedule.status || "Scheduled"}`,
+          schedule.responseStatus ? `Customer response: ${schedule.responseStatus}` : "",
+          schedule.responseName ? `Response by: ${schedule.responseName}` : "",
+          schedule.responseNote ? `Response note: ${schedule.responseNote}` : "",
+          schedule.notes ? `Notes: ${schedule.notes}` : ""
+        ].filter(Boolean).join("\\n"),
+        status: schedule.status === "Cancelled" ? "CANCELLED" : "CONFIRMED",
+        updatedAt: row.updated_at || schedule.updatedAt || new Date().toISOString()
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildCalendarFeedIcs(events = [], name = "SiteWorks Calendar") {
+  const nowStamp = formatIcsDateTime(new Date());
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//SiteWorks//Live Calendar Feed//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    `X-WR-CALNAME:${escapeIcsText(name)}`,
+    "REFRESH-INTERVAL;VALUE=DURATION:PT30M",
+    "X-PUBLISHED-TTL:PT30M"
+  ];
+  events.forEach((event) => {
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${escapeIcsText(event.uid)}`,
+      `DTSTAMP:${nowStamp}`,
+      `LAST-MODIFIED:${formatIcsDateTime(new Date(event.updatedAt || Date.now()))}`,
+      `SUMMARY:${escapeIcsText(event.title)}`,
+      `DESCRIPTION:${escapeIcsText(event.description)}`,
+      `LOCATION:${escapeIcsText(event.location)}`,
+      `STATUS:${event.status || "CONFIRMED"}`,
+      `DTSTART:${formatIcsDateTime(event.start)}`,
+      `DTEND:${formatIcsDateTime(event.end)}`,
+      "END:VEVENT"
+    );
+  });
+  lines.push("END:VCALENDAR");
+  return lines.map(foldIcsLine).join("\r\n");
+}
+
+async function loadCalendarFeedEvents(feed = {}) {
+  const params = [];
+  const where = [];
+  if (feed.customerId) where.push(`w.customer_id::text = ${addParam(params, feed.customerId)}`);
+  if (feed.locationId && feed.locationId !== "all") where.push(`w.location_id::text = ${addParam(params, feed.locationId)}`);
+  const result = await db.query(`
+    SELECT w.*,
+      c.name AS customer_name,
+      l.name AS location_name,
+      a.name AS asset_name
+    FROM work_orders w
+    LEFT JOIN customers c ON c.id::text = w.customer_id::text
+    LEFT JOIN locations l ON l.id::text = w.location_id::text
+    LEFT JOIN assets a ON a.id::text = w.asset_id::text
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY w.updated_at DESC
+    LIMIT 1000
+  `, params);
+  return result.rows.flatMap(scheduleEventsFromWorkOrderRow);
+}
+
+async function handleCalendarFeeds(request, response, pathname) {
+  if (pathname === "/api/calendar/feed-link" && request.method === "GET") {
+    if (!requireDatabase(response)) return true;
+    const actor = await getRequestActor(request);
+    policies.assertAllowed(policies.isAdmin(actor) || policies.isManager(actor), "Only Admin or Manager users can create calendar feed links.");
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    const scope = url.searchParams.get("scope") || "company";
+    const customerId = url.searchParams.get("customer_id") || url.searchParams.get("customerId") || "";
+    const locationId = url.searchParams.get("location_id") || url.searchParams.get("locationId") || "";
+    const mode = normalizeCalendarFeedMode(url.searchParams.get("mode") || "scheduled");
+    const token = signCalendarFeedPayload({ scope, customerId, locationId, mode });
+    const feedUrl = `${calendarFeedBaseUrl(request)}/api/public/calendar.ics?token=${encodeURIComponent(token)}`;
+    return sendJson(response, 200, { ok: true, url: feedUrl, mode, scope, customerId, locationId });
+  }
+
+  if (pathname === "/api/public/calendar.ics" && request.method === "GET") {
+    if (!requireDatabase(response)) return true;
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    const feed = verifyCalendarFeedToken(url.searchParams.get("token") || "");
+    if (!feed) return sendText(response, 404, "Calendar feed not found.");
+    const events = await loadCalendarFeedEvents(feed);
+    const name = feed.customerId ? "SiteWorks Customer Schedule" : "SiteWorks Schedule";
+    return sendText(response, 200, buildCalendarFeedIcs(events, name), "text/calendar; charset=utf-8", {
+      "Cache-Control": "no-store",
+      "Content-Disposition": "inline; filename=\"siteworks-calendar.ics\""
+    });
+  }
+
+  return false;
+}
+
 function publicKeyFromRow(row = {}) {
   const data = row.data && typeof row.data === "object" ? row.data : {};
   return {
@@ -2407,6 +2609,7 @@ async function handleRequest(request, response) {
       || await handlePublicReports(request, response, pathname)
       || await handlePublicQuotes(request, response, pathname)
       || await handlePublicSchedules(request, response, pathname)
+      || await handleCalendarFeeds(request, response, pathname)
       || await handlePublicKeys(request, response, pathname)
       || await handleSharedState(request, response, pathname)
       || await handleData(request, response, pathname)
