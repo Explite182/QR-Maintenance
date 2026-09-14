@@ -27727,6 +27727,7 @@ function renderPmCalendarDayBoard(records, windowInfo) {
     .sort(pmCalendarRecordTimeSort);
   const scheduledGroups = new Map();
   const pmDue = [];
+  const workload = pmCalendarDayWorkload(dayRecords);
   dayRecords.forEach((record) => {
     if (record.kind === "scheduled") {
       const lane = record.visit.assignedUserName || "Unassigned";
@@ -27746,19 +27747,57 @@ function renderPmCalendarDayBoard(records, windowInfo) {
           <strong>${escapeHtml(formatDate(windowInfo.start))}</strong>
           <span>${dayRecords.length} item${dayRecords.length === 1 ? "" : "s"} scheduled or due</span>
         </div>
+        <div class="pm-calendar-day-workload" aria-label="Daily workload">
+          <span>${workload.scheduledCount} job${workload.scheduledCount === 1 ? "" : "s"}</span>
+          <span>${workload.techCount} tech${workload.techCount === 1 ? "" : "s"}</span>
+          <span>${workload.hoursLabel}</span>
+          ${workload.unassignedCount ? `<span class="is-warning">${workload.unassignedCount} unassigned</span>` : ""}
+        </div>
         <button type="button" data-pm-calendar-add-on-day="${escapeAttribute(dateKey)}">Add ticket or service call</button>
       </div>
-      ${lanes.length ? lanes.map(([lane, items]) => `
-        <section class="pm-calendar-tech-lane">
-          <div class="pm-calendar-tech-heading">
-            <strong>${escapeHtml(lane)}</strong>
-            <span>${items.length} item${items.length === 1 ? "" : "s"}</span>
-          </div>
-          <div class="pm-calendar-board-events">
-            ${items.map(renderPmCalendarBoardEvent).join("")}
-          </div>
-        </section>
-      `).join("") : `<p class="pm-calendar-board-empty">No visits or PMs on this day yet.</p>`}
+      <div class="pm-calendar-dispatch-lanes">
+        ${lanes.length ? lanes.map(([lane, items]) => renderPmCalendarDispatchLane(lane, items)).join("") : `<p class="pm-calendar-board-empty">No visits or PMs on this day yet.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function pmCalendarDayWorkload(records = []) {
+  const scheduled = records.filter((record) => record.kind === "scheduled");
+  const assignedTechs = new Set();
+  let unassignedCount = 0;
+  let totalMinutes = 0;
+  scheduled.forEach((record) => {
+    const assignee = String(record.visit?.assignedUserName || "").trim();
+    if (assignee) assignedTechs.add(assignee.toLowerCase());
+    else unassignedCount += 1;
+    totalMinutes += Math.max(0, Number(record.visit?.durationMinutes || 0));
+  });
+  const hours = totalMinutes / 60;
+  const hoursLabel = totalMinutes
+    ? `${formatInventoryNumber(Math.round(hours * 10) / 10)} hr${hours === 1 ? "" : "s"}`
+    : "0 hrs";
+  return {
+    scheduledCount: scheduled.length,
+    techCount: assignedTechs.size + (unassignedCount ? 1 : 0),
+    unassignedCount,
+    hoursLabel
+  };
+}
+
+function renderPmCalendarDispatchLane(lane = "Unassigned", items = []) {
+  const scheduled = items.filter((record) => record.kind === "scheduled");
+  const totalMinutes = scheduled.reduce((sum, record) => sum + Math.max(0, Number(record.visit?.durationMinutes || 0)), 0);
+  const hourText = totalMinutes ? `${formatInventoryNumber(Math.round((totalMinutes / 60) * 10) / 10)} hrs` : "";
+  return `
+    <section class="pm-calendar-tech-lane${lane === "Unassigned" ? " is-unassigned" : ""}">
+      <div class="pm-calendar-tech-heading">
+        <strong>${escapeHtml(lane)}</strong>
+        <span>${items.length} item${items.length === 1 ? "" : "s"}${hourText ? ` | ${escapeHtml(hourText)}` : ""}</span>
+      </div>
+      <div class="pm-calendar-board-events">
+        ${items.map(renderPmCalendarBoardEvent).join("")}
+      </div>
     </section>
   `;
 }
@@ -27812,11 +27851,19 @@ function renderPmCalendarMonthGrid(records, windowInfo) {
     const cellDate = startOfDay(day);
     const key = toDateInputValue(cellDate);
     const items = groups.get(key) || [];
+    const workload = pmCalendarDayWorkload(items);
     const outsideClass = cellDate >= windowInfo.start && cellDate <= windowInfo.end ? "" : " is-outside";
     const todayClass = key === toDateInputValue(today) ? " is-today" : "";
     cells.push(`
       <div class="pm-calendar-cell${outsideClass}${todayClass}" data-pm-calendar-day="${escapeAttribute(key)}">
         <div class="pm-calendar-cell-date">${cellDate.getDate()}</div>
+        ${items.length ? `
+          <div class="pm-calendar-cell-workload">
+            ${workload.scheduledCount ? `<span>${workload.scheduledCount} job${workload.scheduledCount === 1 ? "" : "s"}</span>` : ""}
+            ${workload.techCount ? `<span>${workload.techCount} tech${workload.techCount === 1 ? "" : "s"}</span>` : ""}
+            ${workload.unassignedCount ? `<span class="is-warning">${workload.unassignedCount} unassigned</span>` : ""}
+          </div>
+        ` : ""}
         <div class="pm-calendar-cell-items">
           ${items.slice(0, 4).map(renderPmCalendarTask).join("")}
           ${items.length > 4 ? `<span class="pm-calendar-more">+${items.length - 4} more</span>` : ""}

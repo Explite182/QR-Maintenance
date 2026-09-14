@@ -12576,14 +12576,14 @@ html[data-theme="dark"] .site-map-empty {
 }
 
 .pm-calendar-day-board {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .pm-calendar-day-board-header {
   grid-column: 1 / -1;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -12607,6 +12607,43 @@ html[data-theme="dark"] .site-map-empty {
   font-weight: 800;
 }
 
+.pm-calendar-day-workload {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.pm-calendar-day-workload span,
+.pm-calendar-cell-workload span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #e6f4ef;
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.pm-calendar-day-workload span.is-warning,
+.pm-calendar-cell-workload span.is-warning {
+  background: #fff4d6;
+  color: #9a6500;
+}
+
+.pm-calendar-dispatch-lanes {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 300px);
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+}
+
 .pm-calendar-week-column,
 .pm-calendar-tech-lane {
   min-height: 280px;
@@ -12617,6 +12654,15 @@ html[data-theme="dark"] .site-map-empty {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fbfdfc;
+}
+
+.pm-calendar-tech-lane {
+  scroll-snap-align: start;
+}
+
+.pm-calendar-tech-lane.is-unassigned {
+  border-color: rgba(180, 105, 0, 0.35);
+  background: #fffaf0;
 }
 
 .pm-calendar-week-column {
@@ -12802,10 +12848,17 @@ html[data-theme="dark"] .site-map-empty {
   color: var(--muted);
 }
 
+.pm-calendar-cell-workload {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 16px 30px 0 0;
+}
+
 .pm-calendar-cell-items {
   display: grid;
   gap: 4px;
-  padding-top: 18px;
+  padding-top: 8px;
 }
 
 .pm-calendar-task {
@@ -12930,6 +12983,19 @@ html[data-theme="dark"] .site-map-empty {
 }
 
 @media (max-width: 720px) {
+  .pm-calendar-day-board-header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .pm-calendar-day-workload {
+    justify-content: flex-start;
+  }
+
+  .pm-calendar-dispatch-lanes {
+    grid-auto-columns: minmax(82vw, 1fr);
+  }
+
   .quick-calendar-overlay {
     align-items: end;
     padding: 12px;

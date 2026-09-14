@@ -257,15 +257,9 @@
   <main class="app-shell app-only hidden">
     <aside id="appSidebar" class="sidebar">
         <nav id="workNav" class="sidebar-work-nav" aria-label="Work shortcuts">
-          <div class="sidebar-nav-group" data-sidebar-group="pm">
-            <button type="button" class="sidebar-nav-btn sidebar-nav-parent" data-pm-menu-toggle aria-expanded="false">
-              <span>PM</span>
-              <span class="sidebar-submenu-arrow" aria-hidden="true"></span>
-            </button>
-            <div class="sidebar-submenu hidden" data-pm-submenu>
-              <button type="button" class="sidebar-submenu-btn is-active" data-open-pm-tab="calendar">Calendar</button>
-            </div>
-          </div>
+          <button type="button" class="sidebar-nav-btn" data-open-target="pmCalendarPanel" aria-expanded="false">
+            <span>Calendar</span>
+          </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="assetRegisterDrawer" aria-expanded="false">
             <span>Equipment Register</span>
           </button>
