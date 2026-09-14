@@ -13544,6 +13544,57 @@ html[data-theme="dark"] .asset-nfc-card[data-nfc-status="mismatch"] {
   align-items: start;
 }
 
+.schedule-pm-drawer {
+  grid-column: 1 / -1;
+}
+
+#schedulePmPanel {
+  padding: 16px;
+}
+
+.schedule-pm-form {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr) minmax(110px, 0.45fr) minmax(220px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.schedule-pm-form label {
+  min-width: 0;
+}
+
+.schedule-pm-form input,
+.schedule-pm-form select {
+  width: 100%;
+}
+
+.schedule-pm-notice {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #f0d486;
+  border-radius: 8px;
+  background: #fff8dc;
+  color: #8a4c05;
+  font-weight: 800;
+}
+
+@media (max-width: 1040px) {
+  .schedule-pm-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .schedule-pm-form button {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 720px) {
+  .schedule-pm-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 .asset-primary-grid {
   display: grid;
   grid-template-columns: minmax(320px, 1.1fr) minmax(300px, 0.9fr);

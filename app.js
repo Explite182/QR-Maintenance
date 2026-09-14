@@ -7238,6 +7238,7 @@ const els = {
   assetNfcPanel: document.getElementById("assetNfcPanel"),
   reportIssueBtn: document.getElementById("reportIssueBtn"),
   pmForm: document.getElementById("pmForm"),
+  schedulePmPanel: document.getElementById("schedulePmPanel"),
   checklistFields: document.getElementById("checklistFields"),
   technician: document.getElementById("technician"),
   reading: document.getElementById("reading"),
@@ -11981,6 +11982,13 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("submit", (event) => {
+  const schedulePmForm = event.target.closest("[data-schedule-pm-asset]");
+  if (!schedulePmForm) return;
+  event.preventDefault();
+  schedulePmForAsset(schedulePmForm.dataset.schedulePmAsset, new FormData(schedulePmForm));
+});
+
+document.addEventListener("submit", (event) => {
   const form = event.target.closest("[data-job-cost-form]");
   if (!form) return;
   event.preventDefault();
@@ -12579,6 +12587,7 @@ function render() {
   els.assetManualPanel.innerHTML = renderAssetManual(asset);
   els.assetDetailsGrid.innerHTML = renderAssetDetails(asset);
   if (els.assetNfcPanel) els.assetNfcPanel.innerHTML = renderAssetNfcPanel(asset);
+  renderSchedulePmPanel(asset);
   renderElectricalPanelSchedule(asset);
   if (els.deleteSelectedAssetBtn) {
     els.deleteSelectedAssetBtn.classList.toggle("hidden", !canDeleteEquipment());
@@ -27494,7 +27503,8 @@ function pmCalendarRecords(windowInfo = pmCalendarWindow()) {
         template: getTemplate(asset.templateId)
       };
     })
-    .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end);
+    .filter((record) => record.dueDate >= windowInfo.start && record.dueDate <= windowInfo.end)
+    .filter((record) => !hasActiveScheduledPmForAsset(record.asset.id, record.dueDate));
   const routeRecords = pmCalendarMode === "scheduled" ? [] : scheduledRouteCalendarRecords(windowInfo);
   const scheduledRecords = pmCalendarMode === "pm" ? [] : scheduledVisitCalendarRecords(windowInfo);
   const completedRecords = pmCalendarMode === "scheduled" ? [] : completedPmCalendarRecords(windowInfo);
@@ -29580,6 +29590,108 @@ function saveScheduledVisitForWorkOrder(workOrderId = "", formData = new FormDat
   saveState();
   syncSingleWorkOrderToServer(workOrder);
   render();
+}
+
+function schedulePmForAsset(assetId = "", formData = new FormData()) {
+  const asset = getAsset(assetId);
+  if (!asset || !canCreateWorkOrders() || !canSeeAsset(asset)) return;
+  const scheduledAt = parseDateTimeLocalInput(formData.get("scheduledAt"));
+  if (!scheduledAt) return;
+  const now = new Date().toISOString();
+  const assigneeValue = String(formData.get("assignee") || "").trim();
+  const { user, contractor } = resolvePmScheduleAssignee(asset, assigneeValue);
+  const assigneeName = user
+    ? user.name || user.username || ""
+    : contractor
+      ? contractor.name || contractor.email || ""
+      : "";
+  const template = getTemplate(asset.templateId);
+  const due = getDueInfo(asset);
+  const workOrder = {
+    id: crypto.randomUUID(),
+    issueNumber: nextIssueNumber(),
+    assetId: asset.id,
+    customerId: asset.customerId,
+    locationId: asset.locationId,
+    source: "Scheduled PM",
+    title: `PM: ${asset.name}`,
+    priority: asset.criticality === "High" || due.daysUntil < 0 ? "High" : "Medium",
+    status: "Open",
+    assignedUserId: user?.id || "",
+    assignedUserName: assigneeName,
+    dueAt: scheduledAt,
+    notes: [
+      `Scheduled PM${template?.name ? ` - ${template.name}` : ""}.`,
+      String(formData.get("notes") || "").trim()
+    ].filter(Boolean).join("\n"),
+    history: [],
+    createdAt: now,
+    updatedAt: now
+  };
+  const visit = {
+    id: crypto.randomUUID(),
+    workOrderId: workOrder.id,
+    customerId: asset.customerId,
+    locationId: asset.locationId,
+    assetId: asset.id,
+    scheduledAt,
+    durationMinutes: Math.max(15, Number(formData.get("durationMinutes") || 60)),
+    assignedUserId: user?.id || "",
+    assignedUserName: assigneeName,
+    status: "Scheduled",
+    notes: String(formData.get("notes") || "").trim(),
+    createdAt: now,
+    updatedAt: now
+  };
+  state.workOrders.unshift(workOrder);
+  state.scheduledVisits = normalizeScheduledVisits([visit, ...(state.scheduledVisits || [])]);
+  ensureScheduledVisitSnapshot(workOrder, visit);
+  addWorkOrderHistory(workOrder, "Scheduled PM created", `${formatDateTime(scheduledAt)}${assigneeName ? ` | ${assigneeName}` : ""}`);
+  if (contractor) {
+    addWorkOrderHistory(workOrder, "Assigned contractor", `${contractor.name}${contractor.email ? ` | ${contractor.email}` : ""}${contractor.trade ? ` | ${contractor.trade}` : ""}`);
+  }
+  addActivity("PM scheduled", `${formatIssueNumber(workOrder)} - ${asset.name}`);
+  focusedWorkOrderId = workOrder.id;
+  saveState();
+  syncSingleWorkOrderToServer(workOrder);
+  render();
+}
+
+function resolvePmScheduleAssignee(asset = {}, value = "") {
+  if (!value) return { user: null, contractor: null };
+  if (value.startsWith("user:")) {
+    return { user: getUser(value.slice(5)), contractor: null };
+  }
+  if (value.startsWith("contractor:")) {
+    const contractorId = value.slice(11);
+    return {
+      user: null,
+      contractor: visiblePreferredContractors(asset.customerId).find((contractor) => contractor.id === contractorId) || null
+    };
+  }
+  return { user: getUser(value), contractor: null };
+}
+
+function getPmScheduleAssigneeOptions(asset = {}) {
+  const pseudoWorkOrder = { customerId: asset.customerId };
+  const users = getAssignableUsersForWorkOrder(pseudoWorkOrder);
+  const contractors = visiblePreferredContractors(asset.customerId);
+  return [
+    `<option value="">Unassigned</option>`,
+    ...users.map((user) => `<option value="user:${escapeAttribute(user.id)}">${escapeHtml(user.name || user.username)}${user.role ? ` | ${escapeHtml(user.role)}` : ""}</option>`),
+    ...contractors.map((contractor) => `<option value="contractor:${escapeAttribute(contractor.id)}">${escapeHtml(contractor.name)}${contractor.trade ? ` | ${escapeHtml(contractor.trade)}` : " | Contractor"}</option>`)
+  ].join("");
+}
+
+function hasActiveScheduledPmForAsset(assetId = "") {
+  if (!assetId) return false;
+  return normalizeScheduledVisits(state.scheduledVisits || []).some((visit) => {
+    if (visit.assetId !== assetId) return false;
+    if (["Completed", "Cancelled"].includes(visit.status)) return false;
+    const workOrder = getWorkOrder(visit.workOrderId);
+    if (!workOrder || workOrder.source !== "Scheduled PM") return false;
+    return true;
+  });
 }
 
 function emptySwNumberFilterMessage() {
@@ -33600,6 +33712,42 @@ function renderWorkOrderSchedulePanel(workOrder = {}) {
         </form>
       </section>
     </details>
+  `;
+}
+
+function renderSchedulePmPanel(asset = {}) {
+  if (!els.schedulePmPanel) return;
+  if (!asset || !canCreateWorkOrders()) {
+    els.schedulePmPanel.innerHTML = `<p class="muted">PM scheduling is available to Admin and Manager users.</p>`;
+    return;
+  }
+  const due = getDueInfo(asset);
+  const defaultTime = new Date(due.nextDate);
+  defaultTime.setHours(8, 0, 0, 0);
+  const alreadyScheduled = hasActiveScheduledPmForAsset(asset.id, due.nextDate);
+  els.schedulePmPanel.innerHTML = `
+    <form class="schedule-pm-form" data-schedule-pm-asset="${escapeAttribute(asset.id)}">
+      ${alreadyScheduled ? `<p class="schedule-pm-notice">This equipment already has an active scheduled PM visit.</p>` : ""}
+      <label>
+        Visit date/time
+        <input name="scheduledAt" type="datetime-local" value="${escapeAttribute(formatDateTimeInput(defaultTime))}" required>
+      </label>
+      <label>
+        Tech or contractor
+        <select name="assignee">
+          ${getPmScheduleAssigneeOptions(asset)}
+        </select>
+      </label>
+      <label>
+        Duration
+        <input name="durationMinutes" type="number" min="15" step="15" value="60">
+      </label>
+      <label>
+        Notes
+        <input name="notes" placeholder="Access notes or scheduling details">
+      </label>
+      <button type="submit" class="primary mini">Schedule PM</button>
+    </form>
   `;
 }
 
