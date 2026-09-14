@@ -12711,7 +12711,7 @@ function closeSidebarTarget(targetId) {
   setSidebarTargetButtonState(targetId, false);
   if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
   if (isAutomationTargetId(targetId)) syncAutomationSidebarMenuState();
-  if (targetId === "pmCalendarPanel" || targetId === "templatesPanel") syncPmSidebarMenuState();
+  if (targetId === "pmCalendarPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
   if (wasSiteMapOpen) restoreMobileDashboardAfterSiteMapClose();
 }
@@ -12744,7 +12744,7 @@ function openSidebarTarget(targetId) {
   setSidebarTargetButtonState(targetId, true);
   if (targetId === "inventoryPanel") syncInventorySidebarMenuState();
   if (isAutomationTargetId(targetId)) syncAutomationSidebarMenuState();
-  if (targetId === "pmCalendarPanel" || targetId === "templatesPanel") syncPmSidebarMenuState();
+  if (targetId === "pmCalendarPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
 }
 
@@ -12826,7 +12826,7 @@ function isPanelVisiblyOpen(panelId) {
 }
 
 function isPmPanelOpen() {
-  return ["pmCalendarPanel", "templatesPanel", "siteMapPanel"].some((targetId) => {
+  return ["pmCalendarPanel", "siteMapPanel"].some((targetId) => {
     const panel = document.getElementById(targetId);
     return Boolean(
       panel &&
@@ -12837,12 +12837,7 @@ function isPmPanelOpen() {
 }
 
 function activePmTab() {
-  const templatesOpen = Boolean(
-    document.getElementById("templatesPanel") &&
-    !document.getElementById("templatesPanel").classList.contains("hidden") &&
-    !document.getElementById("templatesPanel").classList.contains("is-collapsed")
-  );
-  return templatesOpen ? "templates" : "calendar";
+  return "calendar";
 }
 
 function setPmSidebarMenuOpen(isOpen) {
@@ -12878,7 +12873,7 @@ function togglePmSidebarMenu() {
 }
 
 function openPmSidebarTab(tab = "calendar") {
-  const targetId = tab === "templates" ? "templatesPanel" : "pmCalendarPanel";
+  const targetId = "pmCalendarPanel";
   closeOtherSidebarTargets(targetId);
   openPanel(targetId);
   setPmSidebarMenuOpen(true);
@@ -16359,7 +16354,7 @@ function setMobileTabState(targetId) {
   document.querySelectorAll("[data-mobile-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.mobileTab === targetId);
   });
-  els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "templatesPanel" || targetId === "siteMapPanel" || targetId === "monitoringPanel" || targetId === "automationHvacPanel" || targetId === "automationLightingPanel");
+  els.mobilePmBtn?.classList.toggle("is-active", targetId === "pmCalendarPanel" || targetId === "siteMapPanel" || targetId === "monitoringPanel" || targetId === "automationHvacPanel" || targetId === "automationLightingPanel");
   els.mobileInventoryBtn?.classList.toggle("is-active", targetId === "inventoryPanel");
 }
 
@@ -30577,8 +30572,6 @@ function renderMobileCreateActions() {
 }
 
 function renderMobilePmActions() {
-  els.mobilePmMenu?.querySelector("[data-mobile-pm-target='templatesPanel']")
-    ?.classList.toggle("hidden", !canManageTemplateSetup());
 }
 
 function renderMobileInventoryActions() {

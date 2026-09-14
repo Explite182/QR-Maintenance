@@ -264,7 +264,6 @@
             </button>
             <div class="sidebar-submenu hidden" data-pm-submenu>
               <button type="button" class="sidebar-submenu-btn is-active" data-open-pm-tab="calendar">Calendar</button>
-              <button type="button" class="sidebar-submenu-btn" data-open-pm-tab="templates" data-template-nav>Templates</button>
             </div>
           </div>
           <button type="button" class="sidebar-nav-btn" data-open-target="assetRegisterDrawer" aria-expanded="false">
@@ -311,6 +310,9 @@
         <summary>
           <span>Admin & Settings</span>
         </summary>
+        <div class="sidebar-submenu admin-settings-shortcuts">
+          <button type="button" class="sidebar-submenu-btn" data-open-target="templatesPanel" data-template-nav>Templates</button>
+        </div>
       <details id="setupDrawer" class="sidebar-section setup-drawer">
         <summary>Setup</summary>
         <details class="setup-subdrawer">
@@ -2683,7 +2685,6 @@
     </div>
     <div id="mobilePmMenu" class="mobile-create-menu hidden" aria-label="Preventive maintenance">
       <button type="button" data-mobile-pm-target="pmCalendarPanel">Calendar</button>
-      <button type="button" data-mobile-pm-target="templatesPanel" data-template-nav>Templates</button>
       <button type="button" data-mobile-pm-target="siteMapPanel">Site Map</button>
       <button type="button" data-mobile-pm-target="monitoringPanel">Panel Monitor</button>
       <button type="button" data-mobile-pm-target="automationHvacPanel">HVAC</button>
