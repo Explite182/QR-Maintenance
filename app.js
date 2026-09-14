@@ -13586,7 +13586,13 @@ function renderLightingAllLocations(list) {
 }
 
 function getLatestLightingCommandForZone(zoneId) {
-  return lightingCommandsCache.find((command) => command.zoneId === zoneId || command.zone_id === zoneId) || null;
+  return lightingCommandsCache.find((command) => {
+    if (command.zoneId !== zoneId && command.zone_id !== zoneId) return false;
+    const status = String(command.status || "pending").toLowerCase();
+    if (["expired", "cancelled", "canceled"].includes(status)) return false;
+    if (isLightingCommandStale(command)) return false;
+    return true;
+  }) || null;
 }
 
 function isLightingCommandStale(command = {}) {
@@ -13660,7 +13666,12 @@ function getLightingScheduleModeOptions(selectedMode = "fixed") {
 
 function getLatestLightingScheduleCommand(scheduleId = "") {
   if (!scheduleId) return null;
-  return lightingCommandsCache.find((command) => String(command.metadata?.scheduleId || command.metadata?.schedule_id || "") === String(scheduleId)) || null;
+  return lightingCommandsCache.find((command) => {
+    const status = String(command.status || "pending").toLowerCase();
+    if (["expired", "cancelled", "canceled"].includes(status)) return false;
+    if (isLightingCommandStale(command)) return false;
+    return String(command.metadata?.scheduleId || command.metadata?.schedule_id || "") === String(scheduleId);
+  }) || null;
 }
 
 function getLightingScheduleStatusHtml(schedule = {}) {
