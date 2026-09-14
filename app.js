@@ -7241,6 +7241,7 @@ const els = {
   reportIssueBtn: document.getElementById("reportIssueBtn"),
   pmForm: document.getElementById("pmForm"),
   schedulePmPanel: document.getElementById("schedulePmPanel"),
+  assetHealthPanel: document.getElementById("assetHealthPanel"),
   checklistFields: document.getElementById("checklistFields"),
   technician: document.getElementById("technician"),
   reading: document.getElementById("reading"),
@@ -12677,6 +12678,7 @@ function render() {
   els.clearNextPmBtn.disabled = !asset.nextPmDate || !canManageWorkOrders();
   els.pmStatus.textContent = due.label;
   els.pmStatus.className = due.className;
+  if (els.assetHealthPanel) els.assetHealthPanel.innerHTML = renderAssetHealthPanel(asset);
   els.assetPhotoPanel.innerHTML = renderAssetPhoto(asset);
   els.assetManualPanel.innerHTML = renderAssetManual(asset);
   els.assetDetailsGrid.innerHTML = renderAssetDetails(asset);
@@ -32419,6 +32421,127 @@ function renderAssetWorkOrders(asset) {
   els.assetWorkOrderList.innerHTML = workOrders.length
     ? workOrders.map(renderWorkOrderItem).join("")
     : `<p class="muted">${currentRole === "Technician" ? "No tickets assigned to you for this equipment." : "No tickets for this equipment."}</p>`;
+}
+
+function assetWorkOrders(asset = {}) {
+  return state.workOrders
+    .filter((item) => item.assetId === asset.id && canSeeWorkOrder(item))
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+}
+
+function assetHealthRecord(asset = {}) {
+  const due = getDueInfo(asset);
+  const tickets = assetWorkOrders(asset);
+  const openTickets = tickets.filter((item) => item.status !== "Closed");
+  const failedPmTickets = openFailedPmTicketsForAsset(asset.id);
+  const pmHistory = [...(asset.history || [])]
+    .sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+  const lastPm = pmHistory[0] || null;
+  const recentPm = pmHistory.filter((item) => {
+    const completedAt = new Date(item.completedAt || 0);
+    return Number.isFinite(completedAt.getTime()) && completedAt >= addDays(today, -180);
+  });
+  const failedPmCount = recentPm.filter((item) => /failed/i.test(item.result || "")).length;
+  const attentionPmCount = recentPm.filter((item) => /needs attention|failed/i.test(item.result || "")).length;
+  const repeatIssueCount = tickets.filter((item) => {
+    const createdAt = new Date(item.createdAt || item.updatedAt || 0);
+    return Number.isFinite(createdAt.getTime()) && createdAt >= addDays(today, -90);
+  }).length;
+  const costRecords = tickets.map((ticket) => ({ ticket, jobCost: buildJobCostRecord(ticket) }));
+  const revenueTotal = costRecords.reduce((sum, record) => sum + Number(record.jobCost.revenue || 0), 0);
+  const costTotal = costRecords.reduce((sum, record) => sum + Number(record.jobCost.totalCost || 0), 0);
+  const profitTotal = costRecords.reduce((sum, record) => sum + Number(record.jobCost.profit || 0), 0);
+  const partsUsed = tickets.flatMap((ticket) =>
+    workOrderHistoryEntries(ticket)
+      .filter((entry) => /inventory used/i.test(entry.action || ""))
+      .map((entry) => ({
+        ticket,
+        detail: entry.details || "",
+        at: entry.createdAt || ticket.updatedAt || ticket.createdAt || ""
+      }))
+  ).sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+  let score = 100;
+  if (due.daysUntil < 0) score -= Math.min(35, Math.abs(due.daysUntil) * 3);
+  if (due.daysUntil === 0) score -= 8;
+  score -= Math.min(25, openTickets.length * 8);
+  score -= Math.min(25, failedPmTickets.length * 12);
+  score -= Math.min(18, attentionPmCount * 6);
+  if (repeatIssueCount >= 3) score -= 12;
+  if (!lastPm) score -= 10;
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const tone = score >= 85 ? "good" : score >= 65 ? "watch" : "risk";
+  const recommendations = [
+    due.daysUntil < 0 ? `PM is ${Math.abs(due.daysUntil)} day${Math.abs(due.daysUntil) === 1 ? "" : "s"} overdue.` : "",
+    failedPmTickets.length ? `${failedPmTickets.length} failed PM follow-up${failedPmTickets.length === 1 ? "" : "s"} open.` : "",
+    openTickets.length ? `${openTickets.length} open ticket${openTickets.length === 1 ? "" : "s"} on this equipment.` : "",
+    repeatIssueCount >= 3 ? `${repeatIssueCount} ticket${repeatIssueCount === 1 ? "" : "s"} in the last 90 days. Review for repeat failure.` : "",
+    attentionPmCount ? `${attentionPmCount} PM result${attentionPmCount === 1 ? "" : "s"} needed attention in the last 180 days.` : "",
+    !lastPm ? "No completed PM history yet." : ""
+  ].filter(Boolean);
+  return {
+    score,
+    tone,
+    due,
+    tickets,
+    openTickets,
+    failedPmTickets,
+    pmHistory,
+    lastPm,
+    recentPm,
+    failedPmCount,
+    attentionPmCount,
+    repeatIssueCount,
+    revenueTotal,
+    costTotal,
+    profitTotal,
+    partsUsed,
+    recommendations
+  };
+}
+
+function renderAssetHealthPanel(asset = {}) {
+  const health = assetHealthRecord(asset);
+  const recentTickets = health.tickets.slice(0, 4);
+  const recentParts = health.partsUsed.slice(0, 4);
+  return `
+    <section class="asset-health-card is-${escapeAttribute(health.tone)}">
+      <header>
+        <div>
+          <p class="eyebrow">Equipment intelligence</p>
+          <h3>Health summary</h3>
+        </div>
+        <strong>${escapeHtml(String(health.score))}</strong>
+      </header>
+      <div class="asset-health-metrics">
+        <article><span>Open tickets</span><strong>${escapeHtml(formatInventoryNumber(health.openTickets.length))}</strong></article>
+        <article><span>Failed PMs</span><strong>${escapeHtml(formatInventoryNumber(health.failedPmTickets.length))}</strong></article>
+        <article><span>Last PM</span><strong>${escapeHtml(health.lastPm?.completedAt ? formatDate(new Date(health.lastPm.completedAt)) : "None")}</strong></article>
+        <article><span>Next PM</span><strong>${escapeHtml(formatDate(health.due.nextDate))}</strong></article>
+        <article><span>Revenue</span><strong>${escapeHtml(formatMoney(health.revenueTotal))}</strong></article>
+        <article><span>Profit</span><strong>${escapeHtml(formatMoney(health.profitTotal))}</strong></article>
+      </div>
+      <div class="asset-health-grid">
+        <article>
+          <strong>Recommended attention</strong>
+          ${health.recommendations.length
+            ? `<ul>${health.recommendations.slice(0, 5).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+            : `<p class="muted">No current PM, ticket, or repeat-failure concerns.</p>`}
+        </article>
+        <article>
+          <strong>Recent tickets</strong>
+          ${recentTickets.length
+            ? recentTickets.map((ticket) => `<p><b>${escapeHtml(formatIssueNumber(ticket))}</b> ${escapeHtml(ticket.title || "Ticket")} <span>${escapeHtml(ticket.status || "Open")}</span></p>`).join("")
+            : `<p class="muted">No ticket history for this equipment.</p>`}
+        </article>
+        <article>
+          <strong>Recent parts used</strong>
+          ${recentParts.length
+            ? recentParts.map((part) => `<p><b>${escapeHtml(formatIssueNumber(part.ticket))}</b> ${escapeHtml(part.detail || "Inventory used")} <span>${part.at ? escapeHtml(formatDate(new Date(part.at))) : ""}</span></p>`).join("")
+            : `<p class="muted">No parts usage recorded from tickets yet.</p>`}
+        </article>
+      </div>
+    </section>
+  `;
 }
 
 function filterWorkOrdersForView(workOrders) {

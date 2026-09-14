@@ -13934,6 +13934,134 @@ html[data-theme="dark"] .asset-nfc-card[data-nfc-status="mismatch"] {
   align-items: start;
 }
 
+.asset-health-panel {
+  display: grid;
+}
+
+.asset-health-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--accent);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 12px 26px rgba(15, 32, 39, 0.06);
+}
+
+.asset-health-card.is-good {
+  border-left-color: var(--ok);
+}
+
+.asset-health-card.is-watch {
+  border-left-color: var(--warn);
+}
+
+.asset-health-card.is-risk {
+  border-left-color: var(--danger);
+}
+
+.asset-health-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.asset-health-card header h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.asset-health-card header > strong {
+  display: inline-grid;
+  place-items: center;
+  min-width: 58px;
+  min-height: 58px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 24px;
+}
+
+.asset-health-card.is-good header > strong {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.asset-health-card.is-watch header > strong {
+  background: #fff8dc;
+  color: #8a4c05;
+}
+
+.asset-health-card.is-risk header > strong {
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.asset-health-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.asset-health-metrics article {
+  display: grid;
+  gap: 4px;
+  min-height: 70px;
+  padding: 10px;
+  border: 1px solid rgba(220, 230, 227, 0.9);
+  border-radius: 10px;
+  background: #f8fcfb;
+}
+
+.asset-health-metrics span,
+.asset-health-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.asset-health-metrics strong,
+.asset-health-grid strong,
+.asset-health-grid b {
+  color: var(--ink);
+}
+
+.asset-health-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.asset-health-grid article {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(220, 230, 227, 0.9);
+  border-radius: 12px;
+  background: #f8fcfb;
+}
+
+.asset-health-grid ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.asset-health-grid p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.asset-health-grid p span {
+  display: block;
+}
+
 .schedule-pm-drawer {
   grid-column: 1 / -1;
 }
@@ -19110,6 +19238,8 @@ body.panel-schedule-open {
 
   .asset-heading,
   .asset-drawer-row,
+  .asset-health-metrics,
+  .asset-health-grid,
   .asset-primary-grid,
   .asset-nfc-card,
   .form-grid,
