@@ -12619,6 +12619,14 @@ html[data-theme="dark"] .site-map-empty {
   background: #fbfdfc;
 }
 
+.pm-calendar-week-column {
+  cursor: pointer;
+}
+
+.pm-calendar-week-column:hover {
+  background: #f2fbf8;
+}
+
 .pm-calendar-week-column.is-today {
   border-color: rgba(8, 112, 95, 0.45);
   background: #f0faf7;

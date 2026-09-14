@@ -27483,6 +27483,10 @@ function renderPmCalendar() {
       els.pmCalendarList.innerHTML = renderPmCalendarDayBoard(records, windowInfo);
       return;
     }
+    if (pmCalendarRange === "week") {
+      els.pmCalendarList.innerHTML = renderPmCalendarWeekBoard(records, windowInfo);
+      return;
+    }
     els.pmCalendarList.innerHTML = `<p class="muted">No ${escapeHtml(emptyKind)} are scheduled in this ${escapeHtml(pmCalendarRange)} for the current view.</p>`;
     return;
   }
@@ -27702,7 +27706,7 @@ function renderPmCalendarWeekBoard(records, windowInfo) {
     const key = toDateInputValue(date);
     const items = (groups.get(key) || []).slice().sort(pmCalendarRecordTimeSort);
     days.push(`
-      <section class="pm-calendar-week-column${key === toDateInputValue(today) ? " is-today" : ""}">
+      <section class="pm-calendar-week-column${key === toDateInputValue(today) ? " is-today" : ""}" data-pm-calendar-day="${escapeAttribute(key)}">
         <div class="pm-calendar-week-heading">
           <strong>${escapeHtml(date.toLocaleDateString([], { weekday: "short" }))}</strong>
           <span>${escapeHtml(formatDate(date))}</span>
