@@ -1204,6 +1204,11 @@ function hasSharedMaintenanceData(candidate) {
 function scheduleStructuredDataSync(delay = 2000) {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return;
   if (applyingSharedState || isPublicOnlyUrl() || !hasSharedMaintenanceData(state)) return;
+  if (typeof isBrowserOnline === "function" && !isBrowserOnline()) {
+    setSyncBanner("stale", "Offline mode", "Changes are saved on this device and will sync when back online.", 0);
+    renderOfflineStatus();
+    return;
+  }
   window.clearTimeout(structuredSyncTimer);
   structuredSyncTimer = window.setTimeout(syncStructuredDataToServer, delay);
 }
@@ -1741,6 +1746,11 @@ async function syncSingleServiceRequestToServer(item) {
 async function syncStructuredDataToServer() {
   if (!STRUCTURED_DATA_SYNC_ENABLED) return;
   if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
+  if (typeof isBrowserOnline === "function" && !isBrowserOnline()) {
+    setSyncBanner("stale", "Offline mode", "Changes are saved on this device and will sync when back online.", 0);
+    renderOfflineStatus();
+    return;
+  }
   structuredSyncActive = true;
   setSyncBanner("saving", "Saving to cloud", "", 0);
   try {
@@ -1959,6 +1969,8 @@ async function syncStructuredDataToServer() {
     console.warn("Structured SiteWorks server sync skipped.", error);
   } finally {
     structuredSyncActive = false;
+    renderSyncHealth();
+    renderOfflineStatus();
   }
 }
 
@@ -6268,6 +6280,7 @@ const LEGACY_CLOUD_URL = "";
 const LEGACY_CLOUD_ANON_KEY = "";
 const SHARED_APP_STATE_ID = "main";
 const AUTH_SESSION_KEY = "siteworks-session-v1";
+const SYNC_STATUS_STORAGE_KEY = "siteworks-sync-status-v1";
 const LEGACY_STORAGE_BUCKET = "siteworks-files";
 const PRODUCTION_SITE_URL = "https://sitesworks.info/";
 const SITEWORKS_API_BASE_URL = "https://api.sitesworks.info";
@@ -6826,6 +6839,7 @@ let syncBannerState = {
   detail: "",
   updatedAt: ""
 };
+let offlineStatusPanelOpen = false;
 let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
@@ -6855,13 +6869,7 @@ let publicScheduleLookupState = {
   message: ""
 };
 let publicKeyExitTimer = null;
-let syncHealth = {
-  lastCloudLoadAt: "",
-  lastCloudSaveAt: "",
-  lastPublicReportSyncAt: "",
-  lastErrorAt: "",
-  lastError: ""
-};
+let syncHealth = loadSyncHealthStatus();
 let serverNotifications = [];
 let serverNotificationsLoading = false;
 let lastNotificationLoadAt = "";
@@ -6932,6 +6940,9 @@ const els = {
   loginQrAreaReportBtn: document.getElementById("loginQrAreaReportBtn"),
   loginGreetingToast: document.getElementById("loginGreetingToast"),
   syncBanner: document.getElementById("syncBanner"),
+  offlineStatusBtn: document.getElementById("offlineStatusBtn"),
+  offlineStatusText: document.getElementById("offlineStatusText"),
+  offlineStatusPanel: document.getElementById("offlineStatusPanel"),
   firstAdminForm: document.getElementById("firstAdminForm"),
   firstAdminUsername: document.getElementById("firstAdminUsername"),
   firstAdminName: document.getElementById("firstAdminName"),
@@ -7826,7 +7837,50 @@ els.accessRequestForm.addEventListener("submit", (event) => {
 });
 
 els.logoutBtn.addEventListener("click", () => {
+  if (hasPendingOfflineChanges() && !window.confirm("SiteWorks still has local changes waiting to sync. Log out anyway?")) {
+    return;
+  }
   logoutCurrentUser("manual");
+});
+
+els.offlineStatusBtn?.addEventListener("click", () => {
+  offlineStatusPanelOpen = !offlineStatusPanelOpen;
+  renderOfflineStatus();
+});
+
+els.offlineStatusPanel?.addEventListener("click", async (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.closest("[data-offline-close]")) {
+    offlineStatusPanelOpen = false;
+    renderOfflineStatus();
+    return;
+  }
+  if (target.closest("[data-offline-sync-now]")) {
+    if (!isBrowserOnline()) {
+      setSyncBanner("stale", "Offline mode", "Reconnect to sync saved work.", 5000);
+      renderOfflineStatus();
+      return;
+    }
+    await syncStructuredDataToServer();
+  }
+});
+
+window.addEventListener("online", () => {
+  setSyncBanner("refresh", "Back online", "Trying to sync saved work...", 3000);
+  renderOfflineStatus();
+  scheduleStructuredDataSync(100);
+});
+
+window.addEventListener("offline", () => {
+  setSyncBanner("stale", "Offline mode", "Changes are saved on this device and will sync when back online.", 0);
+  renderOfflineStatus();
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (!hasPendingOfflineChanges()) return;
+  event.preventDefault();
+  event.returnValue = "";
 });
 
 function openPasswordPanel() {
@@ -12627,6 +12681,7 @@ function render() {
   renderPmCompliance();
   renderBackupStatus();
   renderSyncHealth();
+  renderOfflineStatus();
   renderQrSettings();
   renderAssetTableControls();
   renderAssetTable();
@@ -29535,6 +29590,7 @@ function renderSyncHealth() {
     ["Live updates", realtimeStatus],
     ["Cloud load", loadStatus],
     ["Cloud save", saveStatus],
+    ["Local changes", hasPendingOfflineChanges() ? "Waiting to sync" : formatSyncTimestamp(syncHealth.lastLocalSaveAt)],
     ["Public reports", publicReportStatus],
     ["Users visible", `${visibleManagedUsers().length}/${state.users.filter((user) => user.username !== "scan-customer").length}`],
     ["Templates visible", `${visibleTemplatesForCurrentView().length}/${state.templates.length}`],
@@ -29570,6 +29626,155 @@ function renderSyncBanner() {
   `;
 }
 
+function defaultSyncHealthStatus() {
+  return {
+    lastCloudLoadAt: "",
+    lastCloudSaveAt: "",
+    lastPublicReportSyncAt: "",
+    lastLocalSaveAt: "",
+    lastErrorAt: "",
+    lastError: ""
+  };
+}
+
+function loadSyncHealthStatus() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SYNC_STATUS_STORAGE_KEY) || "null");
+    return { ...defaultSyncHealthStatus(), ...(saved || {}) };
+  } catch {
+    return defaultSyncHealthStatus();
+  }
+}
+
+function persistSyncHealthStatus() {
+  try {
+    localStorage.setItem(SYNC_STATUS_STORAGE_KEY, JSON.stringify(syncHealth));
+  } catch (error) {
+    console.warn("Sync status save skipped.", error);
+  }
+}
+
+function isBrowserOnline() {
+  return typeof navigator === "undefined" || navigator.onLine !== false;
+}
+
+function dateValue(value) {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function hasPendingOfflineChanges() {
+  if (!currentUser || isPublicReportUrl()) return false;
+  if (structuredSyncActive) return true;
+  return dateValue(syncHealth.lastLocalSaveAt) > dateValue(syncHealth.lastCloudSaveAt);
+}
+
+function markLocalChangePending() {
+  if (applyingSharedState || isPublicOnlyUrl() || !currentUser) return;
+  syncHealth.lastLocalSaveAt = state.updatedAt || new Date().toISOString();
+  persistSyncHealthStatus();
+  renderOfflineStatus();
+}
+
+function countRecordsChangedAfter(records, sinceTime) {
+  if (!Array.isArray(records) || !sinceTime) return 0;
+  return records.filter((record) => {
+    const updatedAt = dateValue(record?.updatedAt || record?.createdAt || record?.completedAt);
+    if (updatedAt > sinceTime) return true;
+    if (Array.isArray(record?.history)) {
+      return record.history.some((item) => dateValue(item?.updatedAt || item?.completedAt || item?.createdAt) > sinceTime);
+    }
+    return false;
+  }).length;
+}
+
+function buildOfflinePendingSummary() {
+  const sinceTime = dateValue(syncHealth.lastCloudSaveAt);
+  const rows = [
+    ["Equipment / PMs", countRecordsChangedAfter(state.assets, sinceTime)],
+    ["Tickets / visits", countRecordsChangedAfter([...(state.workOrders || []), ...(state.scheduledVisits || [])], sinceTime)],
+    ["Quotes", countRecordsChangedAfter(state.estimates, sinceTime)],
+    ["Requests", countRecordsChangedAfter(state.serviceRequests, sinceTime)],
+    ["Inventory / keys", countRecordsChangedAfter([...(state.inventoryItems || []), ...(state.keys || []), ...(state.keyLogs || [])], sinceTime)]
+  ].filter(([, count]) => count > 0);
+  if (!rows.length && hasPendingOfflineChanges()) rows.push(["Local changes", 1]);
+  return rows;
+}
+
+function renderOfflineStatus() {
+  if (!els.offlineStatusBtn || !els.offlineStatusPanel || !els.offlineStatusText) return;
+  const show = Boolean(currentUser) && !isPublicReportUrl();
+  els.offlineStatusBtn.classList.toggle("hidden", !show);
+  els.offlineStatusPanel.classList.toggle("hidden", !show || !offlineStatusPanelOpen);
+  if (!show) return;
+
+  const online = isBrowserOnline();
+  const pending = hasPendingOfflineChanges();
+  const hasError = Boolean(syncHealth.lastError);
+  const status = !online ? "offline" : structuredSyncActive ? "syncing" : hasError ? "error" : pending ? "pending" : "online";
+  const pendingRows = buildOfflinePendingSummary();
+  const pendingText = pendingRows.reduce((sum, [, count]) => sum + count, 0);
+  const label = status === "offline"
+    ? `Offline${pendingText ? ` | ${pendingText} waiting` : ""}`
+    : status === "syncing"
+      ? "Syncing"
+      : status === "error"
+        ? `Sync issue${pendingText ? ` | ${pendingText} waiting` : ""}`
+        : status === "pending"
+          ? `${pendingText || 1} waiting to sync`
+          : "Online | synced";
+
+  els.offlineStatusBtn.className = `offline-status-pill app-only is-${status}`.trim();
+  els.offlineStatusBtn.setAttribute("aria-expanded", offlineStatusPanelOpen ? "true" : "false");
+  els.offlineStatusText.textContent = label;
+
+  const body = !online
+    ? "SiteWorks is saving work on this device. It will try the cloud again when the connection returns."
+    : pending
+      ? "These local changes are saved on this device and still need to reach the cloud."
+      : hasError
+        ? "SiteWorks hit a cloud sync issue. Your local work is still on this device."
+        : "Cloud sync is current for this device.";
+  const lastCloud = syncHealth.lastCloudSaveAt ? `Last cloud save ${formatSyncTimestamp(syncHealth.lastCloudSaveAt)}` : "No cloud save recorded yet";
+  const lastLocal = syncHealth.lastLocalSaveAt ? `Last local save ${formatSyncTimestamp(syncHealth.lastLocalSaveAt)}` : "No local changes yet";
+  const pendingMarkup = pendingRows.length
+    ? pendingRows.map(([labelText, count]) => `
+      <div class="offline-status-row">
+        <span>${escapeHtml(labelText)}</span>
+        <span>${count} waiting</span>
+      </div>
+    `).join("")
+    : `<div class="offline-status-row"><span>Status</span><span>Synced</span></div>`;
+
+  els.offlineStatusPanel.innerHTML = `
+    <div>
+      <h3>${escapeHtml(label)}</h3>
+      <p>${escapeHtml(body)}</p>
+    </div>
+    <div class="offline-status-list">
+      ${pendingMarkup}
+      <div class="offline-status-row">
+        <span>Local device</span>
+        <span>${escapeHtml(lastLocal)}</span>
+      </div>
+      <div class="offline-status-row">
+        <span>Cloud</span>
+        <span>${escapeHtml(lastCloud)}</span>
+      </div>
+      ${hasError ? `
+        <div class="offline-status-row">
+          <span>Last issue</span>
+          <span>${escapeHtml(friendlySyncErrorTitle(syncHealth.lastError))}</span>
+        </div>
+      ` : ""}
+    </div>
+    <div class="offline-status-actions">
+      <button type="button" class="secondary" data-offline-close>Close</button>
+      <button type="button" data-offline-sync-now ${!online || structuredSyncActive ? "disabled" : ""}>Sync now</button>
+    </div>
+  `;
+}
+
 function setSyncBanner(status, message, detail = "", autoHideMs = 0) {
   window.clearTimeout(syncBannerHideTimer);
   syncBannerState = {
@@ -29579,11 +29784,13 @@ function setSyncBanner(status, message, detail = "", autoHideMs = 0) {
     updatedAt: new Date().toISOString()
   };
   renderSyncBanner();
+  renderOfflineStatus();
   if (autoHideMs > 0) {
     syncBannerHideTimer = window.setTimeout(() => {
       if (syncBannerState.updatedAt) {
         syncBannerState = { status: "idle", message: "", detail: "", updatedAt: "" };
         renderSyncBanner();
+        renderOfflineStatus();
       }
     }, autoHideMs);
   }
@@ -29607,19 +29814,23 @@ function markSyncSuccess(type) {
   if (type === "publicReports") syncHealth.lastPublicReportSyncAt = now;
   syncHealth.lastError = "";
   syncHealth.lastErrorAt = "";
+  persistSyncHealthStatus();
   if (structuredSyncActive || type !== "load") {
     setSyncBanner("ok", syncBannerSuccessMessage(type), "", type === "save" ? 2600 : 1800);
   }
   renderSyncHealth();
+  renderOfflineStatus();
 }
 
 function markSyncError(message) {
   syncHealth.lastError = message || "Cloud sync failed.";
   syncHealth.lastErrorAt = new Date().toISOString();
+  persistSyncHealthStatus();
   if (!isQuietRetryableSyncError(syncHealth.lastError)) {
     setSyncBanner("error", friendlySyncErrorTitle(syncHealth.lastError), friendlySyncErrorDetail(syncHealth.lastError), 7000);
   }
   renderSyncHealth();
+  renderOfflineStatus();
 }
 
 function isQuietRetryableSyncError(message = "") {
@@ -41233,6 +41444,7 @@ function guessNetworkQrUrl() {
 function saveState() {
   state.updatedAt = new Date().toISOString();
   persistLocalStateOnly();
+  markLocalChangePending();
   if (typeof scheduleSharedStateSave === "function") scheduleSharedStateSave();
   if (typeof scheduleStructuredDataSync === "function") scheduleStructuredDataSync();
 }
@@ -41244,6 +41456,7 @@ function saveStateQuietly() {
   } catch (error) {
     console.warn("Local state save skipped because browser storage is full.", error);
   }
+  markLocalChangePending();
   if (typeof scheduleSharedStateSave === "function") scheduleSharedStateSave();
   if (typeof scheduleStructuredDataSync === "function") scheduleStructuredDataSync();
 }

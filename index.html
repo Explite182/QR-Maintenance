@@ -253,6 +253,11 @@
 
   <div id="loginGreetingToast" class="login-greeting-toast hidden" role="status" aria-live="polite"></div>
   <div id="syncBanner" class="sync-banner app-only hidden" role="status" aria-live="polite"></div>
+  <button id="offlineStatusBtn" class="offline-status-pill app-only hidden" type="button" aria-expanded="false" aria-controls="offlineStatusPanel">
+    <span class="offline-status-dot" aria-hidden="true"></span>
+    <span id="offlineStatusText">Online</span>
+  </button>
+  <section id="offlineStatusPanel" class="offline-status-panel app-only hidden" aria-live="polite"></section>
 
   <main class="app-shell app-only hidden">
     <aside id="appSidebar" class="sidebar">
