@@ -12529,6 +12529,71 @@ html[data-theme="dark"] .site-map-empty {
   gap: 14px;
 }
 
+.pm-calendar-overdue-strip {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #efb7b7;
+  border-radius: 12px;
+  background: #fff0f0;
+}
+
+.pm-calendar-overdue-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pm-calendar-overdue-heading strong {
+  color: #8f1f1f;
+  font-size: 15px;
+}
+
+.pm-calendar-overdue-heading span {
+  color: #9d2f25;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.pm-calendar-overdue-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.pm-calendar-overdue-item {
+  width: 100%;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid #efb7b7;
+  border-radius: 10px;
+  background: #fffafa;
+  color: var(--ink);
+  text-align: left;
+  box-shadow: none;
+}
+
+.pm-calendar-overdue-item:hover {
+  border-color: #c43d3d;
+  background: #ffe9e9;
+  transform: none;
+}
+
+.pm-calendar-overdue-item strong,
+.pm-calendar-overdue-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-calendar-overdue-item span {
+  color: #8f4a4a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .pm-calendar-month-wrap {
   display: grid;
   gap: 10px;
@@ -12868,6 +12933,21 @@ html[data-theme="dark"] .site-map-empty {
 .pm-calendar-scheduled-item em {
   background: #dbeafe;
   color: #1d4d8f;
+}
+
+.pm-calendar-completed-item {
+  border-color: #b9e2ce;
+  background: #e8f6ef;
+}
+
+.pm-calendar-completed-item:hover {
+  border-color: #0f8a61;
+  background: #def1e7;
+}
+
+.pm-calendar-completed-item em {
+  background: #d7f2e2;
+  color: #116236;
 }
 
 .pm-calendar-item span {
