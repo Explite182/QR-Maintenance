@@ -11759,7 +11759,18 @@ document.addEventListener("click", async (event) => {
   const sendScheduleButton = event.target.closest("[data-ticket-schedule-email]");
   if (sendScheduleButton && canManageWorkOrders()) {
     event.preventDefault();
-    sendScheduledVisitEmail(sendScheduleButton.dataset.ticketScheduleEmail, sendScheduleButton);
+    sendScheduledVisitEmail(sendScheduleButton.dataset.ticketScheduleEmail, sendScheduleButton, "scheduled");
+    return;
+  }
+
+  const scheduleNoticeButton = event.target.closest("[data-ticket-schedule-notice]");
+  if (scheduleNoticeButton && canManageWorkOrders()) {
+    event.preventDefault();
+    sendScheduledVisitEmail(
+      scheduleNoticeButton.dataset.ticketScheduleNotice,
+      scheduleNoticeButton,
+      scheduleNoticeButton.dataset.scheduleNoticeKind || "scheduled"
+    );
     return;
   }
 
@@ -33441,7 +33452,11 @@ function renderWorkOrderSchedulePanel(workOrder = {}) {
           </label>
           <input name="visitId" type="hidden" value="${escapeAttribute(nextVisit?.id || "")}">
           <button type="submit" class="secondary mini">${nextVisit ? "Update visit" : "Schedule visit"}</button>
-          ${nextVisit ? `<button type="button" class="primary mini" data-ticket-schedule-email="${escapeAttribute(workOrder.id)}">Send schedule</button>` : ""}
+          ${nextVisit ? `
+            <button type="button" class="primary mini" data-ticket-schedule-email="${escapeAttribute(workOrder.id)}">Send schedule</button>
+            <button type="button" class="secondary mini" data-ticket-schedule-notice="${escapeAttribute(workOrder.id)}" data-schedule-notice-kind="reminder">Visit reminder</button>
+            <button type="button" class="secondary mini" data-ticket-schedule-notice="${escapeAttribute(workOrder.id)}" data-schedule-notice-kind="on-way">Tech on the way</button>
+          ` : ""}
         </form>
       </section>
     </details>
@@ -34380,16 +34395,39 @@ function ensureScheduledVisitPublicLink(workOrder = {}, visit = {}) {
   return `${location.origin}${location.pathname}?${params.toString()}`;
 }
 
-function buildScheduleEmailParts(details, visit = {}) {
+function scheduleNotificationLabel(messageType = "scheduled") {
+  if (messageType === "reminder") return "Visit Reminder";
+  if (messageType === "on-way") return "Technician On The Way";
+  return "Scheduled Visit";
+}
+
+function buildScheduleEmailParts(details, visit = {}, messageType = "scheduled") {
   const scheduledAt = visit.scheduledAt ? formatDateTime(new Date(visit.scheduledAt)) : "Not scheduled";
   const assignedTo = visit.assignedUserName || details.assignedTo || "Unassigned";
   const duration = `${formatInventoryNumber(visit.durationMinutes || 60)} minutes`;
   const confirmationLink = visit.confirmationLink || "";
-  const subject = `SiteWorks Scheduled Visit: ${details.issueNumber} - ${details.equipment}`;
+  const label = scheduleNotificationLabel(messageType);
+  const isReminder = messageType === "reminder";
+  const isOnWay = messageType === "on-way";
+  const subject = isOnWay
+    ? `SiteWorks Tech On The Way: ${details.issueNumber} - ${details.equipment}`
+    : isReminder
+      ? `SiteWorks Visit Reminder: ${details.issueNumber} - ${details.equipment}`
+      : `SiteWorks Scheduled Visit: ${details.issueNumber} - ${details.equipment}`;
+  const intro = isOnWay
+    ? "Your SiteWorks technician is on the way."
+    : isReminder
+      ? "This is a reminder for your upcoming SiteWorks visit."
+      : "A SiteWorks visit has been scheduled.";
+  const responseLine = isOnWay
+    ? "Please reply to this email if there are access changes or urgent notes."
+    : confirmationLink
+      ? "Please use the link above to respond to this scheduled visit."
+      : "Please reply to this email if this time needs to change.";
   const text = [
     "Hello,",
     "",
-    "A SiteWorks visit has been scheduled.",
+    intro,
     "",
     `Ticket: ${details.issueNumber} - ${details.title}`,
     `Customer: ${details.customer}`,
@@ -34399,14 +34437,15 @@ function buildScheduleEmailParts(details, visit = {}) {
     `Assigned to: ${assignedTo}`,
     `Duration: ${duration}`,
     visit.notes ? `Notes: ${visit.notes}` : "",
-    confirmationLink ? `Confirm, request a change, or cancel: ${confirmationLink}` : "",
+    confirmationLink && !isOnWay ? `Confirm, request a change, or cancel: ${confirmationLink}` : "",
     "",
-    confirmationLink ? "Please use the link above to respond to this scheduled visit." : "Please reply to this email if this time needs to change."
+    responseLine
   ].filter(Boolean).join("\n");
   const html = `
     <div style="font-family:Arial,sans-serif;color:#172126;line-height:1.45;">
-      <h2 style="margin:0 0 4px;color:#14566b;">SiteWorks Scheduled Visit</h2>
+      <h2 style="margin:0 0 4px;color:#14566b;">SiteWorks ${escapeHtml(label)}</h2>
       <p style="margin:0 0 18px;font-weight:700;">${escapeHtml(details.issueNumber)} - ${escapeHtml(details.title)}</p>
+      <p style="margin:0 0 18px;">${escapeHtml(intro)}</p>
       <table style="border-collapse:collapse;width:100%;max-width:720px;">
         ${[
           ["Scheduled for", scheduledAt],
@@ -34416,7 +34455,7 @@ function buildScheduleEmailParts(details, visit = {}) {
           ["Location", details.location],
           ["Equipment / area", details.equipment],
           ["Ticket", details.issueNumber],
-          ["Confirmation link", confirmationLink || "Reply to this email"],
+          ["Response", confirmationLink && !isOnWay ? confirmationLink : "Reply to this email"],
           ["Notes", visit.notes || "None"]
         ].map(([label, value]) => `
           <tr>
@@ -34425,19 +34464,19 @@ function buildScheduleEmailParts(details, visit = {}) {
           </tr>
         `).join("")}
       </table>
-      ${confirmationLink ? `<p><a href="${escapeAttribute(confirmationLink)}" style="display:inline-block;padding:10px 14px;background:#08705f;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;">Confirm or request a change</a></p>` : ""}
-      <p style="color:#68777d;">${confirmationLink ? "No SiteWorks login is required to respond." : "Please reply to this email if this time needs to change."}</p>
+      ${confirmationLink && !isOnWay ? `<p><a href="${escapeAttribute(confirmationLink)}" style="display:inline-block;padding:10px 14px;background:#08705f;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;">Confirm or request a change</a></p>` : ""}
+      <p style="color:#68777d;">${escapeHtml(confirmationLink && !isOnWay ? "No SiteWorks login is required to respond." : responseLine)}</p>
     </div>
   `;
   return { subject, text, html };
 }
 
-function openScheduleEmailDraft(details, visit, recipient) {
-  const parts = buildScheduleEmailParts(details, visit);
+function openScheduleEmailDraft(details, visit, recipient, messageType = "scheduled") {
+  const parts = buildScheduleEmailParts(details, visit, messageType);
   window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(parts.subject)}&body=${encodeURIComponent(parts.text)}`;
 }
 
-async function sendScheduledVisitEmail(workOrderId = "", button = null) {
+async function sendScheduledVisitEmail(workOrderId = "", button = null, messageType = "scheduled") {
   const workOrder = getWorkOrder(workOrderId);
   if (!workOrder || !canManageWorkOrders()) return;
   const visits = scheduledVisitsForWorkOrder(workOrder.id);
@@ -34457,11 +34496,17 @@ async function sendScheduledVisitEmail(workOrderId = "", button = null) {
   }
   const confirmationLink = ensureScheduledVisitPublicLink(workOrder, visit);
   visit.confirmationLink = confirmationLink;
+  if (messageType === "on-way") {
+    visit.status = "On my way";
+    const snapshot = ensureScheduledVisitSnapshot(workOrder, visit);
+    snapshot.status = "On my way";
+  }
   workOrder.updatedAt = new Date().toISOString();
   state.scheduledVisits = normalizeScheduledVisits(state.scheduledVisits || []);
   saveState();
   await syncSingleWorkOrderToServer(workOrder);
-  const parts = buildScheduleEmailParts(details, visit);
+  const parts = buildScheduleEmailParts(details, visit, messageType);
+  const actionLabel = scheduleNotificationLabel(messageType);
   const originalText = button?.textContent || "";
   if (button) {
     button.disabled = true;
@@ -34485,23 +34530,23 @@ async function sendScheduledVisitEmail(workOrderId = "", button = null) {
       }
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(getEmailFunctionError(result, "The schedule email could not be sent."));
-    addWorkOrderHistory(workOrder, "Schedule email sent", `${formatDateTime(new Date(visit.scheduledAt))} to ${recipient.trim()} | ${buildEmailHistoryDetails(recipient.trim(), result)}`);
-    addActivity("Schedule emailed", `${details.issueNumber} to ${recipient.trim()}`);
+    if (!response.ok) throw new Error(getEmailFunctionError(result, `The ${actionLabel.toLowerCase()} email could not be sent.`));
+    addWorkOrderHistory(workOrder, `${actionLabel} email sent`, `${formatDateTime(new Date(visit.scheduledAt))} to ${recipient.trim()} | ${buildEmailHistoryDetails(recipient.trim(), result)}`);
+    addActivity(`${actionLabel} emailed`, `${details.issueNumber} to ${recipient.trim()}`);
     saveState();
     render();
-    alert(buildEmailSuccessAlert("Schedule email", result));
+    alert(buildEmailSuccessAlert(`${actionLabel} email`, result));
   } catch (error) {
-    console.warn("Schedule email failed.", error);
-    addWorkOrderHistory(workOrder, "Schedule email failed", error.message || "Automatic schedule email could not be sent.");
-    addActivity("Schedule email failed", `${details.issueNumber} to ${recipient.trim()}`);
+    console.warn(`${actionLabel} email failed.`, error);
+    addWorkOrderHistory(workOrder, `${actionLabel} email failed`, error.message || `Automatic ${actionLabel.toLowerCase()} email could not be sent.`);
+    addActivity(`${actionLabel} email failed`, `${details.issueNumber} to ${recipient.trim()}`);
     saveState();
     const useDraft = confirm(buildEmailFailurePrompt(error, "customer"));
     if (useDraft) {
-      addWorkOrderHistory(workOrder, "Schedule fallback email draft opened", `Draft to ${recipient.trim()}`);
-      addActivity("Schedule fallback email draft", `${details.issueNumber} to ${recipient.trim()}`);
+      addWorkOrderHistory(workOrder, `${actionLabel} fallback email draft opened`, `Draft to ${recipient.trim()}`);
+      addActivity(`${actionLabel} fallback email draft`, `${details.issueNumber} to ${recipient.trim()}`);
       saveState();
-      openScheduleEmailDraft(details, visit, recipient.trim());
+      openScheduleEmailDraft(details, visit, recipient.trim(), messageType);
     }
     render();
   } finally {
