@@ -27950,10 +27950,13 @@ function assignScheduledVisitFromDispatch(workOrderId = "", assigneeValue = "", 
     addWorkOrderHistory(workOrder, "Assigned contractor", `${contractor.name}${contractor.email ? ` | ${contractor.email}` : ""}${contractor.trade ? ` | ${contractor.trade}` : ""}`);
   }
   addActivity("Dispatch updated", `${formatIssueNumber(workOrder)} - ${label || "Unassigned"}`);
-  focusedWorkOrderId = workOrder.id;
+  focusedWorkOrderId = "";
+  focusedServiceRequestId = "";
+  focusedCompletedRecordId = "";
   saveState();
   syncSingleWorkOrderToServer(workOrder);
   render();
+  syncWorkDrawerBackdrop();
 }
 
 function pmCalendarRecordTimeSort(a, b) {
