@@ -6309,7 +6309,7 @@ const DEFAULT_HVAC_SCHEDULE = Object.freeze({
 });
 const LIGHTING_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_CONTROLLER_CHECKING_WINDOW_MS = 15 * 60 * 1000;
-const LIGHTING_COMMAND_STALE_MS = 3 * 60 * 1000;
+const LIGHTING_COMMAND_STALE_MS = 30 * 1000;
 const PUMP_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const HVAC_CONTROLLER_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const LIGHTING_LIVE_REFRESH_INTERVAL_MS = 5000;
@@ -6392,6 +6392,9 @@ const PUMP_SETUP_EDIT_HOLD_MS = 2 * 60 * 1000;
 let hvacSetupEditHoldUntil = 0;
 const HVAC_SETUP_FORM_SELECTOR = "[data-hvac-controller-form], [data-hvac-firmware-form], [data-hvac-firmware-assignment-form]";
 const HVAC_SETUP_EDIT_HOLD_MS = 8 * 1000;
+let lightingFirmwareEditHoldUntil = 0;
+const LIGHTING_FIRMWARE_FORM_SELECTOR = "[data-lighting-firmware-form], [data-lighting-firmware-assignment-form]";
+const LIGHTING_FIRMWARE_EDIT_HOLD_MS = 2 * 60 * 1000;
 
 function isEditableFormControl(element = null) {
   const tagName = String(element?.tagName || "").toLowerCase();
@@ -9292,6 +9295,15 @@ document.addEventListener("pointerdown", (event) => {
   }
 }, true);
 
+document.addEventListener("pointerdown", (event) => {
+  const form = event.target?.closest?.(LIGHTING_FIRMWARE_FORM_SELECTOR);
+  if (form && isEditableFormControl(event.target)) {
+    markLightingFirmwareEditingActive(form);
+  } else if (!event.target?.closest?.("[data-lighting-firmware-form], [data-lighting-firmware-assignment-form]")) {
+    clearLightingFirmwareEditingActive();
+  }
+}, true);
+
 ["focusin", "input", "change", "keydown"].forEach((eventName) => {
   document.addEventListener(eventName, (event) => {
     const form = event.target?.closest?.(PUMP_SETUP_FORM_SELECTOR);
@@ -9303,6 +9315,13 @@ document.addEventListener("pointerdown", (event) => {
   document.addEventListener(eventName, (event) => {
     const form = event.target?.closest?.(HVAC_SETUP_FORM_SELECTOR);
     if (form && isEditableFormControl(event.target)) markHvacSetupEditingActive(form);
+  }, true);
+});
+
+["focusin", "input", "change", "keydown"].forEach((eventName) => {
+  document.addEventListener(eventName, (event) => {
+    const form = event.target?.closest?.(LIGHTING_FIRMWARE_FORM_SELECTOR);
+    if (form && isEditableFormControl(event.target)) markLightingFirmwareEditingActive(form);
   }, true);
 });
 
@@ -13096,20 +13115,22 @@ function shouldPreserveLightingForm(container, selector) {
 async function refreshLightingLiveStatus() {
   const { canUseLocation } = getLightingScopeDetails();
   if (!canUseLocation) return;
+  const preserveFirmwareForm = isLightingFirmwareEditingActive();
   lightingLiveRefreshActive = true;
   try {
-    await Promise.all([
+    const refreshTasks = [
       loadLightingZonesForCurrentScope({ force: true }),
       loadLightingControllersForCurrentScope({ force: true }),
       loadLightingCommandsForCurrentScope({ force: true }),
-      loadLightingInputsForCurrentScope({ force: true }),
-      loadLightingFirmwareForCurrentScope({ force: true })
-    ]);
+      loadLightingInputsForCurrentScope({ force: true })
+    ];
+    if (!preserveFirmwareForm) refreshTasks.push(loadLightingFirmwareForCurrentScope({ force: true }));
+    await Promise.all(refreshTasks);
     renderLightingNetworkSummary();
     renderLightingHome();
     renderLightingZones();
     renderLightingInputs();
-    renderLightingFirmware();
+    if (!preserveFirmwareForm && !isLightingFirmwareEditingActive()) renderLightingFirmware();
     renderLightingHistory();
   } finally {
     lightingLiveRefreshActive = false;
@@ -13965,7 +13986,7 @@ async function loadLightingFirmwareForCurrentScope({ force = false } = {}) {
     if (status) status.textContent = "Firmware registry is not available yet.";
   } finally {
     lightingFirmwareLoading = false;
-    renderLightingFirmware();
+    if (!isLightingFirmwareEditingActive()) renderLightingFirmware();
   }
 }
 
@@ -15076,6 +15097,7 @@ function inferLightingFirmwareVersionFromFileName(fileName = "") {
 }
 
 async function saveLightingFirmwareFromForm(form) {
+  markLightingFirmwareEditingActive(form);
   const status = document.querySelector("[data-lighting-firmware-status]");
   const formData = new FormData(form);
   const firmwareFile = formData.get("firmwareFile");
@@ -15118,6 +15140,7 @@ async function saveLightingFirmwareFromForm(form) {
     lightingFirmwareCache.firmware = [savedFirmware, ...lightingFirmwareCache.firmware.filter((item) => item.id !== savedFirmware.id)];
     lightingFirmwareLoadedScope = getLightingControllerScopeKey();
     form.reset();
+    clearLightingFirmwareEditingActive();
     if (status) status.textContent = `Registered firmware ${savedFirmware.version}.`;
   } catch (error) {
     console.warn("Lighting firmware could not be saved.", error);
@@ -20863,6 +20886,30 @@ function clearHvacSetupEditingActive() {
   hvacSetupEditHoldUntil = 0;
   document.querySelectorAll(`${HVAC_SETUP_FORM_SELECTOR}[data-hvac-editing-active="true"]`).forEach((form) => {
     delete form.dataset.hvacEditingActive;
+  });
+}
+
+function isLightingFirmwareEditingActive() {
+  const activeElement = document.activeElement;
+  if (isEditableFormControl(activeElement) && activeElement?.closest?.(LIGHTING_FIRMWARE_FORM_SELECTOR)) return true;
+  const selectedFirmwareFile = Array.from(document.querySelectorAll(`${LIGHTING_FIRMWARE_FORM_SELECTOR} input[type="file"]`))
+    .some((input) => input.files && input.files.length);
+  if (selectedFirmwareFile) return true;
+  const now = Date.now();
+  if (lightingFirmwareEditHoldUntil && now < lightingFirmwareEditHoldUntil) return true;
+  if (lightingFirmwareEditHoldUntil && now >= lightingFirmwareEditHoldUntil) clearLightingFirmwareEditingActive();
+  return false;
+}
+
+function markLightingFirmwareEditingActive(form = null) {
+  lightingFirmwareEditHoldUntil = Date.now() + LIGHTING_FIRMWARE_EDIT_HOLD_MS;
+  if (form) form.dataset.lightingFirmwareEditingActive = "true";
+}
+
+function clearLightingFirmwareEditingActive() {
+  lightingFirmwareEditHoldUntil = 0;
+  document.querySelectorAll(`${LIGHTING_FIRMWARE_FORM_SELECTOR}[data-lighting-firmware-editing-active="true"]`).forEach((form) => {
+    delete form.dataset.lightingFirmwareEditingActive;
   });
 }
 
