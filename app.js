@@ -11679,13 +11679,11 @@ document.addEventListener("click", async (event) => {
 
   const pmCalendarAssetButton = event.target.closest("[data-pm-calendar-asset]");
   if (pmCalendarAssetButton) {
+    event.preventDefault();
     const asset = getAsset(pmCalendarAssetButton.dataset.pmCalendarAsset);
     if (!asset) return;
     selectedId = asset.id;
-    syncFiltersToSelectedAsset();
-    location.hash = `asset/${selectedId}`;
     render();
-    document.getElementById("assetPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
 
