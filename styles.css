@@ -1509,6 +1509,18 @@ textarea:disabled {
   font-size: 12px;
 }
 
+#newUserLocation,
+.user-editor select[multiple] {
+  min-height: 112px;
+  padding: 8px;
+}
+
+#newUserLocation option,
+.user-editor select[multiple] option {
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
 .template-list {
   display: grid;
   gap: 8px;

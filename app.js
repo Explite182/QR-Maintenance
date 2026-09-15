@@ -1118,6 +1118,9 @@ function mergeSharedUsers(sharedUsers = [], localUsers = [], localCurrentUserId 
 
 function sanitizeSharedUser(user) {
   const { session, ...rest } = user || {};
+  const locationIds = Array.isArray(rest.locationIds)
+    ? rest.locationIds
+    : [rest.locationId].filter(Boolean);
   return {
     ...rest,
     username: String(rest.username || "").trim().toLowerCase(),
@@ -1125,9 +1128,46 @@ function sanitizeSharedUser(user) {
     role: rest.role || "Customer",
     customerId: rest.customerId || "",
     locationId: rest.locationId || "",
+    locationIds: rest.role === "Admin" ? [] : [...new Set(locationIds.map(String).filter(Boolean))],
     password: rest.password || "",
     localOnly: Boolean(rest.localOnly)
   };
+}
+
+function normalizeUserLocationIds(user = {}, customerId = user.customerId || "") {
+  if (!user || user.role === "Admin" || user.username === "scan-customer") return [];
+  const rawLocationIds = Array.isArray(user.locationIds) && user.locationIds.length
+    ? user.locationIds
+    : [user.locationId].filter(Boolean);
+  const uniqueIds = [...new Set(rawLocationIds.map(String).filter(Boolean))];
+  if (!customerId) return uniqueIds;
+  return uniqueIds.filter((locationId) => {
+    const locationRecord = getLocation(locationId);
+    return locationRecord?.customerId === customerId;
+  });
+}
+
+function userPrimaryLocationId(user = {}) {
+  return normalizeUserLocationIds(user)[0] || "";
+}
+
+function userHasAllLocations(user = {}) {
+  return !normalizeUserLocationIds(user).length;
+}
+
+function userCanAccessLocation(user = {}, locationId = "", customerId = "") {
+  if (user?.role === "Admin") return true;
+  if (!user) return false;
+  if (customerId && user.customerId !== customerId) return false;
+  const locationIds = normalizeUserLocationIds(user, customerId || user.customerId || "");
+  if (!locationIds.length) return true;
+  return Boolean(locationId && locationIds.includes(locationId));
+}
+
+function selectedLocationIdsFromSelect(select) {
+  if (!select) return [];
+  const values = Array.from(select.selectedOptions || []).map((option) => option.value).filter(Boolean);
+  return [...new Set(values)];
 }
 
 function isRemoteSharedStateNewer(remoteUpdatedAt = "") {
@@ -8435,12 +8475,13 @@ els.userForm.addEventListener("submit", async (event) => {
     return;
   }
   const newUserCustomerId = newUserRole === "Admin" ? "" : els.newUserCustomer.value;
-  const newUserLocationId = newUserRole === "Admin" ? "" : els.newUserLocation?.value || "";
+  const newUserLocationIds = newUserRole === "Admin" ? [] : selectedLocationIdsFromSelect(els.newUserLocation);
+  const newUserLocationId = newUserLocationIds[0] || "";
   if (!canManageUserCustomer(newUserCustomerId, newUserRole)) {
     setUserFormStatus("Managers can only add users for their assigned customer.", true);
     return;
   }
-  if (!canManageUserLocation(newUserCustomerId, newUserLocationId)) {
+  if (!canManageUserLocations(newUserCustomerId, newUserLocationIds)) {
     setUserFormStatus("Choose a location this user is allowed to access.", true);
     return;
   }
@@ -8467,6 +8508,8 @@ els.userForm.addEventListener("submit", async (event) => {
     setUserFormStatus(lastAuthError || "Could not create that server user.", true);
     return;
   }
+  newUser.locationIds = newUserLocationIds;
+  newUser.locationId = newUserLocationId;
   upsertLocalUser(newUser);
   addActivity("User added", `${newUser.username} (${newUser.role})`);
   const sourceRequest = state.accessRequests.find((request) => request.id === els.userForm.dataset.requestId);
@@ -8504,7 +8547,8 @@ els.userList.addEventListener("submit", async (event) => {
   const password = String(formData.get("password") || "").trim();
   const role = String(formData.get("role") || "Customer");
   const customerId = role === "Admin" ? "" : String(formData.get("customerId") || "");
-  const locationId = role === "Admin" ? "" : String(formData.get("locationId") || "");
+  const locationIds = role === "Admin" ? [] : [...new Set(formData.getAll("locationIds").map(String).filter(Boolean))];
+  const locationId = locationIds[0] || "";
   const duplicateUsername = state.users.some((item) =>
     item.id !== user.id && item.username.toLowerCase() === username.toLowerCase()
   );
@@ -8523,7 +8567,7 @@ els.userList.addEventListener("submit", async (event) => {
     alert(userRolePermissionMessage());
     return;
   }
-  if (!canManageUserLocation(customerId, locationId)) {
+  if (!canManageUserLocations(customerId, locationIds)) {
     alert("Choose a location this user is allowed to access.");
     return;
   }
@@ -8533,6 +8577,7 @@ els.userList.addEventListener("submit", async (event) => {
   user.role = role;
   user.customerId = customerId;
   user.locationId = locationId;
+  user.locationIds = locationIds;
   user.localOnly = user.localOnly || !isEmailAddress(username);
   if (user.localOnly && password) user.password = password;
   if (!user.localOnly && isEmailAddress(username)) user.password = "";
@@ -19163,13 +19208,13 @@ function renderUserItem(user) {
   const customerOptions = manageableUserCustomers().map((customerRecord) =>
     `<option value="${customerRecord.id}" ${user.customerId === customerRecord.id ? "selected" : ""}>${escapeHtml(customerRecord.name)}</option>`
   ).join("");
-  const locationOptions = userLocationOptions(user.customerId, user.locationId);
-  const location = getLocation(user.locationId);
+  const userLocationIds = normalizeUserLocationIds(user, user.customerId);
+  const locationOptions = userLocationOptions(user.customerId, userLocationIds);
   const customerAssignment = user.role !== "Admin"
     ? ` | ${escapeHtml(customer?.name || "No customer assigned")}`
     : "";
-  const locationAssignment = user.role !== "Admin" && user.locationId
-    ? ` | ${escapeHtml(location?.name || "Unknown location")}`
+  const locationAssignment = user.role !== "Admin" && userLocationIds.length
+    ? ` | ${escapeHtml(userLocationAssignmentLabel(user))}`
     : user.role !== "Admin"
       ? " | All locations"
       : "";
@@ -19213,8 +19258,8 @@ function renderUserItem(user) {
           </select>
         </label>
         <label>
-          Assigned location
-          <select name="locationId" ${disabled}>
+          Visible locations
+          <select name="locationIds" multiple size="4" ${disabled}>
             ${locationOptions}
           </select>
         </label>
@@ -19675,18 +19720,19 @@ function renderNewUserLocationOptions() {
   if (!els.newUserLocation) return;
   const role = els.newUserRole?.value || "Customer";
   const customerId = role === "Admin" ? "" : els.newUserCustomer?.value || "";
-  els.newUserLocation.innerHTML = userLocationOptions(customerId, "");
+  els.newUserLocation.innerHTML = userLocationOptions(customerId, []);
   els.newUserLocation.disabled = role === "Admin" || !customerId;
 }
 
-function userLocationOptions(customerId, selectedLocationId = "") {
+function userLocationOptions(customerId, selectedLocationIds = []) {
   const locations = manageableUserLocations(customerId);
-  const canAssignAllLocations = currentRole === "Admin" || !currentUser?.locationId;
+  const selectedIds = new Set(Array.isArray(selectedLocationIds) ? selectedLocationIds : [selectedLocationIds].filter(Boolean));
+  const canAssignAllLocations = currentRole === "Admin" || userHasAllLocations(currentUser);
   const allOption = canAssignAllLocations
-    ? `<option value="" ${!selectedLocationId ? "selected" : ""}>All locations</option>`
+    ? `<option value="" ${!selectedIds.size ? "selected" : ""}>All locations</option>`
     : "";
   const locationOptions = locations.map((locationRecord) =>
-    `<option value="${escapeAttribute(locationRecord.id)}" ${selectedLocationId === locationRecord.id ? "selected" : ""}>${escapeHtml(locationRecord.name)}</option>`
+    `<option value="${escapeAttribute(locationRecord.id)}" ${selectedIds.has(locationRecord.id) ? "selected" : ""}>${escapeHtml(locationRecord.name)}</option>`
   ).join("");
   return `${allOption}${locationOptions}`;
 }
@@ -30446,12 +30492,11 @@ function renderCustomerPortalAccess(customerId = "", locationId = "") {
       </div>
       <div class="portal-access-users">
         ${users.length ? users.map((user) => {
-          const scopedLocation = user.locationId ? getLocation(user.locationId) : null;
           return `
             <article class="portal-access-user">
               <div>
                 <strong>${escapeHtml(user.name || user.username)}</strong>
-                <span>${escapeHtml(user.username)} | ${escapeHtml(scopedLocation?.name || "All locations")}</span>
+                <span>${escapeHtml(user.username)} | ${escapeHtml(userLocationAssignmentLabel(user))}</span>
               </div>
               <button type="button" class="secondary mini" data-email-customer-portal-invite="${escapeAttribute(customerId)}" data-portal-user-id="${escapeAttribute(user.id)}">Email invite</button>
             </article>
@@ -38061,14 +38106,14 @@ function visibleLocationsForReportLabels() {
 
 function isLocationScopedUser() {
   return Boolean(
-    currentUser?.locationId &&
+    !userHasAllLocations(currentUser) &&
     (isManagerRole() || currentRole === "Customer")
   );
 }
 
 function defaultLocationSelection() {
-  if (isLocationScopedUser()) return currentUser.locationId;
   const visibleLocations = locationsForCustomer(selectedCustomerId);
+  if (isLocationScopedUser()) return visibleLocations[0]?.id || "all";
   return visibleLocations.length === 1 ? visibleLocations[0].id : "all";
 }
 
@@ -38087,10 +38132,6 @@ function restoreSelectionAfterCloudApply(previousCustomerId, previousLocationId)
       : customers[0].id;
 
   const visibleLocations = locationsForCustomer(selectedCustomerId);
-  if (isLocationScopedUser() && visibleLocations.some((locationRecord) => locationRecord.id === currentUser.locationId)) {
-    selectedLocationId = currentUser.locationId;
-    return;
-  }
 
   selectedLocationId = previousLocationId !== "all" && visibleLocations.some((locationRecord) => locationRecord.id === previousLocationId)
     ? previousLocationId
@@ -38116,11 +38157,8 @@ function ensureSelection() {
   if (selectedLocationId !== "all" && !visibleLocations.some((locationRecord) => locationRecord.id === selectedLocationId)) {
     selectedLocationId = defaultLocationSelection();
   }
-  if (selectedLocationId === "all" && visibleLocations.length === 1 && !isLocationScopedUser()) {
+  if (selectedLocationId === "all" && visibleLocations.length === 1) {
     selectedLocationId = visibleLocations[0].id;
-  }
-  if (isLocationScopedUser() && visibleLocations.some((locationRecord) => locationRecord.id === currentUser.locationId)) {
-    selectedLocationId = currentUser.locationId;
   }
 
   if (selectedId && !filteredAssets().some((asset) => asset.id === selectedId)) {
@@ -38899,7 +38937,7 @@ function formatServiceRequestNumber(item) {
 }
 
 function canManageSetup() {
-  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser));
 }
 
 function canCreateCustomers() {
@@ -38907,16 +38945,16 @@ function canCreateCustomers() {
 }
 
 function canCreateLocations() {
-  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser));
 }
 
 function canManageTemplateSetup() {
-  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser));
 }
 
 function canManageCustomerSetup(customerId) {
   if (currentRole === "Admin") return true;
-  return isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
+  return isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser) && customerId === currentUser.customerId;
 }
 
 function canManageLocationSetup(locationId, customerId = "") {
@@ -38937,16 +38975,16 @@ function manageableSetupCustomers() {
 }
 
 function canManageUsers() {
-  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser));
 }
 
 function canManageContractors() {
-  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser));
 }
 
 function canManageContractorCustomer(customerId) {
   if (currentRole === "Admin") return true;
-  return isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
+  return isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser) && customerId === currentUser.customerId;
 }
 
 function canManageContractorRecord(contractor) {
@@ -38954,12 +38992,12 @@ function canManageContractorRecord(contractor) {
 }
 
 function canManageInventory() {
-  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser));
 }
 
 function canManageInventoryCustomer(customerId) {
   if (currentRole === "Admin") return true;
-  return isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
+  return isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser) && customerId === currentUser.customerId;
 }
 
 function manageableInventoryCustomers() {
@@ -39031,12 +39069,12 @@ function inventorySearchText(item = {}) {
 }
 
 function canManageKeys() {
-  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId);
+  return currentRole === "Admin" || (isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser));
 }
 
 function canManageKeyCustomer(customerId) {
   if (currentRole === "Admin") return true;
-  return isManagerRole() && Boolean(currentUser?.customerId) && !currentUser.locationId && customerId === currentUser.customerId;
+  return isManagerRole() && Boolean(currentUser?.customerId) && userHasAllLocations(currentUser) && customerId === currentUser.customerId;
 }
 
 function manageableKeyCustomers() {
@@ -39105,10 +39143,10 @@ function manageableUserLocations(customerId) {
     return state.locations.filter((locationRecord) => locationRecord.customerId === customerId);
   }
   if (isManagerRole() && currentUser?.customerId === customerId) {
-    const managerLocationId = currentUser.locationId || "";
+    const managerLocationIds = normalizeUserLocationIds(currentUser, customerId);
     return state.locations.filter((locationRecord) =>
       locationRecord.customerId === customerId &&
-      (!managerLocationId || locationRecord.id === managerLocationId)
+      (!managerLocationIds.length || managerLocationIds.includes(locationRecord.id))
     );
   }
   return [];
@@ -39143,17 +39181,33 @@ function canManageUserCustomer(customerId, role) {
 }
 
 function canManageUserLocation(customerId, locationId) {
-  if (!locationId) return currentRole === "Admin" || !currentUser?.locationId;
+  if (!locationId) return currentRole === "Admin" || userHasAllLocations(currentUser);
   return manageableUserLocations(customerId).some((locationRecord) => locationRecord.id === locationId);
+}
+
+function canManageUserLocations(customerId, locationIds = []) {
+  const ids = Array.isArray(locationIds) ? locationIds.filter(Boolean) : [locationIds].filter(Boolean);
+  if (!ids.length) return currentRole === "Admin" || userHasAllLocations(currentUser);
+  return ids.every((locationId) => canManageUserLocation(customerId, locationId));
+}
+
+function userLocationAssignmentLabel(user = {}) {
+  const locationIds = normalizeUserLocationIds(user, user.customerId);
+  if (!locationIds.length) return "All locations";
+  return locationIds
+    .map((locationId) => getLocation(locationId)?.name || "Unknown location")
+    .join(", ");
 }
 
 function canViewUserRecord(user) {
   if (currentRole === "Admin") return true;
   if (!isManagerRole()) return false;
   if (user.customerId !== currentUser?.customerId || user.role === "Admin") return false;
-  const managerLocationId = currentUser.locationId || "";
-  if (!managerLocationId) return true;
-  return user.locationId === managerLocationId;
+  const managerLocationIds = normalizeUserLocationIds(currentUser, currentUser.customerId);
+  if (!managerLocationIds.length) return true;
+  const userLocationIds = normalizeUserLocationIds(user, user.customerId);
+  if (!userLocationIds.length) return false;
+  return userLocationIds.every((locationId) => managerLocationIds.includes(locationId));
 }
 
 function canEditUserRecord(user) {
@@ -39164,9 +39218,11 @@ function canEditUserRecord(user) {
     ? ["Customer", "Technician", "Manager"]
     : ["Customer", "Technician"];
   if (user.customerId !== currentUser?.customerId || !manageableRoles.includes(user.role)) return false;
-  const managerLocationId = currentUser.locationId || "";
-  if (!managerLocationId) return true;
-  return user.locationId === managerLocationId;
+  const managerLocationIds = normalizeUserLocationIds(currentUser, currentUser.customerId);
+  if (!managerLocationIds.length) return true;
+  const userLocationIds = normalizeUserLocationIds(user, user.customerId);
+  if (!userLocationIds.length) return false;
+  return userLocationIds.every((locationId) => managerLocationIds.includes(locationId));
 }
 
 function visibleManagedUsers() {
@@ -39174,7 +39230,7 @@ function visibleManagedUsers() {
 }
 
 function canAddEquipment() {
-  return currentRole === "Admin" || (isManagerRole() && !currentUser?.locationId);
+  return currentRole === "Admin" || (isManagerRole() && userHasAllLocations(currentUser));
 }
 
 function canEditEquipment() {
@@ -39231,7 +39287,7 @@ function canCreateWorkOrders() {
 
 function canCreateServiceRequests() {
   if (!currentUser || !visibleCustomers().length) return false;
-  if (isManagerRole() && currentUser.locationId) return false;
+  if (isManagerRole() && !userHasAllLocations(currentUser)) return false;
   return currentRole === "Admin" || isManagerRole();
 }
 
@@ -39289,9 +39345,7 @@ function canSeeLocation(locationId, customerId = "") {
   if (canSeeAllCustomers()) return true;
   if (!currentUser) return false;
   if (customerId && !canSeeCustomer(customerId)) return false;
-  const assignedLocationId = currentUser.locationId || "";
-  if (!assignedLocationId) return true;
-  return locationId === assignedLocationId;
+  return userCanAccessLocation(currentUser, locationId, customerId || currentUser.customerId || "");
 }
 
 function canSeeAllCustomers() {
@@ -41179,6 +41233,7 @@ async function createSiteWorksUser(email, password, name, role, customerId, loca
       role: authUser.role || role,
       customerId: authUser.customer_id || authUser.customerId || customerId,
       locationId: authUser.location_id || authUser.locationId || (role === "Admin" ? "" : locationId || ""),
+      locationIds: role === "Admin" ? [] : [authUser.location_id || authUser.locationId || locationId].filter(Boolean),
       createdAt: authUser.created_at || authUser.createdAt || new Date().toISOString(),
       session
     };
@@ -41228,13 +41283,14 @@ async function loadSiteWorksProfiles(options = {}) {
 }
 
 async function saveSiteWorksProfile(profile) {
+  const locationIds = normalizeUserLocationIds(profile, profile.customerId || "");
   const payload = {
     id: profile.id,
     email: profile.username,
     name: profile.name || profile.username,
     role: profile.role || "Customer",
     customer_id: profile.role === "Admin" ? "" : profile.customerId || "",
-    location_id: profile.role === "Admin" ? "" : profile.locationId || "",
+    location_id: profile.role === "Admin" ? "" : locationIds[0] || profile.locationId || "",
     updated_at: new Date().toISOString()
   };
   if (profile.pendingPassword) payload.password = profile.pendingPassword;
@@ -41312,6 +41368,12 @@ async function getProfileForAuthEmail(email) {
 }
 
 function profileFromServer(profile) {
+  const locationIds = normalizeUserLocationIds({
+    role: profile.role || "Customer",
+    customerId: profile.customer_id || "",
+    locationId: profile.location_id || "",
+    locationIds: profile.location_ids || profile.locationIds || profile.data?.locationIds || []
+  }, profile.customer_id || "");
   return {
     id: profile.id,
     username: profile.email || "",
@@ -41319,19 +41381,22 @@ function profileFromServer(profile) {
     password: "",
     role: profile.role || "Customer",
     customerId: profile.customer_id || "",
-    locationId: profile.location_id || "",
+    locationId: locationIds[0] || profile.location_id || "",
+    locationIds,
     createdAt: profile.created_at || new Date().toISOString(),
     updatedAt: profile.updated_at || ""
   };
 }
 
 function upsertLocalUser(user) {
+  const locationIds = user.role === "Admin" ? [] : normalizeUserLocationIds(user, user.customerId || "");
   const cleanUser = {
     ...user,
     password: "",
     username: user.username || user.email || "",
     customerId: user.role === "Admin" ? "" : user.customerId || "",
-    locationId: user.role === "Admin" ? "" : user.locationId || ""
+    locationId: user.role === "Admin" ? "" : locationIds[0] || user.locationId || "",
+    locationIds
   };
   const index = state.users.findIndex((item) => item.id === cleanUser.id || item.username.toLowerCase() === cleanUser.username.toLowerCase());
   if (index >= 0) {
@@ -41351,7 +41416,19 @@ function mergeProfileUsers(profileUsers = [], localUsers = []) {
       (cleanUser.username && user.username?.toLowerCase() === cleanUser.username.toLowerCase())
     );
     if (index >= 0) {
-      merged[index] = { ...merged[index], ...cleanUser };
+      const existingLocationIds = normalizeUserLocationIds(merged[index], merged[index].customerId);
+      const incomingLocationIds = normalizeUserLocationIds(cleanUser, cleanUser.customerId);
+      const locationIds = incomingLocationIds.length > 1
+        ? incomingLocationIds
+        : existingLocationIds.length > 1
+          ? existingLocationIds
+          : incomingLocationIds;
+      merged[index] = {
+        ...merged[index],
+        ...cleanUser,
+        locationId: cleanUser.role === "Admin" ? "" : locationIds[0] || cleanUser.locationId || "",
+        locationIds: cleanUser.role === "Admin" ? [] : locationIds
+      };
     } else {
       merged.push(cleanUser);
     }
@@ -41377,6 +41454,7 @@ function fallbackProfileFromAuthUser(authUser) {
     role: localMatch?.role || "Admin",
     customerId: localMatch?.role === "Admin" ? "" : localMatch?.customerId || "",
     locationId: localMatch?.role === "Admin" ? "" : localMatch?.locationId || "",
+    locationIds: localMatch?.role === "Admin" ? [] : normalizeUserLocationIds(localMatch, localMatch?.customerId || ""),
     createdAt: localMatch?.createdAt || new Date().toISOString(),
     localOnly: false
   };
@@ -41392,7 +41470,7 @@ function restoreSavedSessionUser() {
 }
 
 function replaceUsersFromServerProfiles(profileUsers = [], localUsers = []) {
-  const serverUsers = mergeProfileUsers(profileUsers, []);
+  const serverUsers = mergeProfileUsers(profileUsers, localUsers.filter((user) => user.username !== "scan-customer"));
   const scanUser = localUsers.find((user) => user.username === "scan-customer");
   return scanUser ? [...serverUsers, sanitizeSharedUser(scanUser)] : serverUsers;
 }
@@ -41967,16 +42045,20 @@ function normalizeState(input) {
     const customerId = user.role !== "Admin" && user.username !== "scan-customer"
       ? user.customerId || normalized.customers[0]?.id || ""
       : user.customerId || "";
-    const locationRecord = normalized.locations.find((location) => location.id === user.locationId);
-    const locationId = user.role !== "Admin" &&
-      user.username !== "scan-customer" &&
-      locationRecord?.customerId === customerId
-      ? user.locationId || ""
-      : "";
+    const candidateLocationIds = Array.isArray(user.locationIds) && user.locationIds.length
+      ? user.locationIds
+      : [user.locationId].filter(Boolean);
+    const locationIds = user.role !== "Admin" && user.username !== "scan-customer"
+      ? [...new Set(candidateLocationIds.map(String).filter((locationId) =>
+        normalized.locations.some((location) => location.id === locationId && location.customerId === customerId)
+      ))]
+      : [];
+    const locationId = locationIds[0] || "";
     return {
       ...user,
       customerId,
-      locationId
+      locationId,
+      locationIds
     };
   });
 
@@ -42356,7 +42438,8 @@ function currentActivityCustomerId() {
 }
 
 function currentActivityLocationId() {
-  if (currentUser?.locationId) return currentUser.locationId;
+  const currentLocationIds = normalizeUserLocationIds(currentUser, currentUser?.customerId || "");
+  if (currentLocationIds.length === 1) return currentLocationIds[0];
   if (selectedLocationId && selectedLocationId !== "all" && getLocation(selectedLocationId)) {
     return selectedLocationId;
   }
