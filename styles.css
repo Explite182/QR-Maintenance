@@ -16652,6 +16652,61 @@ button.asset-detail-card {
   min-width: 0;
 }
 
+.portal-access-card {
+  border-color: rgba(8, 112, 95, 0.26);
+  background: rgba(240, 253, 250, 0.74);
+}
+
+.portal-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.portal-access-link {
+  padding: 10px 12px;
+  border: 1px dashed rgba(8, 112, 95, 0.26);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.portal-access-users {
+  display: grid;
+  gap: 8px;
+}
+
+.portal-access-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.portal-access-user div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.portal-access-user strong,
+.portal-access-user span {
+  overflow-wrap: anywhere;
+}
+
+.portal-access-user span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .service-schedule-board {
   display: grid;
   gap: 10px;
@@ -17547,6 +17602,12 @@ button.asset-detail-card {
   }
 
   .quickbooks-export-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-access-actions,
+  .portal-access-user {
     align-items: stretch;
     flex-direction: column;
   }

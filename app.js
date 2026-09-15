@@ -11898,6 +11898,31 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const copyPortalLinkButton = event.target.closest("[data-copy-customer-portal-link]");
+  if (copyPortalLinkButton && canManageUsers()) {
+    event.preventDefault();
+    const customerId = copyPortalLinkButton.dataset.copyCustomerPortalLink || "";
+    const link = getCustomerPortalUrl(customerId);
+    await copyText(link);
+    const originalLabel = copyPortalLinkButton.dataset.linkLabel || copyPortalLinkButton.textContent || "Copy portal link";
+    copyPortalLinkButton.textContent = "Copied";
+    window.setTimeout(() => {
+      copyPortalLinkButton.textContent = originalLabel;
+    }, 1200);
+    showCreationConfirmation("Customer portal link copied.");
+    return;
+  }
+
+  const emailPortalInviteButton = event.target.closest("[data-email-customer-portal-invite]");
+  if (emailPortalInviteButton && canManageUsers()) {
+    event.preventDefault();
+    openCustomerPortalInviteDraft(
+      emailPortalInviteButton.dataset.emailCustomerPortalInvite || "",
+      emailPortalInviteButton.dataset.portalUserId || ""
+    );
+    return;
+  }
+
   const deleteBillingLineButton = event.target.closest("[data-delete-billing-line]");
   if (deleteBillingLineButton && canManageWorkOrders()) {
     event.preventDefault();
@@ -30148,6 +30173,7 @@ function renderCustomerPortal() {
     </article>
   `).join("");
   els.customerPortalContent.innerHTML = `
+    ${renderCustomerPortalAccess(customerId, locationId)}
     ${renderCustomerPortalRequestForm(customerId, assets)}
     ${renderCustomerPortalSection("Portal overview", [customerPortalOverviewRecord(customerId, locationId, openTickets, visits, estimates, assets)], renderCustomerPortalOverview, "No portal summary available.")}
     ${renderCustomerPortalSection("Upcoming visits", visits, renderCustomerPortalVisit, "No visits are scheduled yet.")}
@@ -30157,6 +30183,105 @@ function renderCustomerPortal() {
     ${renderCustomerPortalSection("Equipment", assets.slice(0, 8), renderCustomerPortalAsset, "No equipment is visible for this account.")}
     ${renderCustomerPortalSection("Completed work", completedTickets, renderCustomerPortalTicket, "No completed jobs yet.")}
   `;
+}
+
+function customerPortalUsers(customerId = "") {
+  if (!customerId) return [];
+  return (state.users || [])
+    .filter((user) => user.role === "Customer" && user.customerId === customerId)
+    .filter(canViewUserRecord)
+    .sort((a, b) => String(a.name || a.username || "").localeCompare(String(b.name || b.username || ""), undefined, { sensitivity: "base", numeric: true }));
+}
+
+function getCustomerPortalUrl(customerId = "") {
+  const base = getQrBaseUrl();
+  const params = new URLSearchParams();
+  params.set("portal", "1");
+  if (customerId) params.set("cid", customerId);
+  const customer = getCustomer(customerId);
+  if (customer?.name) params.set("c", customer.name);
+  return `${base}?${params.toString()}`;
+}
+
+function renderCustomerPortalAccess(customerId = "", locationId = "") {
+  if (!canManageUsers()) return "";
+  const customer = getCustomer(customerId);
+  const users = customerPortalUsers(customerId);
+  const link = getCustomerPortalUrl(customerId);
+  return `
+    <section class="portal-section portal-access-card">
+      <header>
+        <strong>Portal access</strong>
+        <span>${escapeHtml(users.length ? `${users.length} customer login${users.length === 1 ? "" : "s"}` : "No customer logins")}</span>
+      </header>
+      <div class="portal-access-actions">
+        <button type="button" class="secondary mini" data-copy-customer-portal-link="${escapeAttribute(customerId)}" data-link-label="Copy portal link">Copy portal link</button>
+        <button type="button" class="secondary mini" data-email-customer-portal-invite="${escapeAttribute(customerId)}" ${users.length ? "" : "disabled"}>Email all invites</button>
+      </div>
+      <div class="portal-access-link">
+        <span>${escapeHtml(link)}</span>
+      </div>
+      <div class="portal-access-users">
+        ${users.length ? users.map((user) => {
+          const scopedLocation = user.locationId ? getLocation(user.locationId) : null;
+          return `
+            <article class="portal-access-user">
+              <div>
+                <strong>${escapeHtml(user.name || user.username)}</strong>
+                <span>${escapeHtml(user.username)} | ${escapeHtml(scopedLocation?.name || "All locations")}</span>
+              </div>
+              <button type="button" class="secondary mini" data-email-customer-portal-invite="${escapeAttribute(customerId)}" data-portal-user-id="${escapeAttribute(user.id)}">Email invite</button>
+            </article>
+          `;
+        }).join("") : `
+          <p class="muted">Create a Customer role user for ${escapeHtml(customer?.name || "this customer")} in Admin & Settings, then send the invite from here.</p>
+        `}
+      </div>
+    </section>
+  `;
+}
+
+function customerPortalInviteBody(customerId = "", users = []) {
+  const customer = getCustomer(customerId);
+  const link = getCustomerPortalUrl(customerId);
+  const accountLine = customer?.name ? `Account: ${customer.name}` : "Account: SiteWorks customer portal";
+  const loginLines = users.length
+    ? users.map((user) => `Username: ${user.username}`)
+    : ["Username: your SiteWorks customer login"];
+  return [
+    "Hello,",
+    "",
+    "Your SiteWorks customer portal is ready.",
+    "",
+    accountLine,
+    ...loginLines,
+    `Portal link: ${link}`,
+    "",
+    "From the portal you can review open jobs, upcoming visits, customer requests, equipment, estimates, and completed work.",
+    "",
+    "For security, your password will be provided separately or reset by a SiteWorks admin.",
+    "",
+    "Thank you,"
+  ].join("\n");
+}
+
+function openCustomerPortalInviteDraft(customerId = "", userId = "") {
+  const allUsers = customerPortalUsers(customerId);
+  const users = userId ? allUsers.filter((user) => user.id === userId) : allUsers;
+  if (!customerId || !users.length) {
+    alert("Create at least one Customer role user before emailing a portal invite.");
+    return;
+  }
+  const recipients = users.map((user) => user.username).filter(isEmailAddress);
+  if (!recipients.length) {
+    alert("Customer portal users need email usernames before SiteWorks can draft an invite.");
+    return;
+  }
+  const customer = getCustomer(customerId);
+  const subject = `SiteWorks portal access${customer?.name ? ` for ${customer.name}` : ""}`;
+  const body = customerPortalInviteBody(customerId, users);
+  window.location.href = `mailto:${encodeURIComponent(recipients.join(","))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  addActivity("Customer portal invite draft opened", `${customer?.name || "Customer"} | ${recipients.length} recipient${recipients.length === 1 ? "" : "s"}`);
 }
 
 function renderCustomerPortalSection(title, items = [], renderer, emptyText = "Nothing to show.") {
