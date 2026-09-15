@@ -409,14 +409,14 @@ html[data-theme="dark"] .offline-status-row {
   .offline-status-pill {
     left: 12px;
     right: 12px;
-    bottom: calc(12px + env(safe-area-inset-bottom));
+    bottom: calc(88px + env(safe-area-inset-bottom));
     max-width: none;
   }
 
   .offline-status-panel {
     left: 12px;
     right: 12px;
-    bottom: calc(62px + env(safe-area-inset-bottom));
+    bottom: calc(138px + env(safe-area-inset-bottom));
     width: auto;
   }
 }
