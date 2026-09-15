@@ -15024,6 +15024,10 @@ button.asset-detail-card {
   object-fit: cover;
 }
 
+.work-drawer-thumb.image-load-failed {
+  background: #f8fbfa;
+}
+
 .work-drawer-profile-text {
   display: grid;
   gap: 3px;
@@ -16088,6 +16092,32 @@ button.asset-detail-card {
 .history-photo-button:hover {
   background: transparent;
   box-shadow: none;
+}
+
+.history-photo-button.image-load-failed,
+.photo-open-button.image-load-failed,
+.asset-gallery-item.image-load-failed,
+.inventory-thumb.image-load-failed {
+  display: grid;
+  gap: 2px;
+  place-items: center;
+  min-width: 112px;
+  min-height: 58px;
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #f8fbfa;
+  color: var(--muted);
+  cursor: default;
+  box-shadow: none;
+}
+
+.history-photo-button.image-load-failed small,
+.photo-open-button.image-load-failed small,
+.asset-gallery-item.image-load-failed small,
+.inventory-thumb.image-load-failed small {
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .ticket-photo-gallery {

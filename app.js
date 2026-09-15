@@ -6886,6 +6886,7 @@ let suppressStorageFullWarning = false;
 const signedMediaUrlCache = new Map();
 const signedMediaUrlPending = new Set();
 const signedMediaUrlFailures = new Map();
+const failedMediaSources = new Set();
 
 const els = {
   publicReportScreen: document.getElementById("publicReportScreen"),
@@ -8751,6 +8752,8 @@ els.selectedAssetThumb.addEventListener("click", () => {
   const assetPhotoSrc = mediaSource(asset?.photo);
   if (assetPhotoSrc) openPhotoViewer(assetPhotoSrc, asset.photo.name || "Equipment photo");
 });
+
+document.addEventListener("error", handleInlineImageLoadError, true);
 
 els.photoViewerClose.addEventListener("click", closePhotoViewer);
 
@@ -11773,12 +11776,7 @@ document.addEventListener("click", async (event) => {
   const pmCalendarScheduledButton = event.target.closest("[data-pm-calendar-scheduled]");
   if (pmCalendarScheduledButton) {
     event.preventDefault();
-    focusedWorkOrderId = pmCalendarScheduledButton.dataset.pmCalendarScheduled || "";
-    focusedServiceRequestId = "";
-    focusedCompletedRecordId = "";
-    lastWorkRecordInteractionAt = Date.now();
-    render();
-    syncWorkDrawerBackdrop();
+    openFocusedWorkOrderFromCalendar(pmCalendarScheduledButton.dataset.pmCalendarScheduled || "");
     return;
   }
 
@@ -11865,8 +11863,7 @@ document.addEventListener("click", async (event) => {
   const openScheduledTicketButton = event.target.closest("[data-open-scheduled-ticket]");
   if (openScheduledTicketButton) {
     event.preventDefault();
-    focusedWorkOrderId = openScheduledTicketButton.dataset.openScheduledTicket || "";
-    renderWorkOrders();
+    openFocusedWorkOrderFromCalendar(openScheduledTicketButton.dataset.openScheduledTicket || "");
     return;
   }
 
@@ -34894,6 +34891,57 @@ function openPhotoViewer(src, caption) {
   els.photoViewer.classList.remove("hidden");
 }
 
+function handleInlineImageLoadError(event) {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement)) return;
+  markFailedMediaSource(image.currentSrc || image.src || "");
+  markFailedMediaSource(image.getAttribute("src") || "");
+  image.dataset.loadFailed = "1";
+  image.removeAttribute("src");
+
+  const thumb = image.closest(".work-drawer-thumb");
+  if (thumb) {
+    thumb.classList.add("image-load-failed");
+    image.remove();
+    if (!thumb.querySelector("span")) thumb.insertAdjacentHTML("beforeend", "<span>SW</span>");
+    return;
+  }
+
+  const button = image.closest(".history-photo-button, .photo-open-button, .asset-gallery-item, .inventory-thumb");
+  if (button) {
+    const label = button.querySelector("span")?.textContent?.trim() || image.alt || "Photo";
+    button.classList.add("image-load-failed");
+    button.setAttribute("disabled", "disabled");
+    button.innerHTML = `<span>${escapeHtml(label)}</span><small>Photo unavailable</small>`;
+    return;
+  }
+
+  image.classList.add("image-load-failed");
+  image.alt = "Photo unavailable";
+}
+
+function markFailedMediaSource(source = "") {
+  const raw = String(source || "").trim();
+  if (!raw) return;
+  failedMediaSources.add(raw);
+  try {
+    failedMediaSources.add(new URL(raw, location.href).href);
+  } catch {
+    // Keep the raw value only when the browser cannot parse it.
+  }
+}
+
+function isFailedMediaSource(source = "") {
+  const raw = String(source || "").trim();
+  if (!raw) return false;
+  if (failedMediaSources.has(raw)) return true;
+  try {
+    return failedMediaSources.has(new URL(raw, location.href).href);
+  } catch {
+    return false;
+  }
+}
+
 function closePhotoViewer() {
   els.photoViewer.classList.add("hidden");
   els.photoViewerImage.removeAttribute("src");
@@ -34928,6 +34976,18 @@ function closePhotoSideBay() {
   els.photoSideBay.classList.add("hidden");
   els.photoSideBayImage.removeAttribute("src");
   els.photoSideBay.style.removeProperty("--photo-bay-right");
+}
+
+function openFocusedWorkOrderFromCalendar(workOrderId = "") {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder) return;
+  focusedWorkOrderId = workOrder.id;
+  focusedServiceRequestId = "";
+  focusedCompletedRecordId = "";
+  selectedId = workOrder.assetId || selectedId;
+  lastWorkRecordInteractionAt = Date.now();
+  render();
+  syncWorkDrawerBackdrop();
 }
 
 function renderAssetInfoForm(asset) {
@@ -42835,7 +42895,8 @@ function slugifyStoragePath(value) {
 function mediaSource(file) {
   if (!file) return "";
   const signedUrl = signedMediaSource(file);
-  return signedUrl || file.url || file.publicUrl || file.public_url || file.dataUrl || "";
+  const source = signedUrl || file.url || file.publicUrl || file.public_url || file.dataUrl || "";
+  return source && !isFailedMediaSource(source) ? source : "";
 }
 
 function cloudMediaSource(file) {
