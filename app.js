@@ -1594,7 +1594,7 @@ async function syncSingleEstimateToServer(estimate) {
   const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
   const knownWorkOrderIds = new Set((state.workOrders || []).map((workOrder) => workOrder.id).filter(Boolean));
   if ((estimate.customerId && !knownCustomerIds.has(estimate.customerId)) || (estimate.workOrderId && !knownWorkOrderIds.has(estimate.workOrderId))) {
-    markSyncError("Estimate cloud save skipped because the linked customer or ticket is missing locally.");
+    markSyncError("Estimate cloud save skipped because the linked customer or job is missing locally.");
     return false;
   }
   const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
@@ -1704,7 +1704,7 @@ async function syncSingleWorkOrderToServer(item) {
   const knownCustomerIds = new Set((state.customers || []).map((customer) => customer.id).filter(Boolean));
   const knownAssetIds = new Set((state.assets || []).map((asset) => asset.id).filter(Boolean));
   if ((item.customerId && !knownCustomerIds.has(item.customerId)) || (item.assetId && !knownAssetIds.has(item.assetId))) {
-    markSyncError("Ticket cloud save skipped because the linked customer or equipment is missing locally.");
+    markSyncError("Job cloud save skipped because the linked customer or equipment is missing locally.");
     return;
   }
   const cloudLocationIds = new Set((state.locations || []).map((locationRecord) => locationRecord.id).filter(Boolean));
@@ -1712,9 +1712,9 @@ async function syncSingleWorkOrderToServer(item) {
     await upsertStructuredRows("work_orders", [buildStructuredWorkOrderRow(item, cloudLocationIds)]);
     markSyncSuccess("save");
   } catch (error) {
-    const message = `Ticket cloud save failed: ${error?.message || error}`;
+    const message = `Job cloud save failed: ${error?.message || error}`;
     markSyncError(message);
-    console.warn("Ticket cloud save failed.", error);
+    console.warn("Job cloud save failed.", error);
   }
 }
 
@@ -1843,7 +1843,7 @@ async function syncStructuredDataToServer() {
     );
     const skippedWorkOrders = syncWorkOrders.length - cloudReadyWorkOrders.length;
     if (skippedWorkOrders > 0) {
-      console.warn(`Skipped ${skippedWorkOrders} ticket sync row(s) because their linked customer or equipment is missing locally.`);
+      console.warn(`Skipped ${skippedWorkOrders} job sync row(s) because their linked customer or equipment is missing locally.`);
     }
 
     await upsertStructuredRows("work_orders", cloudReadyWorkOrders.map((item) => buildStructuredWorkOrderRow(item, cloudLocationIds)));
@@ -1866,7 +1866,7 @@ async function syncStructuredDataToServer() {
     );
     const skippedEstimates = syncEstimates.length - cloudReadyEstimates.length;
     if (skippedEstimates > 0) {
-      console.warn(`Skipped ${skippedEstimates} estimate sync row(s) because their linked customer or ticket is missing locally.`);
+      console.warn(`Skipped ${skippedEstimates} estimate sync row(s) because their linked customer or job is missing locally.`);
     }
 
     await upsertStructuredRows("estimates", cloudReadyEstimates.map((estimate) => buildStructuredEstimateRow(estimate, cloudLocationIds)));
@@ -2317,7 +2317,7 @@ function siteMapOverlayLabel(mode = siteMapOverlayMode) {
   const labels = {
     normal: "Normal",
     "live-status": "Live status",
-    "open-tickets": "Open tickets",
+    "open-tickets": "Open jobs",
     "pm-due": "PM due",
     "electrical-issues": "Electrical issues",
     "breaker-feed": "Breaker feed",
@@ -2535,7 +2535,7 @@ function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexB
             : " site-map-pin-dimmed";
   } else if (mode === "open-tickets") {
     info.marker = openTickets.length ? String(openTickets.length) : siteMapLayerMarker(getSiteMapPinLayer(pin, asset));
-    info.summary = openTickets.length ? `${openTickets.length} open ticket${openTickets.length === 1 ? "" : "s"}` : "No open tickets";
+    info.summary = openTickets.length ? `${openTickets.length} open job${openTickets.length === 1 ? "" : "s"}` : "No open jobs";
     info.className = openTickets.length > 1 ? " site-map-pin-overlay-danger" : openTickets.length ? " site-map-pin-overlay-warn" : " site-map-pin-dimmed";
   } else if (mode === "pm-due") {
     const dueSoon = due && Number(due.daysUntil) <= 7;
@@ -2545,7 +2545,7 @@ function getSiteMapPinOverlayInfo(pin = {}, index = 0, asset = null, routeIndexB
   } else if (mode === "electrical-issues") {
     const electrical = isSiteMapElectricalIssue(asset, pin);
     info.marker = electrical && openTickets.length ? String(openTickets.length) : "E";
-    info.summary = electrical ? (openTickets.length ? "Electrical ticket or issue" : "Electrical area") : "No electrical issue";
+    info.summary = electrical ? (openTickets.length ? "Electrical job or issue" : "Electrical area") : "No electrical issue";
     info.className = electrical ? (openTickets.length ? " site-map-pin-overlay-danger" : " site-map-pin-overlay-warn") : " site-map-pin-dimmed";
   } else if (mode === "breaker-feed") {
     const isSelected = selectedSiteMapOverlayAssetId && asset?.id === selectedSiteMapOverlayAssetId;
@@ -2576,7 +2576,7 @@ function renderSiteMapOverlaySummary(visiblePins = [], routePins = []) {
   if (mode === "normal") return "";
   const summary = {
     "live-status": `${visiblePins.filter((pin) => getSiteMapAssetLiveStatus(getRawAsset(pin.assetId)).key !== "unknown").length} pins have live or sensor data.`,
-    "open-tickets": `${visiblePins.reduce((sum, pin) => sum + getSiteMapAssetOpenTickets(getRawAsset(pin.assetId)).length, 0)} open ticket markers in this view.`,
+    "open-tickets": `${visiblePins.reduce((sum, pin) => sum + getSiteMapAssetOpenTickets(getRawAsset(pin.assetId)).length, 0)} open job markers in this view.`,
     "pm-due": `${visiblePins.filter((pin) => isSiteMapPmDue(getRawAsset(pin.assetId))).length} PM stops due soon or overdue.`,
     "electrical-issues": `${visiblePins.filter((pin) => isSiteMapElectricalIssue(getRawAsset(pin.assetId), pin)).length} electrical-related markers.`,
     "breaker-feed": selectedSiteMapOverlayAssetId ? "Tap another pin to compare breaker feed information." : "Tap a pin to focus its breaker feed information.",
@@ -2836,7 +2836,7 @@ function renderSiteMapPinTooltip(pin, index, asset, title, overlayInfo = null) {
       <small>${escapeHtml(equipmentId)}${typeLabel ? ` | ${escapeHtml(typeLabel)}` : ""}</small>
       <small>${escapeHtml(layer)}${area ? ` | ${escapeHtml(area)}` : ""}</small>
       <small>${escapeHtml(locationName)}</small>
-      <small>${escapeHtml(due.label)}${openCount ? ` | ${openCount} open ticket${openCount === 1 ? "" : "s"}` : ""}</small>
+      <small>${escapeHtml(due.label)}${openCount ? ` | ${openCount} open job${openCount === 1 ? "" : "s"}` : ""}</small>
       ${liveStatus.key !== "unknown" ? `<small>Live: ${escapeHtml(liveStatus.label)}${liveStatus.detail ? ` | ${escapeHtml(liveStatus.detail)}` : ""}</small>` : ""}
       ${overlayInfo?.summary ? `<small>${escapeHtml(siteMapOverlayLabel())}: ${escapeHtml(overlayInfo.summary)}</small>` : ""}
       ${overlayInfo?.detail ? `<small>${escapeHtml(overlayInfo.detail)}</small>` : ""}
@@ -6250,7 +6250,7 @@ function renderMonitoringAlerts(devices) {
       <div class="monitoring-record-actions">
         ${alert.status === "active" ? `<button type="button" data-monitoring-ack="${escapeHtml(alert.id)}">Acknowledge</button>` : ""}
         <button type="button" data-monitoring-resolve="${escapeHtml(alert.id)}">Resolve</button>
-        ${alert.workOrderId ? `<span class="monitoring-status-pill acknowledged">Ticket created</span>` : `<button type="button" data-monitoring-work-order="${escapeHtml(alert.id)}">Create ticket</button>`}
+        ${alert.workOrderId ? `<span class="monitoring-status-pill acknowledged">Job created</span>` : `<button type="button" data-monitoring-work-order="${escapeHtml(alert.id)}">Create job</button>`}
       </div>
     </div>`).join("") : `<p class="muted">No active breaker alerts.</p>`;
 }
@@ -7786,7 +7786,7 @@ els.publicReportForm.addEventListener("submit", async (event) => {
     ticket.remoteReportId = remoteId;
     addWorkOrderHistory(ticket, "Created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
     state.workOrders.unshift(ticket);
-    addActivity("Public ticket reported", ticket.title);
+    addActivity("Public job reported", ticket.title);
     saveState();
     notifyCustomerReportCreated(ticket);
     els.publicReportForm.reset();
@@ -8619,7 +8619,7 @@ els.locationList.addEventListener("click", async (event) => {
   const customerName = getCustomer(locationRecord.customerId)?.name || "customer";
   const confirmed = window.confirm(
     `Delete ${locationRecord.name} for ${customerName}?\n\n` +
-    `This will also delete ${locationAssets.length} equipment record(s), ${locationWorkOrders.length} ticket(s), and ${locationServiceRequests.length} service request(s) tied to this location.`
+    `This will also delete ${locationAssets.length} equipment record(s), ${locationWorkOrders.length} job(s), and ${locationServiceRequests.length} service request(s) tied to this location.`
   );
   if (!confirmed) return;
 
@@ -8737,13 +8737,13 @@ els.serviceRequestList?.addEventListener("click", (event) => {
 els.workOrderList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-view-photo]");
   if (!button) return;
-  openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "Ticket photo");
+  openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "Job photo");
 });
 
 els.assetWorkOrderList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-view-photo]");
   if (!button) return;
-  openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "Ticket photo");
+  openPhotoViewer(button.dataset.photoSrc, button.dataset.photoCaption || "Job photo");
 });
 
 els.selectedAssetThumb.addEventListener("click", () => {
@@ -9544,7 +9544,7 @@ document.addEventListener("submit", async (event) => {
       note: `Reserved ${formatInventoryNumber(quantityReserved)} for ${formatIssueNumber(workOrder)}`
     });
     item.updatedAt = new Date().toISOString();
-    const note = `Reserved ${formatInventoryNumber(quantityReserved)} x ${item.name} for this ticket. Available: ${formatInventoryNumber(inventoryAvailableQuantity(item))}.`;
+    const note = `Reserved ${formatInventoryNumber(quantityReserved)} x ${item.name} for this job. Available: ${formatInventoryNumber(inventoryAvailableQuantity(item))}.`;
     workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
     workOrder.updatedAt = item.updatedAt;
     addWorkOrderHistory(workOrder, "Inventory reserved", note);
@@ -9583,7 +9583,7 @@ document.addEventListener("submit", async (event) => {
     workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
     workOrder.updatedAt = new Date().toISOString();
     addWorkOrderHistory(workOrder, "Inventory used", note);
-    addActivity("Inventory used on ticket", `${item.name} -> ${formatIssueNumber(workOrder)}`);
+    addActivity("Inventory used on job", `${item.name} -> ${formatIssueNumber(workOrder)}`);
     saveState();
     await syncSingleInventoryItemToServer(item);
     render();
@@ -12036,7 +12036,7 @@ document.addEventListener("change", (event) => {
   workOrder.assignedUserName = user ? user.name || user.username : "";
   workOrder.updatedAt = new Date().toISOString();
   addWorkOrderHistory(workOrder, "Assigned", `${previousAssignee} -> ${workOrder.assignedUserName || "Unassigned"}`);
-  addActivity("Ticket assigned", `${workOrder.title} - ${workOrder.assignedUserName || "Unassigned"}`);
+  addActivity("Job assigned", `${workOrder.title} - ${workOrder.assignedUserName || "Unassigned"}`);
   saveState();
   render();
   if (user && user.id !== previousAssigneeId && workOrder.status !== "Closed") {
@@ -12259,7 +12259,7 @@ document.addEventListener("submit", async (event) => {
   if (before.notes !== workOrder.notes) changes.push("Work note added");
   if (photo) changes.push("Work photo added");
   addWorkOrderHistory(workOrder, "Edited", changes.join(" | ") || "No visible changes");
-  addActivity("Ticket edited", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
+  addActivity("Job edited", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
   saveState();
   render();
 });
@@ -12328,10 +12328,10 @@ document.addEventListener("submit", async (event) => {
       addedAt: new Date().toISOString(),
       addedBy: getCurrentUserLabel()
     });
-    addWorkOrderHistory(workOrder, "Photo added", photo.name || "Photo attached to ticket");
+    addWorkOrderHistory(workOrder, "Photo added", photo.name || "Photo attached to job");
   }
   workOrder.updatedAt = new Date().toISOString();
-  addActivity("Ticket note added", `${formatIssueNumber(workOrder)} - ${workOrder.title || "Open ticket"}`);
+  addActivity("Job note added", `${formatIssueNumber(workOrder)} - ${workOrder.title || "Open job"}`);
   saveState();
   syncSingleWorkOrderToServer(workOrder);
   render();
@@ -18112,16 +18112,16 @@ function renderInventoryUseOnTicket(item = {}) {
   const reservations = inventoryActiveReservations(item);
   const canUse = canManageInventoryCustomer(item.customerId) && availableQuantity > 0 && tickets.length;
   return `
-    <section class="inventory-use-panel" aria-label="Reserve or use inventory on ticket">
+    <section class="inventory-use-panel" aria-label="Reserve or use inventory on job">
       <div class="inventory-use-heading">
-        <strong>Reserve / use on ticket</strong>
-        <small>${tickets.length ? `${tickets.length} open ticket${tickets.length === 1 ? "" : "s"} | ${formatInventoryNumber(availableQuantity)} available` : "No open tickets for this customer"}</small>
+        <strong>Reserve / use on job</strong>
+        <small>${tickets.length ? `${tickets.length} open job${tickets.length === 1 ? "" : "s"} | ${formatInventoryNumber(availableQuantity)} available` : "No open jobs for this customer"}</small>
       </div>
       <form class="inventory-use-form" data-inventory-reserve-form="${escapeAttribute(item.id)}">
         <select name="workOrderId" ${canUse ? "" : "disabled"}>
           ${tickets.length
-            ? tickets.map((ticket) => `<option value="${escapeAttribute(ticket.id)}">${escapeHtml(`${formatIssueNumber(ticket)} - ${ticket.title || "Open ticket"}`)}</option>`).join("")
-            : `<option>No open tickets</option>`}
+            ? tickets.map((ticket) => `<option value="${escapeAttribute(ticket.id)}">${escapeHtml(`${formatIssueNumber(ticket)} - ${ticket.title || "Open job"}`)}</option>`).join("")
+            : `<option>No open jobs</option>`}
         </select>
         <input name="quantityReserved" type="number" min="1" max="${escapeAttribute(availableQuantity)}" step="1" value="1" ${canUse ? "" : "disabled"}>
         <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Reserve</button>
@@ -18129,8 +18129,8 @@ function renderInventoryUseOnTicket(item = {}) {
       <form class="inventory-use-form" data-inventory-use-form="${escapeAttribute(item.id)}">
         <select name="workOrderId" ${canUse ? "" : "disabled"}>
           ${tickets.length
-            ? tickets.map((ticket) => `<option value="${escapeAttribute(ticket.id)}">${escapeHtml(`${formatIssueNumber(ticket)} - ${ticket.title || "Open ticket"}`)}</option>`).join("")
-            : `<option>No open tickets</option>`}
+            ? tickets.map((ticket) => `<option value="${escapeAttribute(ticket.id)}">${escapeHtml(`${formatIssueNumber(ticket)} - ${ticket.title || "Open job"}`)}</option>`).join("")
+            : `<option>No open jobs</option>`}
         </select>
         <input name="quantityUsed" type="number" min="1" max="${escapeAttribute(availableQuantity)}" step="1" value="1" ${canUse ? "" : "disabled"}>
         <button type="submit" class="secondary mini" ${canUse ? "" : "disabled"}>Use now</button>
@@ -18143,7 +18143,7 @@ function renderInventoryUseOnTicket(item = {}) {
               <article class="inventory-reservation-row">
                 <div>
                   <strong>${escapeHtml(formatInventoryNumber(reservation.quantity))} reserved</strong>
-                  <span>${escapeHtml(ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Open ticket"}` : "Ticket not found")}</span>
+                  <span>${escapeHtml(ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Open job"}` : "Job not found")}</span>
                   <small>${escapeHtml(formatDateTime(reservation.reservedAt))}${reservation.reservedBy ? ` | ${escapeHtml(reservation.reservedBy)}` : ""}</small>
                 </div>
                 <button type="button" class="secondary mini" data-use-inventory-reservation="${escapeAttribute(item.id)}" data-reservation-id="${escapeAttribute(reservation.id)}">Use reserved</button>
@@ -18213,7 +18213,7 @@ async function useInventoryReservation(item, reservationId = "") {
     type: "use",
     previousQuantity,
     quantityAfter: item.quantity,
-    note: `Used reserved stock on ${workOrder ? formatIssueNumber(workOrder) : "ticket"}`
+    note: `Used reserved stock on ${workOrder ? formatIssueNumber(workOrder) : "job"}`
   });
   item.updatedAt = new Date().toISOString();
   if (workOrder) {
@@ -18240,7 +18240,7 @@ async function returnInventoryReservation(item, reservationId = "") {
     type: "return",
     previousQuantity: item.quantity,
     quantityAfter: item.quantity,
-    note: `Returned reservation from ${workOrder ? formatIssueNumber(workOrder) : "ticket"}`
+    note: `Returned reservation from ${workOrder ? formatIssueNumber(workOrder) : "job"}`
   });
   item.updatedAt = new Date().toISOString();
   if (workOrder) {
@@ -18366,7 +18366,7 @@ function inventoryAuditRows(item = {}) {
   });
   const reservationRows = normalizeInventoryReservations(item.reservations || []).flatMap((reservation) => {
     const ticket = getWorkOrder(reservation.workOrderId);
-    const reference = ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Open ticket"}` : "Ticket not found";
+    const reference = ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Open job"}` : "Job not found";
     const base = {
       kind: "reservation",
       deltaLabel: "0",
@@ -18989,7 +18989,7 @@ function renderKeyLabel(key) {
 async function deleteWorkOrder(workOrderId) {
   const workOrder = getWorkOrder(workOrderId);
   if (!workOrder || !canDeleteWorkOrders()) return;
-  const ticketLabel = `${formatIssueNumber(workOrder)} - ${workOrder.title || "Ticket"}`;
+  const ticketLabel = `${formatIssueNumber(workOrder)} - ${workOrder.title || "Job"}`;
   if (!confirm(`Delete ${ticketLabel}? This cannot be undone.`)) return;
   if (workOrder.remoteReportId && !state.dismissedPublicReportIds.includes(workOrder.remoteReportId)) {
     state.dismissedPublicReportIds.push(workOrder.remoteReportId);
@@ -18998,9 +18998,9 @@ async function deleteWorkOrder(workOrderId) {
   state.workOrders = state.workOrders.filter((item) => item.id !== workOrder.id);
   if (focusedWorkOrderId === workOrder.id) focusedWorkOrderId = "";
   if (focusedCompletedRecordId === workOrder.id) focusedCompletedRecordId = "";
-  addActivity("Ticket deleted", ticketLabel);
+  addActivity("Job deleted", ticketLabel);
   saveState();
-  const deleted = await finishCloudDelete("Ticket", deleteStructuredRows("work_orders", "id", [workOrder.id]));
+  const deleted = await finishCloudDelete("Job", deleteStructuredRows("work_orders", "id", [workOrder.id]));
   if (!deleted) clearRecentlyDeletedRecord("workOrders", workOrder.id);
   render();
 }
@@ -19910,8 +19910,8 @@ async function importTicketsCsv() {
     const text = await file.text();
     const rows = parseCsvRows(text);
     if (!rows.length) {
-      setIssueImportStatus("No ticket rows were found in that CSV.");
-      alert("No ticket rows were found in that CSV.");
+      setIssueImportStatus("No job rows were found in that CSV.");
+      alert("No job rows were found in that CSV.");
       return;
     }
 
@@ -19936,7 +19936,7 @@ async function importTicketsCsv() {
       const title = findCsvValue(row, ["ticket title", "title", "problem", "summary", "request"]);
 
       if (!title) {
-        skipImportRow(stats, rowNumber, "missing ticket title");
+        skipImportRow(stats, rowNumber, "missing job title");
         return;
       }
 
@@ -19970,14 +19970,14 @@ async function importTicketsCsv() {
         customerId: customer.id,
         locationId: locationRecord.id,
         areaName: isAreaTicket ? (areaName || locationRecord.name) : "",
-        source: isAreaTicket ? "Imported area ticket" : "Imported ticket",
+        source: isAreaTicket ? "Imported area job" : "Imported job",
         title: title.trim(),
         priority: normalizePriority(findCsvValue(row, ["priority", "criticality", "risk"])),
         status,
         assignedUserId: assignedUser?.id || "",
         assignedUserName: assignedUser?.name || findCsvValue(row, ["assigned to", "assignee", "technician", "manager"]),
         dueAt: normalizeImportedTicketDueDate(findCsvValue(row, ["due date", "due", "required by", "target date"]), status),
-        notes: findCsvValue(row, ["notes", "description", "comments", "details"]) || "Imported from ticket CSV.",
+        notes: findCsvValue(row, ["notes", "description", "comments", "details"]) || "Imported from jobs CSV.",
         photo: null,
         history: [],
         createdAt,
@@ -19995,7 +19995,7 @@ async function importTicketsCsv() {
     });
 
     if (!stats.imported) {
-      const message = `No tickets imported. ${stats.skipped} row(s) skipped.`;
+      const message = `No jobs imported. ${stats.skipped} row(s) skipped.`;
       setIssueImportStatus(message);
       renderIssueImportPreview(stats);
       alert(message);
@@ -20007,23 +20007,23 @@ async function importTicketsCsv() {
     selectedLocationId = defaultLocationSelection();
     selectedId = firstTicket.assetId || selectedId;
     workOrderViewFilter = "active";
-    addActivity("Tickets imported", `${stats.imported} ticket record(s) from ${file.name}`);
+    addActivity("Jobs imported", `${stats.imported} job record(s) from ${file.name}`);
     saveState();
     if (els.issueImportFile) els.issueImportFile.value = "";
-    const message = `Imported ${stats.imported} ticket record(s). ${stats.skipped} skipped. ${stats.equipmentTickets} equipment ticket(s), ${stats.areaTickets} area ticket(s), ${stats.closed} closed.`;
+    const message = `Imported ${stats.imported} job record(s). ${stats.skipped} skipped. ${stats.equipmentTickets} equipment job(s), ${stats.areaTickets} area job(s), ${stats.closed} closed.`;
     setIssueImportStatus(message);
     renderIssueImportPreview(stats);
     alert(message);
     openPanel("workOrdersPanel");
     render();
   } catch (error) {
-    console.warn("Ticket import failed.", error);
+    console.warn("Job import failed.", error);
     setIssueImportStatus("Import failed. Check that this is a valid CSV file.");
     alert("Import failed. Check that this is a valid CSV file.");
   } finally {
     if (importButton) {
       importButton.disabled = !canManageWorkOrders();
-      importButton.textContent = "Import Tickets";
+      importButton.textContent = "Import Jobs";
     }
   }
 }
@@ -20437,10 +20437,10 @@ function pumpStatusActionText(status = {}) {
   if (label === "Fault") return "Check the fault indication, HOA position, breaker, and starter before reset.";
   if (label === "Proof failed") return "Verify the pump ran, confirm the proof contact, then use Alarm Reset to clear the latched proof alarm.";
   if (label === "High level") return "Inspect the level condition and verify pump operation immediately.";
-  if (label === "Alarm") return "Review the alarm source and create a ticket if the condition is active.";
+  if (label === "Alarm") return "Review the alarm source and create a job if the condition is active.";
   if (label === "Offline") return "Confirm controller power, network, and field wiring.";
   if (label === "Maintenance") return "Return to normal only after service work is complete.";
-  if (label === "Needs attention") return "Review open tickets and recent pump history.";
+  if (label === "Needs attention") return "Review open jobs and recent pump history.";
   return "Monitor normal operation.";
 }
 
@@ -20528,7 +20528,7 @@ function setPumpAssetOperatingStatus(assetId = "", status = "") {
     date: now,
     result: normalizedStatus,
     notes: isAlarmEvent
-      ? `Pump marked ${normalizedStatus}. Review and create a ticket if service is required.`
+      ? `Pump marked ${normalizedStatus}. Review and create a job if service is required.`
       : `Pump marked ${normalizedStatus}.`,
     technician: currentUser?.name || currentUser?.email || "SiteWorks"
   });
@@ -22350,7 +22350,7 @@ function renderPumpDiagramDeviceDetail(device = null) {
       <div class="pump-hmi-detail-advisory ${status.className}">
         <span>Point meaning</span>
         <strong>${status.className === "is-alarm" ? "SiteWorks is reporting this pump point in alarm or fault." : isActive ? "SiteWorks is seeing this pump point active." : "SiteWorks is seeing this pump point inactive."}</strong>
-        <em>${status.className === "is-alarm" ? "Check the related pump equipment and create a ticket if needed." : "Use setup controls only while commissioning the SiteWorks pump controller."}</em>
+        <em>${status.className === "is-alarm" ? "Check the related pump equipment and create a job if needed." : "Use setup controls only while commissioning the SiteWorks pump controller."}</em>
       </div>
       <p class="pump-hmi-detail-note">${escapeHtml(device.notes || "No point notes recorded.")}</p>
       <div class="pump-hmi-action-block">
@@ -22542,14 +22542,14 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <span class="pump-hmi-pump-lamp" aria-hidden="true"></span>
         <div>
           <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
-          <small>${escapeHtml(getAssetEquipmentId(asset))} | ${openIssueCount} open ticket${openIssueCount === 1 ? "" : "s"}</small>
+          <small>${escapeHtml(getAssetEquipmentId(asset))} | ${openIssueCount} open job${openIssueCount === 1 ? "" : "s"}</small>
           <small>${escapeHtml(formatPumpEventSummary(latestEvent))}</small>
         </div>
         <em>${escapeHtml(status.label)}</em>
         <div class="pump-hmi-alarm-actions">
           <button type="button" data-select-pump-asset="${escapeAttribute(asset.id)}">Open</button>
           <button type="button" data-pump-alarm-ack="asset:${escapeAttribute(asset.id)}:${escapeAttribute(status.label)}" data-pump-alarm-label="${escapeAttribute(`${asset.name || "Pump"} ${status.label}`)}" data-pump-asset-id="${escapeAttribute(asset.id)}">Acknowledge</button>
-          ${canCreateWorkOrders() ? `<button type="button" data-create-pump-ticket="${escapeAttribute(asset.id)}">Create Ticket</button>` : ""}
+          ${canCreateWorkOrders() ? `<button type="button" data-create-pump-ticket="${escapeAttribute(asset.id)}">Create Job</button>` : ""}
         </div>
       </article>
     `;
@@ -22622,7 +22622,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           <b>PM</b>${escapeHtml(formatDate(due.nextDate))}
         </span>
         <span class="pump-hmi-mini">
-          <b>Tickets</b>${openIssueCount}
+          <b>Jobs</b>${openIssueCount}
         </span>
         <span class="pump-hmi-mini pump-hmi-mini-wide">
           <b>Last event</b>${escapeHtml(latestEventLabel)}
@@ -22781,7 +22781,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
           <span><b>Proof</b><i>${escapeHtml(liveStatus ? (liveStatus.runProof ? "Made" : "Open") : (assignedController ? `DI${(assignedPumpIndex * 3) + 1}` : "Not wired"))}</i></span>
           <span><b>Reason</b><i>${escapeHtml(pumpLiveStatusReason(liveStatus))}</i></span>
           <span><b>Proof</b><i>${escapeHtml(commandFeedback.detail)}</i></span>
-          <span><b>Tickets</b><i>${openIssueCount}</i></span>
+          <span><b>Jobs</b><i>${openIssueCount}</i></span>
         </span>
       </button>
     `;
@@ -23018,7 +23018,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
         <div><span>Status</span><strong>${escapeHtml(selectedPumpStatus.label)}</strong></div>
         <div><span>Equipment ID</span><strong>${escapeHtml(getAssetEquipmentId(selectedPump))}</strong></div>
         <div><span>Next PM</span><strong>${escapeHtml(formatDate(selectedPumpDue.nextDate))}</strong></div>
-        <div><span>Open tickets</span><strong>${selectedPumpOpenIssues.length}</strong></div>
+        <div><span>Open jobs</span><strong>${selectedPumpOpenIssues.length}</strong></div>
         <div><span>Type</span><strong>${escapeHtml(selectedPump.type || "Pump")}</strong></div>
         <div><span>Role</span><strong>${escapeHtml(normalizePumpRole(selectedPump.pumpRole || selectedPump.role))}</strong></div>
         <div><span>Control</span><strong>${escapeHtml(pumpHoaAvailabilityLabel(selectedPumpLiveStatus, selectedPump))}</strong></div>
@@ -23120,7 +23120,7 @@ function renderPumpLocationHmi(pumps = [], currentCustomer = null, currentLocati
       </section>
       <div class="pump-hmi-detail-actions">
         <button type="button" class="primary" data-open-pump-equipment="${escapeAttribute(selectedPump.id)}">Open Equipment</button>
-        ${canCreateWorkOrders() ? `<button type="button" class="secondary" data-create-pump-ticket="${escapeAttribute(selectedPump.id)}">Create Ticket</button>` : ""}
+        ${canCreateWorkOrders() ? `<button type="button" class="secondary" data-create-pump-ticket="${escapeAttribute(selectedPump.id)}">Create Job</button>` : ""}
         <button type="button" class="secondary" data-select-pump-asset="">Close</button>
       </div>
     </aside>
@@ -26583,12 +26583,12 @@ function renderAutomationPumps() {
               <span class="pump-indicator" aria-hidden="true"></span>
               <div>
                 <strong>${escapeHtml(asset.name || "Pump equipment")}</strong>
-                <small>${escapeHtml(locationRecord?.name || "No location")} | ${escapeHtml(status.label)} | ${openIssueCount} open ticket${openIssueCount === 1 ? "" : "s"}</small>
+                <small>${escapeHtml(locationRecord?.name || "No location")} | ${escapeHtml(status.label)} | ${openIssueCount} open job${openIssueCount === 1 ? "" : "s"}</small>
                 <small>${escapeHtml(formatPumpEventSummary(latestEvent))}</small>
               </div>
               <div class="pump-alarm-overview-actions">
                 <button type="button" class="secondary" data-open-pump-asset="${escapeAttribute(asset.id)}">Open equipment</button>
-                ${canCreateWorkOrders() ? `<button type="button" class="secondary" data-create-pump-ticket="${escapeAttribute(asset.id)}">Create Ticket</button>` : ""}
+                ${canCreateWorkOrders() ? `<button type="button" class="secondary" data-create-pump-ticket="${escapeAttribute(asset.id)}">Create Job</button>` : ""}
               </div>
             </article>
           `;
@@ -26638,7 +26638,7 @@ function renderAutomationPumps() {
           <span><b>Status</b>${escapeHtml(status.label)}</span>
           <span><b>Equipment ID</b>${escapeHtml(getAssetEquipmentId(asset))}</span>
           <span><b>Next PM</b>${escapeHtml(formatDate(due.nextDate))}</span>
-          <span><b>Open tickets</b>${openIssueCount}</span>
+          <span><b>Open jobs</b>${openIssueCount}</span>
           <span><b>Last event</b>${escapeHtml(formatPumpEventSummary(latestEvent))}</span>
         </div>
         <button type="button" class="secondary" data-open-pump-asset="${escapeAttribute(asset.id)}">Open equipment</button>
@@ -27815,7 +27815,7 @@ function pmCalendarRecordStatus(record) {
   if (record.kind === "completed") return record.history?.result || "Completed";
   if (record.kind === "scheduled") return record.visit?.status || "Scheduled";
   if (record.kind === "route") return `${record.routeAssets?.length || 0} equipment`;
-  return openWorkOrdersForAsset(record.asset.id).length ? "Open ticket" : "Clear";
+  return openWorkOrdersForAsset(record.asset.id).length ? "Open job" : "Clear";
 }
 
 function pmCalendarShortTime(value) {
@@ -27906,7 +27906,7 @@ function renderPmCalendarDayBoard(records, windowInfo) {
           <span>${workload.hoursLabel}</span>
           ${workload.unassignedCount ? `<span class="is-warning">${workload.unassignedCount} unassigned</span>` : ""}
         </div>
-        <button type="button" data-pm-calendar-add-on-day="${escapeAttribute(dateKey)}">Add ticket or service call</button>
+        <button type="button" data-pm-calendar-add-on-day="${escapeAttribute(dateKey)}">Add job or service call</button>
       </div>
       <div class="pm-calendar-dispatch-lanes">
         ${pmCalendarDispatchLanes(dayRecords, scheduledGroups, pmDue).map((lane) => renderPmCalendarDispatchLane(lane)).join("")}
@@ -28242,7 +28242,7 @@ function renderPmCalendarEquipmentCard(record) {
         <small>${escapeHtml(record.customer?.name || "Unknown customer")} | ${escapeHtml(record.location?.name || "Unknown location")}</small>
         <span class="pm-calendar-mini-row">
           <em class="pm-calendar-mini-chip">${escapeHtml(formatDate(record.dueDate))}</em>
-          <em class="pm-calendar-mini-chip">${openTickets ? `${openTickets} ticket${openTickets === 1 ? "" : "s"}` : "No tickets"}</em>
+          <em class="pm-calendar-mini-chip">${openTickets ? `${openTickets} job${openTickets === 1 ? "" : "s"}` : "No jobs"}</em>
         </span>
       </span>
       <span class="pm-calendar-card-action">&rsaquo;</span>
@@ -28308,7 +28308,7 @@ function renderPmCalendarItem(record) {
         <small>${escapeHtml(record.template?.name || "PM template")}</small>
         <small>${escapeHtml(record.asset.criticality || "Low")} criticality | Last PM: ${escapeHtml(lastPm)}</small>
       </span>
-      <em>${openTickets ? `${openTickets} open ticket${openTickets === 1 ? "" : "s"}` : "No open tickets"}</em>
+      <em>${openTickets ? `${openTickets} open job${openTickets === 1 ? "" : "s"}` : "No open jobs"}</em>
     </button>
   `;
 }
@@ -28399,10 +28399,10 @@ function emailPmCalendarList() {
     "",
     ...records.map((record) => {
       if (record.kind === "scheduled") {
-        return `${formatDateTime(new Date(record.visit.scheduledAt))} - Scheduled visit - ${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Ticket"} - ${record.location?.name || "No location"} - ${record.assigneeLabel || "Unassigned"} - ${record.visit.status || "Scheduled"}`;
+        return `${formatDateTime(new Date(record.visit.scheduledAt))} - Scheduled visit - ${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Job"} - ${record.location?.name || "No location"} - ${record.assigneeLabel || "Unassigned"} - ${record.visit.status || "Scheduled"}`;
       }
       const openTicketCount = record.kind === "route" ? 0 : openWorkOrdersForAsset(record.asset.id).length;
-      const ticketText = openTicketCount ? ` | ${openTicketCount} open ticket${openTicketCount === 1 ? "" : "s"}` : "";
+      const ticketText = openTicketCount ? ` | ${openTicketCount} open job${openTicketCount === 1 ? "" : "s"}` : "";
       return `${toDateInputValue(record.dueDate)} - ${pmCalendarRecordEquipmentLabel(record)} - ${record.location?.name || "No location"} - ${record.template?.name || "No template"} - ${pmCalendarRecordCriticality(record)}${ticketText}`;
     })
   ];
@@ -28415,7 +28415,7 @@ function exportPmCalendarCsv() {
   const windowInfo = pmCalendarWindow();
   const records = pmCalendarRecords(windowInfo);
   const rows = [
-    ["Date / Time", "Type", "Customer", "Location", "Equipment / Ticket", "Template / Assigned", "Priority / Criticality", "Frequency / Duration", "Last Completed PM", "Open Tickets / Status"],
+    ["Date / Time", "Type", "Customer", "Location", "Equipment / Job", "Template / Assigned", "Priority / Criticality", "Frequency / Duration", "Last Completed PM", "Open Jobs / Status"],
     ...records.map((record) => [
       record.kind === "scheduled" ? formatDateTime(new Date(record.visit.scheduledAt)) : toDateInputValue(record.dueDate),
       record.kind === "scheduled" ? "Scheduled visit" : record.kind === "route" ? "PM route" : "PM",
@@ -28828,7 +28828,7 @@ function buildPmCalendarIcsEvent(record, nowStamp = formatIcsDateTime(new Date()
 function pmCalendarIcsDescription(record) {
   if (record.kind === "scheduled") {
     return [
-      `Ticket: ${formatIssueNumber(record.workOrder)}`,
+      `Job: ${formatIssueNumber(record.workOrder)}`,
       `Title: ${record.workOrder?.title || "Scheduled visit"}`,
       `Customer: ${record.customer?.name || ""}`,
       `Location: ${record.location?.name || ""}`,
@@ -28912,15 +28912,15 @@ function renderDashboardMenus({ assets, dueInfos, activeIssues, activeServiceReq
   const menuData = {
     dueNow: dashboardAssetItems(dueNowAssets, "No equipment is due now."),
     overdue: dashboardAssetItems(overdueAssets, "No equipment is overdue."),
-    workOrders: dashboardIssueItems(scopedActiveIssues, "No open tickets for this view."),
+    workOrders: dashboardIssueItems(scopedActiveIssues, "No open jobs for this view."),
     reportedIssues: dashboardIssueItems(customerReports, "No customer reports for this view."),
     failedPmIssues: dashboardIssueItems(failedPmIssues, "No failed PM follow-ups for this view."),
     breakerTrips: dashboardBreakerTripItems(breakerTrips, "No breaker trips need confirmation."),
     serviceRequests: dashboardServiceRequestItems(scopedServiceRequests, "No customer requests for this view."),
-    highPriority: dashboardIssueItems(highPriorityIssues, "No high priority tickets for this view."),
-    waitingParts: dashboardIssueItems(waitingPartsIssues, "No waiting parts tickets for this view."),
+    highPriority: dashboardIssueItems(highPriorityIssues, "No high priority jobs for this view."),
+    waitingParts: dashboardIssueItems(waitingPartsIssues, "No waiting parts jobs for this view."),
     lowStockInventory: dashboardInventoryItems(lowStockInventory, "No low-stock inventory for this view."),
-    assignedToMe: dashboardIssueItems(assignedTickets, "No tickets assigned to you for this view.")
+    assignedToMe: dashboardIssueItems(assignedTickets, "No jobs assigned to you for this view.")
   };
 
   Object.entries(menuData).forEach(([filter, html]) => {
@@ -28974,14 +28974,14 @@ function dashboardIssueItems(tickets, emptyText) {
         return renderDashboardMenuItem({
           type: ticket.status === "Closed" ? "completed" : "ticket",
           id: ticket.id,
-          label: `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}`,
+          label: `${formatIssueNumber(ticket)} - ${ticket.title || "Job"}`,
           meta: [
             getCustomer(ticket.customerId)?.name || "Unknown customer",
             getLocation(ticket.locationId)?.name || "Unknown location",
             ticket.status || "Open",
             ageLabel
           ].filter(Boolean).join(" | "),
-          badge: ticket.priority || "Ticket"
+          badge: ticket.priority || "Job"
         });
       }).join("") + renderDashboardMoreCount(scopedTickets.length)
     : renderDashboardEmpty(emptyText);
@@ -29025,10 +29025,10 @@ function dashboardCompletedItems(records, emptyText) {
           type: "completed",
           id: isTicket ? record.workOrder.id : record.history?.id || record.asset.id,
           label: isTicket
-            ? `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed ticket"}`
+            ? `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed job"}`
             : `${formatPmNumber(record.history)} - ${record.asset.name}`,
           meta: `${record.customer?.name || "Unknown customer"} | ${record.location?.name || "Unknown location"}`,
-          badge: isTicket ? "Ticket" : "PM"
+          badge: isTicket ? "Job" : "PM"
         });
       }).join("") + renderDashboardMoreCount(records.length)
     : renderDashboardEmpty(emptyText);
@@ -29101,9 +29101,9 @@ function renderGlobalSearchResults() {
     ...filteredWorkOrders().slice(0, 5).map((ticket) => ({
       type: ticket.status === "Closed" ? "completed" : "ticket",
       id: ticket.id,
-      label: `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}`,
+      label: `${formatIssueNumber(ticket)} - ${ticket.title || "Job"}`,
       meta: `${getCustomer(ticket.customerId)?.name || "Unknown customer"} | ${getLocation(ticket.locationId)?.name || "Unknown location"} | ${ticket.status || "Open"}`,
-      badge: ticket.status === "Closed" ? "Completed" : "Ticket"
+      badge: ticket.status === "Closed" ? "Completed" : "Job"
     })),
     ...filteredServiceRequests().slice(0, 5).map((request) => ({
       type: "service",
@@ -29196,12 +29196,12 @@ function commandPaletteCommands() {
     commands.push(
       commandPaletteItem("command", "pmCalendarPanel", "Open Calendar", "Jump to scheduled visits and preventative maintenance.", "Go"),
       commandPaletteItem("command", "assetRegisterDrawer", "Open Equipment Register", "Browse and select equipment.", "Go"),
-      commandPaletteItem("command", "workOrdersPanel", "Open Tickets", "Review active ticket work.", "Go"),
-      commandPaletteItem("command", "completedPmPanel", "Completed Tickets", "Review closed tickets and completed maintenance.", "Go")
+      commandPaletteItem("command", "workOrdersPanel", "Open Jobs", "Review active job work.", "Go"),
+      commandPaletteItem("command", "completedPmPanel", "Completed Jobs", "Review closed jobs and completed maintenance.", "Go")
     );
   }
   if (canAddEquipment()) commands.push(commandPaletteItem("command", "newEquipment", "New Equipment", "Create an equipment record.", "Create"));
-  if (canCreateWorkOrders()) commands.push(commandPaletteItem("command", "newTicket", "New Ticket", "Create a maintenance ticket.", "Create"));
+  if (canCreateWorkOrders()) commands.push(commandPaletteItem("command", "newTicket", "New Job", "Create a maintenance job.", "Create"));
   if (canCreateServiceRequests()) commands.push(commandPaletteItem("command", "newServiceRequest", "New Customer Request", "Create a customer request.", "Create"));
   return commands;
 }
@@ -29218,8 +29218,8 @@ function visibleCommandAssets() {
 function visibleCommandTickets() {
   return commandVisibleWorkOrders().map((ticket) => {
     const meta = `${getCustomer(ticket.customerId)?.name || "Unknown customer"} | ${getLocation(ticket.locationId)?.name || "Unknown location"} | ${ticket.status || "Open"}`;
-    const label = `Open ${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}`;
-    return commandPaletteItem(ticket.status === "Closed" ? "completed" : "ticket", ticket.id, label, meta, ticket.status === "Closed" ? "Completed" : "Ticket", [
+    const label = `Open ${formatIssueNumber(ticket)} - ${ticket.title || "Job"}`;
+    return commandPaletteItem(ticket.status === "Closed" ? "completed" : "ticket", ticket.id, label, meta, ticket.status === "Closed" ? "Completed" : "Job", [
       label,
       ticket.issueNumber,
       ticket.title,
@@ -29481,7 +29481,7 @@ function renderAssetBadges(asset, due = getDueInfo(asset)) {
   const openCount = openWorkOrdersForAsset(asset.id).length;
   const failedPmCount = openFailedPmTicketsForAsset(asset.id).length;
   if (failedPmCount) badges.push(`<span class="status-badge badge-danger">Failed PM open</span>`);
-  if (openCount) badges.push(`<span class="status-badge badge-warn">${openCount} open ticket${openCount === 1 ? "" : "s"}</span>`);
+  if (openCount) badges.push(`<span class="status-badge badge-warn">${openCount} open job${openCount === 1 ? "" : "s"}</span>`);
   if (asset.criticality) badges.push(`<span class="status-badge ${criticalityBadgeClass(asset.criticality)}">${escapeHtml(asset.criticality)} criticality</span>`);
   if (hasMedia(asset.manualFile) || asset.documentUrl) badges.push(`<span class="status-badge badge-muted">Manual ready</span>`);
   return badges.join("");
@@ -29607,8 +29607,8 @@ function renderSyncHealth() {
   const loadedCounts = [
     `${visibleCustomers().length}/${state.customers.length} customers`,
     `${scopedAssets.length}/${state.assets.length} equipment`,
-    `${activeTickets} open tickets`,
-    `${completedTickets} completed tickets`,
+    `${activeTickets} open jobs`,
+    `${completedTickets} completed jobs`,
     `${visibleServiceRequests.length} service requests`
   ].join(" | ");
   els.syncHealthSummary.textContent = hasError
@@ -29726,7 +29726,7 @@ function buildOfflinePendingSummary() {
   const sinceTime = dateValue(syncHealth.lastCloudSaveAt);
   const rows = [
     ["Equipment / PMs", countRecordsChangedAfter(state.assets, sinceTime)],
-    ["Tickets / visits", countRecordsChangedAfter([...(state.workOrders || []), ...(state.scheduledVisits || [])], sinceTime)],
+    ["Jobs / visits", countRecordsChangedAfter([...(state.workOrders || []), ...(state.scheduledVisits || [])], sinceTime)],
     ["Quotes", countRecordsChangedAfter(state.estimates, sinceTime)],
     ["Requests", countRecordsChangedAfter(state.serviceRequests, sinceTime)],
     ["Inventory / keys", countRecordsChangedAfter([...(state.inventoryItems || []), ...(state.keys || []), ...(state.keyLogs || [])], sinceTime)]
@@ -29889,7 +29889,7 @@ function friendlySyncErrorTitle(message = "") {
 
 function friendlySyncErrorDetail(message = "") {
   const text = String(message || "").toLowerCase();
-  if (text.includes("work_orders")) return "Ticket data may be a moment out of date. Retrying automatically.";
+  if (text.includes("work_orders")) return "Job data may be a moment out of date. Retrying automatically.";
   if (text.includes("service_requests")) return "Service request data may be a moment out of date. Retrying automatically.";
   if (text.includes("inventory_items")) return "Inventory data may be a moment out of date. Retrying automatically.";
   return "Some SiteWorks data may be a moment out of date. Retrying automatically.";
@@ -30068,7 +30068,7 @@ function renderServiceScheduleVisit(visit = {}) {
     <article class="service-schedule-row is-${escapeAttribute(String(visit.status || "Scheduled").toLowerCase().replace(/[^a-z0-9]+/g, "-"))}">
       <time>${escapeHtml(formatDateTime(visit.scheduledAt))}</time>
       <div>
-        <strong>${escapeHtml(ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}` : "Ticket not found")}</strong>
+        <strong>${escapeHtml(ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Job"}` : "Job not found")}</strong>
         <span>${escapeHtml([customer?.name, locationRecord?.name, asset?.name || ticket?.areaName].filter(Boolean).join(" | "))}</span>
       </div>
       <span>${escapeHtml(visit.assignedUserName || "Unassigned")}</span>
@@ -30134,7 +30134,7 @@ function renderCustomerPortal() {
     isCustomerPortalUser ? "Customer view" : "Internal preview"
   ].filter(Boolean).join(" | ");
   els.customerPortalSummary.innerHTML = [
-    ["Open tickets", openTickets.length, "warn"],
+    ["Open jobs", openTickets.length, "warn"],
     ["Upcoming visits", visits.length, "info"],
     ["Open requests", requests.filter((request) => !["Completed", "Declined"].includes(request.status)).length, "neutral"],
     ["Equipment", assets.length, "ok"],
@@ -30151,11 +30151,11 @@ function renderCustomerPortal() {
     ${renderCustomerPortalRequestForm(customerId, assets)}
     ${renderCustomerPortalSection("Portal overview", [customerPortalOverviewRecord(customerId, locationId, openTickets, visits, estimates, assets)], renderCustomerPortalOverview, "No portal summary available.")}
     ${renderCustomerPortalSection("Upcoming visits", visits, renderCustomerPortalVisit, "No visits are scheduled yet.")}
-    ${renderCustomerPortalSection("Open tickets", openTickets.slice(0, 8), renderCustomerPortalTicket, "No open tickets right now.")}
+    ${renderCustomerPortalSection("Open jobs", openTickets.slice(0, 8), renderCustomerPortalTicket, "No open jobs right now.")}
     ${renderCustomerPortalSection("Customer requests", requests.slice(0, 6), renderCustomerPortalRequest, "No customer requests in this view.")}
     ${renderCustomerPortalSection("Estimates", estimates.slice(0, 6), renderCustomerPortalEstimate, "No estimates have been created yet.")}
     ${renderCustomerPortalSection("Equipment", assets.slice(0, 8), renderCustomerPortalAsset, "No equipment is visible for this account.")}
-    ${renderCustomerPortalSection("Completed work", completedTickets, renderCustomerPortalTicket, "No completed tickets yet.")}
+    ${renderCustomerPortalSection("Completed work", completedTickets, renderCustomerPortalTicket, "No completed jobs yet.")}
   `;
 }
 
@@ -30267,7 +30267,7 @@ function renderCustomerPortalVisit(visit = {}) {
     <article class="portal-row">
       <time>${escapeHtml(formatDateTime(visit.scheduledAt))}</time>
       <div>
-        <strong>${escapeHtml(ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Ticket"}` : "Scheduled visit")}</strong>
+        <strong>${escapeHtml(ticket ? `${formatIssueNumber(ticket)} - ${ticket.title || "Job"}` : "Scheduled visit")}</strong>
         <span>${escapeHtml([locationRecord?.name, visit.assignedUserName || "Unassigned", visit.status].filter(Boolean).join(" | "))}</span>
       </div>
     </article>
@@ -30281,7 +30281,7 @@ function renderCustomerPortalTicket(ticket = {}) {
     <article class="portal-row">
       <span class="portal-status">${escapeHtml(ticket.status || "Open")}</span>
       <div>
-        <strong>${escapeHtml(formatIssueNumber(ticket))} - ${escapeHtml(ticket.title || "Ticket")}</strong>
+        <strong>${escapeHtml(formatIssueNumber(ticket))} - ${escapeHtml(ticket.title || "Job")}</strong>
         <span>${escapeHtml([locationRecord?.name, asset?.name || ticket.areaName, ticket.priority ? `${ticket.priority} priority` : ""].filter(Boolean).join(" | "))}</span>
       </div>
     </article>
@@ -30687,7 +30687,7 @@ function renderQuickCalendarCreateForm() {
   const selectedLocation = getLocation(locationId);
   const fallbackTitle = draft.kind === "service"
     ? `Service call: ${selectedAsset?.name || selectedLocation?.name || "Site visit"}`
-    : `Ticket: ${selectedAsset?.name || selectedLocation?.name || "Site issue"}`;
+    : `Job: ${selectedAsset?.name || selectedLocation?.name || "Site issue"}`;
   overlay.innerHTML = `
     <section class="quick-calendar-card" role="dialog" aria-modal="true" aria-labelledby="quickCalendarCreateTitle">
       <header class="quick-calendar-header">
@@ -30702,7 +30702,7 @@ function renderQuickCalendarCreateForm() {
         <label>
           Type
           <select name="kind" data-quick-calendar-field>
-            <option value="ticket" ${draft.kind !== "service" ? "selected" : ""}>Open ticket</option>
+            <option value="ticket" ${draft.kind !== "service" ? "selected" : ""}>Open job</option>
             <option value="service" ${draft.kind === "service" ? "selected" : ""}>Service call</option>
           </select>
         </label>
@@ -30753,7 +30753,7 @@ function renderQuickCalendarCreateForm() {
         </label>
         <div class="quick-calendar-actions">
           <button type="button" class="ghost" data-quick-calendar-close>Cancel</button>
-          <button type="submit">${draft.kind === "service" ? "Create service call" : "Create open ticket"}</button>
+          <button type="submit">${draft.kind === "service" ? "Create service call" : "Create open job"}</button>
         </div>
       </form>
     </section>
@@ -30825,7 +30825,7 @@ function createQuickCalendarWorkOrder(formData = new FormData()) {
       : "";
   const fallbackTitle = kind === "service"
     ? `Service call: ${asset?.name || locationRecord?.name || "Site visit"}`
-    : `Ticket: ${asset?.name || locationRecord?.name || "Site issue"}`;
+    : `Job: ${asset?.name || locationRecord?.name || "Site issue"}`;
   const now = new Date().toISOString();
   const notes = String(formData.get("notes") || "").trim();
   const workOrder = {
@@ -30835,7 +30835,7 @@ function createQuickCalendarWorkOrder(formData = new FormData()) {
     customerId,
     locationId,
     areaName: asset ? "" : locationRecord?.name || "",
-    source: kind === "service" ? "Service call" : "Manual ticket",
+    source: kind === "service" ? "Service call" : "Manual job",
     title: String(formData.get("title") || "").trim() || fallbackTitle,
     priority: normalizePriority(formData.get("priority")),
     status: "Open",
@@ -30865,11 +30865,11 @@ function createQuickCalendarWorkOrder(formData = new FormData()) {
   state.workOrders.unshift(workOrder);
   state.scheduledVisits = normalizeScheduledVisits([visit, ...(state.scheduledVisits || [])]);
   ensureScheduledVisitSnapshot(workOrder, visit);
-  addWorkOrderHistory(workOrder, kind === "service" ? "Service call created" : "Open ticket created", `${formatDateTime(scheduledAt)}${assigneeName ? ` | ${assigneeName}` : ""}`);
+  addWorkOrderHistory(workOrder, kind === "service" ? "Service call created" : "Open job created", `${formatDateTime(scheduledAt)}${assigneeName ? ` | ${assigneeName}` : ""}`);
   if (contractor) {
     addWorkOrderHistory(workOrder, "Assigned contractor", `${contractor.name}${contractor.email ? ` | ${contractor.email}` : ""}${contractor.trade ? ` | ${contractor.trade}` : ""}`);
   }
-  addActivity(kind === "service" ? "Service call created" : "Ticket created", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
+  addActivity(kind === "service" ? "Service call created" : "Job created", `${formatIssueNumber(workOrder)} - ${workOrder.title}`);
   focusedWorkOrderId = workOrder.id;
   workOrderViewFilter = "active";
   closeQuickCalendarCreate();
@@ -30898,8 +30898,8 @@ function hasActiveScheduledPmForAsset(assetId = "") {
 }
 
 function emptySwNumberFilterMessage() {
-  if (workOrderNumberFilter === "sw") return "No SW tickets for this view.";
-  if (workOrderNumberFilter === "sw-cu") return "No SW-CU customer tickets for this view.";
+  if (workOrderNumberFilter === "sw") return "No SW jobs for this view.";
+  if (workOrderNumberFilter === "sw-cu") return "No SW-CU customer jobs for this view.";
   if (workOrderNumberFilter === "sw-pm") return "No SW-PM maintenance records for this view.";
   if (workOrderNumberFilter === "sw-sr") return "No customer requests for this view.";
   return currentRole === "Technician"
@@ -30915,8 +30915,8 @@ function renderWorkOrderNumberFilter(counts) {
   workOrderNumberFilter = currentValue;
   els.workOrderNumberFilter.innerHTML = [
     `<option value="all">All SW records (${counts.all})</option>`,
-    `<option value="sw">SW tickets (${counts.sw})</option>`,
-    `<option value="sw-cu">SW-CU customer tickets (${counts.swCu})</option>`,
+    `<option value="sw">SW jobs (${counts.sw})</option>`,
+    `<option value="sw-cu">SW-CU customer jobs (${counts.swCu})</option>`,
     `<option value="sw-pm">SW-PM maintenance records (${counts.swPm})</option>`,
     `<option value="sw-sr">Customer requests (${counts.swSr})</option>`
   ].join("");
@@ -30951,7 +30951,7 @@ function renderBillingQueue() {
     const prepPanel = records.length ? `${renderQuickBooksExportReadiness(diagnostics)}${renderQuickBooksMappingPanel(records)}` : "";
     els.billingQueueList.innerHTML = filtered.length
       ? `${prepPanel}${filtered.map(renderBillingQueueItem).join("")}`
-      : `${prepPanel}<p class="muted">${billingQueueFilter === "ready" ? "No tickets are ready to bill yet." : "No billing records for this view."}</p>`;
+      : `${prepPanel}<p class="muted">${billingQueueFilter === "ready" ? "No jobs are ready to bill yet." : "No billing records for this view."}</p>`;
   }
 }
 
@@ -31028,12 +31028,12 @@ function normalizeWorkOrderPartsUsed(parts = []) {
       revenueTotal: Math.round(quantity * sellPrice * 100) / 100,
       usedAt: part.usedAt || part.createdAt || new Date().toISOString(),
       usedBy: part.usedBy || "",
-      source: part.source || "Ticket"
+      source: part.source || "Job"
     };
   }).filter((part) => part.quantity > 0 && part.itemName);
 }
 
-function recordPartUsedOnWorkOrder(workOrder = {}, item = {}, quantity = 0, source = "Ticket") {
+function recordPartUsedOnWorkOrder(workOrder = {}, item = {}, quantity = 0, source = "Job") {
   if (!workOrder?.id || !item?.id) return null;
   const usedQuantity = Math.max(0, Number(quantity || 0));
   if (!usedQuantity) return null;
@@ -31217,7 +31217,7 @@ function renderQuickBooksExportReadiness(diagnostics = quickBooksExportDiagnosti
   const warnings = [
     diagnostics.missingCustomers.length ? `${diagnostics.missingCustomers.length} customer mapping${diagnostics.missingCustomers.length === 1 ? "" : "s"} missing` : "",
     diagnostics.missingItems.length ? `${diagnostics.missingItems.length} product/service mapping${diagnostics.missingItems.length === 1 ? "" : "s"} missing` : "",
-    diagnostics.emptyLineRecords ? `${diagnostics.emptyLineRecords} ready ticket${diagnostics.emptyLineRecords === 1 ? "" : "s"} with no invoice lines` : "",
+    diagnostics.emptyLineRecords ? `${diagnostics.emptyLineRecords} ready job${diagnostics.emptyLineRecords === 1 ? "" : "s"} with no invoice lines` : "",
     diagnostics.zeroAmountLines ? `${diagnostics.zeroAmountLines} zero-dollar line${diagnostics.zeroAmountLines === 1 ? "" : "s"}` : ""
   ].filter(Boolean);
   return `
@@ -31316,7 +31316,7 @@ function renderBillingQueueItem(record) {
     <details class="work-order-item work-order-drawer billing-queue-item">
       <summary>
         <div class="ticket-list-summary">
-          <strong>${escapeHtml(formatIssueNumber(workOrder))} - ${escapeHtml(workOrder.title || "Completed ticket")}</strong>
+          <strong>${escapeHtml(formatIssueNumber(workOrder))} - ${escapeHtml(workOrder.title || "Completed job")}</strong>
           <span>${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(location?.name || "Unknown location")} | ${escapeHtml(asset?.name || workOrder.areaName || "No equipment")}</span>
           <div class="ticket-list-badges">
             <span class="drawer-param-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
@@ -31326,7 +31326,7 @@ function renderBillingQueueItem(record) {
           </div>
         </div>
         <div class="ticket-summary-tools">
-          <button type="button" class="secondary mini" data-open-completed-ticket="${escapeAttribute(workOrder.id)}">Open Ticket</button>
+          <button type="button" class="secondary mini" data-open-completed-ticket="${escapeAttribute(workOrder.id)}">Open Job</button>
           ${record.billingStatus !== "ready" ? `<button type="button" class="secondary mini" data-work-order-billing-action="${escapeAttribute(workOrder.id)}" data-billing-action="ready">Ready to Bill</button>` : ""}
           ${record.billingStatus !== "billed" ? `<button type="button" class="secondary mini" data-work-order-billing-action="${escapeAttribute(workOrder.id)}" data-billing-action="billed">Mark Billed</button>` : ""}
           ${record.billingStatus !== "draft" ? `<button type="button" class="secondary mini" data-work-order-billing-action="${escapeAttribute(workOrder.id)}" data-billing-action="draft">Needs Review</button>` : ""}
@@ -31706,7 +31706,7 @@ function billingQueueExportRecords() {
 
 function downloadBillingQueueCsv(records = billingQueueExportRecords(), filename = `siteworks-quickbooks-billing-${timestampForFile()}.csv`) {
   const rows = [
-    ["Invoice No", "Customer", "QuickBooks Customer", "Customer Email", "Billing Address", "Shipping Address", "Invoice Date", "Due Date", "Customer PO", "SiteWorks Ticket", "Location", "Equipment", "Product/Service", "QuickBooks Product/Service", "Description", "Quantity", "Rate", "Amount", "Taxable", "Memo", "Line Cost", "Ticket Revenue", "Ticket Cost", "Ticket Profit", "Margin %", "QuickBooks Customer ID", "QuickBooks Item ID"],
+    ["Invoice No", "Customer", "QuickBooks Customer", "Customer Email", "Billing Address", "Shipping Address", "Invoice Date", "Due Date", "Customer PO", "SiteWorks Job", "Location", "Equipment", "Product/Service", "QuickBooks Product/Service", "Description", "Quantity", "Rate", "Amount", "Taxable", "Memo", "Line Cost", "Job Revenue", "Job Cost", "Job Profit", "Margin %", "QuickBooks Customer ID", "QuickBooks Item ID"],
     ...records.flatMap((record) => {
       const invoiceDate = toDateInputValue(new Date(record.workOrder.resolvedAt || record.workOrder.updatedAt || new Date()));
       const dueDate = toDateInputValue(addDays(parseLocalDate(invoiceDate), 30));
@@ -31732,7 +31732,7 @@ function downloadBillingQueueCsv(records = billingQueueExportRecords(), filename
         line.rate,
         line.amount,
         line.taxable === false ? "No" : "Yes",
-        [record.workOrder.billingMemo, `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed ticket"}`].filter(Boolean).join(" | "),
+        [record.workOrder.billingMemo, `${formatIssueNumber(record.workOrder)} - ${record.workOrder.title || "Completed job"}`].filter(Boolean).join(" | "),
         line.costTotal || 0,
         record.jobCost?.revenue || record.subtotal || 0,
         record.jobCost?.totalCost || record.costTotal || 0,
@@ -31807,7 +31807,7 @@ function renderCompletedPms() {
           return `<article class="work-order-item"><p class="muted">A completed record could not be displayed.</p></article>`;
         }
       }).join("")
-    : `<p class="muted">No completed tickets for this view.</p>`;
+    : `<p class="muted">No completed jobs for this view.</p>`;
 }
 
 function completedRecordMatchesId(record, id) {
@@ -32269,7 +32269,7 @@ function renderNewIssueFormOptions() {
   els.newIssueCustomer.value = currentCustomerId;
   els.newIssueCustomer.disabled = currentRole !== "Admin";
   els.newIssueCustomer.title = currentRole === "Admin"
-    ? "Choose the customer for this ticket."
+    ? "Choose the customer for this job."
     : "Only admin users can choose a different customer.";
 
   const locations = locationsForCustomer(currentCustomerId);
@@ -32328,8 +32328,8 @@ function syncNewIssueTitle() {
     ? areaName || "Area"
     : asset?.name || "";
   if (!label) return;
-  if (!els.newIssueTitle.value.trim() || els.newIssueTitle.value.startsWith("Ticket: ")) {
-    els.newIssueTitle.value = `Ticket: ${label}`;
+  if (!els.newIssueTitle.value.trim() || els.newIssueTitle.value.startsWith("Ticket: ") || els.newIssueTitle.value.startsWith("Job: ")) {
+    els.newIssueTitle.value = `Job: ${label}`;
   }
 }
 
@@ -32489,7 +32489,7 @@ function renderServiceRequestItem(request) {
     <button class="secondary mini" type="button" data-service-request-send-pdf="${escapeAttribute(request.id)}">Send PDF Email</button>
     ${request.status !== "Scheduled" ? `<button class="secondary mini" type="button" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Scheduled">Schedule</button>` : ""}
     ${request.status !== "Declined" ? `<button class="secondary mini" type="button" data-service-request-id="${escapeAttribute(request.id)}" data-service-request-action="Declined">Decline</button>` : ""}
-    ${!request.convertedWorkOrderId ? `<button class="secondary mini" type="button" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Ticket</button>` : `<span class="status-badge badge-ok">Converted</span>`}
+    ${!request.convertedWorkOrderId ? `<button class="secondary mini" type="button" data-service-request-convert="${escapeAttribute(request.id)}">Convert to Job</button>` : `<span class="status-badge badge-ok">Converted</span>`}
     ${canDeleteServiceRequests() ? `<button class="secondary mini danger-action" type="button" data-service-request-delete="${escapeAttribute(request.id)}">Delete</button>` : ""}
   ` : "";
   return `
@@ -32677,7 +32677,7 @@ function workOrderHistoryEntries(item) {
   return [{
     id: "created",
     action: "Created",
-    details: `${formatIssueNumber(item)} - ${item.title || "Open ticket"}`,
+    details: `${formatIssueNumber(item)} - ${item.title || "Open job"}`,
     userName: item.source || "System",
     userRole: "",
     createdAt: item.createdAt || item.updatedAt || new Date().toISOString()
@@ -32751,7 +32751,7 @@ function renderAssetWorkOrders(asset) {
   els.assetWorkOrderCount.textContent = workOrders.length;
   els.assetWorkOrderList.innerHTML = workOrders.length
     ? workOrders.map(renderWorkOrderItem).join("")
-    : `<p class="muted">${currentRole === "Technician" ? "No tickets assigned to you for this equipment." : "No tickets for this equipment."}</p>`;
+    : `<p class="muted">${currentRole === "Technician" ? "No jobs assigned to you for this equipment." : "No jobs for this equipment."}</p>`;
 }
 
 function assetWorkOrders(asset = {}) {
@@ -32804,8 +32804,8 @@ function assetHealthRecord(asset = {}) {
   const recommendations = [
     due.daysUntil < 0 ? `PM is ${Math.abs(due.daysUntil)} day${Math.abs(due.daysUntil) === 1 ? "" : "s"} overdue.` : "",
     failedPmTickets.length ? `${failedPmTickets.length} failed PM follow-up${failedPmTickets.length === 1 ? "" : "s"} open.` : "",
-    openTickets.length ? `${openTickets.length} open ticket${openTickets.length === 1 ? "" : "s"} on this equipment.` : "",
-    repeatIssueCount >= 3 ? `${repeatIssueCount} ticket${repeatIssueCount === 1 ? "" : "s"} in the last 90 days. Review for repeat failure.` : "",
+    openTickets.length ? `${openTickets.length} open job${openTickets.length === 1 ? "" : "s"} on this equipment.` : "",
+    repeatIssueCount >= 3 ? `${repeatIssueCount} job${repeatIssueCount === 1 ? "" : "s"} in the last 90 days. Review for repeat failure.` : "",
     attentionPmCount ? `${attentionPmCount} PM result${attentionPmCount === 1 ? "" : "s"} needed attention in the last 180 days.` : "",
     !lastPm ? "No completed PM history yet." : ""
   ].filter(Boolean);
@@ -32844,7 +32844,7 @@ function renderAssetHealthPanel(asset = {}) {
         <strong>${escapeHtml(String(health.score))}</strong>
       </header>
       <div class="asset-health-metrics">
-        <article><span>Open tickets</span><strong>${escapeHtml(formatInventoryNumber(health.openTickets.length))}</strong></article>
+        <article><span>Open jobs</span><strong>${escapeHtml(formatInventoryNumber(health.openTickets.length))}</strong></article>
         <article><span>Failed PMs</span><strong>${escapeHtml(formatInventoryNumber(health.failedPmTickets.length))}</strong></article>
         <article><span>Last PM</span><strong>${escapeHtml(health.lastPm?.completedAt ? formatDate(new Date(health.lastPm.completedAt)) : "None")}</strong></article>
         <article><span>Next PM</span><strong>${escapeHtml(formatDate(health.due.nextDate))}</strong></article>
@@ -32856,19 +32856,19 @@ function renderAssetHealthPanel(asset = {}) {
           <strong>Recommended attention</strong>
           ${health.recommendations.length
             ? `<ul>${health.recommendations.slice(0, 5).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
-            : `<p class="muted">No current PM, ticket, or repeat-failure concerns.</p>`}
+            : `<p class="muted">No current PM, job, or repeat-failure concerns.</p>`}
         </article>
         <article>
-          <strong>Recent tickets</strong>
+          <strong>Recent jobs</strong>
           ${recentTickets.length
-            ? recentTickets.map((ticket) => `<p><b>${escapeHtml(formatIssueNumber(ticket))}</b> ${escapeHtml(ticket.title || "Ticket")} <span>${escapeHtml(ticket.status || "Open")}</span></p>`).join("")
-            : `<p class="muted">No ticket history for this equipment.</p>`}
+            ? recentTickets.map((ticket) => `<p><b>${escapeHtml(formatIssueNumber(ticket))}</b> ${escapeHtml(ticket.title || "Job")} <span>${escapeHtml(ticket.status || "Open")}</span></p>`).join("")
+            : `<p class="muted">No job history for this equipment.</p>`}
         </article>
         <article>
           <strong>Recent parts used</strong>
           ${recentParts.length
             ? recentParts.map((part) => `<p><b>${escapeHtml(formatIssueNumber(part.ticket))}</b> ${escapeHtml(part.detail || "Inventory used")} <span>${part.at ? escapeHtml(formatDate(new Date(part.at))) : ""}</span></p>`).join("")
-            : `<p class="muted">No parts usage recorded from tickets yet.</p>`}
+            : `<p class="muted">No parts usage recorded from jobs yet.</p>`}
         </article>
       </div>
     </section>
@@ -32963,7 +32963,7 @@ function buildWorkOrderAiDrafts(workOrder = {}) {
   const actionSummary = recentHistory.length ? recentHistory.join("; ") : String(workOrder.notes || "").trim() || "No work notes have been added yet.";
   const partsSummary = parts.length
     ? `Parts used: ${parts.map((part) => `${formatInventoryNumber(part.quantity)} x ${part.itemName}`).join(", ")}.`
-    : "No inventory parts have been recorded on this ticket.";
+    : "No inventory parts have been recorded on this job.";
   const internalSummary = [
     `${formatIssueNumber(workOrder)} is ${String(workOrder.status || "Open").toLowerCase()} for ${context}.`,
     `Priority is ${workOrder.priority || "Medium"} and assigned to ${workOrder.assignedUserName || "Unassigned"}.`,
@@ -32977,14 +32977,14 @@ function buildWorkOrderAiDrafts(workOrder = {}) {
       ? "The work has been completed or marked ready for review."
       : "The work is currently in progress or pending completion.",
     parts.length ? `Recorded materials include ${parts.map((part) => `${formatInventoryNumber(part.quantity)} x ${part.itemName}`).join(", ")}.` : "",
-    "We will update the ticket if more work, parts, or scheduling is required."
+    "We will update the job if more work, parts, or scheduling is required."
   ].filter(Boolean).join(" ");
   return {
     internalSummary,
     customerSummary,
     estimateSummary: estimateLines.length
-      ? `Suggested ${estimateLines.length} estimate line${estimateLines.length === 1 ? "" : "s"} from ticket details, parts, and labour/costing entries. Review pricing before sending.`
-      : "No estimate lines could be suggested from this ticket yet. Add parts, labour, or a service amount first.",
+      ? `Suggested ${estimateLines.length} estimate line${estimateLines.length === 1 ? "" : "s"} from job details, parts, and labour/costing entries. Review pricing before sending.`
+      : "No estimate lines could be suggested from this job yet. Add parts, labour, or a service amount first.",
     estimateLines
   };
 }
@@ -33031,7 +33031,7 @@ function buildAssetPmRecommendationDraft(asset = {}, health = assetHealthRecord(
   if (/filter|rtu|ahu|mau|hvac/i.test(`${name} ${typeText}`)) items.push("Include filter condition, belt/fan check, drain pan, coil condition, and temperature split in the checklist.");
   if (/pump|booster|sump|circulation/i.test(`${name} ${typeText}`)) items.push("Include seal/leak check, amperage, pressure, vibration/noise, and lead-lag operation in the checklist.");
   if (/exit|emergency|lighting/i.test(`${name} ${typeText}`)) items.push("Include lamp/LED operation, battery test, charger indicator, and local disconnect/relay status.");
-  if (!items.length) items.push("No urgent PM change is suggested. Continue monitoring ticket history, PM results, and parts usage.");
+  if (!items.length) items.push("No urgent PM change is suggested. Continue monitoring job history, PM results, and parts usage.");
   return {
     summary: `${name} has a health score of ${health.score}. ${typeText ? `Equipment type: ${typeText}. ` : ""}This recommendation is a draft for review before changing any PM schedule or checklist.`,
     items
@@ -33093,8 +33093,8 @@ function renderEmptyStateContent(asset) {
   }
   if (currentRole === "Technician") {
     return `
-      <h2>No assigned equipment tickets</h2>
-      <p>Equipment will appear here when an open ticket is assigned to you.</p>
+      <h2>No assigned equipment jobs</h2>
+      <p>Equipment will appear here when an open job is assigned to you.</p>
     `;
   }
   const addEquipmentButton = canAddEquipment()
@@ -34909,13 +34909,13 @@ function renderWorkOrderItem(item) {
   const canEditTicket = canManageWorkOrders();
   const editAction = canWork ? `
     <details class="inline-edit-drawer" data-ticket-edit-drawer>
-      <summary>${canEditTicket ? "Edit Ticket" : "Add Note"}</summary>
+      <summary>${canEditTicket ? "Edit Job" : "Add Note"}</summary>
       ${renderWorkOrderEditForm(item)}
     </details>
   ` : "";
   const secondaryActions = canWork ? `
     <button class="secondary mini" type="button" data-work-order-pdf="${escapeAttribute(item.id)}">PDF Form</button>
-    <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Ticket</button>
+    <button class="secondary mini" type="button" data-work-order-email="${escapeAttribute(item.id)}">Email Job</button>
     <button class="secondary mini" type="button" data-work-order-send-pdf="${escapeAttribute(item.id)}">Send PDF Email</button>
   ` : "";
   const billingAction = canManage && item.status === "Closed"
@@ -34971,7 +34971,7 @@ function renderWorkOrderItem(item) {
   ].filter(Boolean).join("");
   const emailStatusPanel = renderWorkOrderEmailStatusPanel(item);
   const drawerProfile = renderWorkDrawerProfile({
-    title: `${issueNumber} - ${item.title || "Open ticket"}`,
+    title: `${issueNumber} - ${item.title || "Open job"}`,
     systemId: `${targetKind}: ${targetLabel}`,
     context: `${targetLabel} | ${customer?.name || "Unknown customer"} | ${locationRecord?.name || "Unknown location"}`,
     imageSrc: firstPhoto,
@@ -34982,14 +34982,14 @@ function renderWorkOrderItem(item) {
     <details class="work-order-item work-order-drawer ticket-drawer-item" data-work-order-id="${escapeAttribute(item.id)}" ${item.id === focusedWorkOrderId || item.id === focusedCompletedRecordId ? "open" : ""}>
       <summary>
           <div class="ticket-list-summary">
-            <strong>${escapeHtml(issueNumber)} - ${escapeHtml(item.title || "Open ticket")}</strong>
+            <strong>${escapeHtml(issueNumber)} - ${escapeHtml(item.title || "Open job")}</strong>
             <span>${escapeHtml(targetLabel)} | ${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")}</span>
             <div class="ticket-list-badges">${profileBadges}</div>
           </div>
         <div class="ticket-summary-tools">
           ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
           ${headerActions}
-          <button type="button" class="secondary mini ticket-drawer-close" data-close-work-drawer aria-label="Close ticket drawer">X</button>
+          <button type="button" class="secondary mini ticket-drawer-close" data-close-work-drawer aria-label="Close job drawer">X</button>
         </div>
       </summary>
       <div class="ticket-drawer-body">
@@ -35018,7 +35018,7 @@ function renderWorkOrderItem(item) {
         </details>
         <details class="ticket-sub-drawer">
           <summary>
-            <h3>Ticket Meta</h3>
+            <h3>Job Meta</h3>
             <span>${escapeHtml(assignedLabel)}</span>
           </summary>
           <div class="ticket-meta-list ticket-spec-grid">
@@ -35174,7 +35174,7 @@ function renderTechnicianMobileFlow(workOrder = {}) {
           ${workOrder.status === "Open" ? `<button type="button" class="primary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="In progress">Arrived / start</button>` : ""}
           ${!["Waiting parts", "Closed"].includes(workOrder.status) ? `<button type="button" class="secondary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="Waiting parts">Waiting parts</button>` : ""}
           ${!["Resolved", "Closed"].includes(workOrder.status) ? `<button type="button" class="secondary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="Resolved">Work complete</button>` : ""}
-          ${canManageWorkOrders() && !isClosed ? `<button type="button" class="secondary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="Closed">Close ticket</button>` : ""}
+          ${canManageWorkOrders() && !isClosed ? `<button type="button" class="secondary mini" data-work-order-id="${escapeAttribute(workOrder.id)}" data-work-order-action="Closed">Close job</button>` : ""}
         </div>
         <div class="tech-flow-grid">
           <article class="tech-flow-box">
@@ -35254,7 +35254,7 @@ async function useInventoryFromTechnicianFlow(workOrderId = "", formData = new F
   workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
   workOrder.updatedAt = new Date().toISOString();
   addWorkOrderHistory(workOrder, "Inventory used", note);
-  addActivity("Inventory used on ticket", `${item.name} -> ${formatIssueNumber(workOrder)}`);
+  addActivity("Inventory used on job", `${item.name} -> ${formatIssueNumber(workOrder)}`);
   saveState();
   await syncSingleInventoryItemToServer(item);
   syncSingleWorkOrderToServer(workOrder);
@@ -35282,7 +35282,7 @@ function saveTechnicianSignoff(workOrderId = "", formData = new FormData()) {
   }
   workOrder.updatedAt = now;
   addWorkOrderHistory(workOrder, "Customer sign-off", [customerName, signatureNote, completionNote].filter(Boolean).join(" | ") || "Sign-off saved");
-  addActivity("Ticket signed off", `${formatIssueNumber(workOrder)} - ${customerName || "Customer"}`);
+  addActivity("Job signed off", `${formatIssueNumber(workOrder)} - ${customerName || "Customer"}`);
   saveState();
   syncSingleWorkOrderToServer(workOrder);
   render();
@@ -35418,7 +35418,7 @@ function renderWorkOrderEstimatePanel(workOrder = {}) {
       <section class="estimate-card">
         ${estimates.length
           ? estimates.map((estimate) => renderEstimateRecord(estimate, workOrder)).join("")
-          : `<p class="muted">No estimate has been created for this ticket yet.</p>`}
+          : `<p class="muted">No estimate has been created for this job yet.</p>`}
         <form class="estimate-create-form" data-estimate-create-form="${escapeAttribute(workOrder.id)}">
           <input name="title" value="${escapeAttribute(workOrder.title || "Service estimate")}" placeholder="Estimate title">
           <input name="validUntil" type="date" value="${escapeAttribute(toDateInputValue(addDays(new Date(), 30)))}">
@@ -35569,7 +35569,7 @@ function createAiEstimateForWorkOrder(workOrderId = "") {
   if (!workOrder || !canManageWorkOrders()) return;
   const lines = buildAiEstimateLines(workOrder);
   if (!lines.length) {
-    alert("SiteWorks does not have enough ticket detail to suggest estimate lines yet.");
+    alert("SiteWorks does not have enough job detail to suggest estimate lines yet.");
     return;
   }
   const now = new Date().toISOString();
@@ -35606,7 +35606,7 @@ function saveAiDraftAsWorkOrderNote(workOrderId = "", kind = "internal-summary")
   workOrder.notes = appendDatedWorkNote(workOrder.notes, `${label}\n${text}`);
   workOrder.updatedAt = new Date().toISOString();
   addWorkOrderHistory(workOrder, label, text);
-  addActivity(label, `${formatIssueNumber(workOrder)} - ${workOrder.title || "Ticket"}`);
+  addActivity(label, `${formatIssueNumber(workOrder)} - ${workOrder.title || "Job"}`);
   saveState();
   render();
 }
@@ -35811,7 +35811,7 @@ function buildEstimatePreviewHtml(details) {
             <div class="box">
               <strong>${escapeHtml(estimate.status || "Draft")}</strong>
               <span>Valid until ${escapeHtml(estimate.validUntil ? inventoryDateLabel(estimate.validUntil) : "Not set")}</span>
-              <span>Ticket ${escapeHtml(formatIssueNumber(workOrder))}</span>
+              <span>Job ${escapeHtml(formatIssueNumber(workOrder))}</span>
             </div>
           </header>
           <section class="box">
@@ -35922,7 +35922,7 @@ function buildEstimateEmailBody(details, quoteLink) {
     `Quote: ${estimate.estimateNumber}`,
     `Title: ${estimate.title || workOrder.title || "Estimate"}`,
     `Customer / location: ${details.context || "Not set"}`,
-    `Ticket: ${formatIssueNumber(workOrder)}`,
+    `Job: ${formatIssueNumber(workOrder)}`,
     `Valid until: ${estimate.validUntil ? inventoryDateLabel(estimate.validUntil) : "Not set"}`,
     "",
     `Review and accept/decline online: ${quoteLink}`,
@@ -35947,7 +35947,7 @@ function buildEstimateEmailHtml(details, quoteLink) {
       <p><a href="${escapeAttribute(quoteLink)}" style="display:inline-block;background:#08705f;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;">Review and accept quote</a></p>
       <table style="border-collapse:collapse;width:100%;max-width:760px;margin-top:16px;">
         <tr><td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">Customer / location</td><td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(details.context || "Not set")}</td></tr>
-        <tr><td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">Ticket</td><td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(formatIssueNumber(workOrder))}</td></tr>
+        <tr><td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">Job</td><td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(formatIssueNumber(workOrder))}</td></tr>
         <tr><td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">Valid until</td><td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(estimate.validUntil ? inventoryDateLabel(estimate.validUntil) : "Not set")}</td></tr>
       </table>
       <h3 style="margin:22px 0 8px;">Line items</h3>
@@ -36059,7 +36059,7 @@ function getWorkOrderPhotos(item) {
     photos.push({
       ...item.photo,
       label: "Submitted photo",
-      caption: item.photo.name || "Submitted ticket photo"
+      caption: item.photo.name || "Submitted job photo"
     });
   }
   if (Array.isArray(item.photos)) {
@@ -36121,8 +36121,8 @@ function renderTicketActivityTimeline(item, showHeading = true) {
                 <strong>${escapeHtml(photo.label || "Submitted photo")}</strong>
                 <span>${escapeHtml(photo.addedAt ? formatDateTime(new Date(photo.addedAt)) : formatDateTime(new Date(createdAt)))}</span>
               </header>
-              <button type="button" class="history-photo-button ticket-photo-card timeline-photo-card" data-view-photo data-photo-src="${escapeAttribute(mediaSource(photo))}" data-photo-caption="${escapeAttribute(photo.caption || photo.name || "Ticket photo")}">
-                <img class="history-photo" alt="${escapeAttribute(photo.label || "Ticket photo")}" src="${escapeAttribute(mediaSource(photo))}">
+              <button type="button" class="history-photo-button ticket-photo-card timeline-photo-card" data-view-photo data-photo-src="${escapeAttribute(mediaSource(photo))}" data-photo-caption="${escapeAttribute(photo.caption || photo.name || "Job photo")}">
+                <img class="history-photo" alt="${escapeAttribute(photo.label || "Job photo")}" src="${escapeAttribute(mediaSource(photo))}">
                 <span>${escapeHtml(photo.name || photo.label || "Submitted photo")}</span>
               </button>
             </div>
@@ -36175,14 +36175,14 @@ function renderWorkOrderPhotos(item) {
   const photos = getWorkOrderPhotos(item);
   if (!photos.length) {
     return `
-      <div class="ticket-photo-gallery ticket-photo-empty" aria-label="Ticket photos">
+      <div class="ticket-photo-gallery ticket-photo-empty" aria-label="Job photos">
         <span>Submitted photos</span>
         <p class="muted">No submitted photos.</p>
       </div>
     `;
   }
   return `
-    <div class="ticket-photo-gallery" aria-label="Ticket photos">
+    <div class="ticket-photo-gallery" aria-label="Job photos">
       ${photos.map((photo) => `
         <button type="button" class="history-photo-button ticket-photo-card" data-view-photo data-photo-src="${escapeAttribute(mediaSource(photo))}" data-photo-caption="${escapeAttribute(photo.caption)}">
           <img class="history-photo" alt="${escapeAttribute(photo.label)}" src="${escapeAttribute(mediaSource(photo))}">
@@ -36203,7 +36203,7 @@ function renderWorkOrderEditForm(item) {
       ${canEditTicket ? `
         <div class="form-grid">
           <label>
-            Ticket title
+            Job title
             <input name="title" value="${escapeAttribute(item.title || "")}" required>
           </label>
           <label>
@@ -36235,7 +36235,7 @@ function renderWorkOrderEditForm(item) {
         <input name="photo" type="file" accept="image/*">
       </label>
       <div class="work-order-actions">
-        <button class="primary" type="submit">${canEditTicket ? "Save Ticket" : "Save Note / Photo"}</button>
+        <button class="primary" type="submit">${canEditTicket ? "Save Job" : "Save Note / Photo"}</button>
       </div>
     </form>
   `;
@@ -36315,7 +36315,7 @@ function renderCustomerCommunicationPanel(item = {}) {
               <span>${escapeHtml([update.recipient, update.sentAt ? formatDateTime(new Date(update.sentAt)) : "", update.sentBy].filter(Boolean).join(" | "))}</span>
               ${update.message ? `<p>${escapeHtml(update.message)}</p>` : ""}
             </article>
-          `).join("") : `<p class="muted">No customer updates sent from this ticket yet.</p>`}
+          `).join("") : `<p class="muted">No customer updates sent from this job yet.</p>`}
         </div>
       </section>
     </details>
@@ -36331,10 +36331,10 @@ function getIssueReportDetails(item) {
     id: item.id,
     customerId: item.customerId || "",
     issueNumber: formatIssueNumber(item),
-    reportTitle: "Ticket Report",
-    numberLabel: "Ticket Number",
-    footerLabel: "Preventative Maintenance Ticket Form",
-    title: item.title || "Open ticket",
+    reportTitle: "Job Report",
+    numberLabel: "Job Number",
+    footerLabel: "Facility Service & Maintenance Job Form",
+    title: item.title || "Open job",
     customer: customer?.name || "Unknown customer",
     location: locationRecord?.name || "Unknown location",
     equipment: asset?.name || item.areaName || "Area report",
@@ -36366,33 +36366,33 @@ function openIssuePdfForm(item) {
     try {
       reportWindow.print();
     } catch (error) {
-      console.warn("Ticket report print skipped.", error);
+    console.warn("Job report print skipped.", error);
     }
   }, 500);
   addWorkOrderHistory(item, "PDF opened", `${details.issueNumber} PDF form opened`);
-  addActivity("Ticket PDF opened", `${details.issueNumber} - ${details.title}`);
+  addActivity("Job PDF opened", `${details.issueNumber} - ${details.title}`);
   saveState();
   render();
 }
 
 async function emailIssueReport(item) {
   const details = getIssueReportDetails(item);
-  const recipient = await choosePreferredContractorEmail("Email this ticket to a preferred contact:", details.customerId);
+  const recipient = await choosePreferredContractorEmail("Email this job to a preferred contact:", details.customerId);
   if (recipient === null) return;
   addWorkOrderHistory(item, "Email draft opened", `Draft to ${recipient.trim()}`);
-  addActivity("Ticket email draft opened", `${details.title} to ${recipient.trim()}`);
+  addActivity("Job email draft opened", `${details.title} to ${recipient.trim()}`);
   saveState();
   render();
   openIssueEmailDraft(details, recipient);
 }
 
 function openIssueEmailDraft(details, recipient) {
-  const subject = `SiteWorks Ticket: ${details.priority} - ${details.equipment}`;
+  const subject = `SiteWorks Job: ${details.priority} - ${details.equipment}`;
   const body = [
-    "SiteWorks Ticket Report",
+    "SiteWorks Job Report",
     "",
-    `Ticket Number: ${details.issueNumber}`,
-    `Ticket: ${details.title}`,
+    `Job Number: ${details.issueNumber}`,
+    `Job: ${details.title}`,
     `Status: ${details.status}`,
     `Priority: ${details.priority}`,
     `Assigned to: ${details.assignedTo}`,
@@ -36401,7 +36401,7 @@ function openIssueEmailDraft(details, recipient) {
     `Equipment / Area: ${details.equipment}`,
     `Due: ${details.dueAt}`,
     `Created: ${details.createdAt}`,
-    `Ticket ID: ${details.id}`,
+    `Job ID: ${details.id}`,
     "",
     "Notes:",
     details.notes,
@@ -36450,7 +36450,7 @@ function buildCustomerUpdateParts(workOrder = {}, formData = new FormData()) {
     note ? "" : "",
     note || "",
     "",
-    `Ticket: ${details.issueNumber} - ${details.title}`,
+    `Job: ${details.issueNumber} - ${details.title}`,
     `Status: ${details.status}`,
     `Customer: ${details.customer}`,
     `Location: ${details.location}`,
@@ -36467,7 +36467,7 @@ function buildCustomerUpdateParts(workOrder = {}, formData = new FormData()) {
       ${note ? `<p style="margin:0 0 18px;white-space:pre-line;">${escapeHtml(note)}</p>` : ""}
       <table style="border-collapse:collapse;width:100%;max-width:720px;">
         ${[
-          ["Ticket", `${details.issueNumber} - ${details.title}`],
+          ["Job", `${details.issueNumber} - ${details.title}`],
           ["Status", details.status],
           ["Customer", details.customer],
           ["Location", details.location],
@@ -36640,7 +36640,7 @@ function buildScheduleEmailParts(details, visit = {}, messageType = "scheduled")
     "",
     intro,
     "",
-    `Ticket: ${details.issueNumber} - ${details.title}`,
+    `Job: ${details.issueNumber} - ${details.title}`,
     `Customer: ${details.customer}`,
     `Location: ${details.location}`,
     `Equipment / area: ${details.equipment}`,
@@ -36665,7 +36665,7 @@ function buildScheduleEmailParts(details, visit = {}, messageType = "scheduled")
           ["Customer", details.customer],
           ["Location", details.location],
           ["Equipment / area", details.equipment],
-          ["Ticket", details.issueNumber],
+          ["Job", details.issueNumber],
           ["Response", confirmationLink && !isOnWay ? confirmationLink : "Reply to this email"],
           ["Notes", visit.notes || "None"]
         ].map(([label, value]) => `
@@ -36767,7 +36767,7 @@ async function sendScheduledVisitEmail(workOrderId = "", button = null, messageT
 
 async function sendIssuePdfEmail(item, button) {
   const details = getIssueReportDetails(item);
-  const recipient = await choosePreferredContractorEmail("Email this ticket PDF to a preferred contact:", details.customerId);
+  const recipient = await choosePreferredContractorEmail("Email this job PDF to a preferred contact:", details.customerId);
   if (!recipient) return;
   const reportDetails = getEmailFunctionReportDetails(details);
 
@@ -36783,23 +36783,23 @@ async function sendIssuePdfEmail(item, button) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(getEmailFunctionError(result, "The ticket email could not be sent."));
+      throw new Error(getEmailFunctionError(result, "The job email could not be sent."));
     }
     addWorkOrderHistory(item, "PDF email sent", buildEmailHistoryDetails(recipient.trim(), result));
-    addActivity("Ticket PDF emailed", `${details.title} to ${recipient.trim()}`);
+    addActivity("Job PDF emailed", `${details.title} to ${recipient.trim()}`);
     saveState();
     render();
-    alert(buildEmailSuccessAlert("Ticket PDF email", result));
+    alert(buildEmailSuccessAlert("Job PDF email", result));
   } catch (error) {
-    console.warn("Ticket PDF email failed.", error);
+    console.warn("Job PDF email failed.", error);
     addWorkOrderHistory(item, "PDF email failed", error.message || "Automatic PDF email could not be sent.");
-    addActivity("Ticket PDF email failed", `${details.title} to ${recipient.trim()}`);
+    addActivity("Job PDF email failed", `${details.title} to ${recipient.trim()}`);
     saveState();
     restoreEmailActionButton(button, originalText);
     const useDraft = confirm(buildEmailFailurePrompt(error));
     if (useDraft) {
       addWorkOrderHistory(item, "Fallback email draft opened", `Draft to ${recipient.trim()}`);
-      addActivity("Ticket fallback email draft", `${details.title} to ${recipient.trim()}`);
+      addActivity("Job fallback email draft", `${details.title} to ${recipient.trim()}`);
       saveState();
       openIssueEmailDraft(details, recipient.trim());
     }
@@ -36870,7 +36870,7 @@ function getWorkOrderEmailStatus(item) {
     return {
       label: "Email failed",
       className: "badge-danger",
-      detail: `${item.customerReportEmailTo ? `Tried ${item.customerReportEmailTo}. ` : ""}${item.customerReportEmailError || "The ticket was created, but the automatic email was not sent."}`,
+      detail: `${item.customerReportEmailTo ? `Tried ${item.customerReportEmailTo}. ` : ""}${item.customerReportEmailError || "The job was created, but the automatic email was not sent."}`,
       action: "Customer report email failed"
     };
   }
@@ -37058,8 +37058,8 @@ async function sendIssueAssignmentEmail(item, user) {
   try {
     const reportDetails = getEmailFunctionReportDetails({
       ...details,
-      reportTitle: "Ticket Assignment",
-      footerLabel: "Assigned Maintenance Ticket",
+      reportTitle: "Job Assignment",
+      footerLabel: "Assigned Maintenance Job",
       notes: [`Assigned to: ${assigneeName}`, "", details.notes].join("\n")
     });
     const response = await sendSiteWorksEmail("assignment", {
@@ -37075,7 +37075,7 @@ async function sendIssueAssignmentEmail(item, user) {
     addWorkOrderHistory(item, "Assignment email sent", buildEmailHistoryDetails(recipient, result));
     addActivity("Assignment email sent", `${details.issueNumber} to ${assigneeName}`);
   } catch (error) {
-    console.warn("Ticket assignment email failed.", error);
+    console.warn("Job assignment email failed.", error);
     addWorkOrderHistory(item, "Assignment email failed", error.message || "Automatic assignment email could not be sent.");
     addActivity("Assignment email failed", `${details.issueNumber} to ${recipient}`);
   }
@@ -37359,14 +37359,14 @@ function buildIssuePdfHtml(details) {
     ["Created", details.createdAt],
     ["Last updated", details.updatedAt],
     ...(details.resolvedAt ? [["Resolved", details.resolvedAt]] : []),
-    [details.numberLabel || "Ticket Number", details.issueNumber],
+    [details.numberLabel || "Job Number", details.issueNumber],
     ["Record ID", details.id]
   ];
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>SiteWorks Ticket Report</title>
+  <title>SiteWorks Job Report</title>
   <style>
     @page { size: letter; margin: 0.5in; }
     * { box-sizing: border-box; }
@@ -37399,13 +37399,13 @@ function buildIssuePdfHtml(details) {
     <section class="top">
       <div>
         <div class="brand">SiteWorks</div>
-        <h1>${escapeHtml(details.reportTitle || "Ticket Report")}</h1>
+        <h1>${escapeHtml(details.reportTitle || "Job Report")}</h1>
         <div class="status">${escapeHtml(details.status)} | ${escapeHtml(details.priority)} Priority</div>
       </div>
       <div class="meta">
         <strong>Generated</strong><br>
         ${escapeHtml(formatDateTime(new Date()))}<br><br>
-        <strong>${escapeHtml(details.numberLabel || "Ticket Number")}</strong><br>
+        <strong>${escapeHtml(details.numberLabel || "Job Number")}</strong><br>
         ${escapeHtml(details.issueNumber)}<br><br>
         <strong>Record ID</strong><br>
         ${escapeHtml(details.id)}
@@ -37430,8 +37430,8 @@ function buildIssuePdfHtml(details) {
         <div class="photo-grid">
           ${reportPhotos.map((photo) => `
             <div class="photo-card">
-              <span>${escapeHtml(photo.label || "Ticket photo")}</span>
-              <img alt="${escapeAttribute(photo.label || "Ticket photo")}" src="${escapeAttribute(mediaSource(photo))}">
+              <span>${escapeHtml(photo.label || "Job photo")}</span>
+              <img alt="${escapeAttribute(photo.label || "Job photo")}" src="${escapeAttribute(mediaSource(photo))}">
             </div>
           `).join("")}
         </div>
@@ -37448,7 +37448,7 @@ function buildIssuePdfHtml(details) {
       </div>
     </section>
     <footer class="footer">
-      <span>${escapeHtml(details.footerLabel || "Preventative Maintenance Ticket Form")}</span>
+      <span>${escapeHtml(details.footerLabel || "Facility Service & Maintenance Job Form")}</span>
       <span>SiteWorks</span>
     </footer>
   </main>
@@ -37541,7 +37541,7 @@ function renderInventoryLabel(item) {
         <span>${escapeHtml(item.partNumber || item.category || "Part")}${item.supplierSku ? ` | SKU ${escapeHtml(item.supplierSku)}` : ""}</span>
         <span>${escapeHtml(item.storageLocation || "Shop")}${item.bin ? ` | ${escapeHtml(item.bin)}` : ""}</span>
         <span>Min ${escapeHtml(formatInventoryNumber(item.minStock))} | Order ${escapeHtml(formatInventoryNumber(inventoryReorderQuantity(item)))}</span>
-        <span>Scan to count, reorder, or use on a ticket</span>
+        <span>Scan to count, reorder, or use on a job</span>
       </div>
     </div>
   `;
@@ -37976,7 +37976,7 @@ async function deleteLocation(locationId) {
 
   addActivity(
     "Location deleted",
-    `${locationRecord.name}: ${removedAssetCount} equipment record(s), ${removedWorkOrderCount} ticket(s)`
+    `${locationRecord.name}: ${removedAssetCount} equipment record(s), ${removedWorkOrderCount} job(s)`
   );
   saveState();
   await finishCloudDelete("Location", Promise.all([
@@ -38002,7 +38002,7 @@ async function deleteSelectedEquipment() {
   const message = [
     `Delete equipment "${asset.name}"?`,
     "",
-    `This will also remove ${relatedWorkOrders.length} ticket(s), ${relatedServiceRequests.length} service request(s), and ${relatedPmCount} maintenance history record(s) tied to it.`
+    `This will also remove ${relatedWorkOrders.length} job(s), ${relatedServiceRequests.length} service request(s), and ${relatedPmCount} maintenance history record(s) tied to it.`
   ].join("\n");
   if (!confirm(message)) return;
 
@@ -38011,7 +38011,7 @@ async function deleteSelectedEquipment() {
   state.serviceRequests = state.serviceRequests.filter((item) => item.assetId !== asset.id);
   selectedPrintAssetIds.delete(asset.id);
   if (selectedId === asset.id) selectedId = null;
-  addActivity("Equipment deleted", `${asset.name}: ${relatedWorkOrders.length} ticket(s), ${relatedServiceRequests.length} service request(s)`);
+  addActivity("Equipment deleted", `${asset.name}: ${relatedWorkOrders.length} job(s), ${relatedServiceRequests.length} service request(s)`);
   saveState();
   await finishCloudDelete("Equipment", Promise.all([
     deleteStructuredRows("assets", "id", [asset.id]),
@@ -38121,7 +38121,7 @@ function createWorkOrderFromPm(asset, historyItem) {
 
 function createManualIssueForAsset(asset, ticketData = {}) {
   if (!canCreateWorkOrders() || !canSeeAsset(asset)) return;
-  const title = ticketData.title || `Ticket: ${asset.name}`;
+  const title = ticketData.title || `Job: ${asset.name}`;
   if (!title.trim()) return;
   const priority = normalizePriority(ticketData.priority);
   const ticket = {
@@ -38130,7 +38130,7 @@ function createManualIssueForAsset(asset, ticketData = {}) {
     assetId: asset.id,
     customerId: asset.customerId,
     locationId: asset.locationId,
-    source: "Manual ticket",
+    source: "Manual job",
     title: title.trim(),
     priority,
     status: "Open",
@@ -38146,7 +38146,7 @@ function createManualIssueForAsset(asset, ticketData = {}) {
   addWorkOrderHistory(ticket, "Created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
   state.workOrders.unshift(ticket);
   workOrderViewFilter = "active";
-  addActivity("Ticket created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
+  addActivity("Job created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
   saveState();
   openPanel("workOrdersPanel");
   render();
@@ -38158,7 +38158,7 @@ function createManualIssueForArea(customerId, locationId, areaName, ticketData =
   if (!canCreateWorkOrders() || !canSeeLocation(locationId, customerId)) return;
   const locationRecord = getLocation(locationId);
   if (!locationRecord || locationRecord.customerId !== customerId) return;
-  const title = ticketData.title || `Ticket: ${areaName || locationRecord.name}`;
+  const title = ticketData.title || `Job: ${areaName || locationRecord.name}`;
   if (!title.trim()) return;
   const priority = normalizePriority(ticketData.priority);
   const ticket = {
@@ -38168,7 +38168,7 @@ function createManualIssueForArea(customerId, locationId, areaName, ticketData =
     customerId,
     locationId,
     areaName: areaName || locationRecord.name,
-    source: "Manual area ticket",
+    source: "Manual area job",
     title: title.trim(),
     priority,
     status: "Open",
@@ -38184,7 +38184,7 @@ function createManualIssueForArea(customerId, locationId, areaName, ticketData =
   addWorkOrderHistory(ticket, "Created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
   state.workOrders.unshift(ticket);
   workOrderViewFilter = "active";
-  addActivity("Area ticket created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
+  addActivity("Area job created", `${formatIssueNumber(ticket)} - ${ticket.title}`);
   saveState();
   openPanel("workOrdersPanel");
   render();
@@ -38216,7 +38216,7 @@ async function createIssueFromTopAction() {
     }
     const photo = await readIssuePhoto(els.newIssuePhoto?.files?.[0]);
     const ticketData = {
-      title: els.newIssueTitle?.value.trim() || `Ticket: ${isAreaTicket ? areaName : asset.name}`,
+      title: els.newIssueTitle?.value.trim() || `Job: ${isAreaTicket ? areaName : asset.name}`,
       priority: els.newIssuePriority?.value || "Medium",
       notes: els.newIssueNotes?.value.trim(),
       photo
@@ -38230,12 +38230,12 @@ async function createIssueFromTopAction() {
       showCreationConfirmation(`${formatIssueNumber(createdTicket)} created.`);
     }
   } catch (error) {
-    console.warn("Top action ticket creation failed.", error);
-    if (els.newIssueStatus) els.newIssueStatus.textContent = "Ticket was not created. Try again with no photo or a smaller photo.";
+    console.warn("Top action job creation failed.", error);
+    if (els.newIssueStatus) els.newIssueStatus.textContent = "Job was not created. Try again with no photo or a smaller photo.";
   } finally {
     if (submitButton) {
       submitButton.disabled = false;
-      submitButton.textContent = "Create Ticket";
+      submitButton.textContent = "Create Job";
     }
   }
 }
@@ -38359,7 +38359,7 @@ async function convertServiceRequestToIssue(requestId) {
   request.convertedWorkOrderId = ticket.id;
   request.status = "Reviewed";
   request.updatedAt = new Date().toISOString();
-  addServiceRequestHistory(request, "Converted to ticket", `${formatServiceRequestNumber(request)} -> ${formatIssueNumber(ticket)}`);
+  addServiceRequestHistory(request, "Converted to job", `${formatServiceRequestNumber(request)} -> ${formatIssueNumber(ticket)}`);
   workOrderViewFilter = "active";
   addActivity("Service request converted", `${formatServiceRequestNumber(request)} to ${formatIssueNumber(ticket)}`);
   saveState();
@@ -38371,7 +38371,7 @@ async function convertServiceRequestToIssue(requestId) {
       syncSingleServiceRequestToServer(request)
     ]);
   } catch (error) {
-    markSyncError(`Ticket conversion cloud save failed: ${error?.message || error}`);
+    markSyncError(`Job conversion cloud save failed: ${error?.message || error}`);
     scheduleStructuredDataSync(0);
   }
 }
@@ -38388,12 +38388,12 @@ function convertOpenIssueToServiceRequest(workOrderId) {
     title: workOrder.title || `Service request from ${formatIssueNumber(workOrder)}`,
     priority: workOrder.priority || "Medium",
     status: "New",
-    requestedBy: workOrder.source || "Converted from open ticket",
+    requestedBy: workOrder.source || "Converted from open job",
     preferredDate: "",
     assignedUserId: workOrder.assignedUserId || "",
     assignedUserName: workOrder.assignedUserName || "",
     notes: [
-      `Converted from open ticket ${formatIssueNumber(workOrder)}.`,
+      `Converted from open job ${formatIssueNumber(workOrder)}.`,
       workOrder.notes || "No details entered."
     ].join("\n"),
     photo: workOrder.photo || null,
@@ -38402,7 +38402,7 @@ function convertOpenIssueToServiceRequest(workOrderId) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  addServiceRequestHistory(serviceRequest, "Created from ticket", `${formatIssueNumber(workOrder)} -> ${formatServiceRequestNumber(serviceRequest)}`);
+  addServiceRequestHistory(serviceRequest, "Created from job", `${formatIssueNumber(workOrder)} -> ${formatServiceRequestNumber(serviceRequest)}`);
   state.serviceRequests.unshift(serviceRequest);
   workOrder.status = "Closed";
   workOrder.resolvedAt = new Date().toISOString();
@@ -38412,7 +38412,7 @@ function convertOpenIssueToServiceRequest(workOrderId) {
     `Converted to service request ${formatServiceRequestNumber(serviceRequest)}.`
   ].filter(Boolean).join("\n");
   addWorkOrderHistory(workOrder, "Converted to service request", `${formatIssueNumber(workOrder)} -> ${formatServiceRequestNumber(serviceRequest)}`);
-  addActivity("Open ticket converted", `${formatIssueNumber(workOrder)} to ${formatServiceRequestNumber(serviceRequest)}`);
+  addActivity("Open job converted", `${formatIssueNumber(workOrder)} to ${formatServiceRequestNumber(serviceRequest)}`);
   saveState();
   focusedWorkOrderId = "";
   focusedServiceRequestId = serviceRequest.id;
@@ -39226,7 +39226,7 @@ async function renderPublicSchedule() {
     return;
   }
   const isClosed = ["Confirmed", "Change requested", "Cancelled"].includes(schedule.response_status || schedule.responseStatus || "");
-  els.publicScheduleTitle.textContent = `${schedule.issue_number || schedule.issueNumber || "Ticket"} | ${schedule.title || "Scheduled visit"}`;
+  els.publicScheduleTitle.textContent = `${schedule.issue_number || schedule.issueNumber || "Job"} | ${schedule.title || "Scheduled visit"}`;
   els.publicScheduleContext.textContent = [schedule.customer_name, schedule.location_name, schedule.asset_name].filter(Boolean).join(" | ");
   els.publicScheduleBody.innerHTML = `
     <article class="public-quote-summary">
@@ -39245,7 +39245,7 @@ async function renderPublicSchedule() {
     </article>
     <div class="public-quote-lines">
       <div class="public-quote-line">
-        <span>Ticket</span>
+        <span>Job</span>
         <strong>${escapeHtml(schedule.title || "Scheduled visit")}</strong>
         <em>${escapeHtml(schedule.issue_number || "")}</em>
         <b>${escapeHtml(schedule.duration_minutes ? `${schedule.duration_minutes} min` : "")}</b>
@@ -41129,7 +41129,7 @@ async function bootstrapCloudData() {
 async function refreshCloudDataFromServer(options = {}) {
   if (shouldDeferCloudRefresh(options)) {
     scheduleDeferredCloudRefresh();
-    setSyncBanner("refresh", "Cloud refresh paused", "Finish this ticket and SiteWorks will refresh after you close it.", 3000);
+    setSyncBanner("refresh", "Cloud refresh paused", "Finish this job and SiteWorks will refresh after you close it.", 3000);
     return false;
   }
   deferredCloudRefreshPending = false;
@@ -42174,7 +42174,7 @@ function buildLocalFileMigrationSummaryText(summary) {
     summary.equipmentGallery ? `${summary.equipmentGallery} gallery photo${summary.equipmentGallery === 1 ? "" : "s"}` : "",
     summary.manual ? `${summary.manual} PDF manual${summary.manual === 1 ? "" : "s"}` : "",
     summary.pmHistory ? `${summary.pmHistory} PM history photo${summary.pmHistory === 1 ? "" : "s"}` : "",
-    summary.ticketPhoto ? `${summary.ticketPhoto} ticket photo${summary.ticketPhoto === 1 ? "" : "s"}` : "",
+    summary.ticketPhoto ? `${summary.ticketPhoto} job photo${summary.ticketPhoto === 1 ? "" : "s"}` : "",
     summary.servicePhoto ? `${summary.servicePhoto} service request photo${summary.servicePhoto === 1 ? "" : "s"}` : "",
     summary.panelLogo ? `${summary.panelLogo} panel logo${summary.panelLogo === 1 ? "" : "s"}` : ""
   ].filter(Boolean);
@@ -42860,7 +42860,7 @@ function downloadCsv(asset) {
 
 function downloadAssetRegisterCsv(assets, filename = `asset-register-${timestampForFile()}.csv`) {
   const rows = [
-    ["Customer", "Location", "Equipment ID", "Equipment", "Status", "Next Maintenance", "Open Tickets", "Template", "Equipment Type", "Criticality", "Manufacturer", "Model", "Serial", "Install Date", "Vendor", "Vendor Contact", "Warranty Expires", "Parts / Supply Notes", "Manual / Document Link", "Uploaded Manual File", "Photo File", "Notes"],
+    ["Customer", "Location", "Equipment ID", "Equipment", "Status", "Next Maintenance", "Open Jobs", "Template", "Equipment Type", "Criticality", "Manufacturer", "Model", "Serial", "Install Date", "Vendor", "Vendor Contact", "Warranty Expires", "Parts / Supply Notes", "Manual / Document Link", "Uploaded Manual File", "Photo File", "Notes"],
     ...assets.map((asset) => {
       const customer = getCustomer(asset.customerId);
       const locationRecord = getLocation(asset.locationId);

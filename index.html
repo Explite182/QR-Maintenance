@@ -159,11 +159,11 @@
         <p id="resetPasswordMessage" class="login-error"></p>
       </form>
       <div id="loginQrReportPrompt" class="login-qr-report">
-        <strong>Opening a ticket?</strong>
+        <strong>Opening a job?</strong>
         <p id="loginQrReportMessage">Send a photo and quick note without logging in.</p>
         <div class="login-qr-actions">
           <a id="loginQrReportBtn" class="secondary primary-action" href="#">Report Issue</a>
-          <a id="loginQrAreaReportBtn" class="secondary hidden" href="#">Report Area Ticket</a>
+          <a id="loginQrAreaReportBtn" class="secondary hidden" href="#">Report Area Job</a>
         </div>
       </div>
       <form id="firstAdminForm" class="stack hidden">
@@ -272,7 +272,7 @@
             <span>Equipment Register</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="workOrdersPanel" aria-expanded="false">
-            <span>Open Tickets</span>
+            <span>Open Jobs</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="customerPortalPanel" aria-expanded="false">
             <span>Customer Portal</span>
@@ -308,7 +308,7 @@
             </div>
           </div>
           <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
-            <span>Completed Tickets</span>
+            <span>Completed Jobs</span>
           </button>
         </nav>
       <details id="adminToolsDrawer" class="sidebar-section setup-drawer admin-tools-drawer">
@@ -672,7 +672,7 @@
           </button>
           <div id="createNewMenu" class="create-new-menu hidden">
             <button id="newEquipmentBtn" type="button">New Equipment</button>
-            <button id="newIssueBtn" type="button" class="secondary">New Ticket</button>
+            <button id="newIssueBtn" type="button" class="secondary">New Job</button>
             <button id="newServiceRequestBtn" type="button" class="secondary">New Customer Request</button>
             <button id="newInventoryBtn" type="button" class="secondary">New Inventory Item</button>
             <button id="newKeyBtn" type="button" class="secondary">New Key</button>
@@ -789,7 +789,7 @@
 
       <details id="newIssueDrawer" class="quick-add setup-drawer work-create-drawer">
         <summary>
-          <span>New Ticket</span>
+          <span>New Job</span>
         </summary>
         <form id="newIssueForm" class="stack compact-form">
           <label>
@@ -805,7 +805,7 @@
             <select id="newIssueAsset"></select>
           </label>
           <fieldset class="choice-field">
-            <legend>Ticket applies to</legend>
+            <legend>Job applies to</legend>
             <label>
               <input id="newIssueTargetEquipment" type="radio" name="newIssueTarget" value="equipment" checked>
               Equipment
@@ -821,7 +821,7 @@
           </label>
           <div class="form-grid">
             <label>
-              Ticket title
+              Job title
               <input id="newIssueTitle" required placeholder="What needs attention?">
             </label>
             <label>
@@ -841,13 +841,13 @@
             Photo
             <input id="newIssuePhoto" type="file" accept="image/*">
           </label>
-          <button type="submit" class="primary">Create Ticket</button>
+          <button type="submit" class="primary">Create Job</button>
           <p id="newIssueStatus" class="inline-status"></p>
         </form>
         <details id="issueImportDrawer" class="asset-import-drawer">
-          <summary>Import Tickets CSV</summary>
+          <summary>Import Jobs CSV</summary>
           <div class="asset-import-body">
-            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment Name, Area, Applies To, Ticket Title, Status, Priority, Assigned To, Due Date, and Notes.</p>
+            <p class="asset-import-hint">Accepted columns include Customer, Location, Equipment Name, Area, Applies To, Job Title, Status, Priority, Assigned To, Due Date, and Notes.</p>
             <label>
               CSV file
               <input id="issueImportFile" type="file" accept=".csv,text/csv">
@@ -856,7 +856,7 @@
               <input id="issueImportCreateLocations" type="checkbox" checked>
               Create missing locations
             </label>
-            <button id="issueImportBtn" type="button" class="secondary">Import Tickets</button>
+            <button id="issueImportBtn" type="button" class="secondary">Import Jobs</button>
             <p id="issueImportStatus" class="inline-status"></p>
             <div id="issueImportPreview" class="asset-import-preview"></div>
           </div>
@@ -895,10 +895,10 @@
           <div id="breakerTripMetricWrap" class="metric-menu-wrap hidden">
             <button type="button" class="metric-card metric-neutral" data-dashboard-filter="workOrders">
               <span id="openWorkOrders">0</span>
-              <p>Open tickets</p>
+              <p>Open jobs</p>
             </button>
             <div class="metric-dropdown hidden" data-dashboard-menu="workOrders">
-              <p class="metric-dropdown-empty">No open tickets for this view.</p>
+              <p class="metric-dropdown-empty">No open jobs for this view.</p>
             </div>
           </div>
           <div class="metric-menu-wrap">
@@ -943,7 +943,7 @@
               <p>High priority</p>
             </button>
             <div class="metric-dropdown hidden" data-dashboard-menu="highPriority">
-              <p class="metric-dropdown-empty">No high priority tickets for this view.</p>
+              <p class="metric-dropdown-empty">No high priority jobs for this view.</p>
             </div>
           </div>
           <div class="metric-menu-wrap">
@@ -952,7 +952,7 @@
               <p>Waiting parts</p>
             </button>
             <div class="metric-dropdown hidden" data-dashboard-menu="waitingParts">
-              <p class="metric-dropdown-empty">No waiting parts tickets for this view.</p>
+              <p class="metric-dropdown-empty">No waiting parts jobs for this view.</p>
             </div>
           </div>
           <div class="metric-menu-wrap">
@@ -970,7 +970,7 @@
               <p>Assigned to me</p>
             </button>
             <div class="metric-dropdown hidden" data-dashboard-menu="assignedToMe">
-              <p class="metric-dropdown-empty">No tickets assigned to you for this view.</p>
+              <p class="metric-dropdown-empty">No jobs assigned to you for this view.</p>
             </div>
           </div>
         </div>
@@ -1117,7 +1117,7 @@
               <option value="name">Equipment name</option>
               <option value="location">Location</option>
               <option value="status">Status</option>
-              <option value="workOrders">Open tickets</option>
+              <option value="workOrders">Open jobs</option>
             </select>
           </label>
           <label>
@@ -1169,7 +1169,7 @@
 
         <section id="workOrdersPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="workOrdersPanel">
-          <h2>Open Tickets</h2>
+          <h2>Open Jobs</h2>
           <div class="panel-title-actions">
             <span id="workOrderCount">0</span>
           </div>
@@ -1201,7 +1201,7 @@
                 <option value="ready">Ready to bill</option>
                 <option value="draft">Draft / needs review</option>
                 <option value="billed">Billed</option>
-                <option value="all">All closed tickets</option>
+                <option value="all">All closed jobs</option>
               </select>
             </label>
             <div class="billing-export-actions">
@@ -2393,7 +2393,7 @@
 
         <section id="completedPmPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="completedPmPanel">
-          <h2>Completed Tickets</h2>
+          <h2>Completed Jobs</h2>
           <div class="panel-title-actions">
             <span id="completedPmCount">0</span>
           </div>
@@ -2408,7 +2408,7 @@
           <div>
             <p class="eyebrow">Customer Portal</p>
             <h2 id="customerPortalTitle">SiteWorks Portal</h2>
-            <p id="customerPortalSubtitle">Tickets, scheduled visits, equipment, estimates, and completed work.</p>
+            <p id="customerPortalSubtitle">Jobs, scheduled visits, equipment, estimates, and completed work.</p>
           </div>
           <button id="customerPortalRequestBtn" type="button" class="secondary mini">Request Work</button>
         </div>
@@ -2668,7 +2668,7 @@
 
         <details class="asset-sub-drawer">
           <summary>
-            <h3>Equipment Tickets</h3>
+            <h3>Equipment Jobs</h3>
             <span id="assetWorkOrderCount">0</span>
           </summary>
           <div id="assetWorkOrderList" class="work-order-list"></div>
@@ -2698,7 +2698,7 @@
     </button>
     <button type="button" class="mobile-tab-btn" data-mobile-tab="workOrdersPanel">
       <span class="mobile-tab-icon mobile-tab-tickets" aria-hidden="true"></span>
-      <span>Tickets</span>
+      <span>Jobs</span>
     </button>
     <button type="button" class="mobile-tab-btn" data-mobile-tab="adminToolsDrawer">
       <span class="mobile-tab-icon mobile-tab-settings" aria-hidden="true"></span>
@@ -2710,7 +2710,7 @@
     </button>
     <div id="mobileCreateMenu" class="mobile-create-menu hidden" aria-label="Create new">
       <button type="button" data-mobile-create-action="newEquipment">Add Equipment</button>
-      <button type="button" data-mobile-create-action="newTicket">Create Ticket</button>
+      <button type="button" data-mobile-create-action="newTicket">Create Job</button>
       <button type="button" data-mobile-create-action="newServiceRequest">Create Service Call</button>
       <button type="button" data-mobile-create-action="newInventory">Add Inventory Item</button>
       <button type="button" data-mobile-create-action="newKey">Add Key</button>
@@ -2805,7 +2805,7 @@
     <div class="command-palette-card">
       <label class="command-palette-search">
         <span>Quick Search</span>
-        <input id="commandPaletteInput" type="search" placeholder="Go to equipment, open ticket, jump to a section">
+        <input id="commandPaletteInput" type="search" placeholder="Go to equipment, open job, jump to a section">
       </label>
       <div id="commandPaletteResults" class="command-palette-results"></div>
     </div>
