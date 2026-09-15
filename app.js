@@ -5630,6 +5630,7 @@ function renderEnergyLocationDetail(currentCustomer = null, currentLocation = nu
           </div>
         </article>
       </div>
+      ${renderAssetAiAssistPanel(asset, health)}
     </section>
   `;
 }
@@ -9578,6 +9579,7 @@ document.addEventListener("submit", async (event) => {
     item.updatedAt = new Date().toISOString();
 
     const note = `Used ${formatInventoryNumber(quantityUsed)} x ${item.name} from inventory. On hand: ${formatInventoryNumber(item.quantity)}.`;
+    recordPartUsedOnWorkOrder(workOrder, item, quantityUsed, "Inventory panel");
     workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
     workOrder.updatedAt = new Date().toISOString();
     addWorkOrderHistory(workOrder, "Inventory used", note);
@@ -11931,6 +11933,38 @@ document.addEventListener("click", async (event) => {
   if (copyEstimateLinkButton && canManageWorkOrders()) {
     event.preventDefault();
     copyEstimatePublicLink(copyEstimateLinkButton.dataset.estimateCopyLink);
+    return;
+  }
+
+  const aiCopyButton = event.target.closest("[data-ai-copy]");
+  if (aiCopyButton) {
+    event.preventDefault();
+    const text = getAiDraftText(
+      aiCopyButton.dataset.aiCopy,
+      aiCopyButton.dataset.aiWorkOrderId || "",
+      aiCopyButton.dataset.aiAssetId || ""
+    );
+    if (text) {
+      await copyText(text);
+      aiCopyButton.textContent = "Copied";
+      window.setTimeout(() => {
+        aiCopyButton.textContent = "Copy";
+      }, 1200);
+    }
+    return;
+  }
+
+  const aiSaveNoteButton = event.target.closest("[data-ai-save-note]");
+  if (aiSaveNoteButton) {
+    event.preventDefault();
+    saveAiDraftAsWorkOrderNote(aiSaveNoteButton.dataset.aiWorkOrderId, aiSaveNoteButton.dataset.aiSaveNote);
+    return;
+  }
+
+  const aiCreateEstimateButton = event.target.closest("[data-ai-create-estimate]");
+  if (aiCreateEstimateButton && canManageWorkOrders()) {
+    event.preventDefault();
+    createAiEstimateForWorkOrder(aiCreateEstimateButton.dataset.aiCreateEstimate);
     return;
   }
 
@@ -30976,6 +31010,77 @@ function buildJobCostRecord(workOrder = {}, lineItems = workOrderBillingLineItem
   };
 }
 
+function normalizeWorkOrderPartsUsed(parts = []) {
+  return (Array.isArray(parts) ? parts : []).map((part) => {
+    const quantity = Math.max(0, Number(part.quantity || 0));
+    const unitCost = Math.max(0, Number(part.unitCost || 0));
+    const sellPrice = Math.max(0, Number(part.sellPrice || part.rate || 0));
+    return {
+      id: part.id || crypto.randomUUID?.() || `part-used-${Date.now()}`,
+      inventoryItemId: part.inventoryItemId || part.itemId || "",
+      itemName: part.itemName || part.name || "Inventory item",
+      partNumber: part.partNumber || "",
+      description: part.description || part.itemName || part.name || "Inventory item",
+      quantity,
+      unitCost,
+      sellPrice,
+      costTotal: Math.round(quantity * unitCost * 100) / 100,
+      revenueTotal: Math.round(quantity * sellPrice * 100) / 100,
+      usedAt: part.usedAt || part.createdAt || new Date().toISOString(),
+      usedBy: part.usedBy || "",
+      source: part.source || "Ticket"
+    };
+  }).filter((part) => part.quantity > 0 && part.itemName);
+}
+
+function recordPartUsedOnWorkOrder(workOrder = {}, item = {}, quantity = 0, source = "Ticket") {
+  if (!workOrder?.id || !item?.id) return null;
+  const usedQuantity = Math.max(0, Number(quantity || 0));
+  if (!usedQuantity) return null;
+  const unitCost = Math.max(0, Number(item.unitCost || 0));
+  const sellPrice = Math.max(0, Number(item.sellPrice || inventoryResolvedSellPrice(unitCost, item.markupPercent || 0, 0)));
+  const record = {
+    id: crypto.randomUUID(),
+    inventoryItemId: item.id,
+    itemName: item.name || "Inventory item",
+    partNumber: item.partNumber || "",
+    description: item.description || item.name || "Inventory item",
+    quantity: usedQuantity,
+    unitCost,
+    sellPrice,
+    costTotal: Math.round(usedQuantity * unitCost * 100) / 100,
+    revenueTotal: Math.round(usedQuantity * sellPrice * 100) / 100,
+    usedAt: new Date().toISOString(),
+    usedBy: getCurrentUserLabel(),
+    source
+  };
+  workOrder.partsUsed = normalizeWorkOrderPartsUsed([record, ...(workOrder.partsUsed || [])]);
+  addBillingLineForUsedPart(workOrder, record);
+  return record;
+}
+
+function addBillingLineForUsedPart(workOrder = {}, part = {}) {
+  if (!workOrder?.id || !part?.id) return;
+  const existingLines = normalizeBillingLines(workOrder.billingLines || []);
+  if (existingLines.some((line) => line.sourcePartUsedId === part.id)) return;
+  const line = {
+    id: crypto.randomUUID(),
+    type: "Product",
+    itemId: part.inventoryItemId || "",
+    itemName: part.itemName || "Inventory item",
+    description: part.description || part.itemName || "Inventory item",
+    quantity: part.quantity,
+    rate: part.sellPrice,
+    costTotal: part.costTotal,
+    sourcePartUsedId: part.id,
+    taxable: true
+  };
+  workOrder.billingLines = normalizeBillingLines([...existingLines, line]);
+  workOrder.billingUpdatedAt = new Date().toISOString();
+  workOrder.billingUpdatedBy = getCurrentUserLabel();
+  if (workOrder.billingStatus !== "billed") workOrder.billingStatus = "draft";
+}
+
 function jobCostMarginClass(jobCost = {}) {
   if (!Number(jobCost.revenue || 0)) return "is-neutral";
   if (Number(jobCost.profit || 0) < 0) return "is-loss";
@@ -31490,7 +31595,7 @@ function workOrderBillingLineItems(workOrder = {}) {
   }
   const explicitLines = parseBillingLinesFromNotes(notes);
   lines.push(...explicitLines);
-  return lines.filter((line) => Number(line.amount || 0) > 0);
+  return lines.filter((line) => Number(line.amount || 0) > 0 || Number(line.costTotal || 0) > 0);
 }
 
 function normalizeBillingLines(lines = []) {
@@ -31510,12 +31615,27 @@ function normalizeBillingLines(lines = []) {
       amount,
       costTotal,
       sourceEstimateId: line.sourceEstimateId || "",
+      sourcePartUsedId: line.sourcePartUsedId || "",
       taxable: line.taxable === false ? false : true
     };
   }).filter((line) => line.quantity > 0 && line.rate >= 0 && line.description);
 }
 
 function inventoryUsageLinesForWorkOrder(workOrder = {}) {
+  const structuredParts = normalizeWorkOrderPartsUsed(workOrder.partsUsed || []);
+  if (structuredParts.length) {
+    return structuredParts.map((part) => ({
+      type: "Product",
+      itemId: part.inventoryItemId || "",
+      itemName: part.itemName,
+      description: `${part.description || part.itemName} (${formatIssueNumber(workOrder)})`,
+      quantity: part.quantity,
+      rate: part.sellPrice,
+      amount: part.revenueTotal,
+      costTotal: part.costTotal,
+      taxable: true
+    }));
+  }
   const issueNumber = formatIssueNumber(workOrder);
   const usageEntries = workOrderHistoryEntries(workOrder).filter((entry) =>
     String(entry.action || "").toLowerCase().includes("inventory used") ||
@@ -31541,7 +31661,7 @@ function inventoryUsageLinesForWorkOrder(workOrder = {}) {
 }
 
 function parseInventoryUsageText(text = "") {
-  const match = String(text || "").match(/Used\s+([\d.]+)\s+x\s+(.+?)\s+from\s+(?:reserved\s+)?inventory/i);
+  const match = String(text || "").match(/Used\s+([\d.]+)\s+x\s+(.+?)\s+from\s+(?:reserved\s+)?(?:inventory|technician flow)/i);
   return {
     quantity: Math.max(0, Number(match?.[1] || 1)),
     name: String(match?.[2] || "").trim()
@@ -32753,6 +32873,187 @@ function renderAssetHealthPanel(asset = {}) {
       </div>
     </section>
   `;
+}
+
+function renderAssetAiAssistPanel(asset = {}, health = assetHealthRecord(asset)) {
+  const recommendation = buildAssetPmRecommendationDraft(asset, health);
+  return `
+    <details class="ai-assist-card asset-ai-assist">
+      <summary>
+        <strong>AI PM recommendations</strong>
+        <span>Draft only</span>
+      </summary>
+      <div class="ai-assist-body">
+        <article class="ai-draft-card">
+          <header>
+            <strong>Recommended PM direction</strong>
+            <button type="button" class="secondary mini" data-ai-copy="asset-pm" data-ai-asset-id="${escapeAttribute(asset.id)}">Copy</button>
+          </header>
+          <p>${escapeHtml(recommendation.summary)}</p>
+          <ul>
+            ${recommendation.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+          </ul>
+        </article>
+      </div>
+    </details>
+  `;
+}
+
+function renderWorkOrderAiAssistPanel(workOrder = {}) {
+  if (!canWorkOnTicket(workOrder)) return "";
+  const drafts = buildWorkOrderAiDrafts(workOrder);
+  return `
+    <details class="ticket-sub-drawer ai-assist-panel">
+      <summary>
+        <h3>AI Assist</h3>
+        <span>Drafts only</span>
+      </summary>
+      <section class="ai-assist-body">
+        ${renderAiDraftCard(workOrder, "internal-summary", "Internal summary", drafts.internalSummary, "Save as note")}
+        ${renderAiDraftCard(workOrder, "customer-summary", "Customer update draft", drafts.customerSummary, "Save as note")}
+        <article class="ai-draft-card">
+          <header>
+            <strong>Estimate suggestion</strong>
+            <div>
+              <button type="button" class="secondary mini" data-ai-copy="estimate" data-ai-work-order-id="${escapeAttribute(workOrder.id)}">Copy</button>
+              ${canManageWorkOrders() ? `<button type="button" class="primary mini" data-ai-create-estimate="${escapeAttribute(workOrder.id)}">Create draft estimate</button>` : ""}
+            </div>
+          </header>
+          <p>${escapeHtml(drafts.estimateSummary)}</p>
+          <div class="ai-estimate-lines">
+            ${drafts.estimateLines.map((line) => `
+              <div>
+                <span>${escapeHtml(line.type)}</span>
+                <strong>${escapeHtml(line.description)}</strong>
+                <em>${escapeHtml(formatInventoryNumber(line.quantity))} x ${escapeHtml(formatMoney(line.rate))}</em>
+              </div>
+            `).join("")}
+          </div>
+        </article>
+      </section>
+    </details>
+  `;
+}
+
+function renderAiDraftCard(workOrder = {}, kind = "", title = "", text = "", applyLabel = "") {
+  return `
+    <article class="ai-draft-card">
+      <header>
+        <strong>${escapeHtml(title)}</strong>
+        <div>
+          <button type="button" class="secondary mini" data-ai-copy="${escapeAttribute(kind)}" data-ai-work-order-id="${escapeAttribute(workOrder.id)}">Copy</button>
+          ${applyLabel ? `<button type="button" class="primary mini" data-ai-save-note="${escapeAttribute(kind)}" data-ai-work-order-id="${escapeAttribute(workOrder.id)}">${escapeHtml(applyLabel)}</button>` : ""}
+        </div>
+      </header>
+      <p>${escapeHtml(text)}</p>
+    </article>
+  `;
+}
+
+function buildWorkOrderAiDrafts(workOrder = {}) {
+  const asset = getAsset(workOrder.assetId);
+  const customer = getCustomer(workOrder.customerId);
+  const locationRecord = getLocation(workOrder.locationId);
+  const history = workOrderHistoryEntries(workOrder);
+  const recentHistory = history.slice(0, 5).map((entry) => [entry.action, entry.details].filter(Boolean).join(": ")).filter(Boolean);
+  const parts = normalizeWorkOrderPartsUsed(workOrder.partsUsed || []);
+  const jobCost = buildJobCostRecord(workOrder);
+  const estimateLines = buildAiEstimateLines(workOrder);
+  const context = [asset?.name || workOrder.areaName || "site item", customer?.name, locationRecord?.name].filter(Boolean).join(" | ");
+  const actionSummary = recentHistory.length ? recentHistory.join("; ") : String(workOrder.notes || "").trim() || "No work notes have been added yet.";
+  const partsSummary = parts.length
+    ? `Parts used: ${parts.map((part) => `${formatInventoryNumber(part.quantity)} x ${part.itemName}`).join(", ")}.`
+    : "No inventory parts have been recorded on this ticket.";
+  const internalSummary = [
+    `${formatIssueNumber(workOrder)} is ${String(workOrder.status || "Open").toLowerCase()} for ${context}.`,
+    `Priority is ${workOrder.priority || "Medium"} and assigned to ${workOrder.assignedUserName || "Unassigned"}.`,
+    actionSummary,
+    partsSummary,
+    `Current job revenue is ${formatMoney(jobCost.revenue)}, estimated cost is ${formatMoney(jobCost.totalCost)}, and projected profit is ${formatMoney(jobCost.profit)}.`
+  ].join(" ");
+  const customerSummary = [
+    `SiteWorks reviewed ${asset?.name || workOrder.areaName || "the reported item"} at ${locationRecord?.name || "your site"}.`,
+    workOrder.status === "Resolved" || workOrder.status === "Closed"
+      ? "The work has been completed or marked ready for review."
+      : "The work is currently in progress or pending completion.",
+    parts.length ? `Recorded materials include ${parts.map((part) => `${formatInventoryNumber(part.quantity)} x ${part.itemName}`).join(", ")}.` : "",
+    "We will update the ticket if more work, parts, or scheduling is required."
+  ].filter(Boolean).join(" ");
+  return {
+    internalSummary,
+    customerSummary,
+    estimateSummary: estimateLines.length
+      ? `Suggested ${estimateLines.length} estimate line${estimateLines.length === 1 ? "" : "s"} from ticket details, parts, and labour/costing entries. Review pricing before sending.`
+      : "No estimate lines could be suggested from this ticket yet. Add parts, labour, or a service amount first.",
+    estimateLines
+  };
+}
+
+function buildAiEstimateLines(workOrder = {}) {
+  const billingLines = workOrderBillingLineItems(workOrder);
+  if (billingLines.length) {
+    return normalizeEstimateLines(billingLines.map((line) => ({
+      type: line.type || "Service",
+      itemId: line.itemId || "",
+      itemName: line.itemName || line.description || "Estimate line",
+      description: line.description || line.itemName || "Estimate line",
+      quantity: Math.max(0, Number(line.quantity || 1)),
+      rate: Math.max(0, Number(line.rate || 0)),
+      optional: false,
+      taxable: line.taxable !== false
+    })));
+  }
+  return normalizeEstimateLines([{
+    type: "Service",
+    itemName: "Service labour",
+    description: `Service labour - ${workOrder.title || formatIssueNumber(workOrder)}`,
+    quantity: 1,
+    rate: Math.max(0, Number(workOrder.billingServiceAmount || 0)),
+    optional: false,
+    taxable: true
+  }]);
+}
+
+function buildAssetPmRecommendationDraft(asset = {}, health = assetHealthRecord(asset)) {
+  const name = asset.name || "this equipment";
+  const typeText = [asset.type, getTemplate(asset.templateId)?.name].filter(Boolean).join(" / ");
+  const currentInterval = Number(asset.frequencyDays || 30);
+  const items = [];
+  if (health.due.daysUntil < 0) items.push(`Schedule the overdue PM now; it is ${Math.abs(health.due.daysUntil)} day${Math.abs(health.due.daysUntil) === 1 ? "" : "s"} late.`);
+  if (health.failedPmTickets.length) items.push("Keep failed PM follow-ups visible until the corrective work is closed.");
+  if (health.repeatIssueCount >= 3 || health.attentionPmCount >= 2) {
+    const shorter = Math.max(14, Math.round(currentInterval * 0.75));
+    items.push(`Consider shortening the PM interval from ${currentInterval} days to about ${shorter} days until repeat issues settle.`);
+  } else if (health.score >= 90 && health.recentPm.length >= 2 && !health.openTickets.length) {
+    items.push(`Current PM interval of ${currentInterval} days looks acceptable based on recent history.`);
+  }
+  if (!health.lastPm) items.push("Complete and record a baseline PM so future recommendations have history to compare against.");
+  if (/filter|rtu|ahu|mau|hvac/i.test(`${name} ${typeText}`)) items.push("Include filter condition, belt/fan check, drain pan, coil condition, and temperature split in the checklist.");
+  if (/pump|booster|sump|circulation/i.test(`${name} ${typeText}`)) items.push("Include seal/leak check, amperage, pressure, vibration/noise, and lead-lag operation in the checklist.");
+  if (/exit|emergency|lighting/i.test(`${name} ${typeText}`)) items.push("Include lamp/LED operation, battery test, charger indicator, and local disconnect/relay status.");
+  if (!items.length) items.push("No urgent PM change is suggested. Continue monitoring ticket history, PM results, and parts usage.");
+  return {
+    summary: `${name} has a health score of ${health.score}. ${typeText ? `Equipment type: ${typeText}. ` : ""}This recommendation is a draft for review before changing any PM schedule or checklist.`,
+    items
+  };
+}
+
+function getAiDraftText(kind = "", workOrderId = "", assetId = "") {
+  if (kind === "asset-pm") {
+    const asset = getAsset(assetId);
+    return asset ? [buildAssetPmRecommendationDraft(asset).summary, ...buildAssetPmRecommendationDraft(asset).items.map((item) => `- ${item}`)].join("\n") : "";
+  }
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder) return "";
+  const drafts = buildWorkOrderAiDrafts(workOrder);
+  if (kind === "customer-summary") return drafts.customerSummary;
+  if (kind === "estimate") {
+    return [
+      drafts.estimateSummary,
+      ...drafts.estimateLines.map((line) => `- ${line.type}: ${line.description} | ${formatInventoryNumber(line.quantity)} x ${formatMoney(line.rate)}`)
+    ].join("\n");
+  }
+  return drafts.internalSummary;
 }
 
 function filterWorkOrdersForView(workOrders) {
@@ -34698,6 +34999,7 @@ function renderWorkOrderItem(item) {
         ${renderTechnicianMobileFlow(item)}
         ${emailStatusPanel}
         ${renderCustomerCommunicationPanel(item)}
+        ${renderWorkOrderAiAssistPanel(item)}
         <details class="ticket-sub-drawer">
           <summary>
             <h3>Description</h3>
@@ -34755,6 +35057,7 @@ function renderWorkOrderJobCostPanel(workOrder = {}) {
   if (!canManageWorkOrders()) return "";
   const jobCost = buildJobCostRecord(workOrder);
   const marginClass = jobCostMarginClass(jobCost);
+  const partsUsed = normalizeWorkOrderPartsUsed(workOrder.partsUsed || []);
   return `
     <details class="ticket-sub-drawer job-cost-panel">
       <summary>
@@ -34784,6 +35087,32 @@ function renderWorkOrderJobCostPanel(workOrder = {}) {
             <span>Profit / margin ${escapeHtml(formatInventoryNumber(jobCost.marginPercent))}%</span>
           </article>
         </div>
+        <section class="job-parts-used-card">
+          <header>
+            <strong>Parts used</strong>
+            <span>${escapeHtml(partsUsed.length ? `${formatInventoryNumber(partsUsed.length)} item${partsUsed.length === 1 ? "" : "s"} | ${formatMoney(jobCost.materialCost)} cost` : "No parts used yet")}</span>
+          </header>
+          ${partsUsed.length ? `
+            <div class="job-parts-used-list">
+              ${partsUsed.map((part) => {
+                const inventoryItem = getInventoryItem(part.inventoryItemId);
+                const lowStock = inventoryItem ? inventoryItemLowStock(inventoryItem) : false;
+                return `
+                  <div class="job-parts-used-row">
+                    <span>
+                      <strong>${escapeHtml(part.itemName)}</strong>
+                      <small>${escapeHtml([part.partNumber, part.source, part.usedBy, part.usedAt ? formatDateTime(new Date(part.usedAt)) : ""].filter(Boolean).join(" | "))}</small>
+                    </span>
+                    <span>${escapeHtml(formatInventoryNumber(part.quantity))} x ${escapeHtml(formatMoney(part.unitCost))}</span>
+                    <span>${escapeHtml(formatMoney(part.costTotal))} cost</span>
+                    <span>${escapeHtml(formatMoney(part.revenueTotal))} sell</span>
+                    ${lowStock ? `<em>Low stock</em>` : `<em>${inventoryItem ? `${escapeHtml(formatInventoryNumber(inventoryAvailableQuantity(inventoryItem)))} available` : "Inventory item"}</em>`}
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          ` : `<p class="muted">Use parts from the Technician flow. SiteWorks will reduce inventory and carry cost into this job.</p>`}
+        </section>
         <form class="job-cost-form" data-job-cost-form="${escapeAttribute(workOrder.id)}">
           <label>
             Labour hours
@@ -34921,6 +35250,7 @@ async function useInventoryFromTechnicianFlow(workOrderId = "", formData = new F
   });
   item.updatedAt = new Date().toISOString();
   const note = `Used ${formatInventoryNumber(quantityUsed)} x ${item.name} from technician flow. On hand: ${formatInventoryNumber(item.quantity)}.`;
+  recordPartUsedOnWorkOrder(workOrder, item, quantityUsed, "Technician flow");
   workOrder.notes = appendDatedWorkNote(workOrder.notes, note);
   workOrder.updatedAt = new Date().toISOString();
   addWorkOrderHistory(workOrder, "Inventory used", note);
@@ -35230,6 +35560,53 @@ function createEstimateForWorkOrder(workOrderId = "", formData = new FormData())
   state.estimates = normalizeEstimates([estimate, ...(state.estimates || [])]);
   addWorkOrderHistory(workOrder, "Estimate created", `${estimate.estimateNumber} | ${formatMoney(estimateTotal(estimate))}`);
   addActivity("Estimate created", `${estimate.estimateNumber} - ${workOrder.title || formatIssueNumber(workOrder)}`);
+  saveState();
+  render();
+}
+
+function createAiEstimateForWorkOrder(workOrderId = "") {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canManageWorkOrders()) return;
+  const lines = buildAiEstimateLines(workOrder);
+  if (!lines.length) {
+    alert("SiteWorks does not have enough ticket detail to suggest estimate lines yet.");
+    return;
+  }
+  const now = new Date().toISOString();
+  const estimate = {
+    id: crypto.randomUUID(),
+    estimateNumber: nextEstimateNumber(),
+    workOrderId: workOrder.id,
+    customerId: workOrder.customerId,
+    locationId: workOrder.locationId,
+    assetId: workOrder.assetId,
+    title: `${workOrder.title || "Service"} estimate`,
+    status: "Draft",
+    validUntil: toDateInputValue(addDays(new Date(), 30)),
+    customerNote: "Drafted by SiteWorks AI Assist. Review pricing and wording before sending.",
+    lines,
+    createdBy: getCurrentUserLabel(),
+    createdAt: now,
+    updatedAt: now
+  };
+  state.estimates = normalizeEstimates([estimate, ...(state.estimates || [])]);
+  workOrder.updatedAt = now;
+  addWorkOrderHistory(workOrder, "AI estimate drafted", `${estimate.estimateNumber} | ${formatMoney(estimateTotal(estimate, false))} | Review before sending`);
+  addActivity("AI estimate drafted", `${estimate.estimateNumber} - ${formatIssueNumber(workOrder)}`);
+  saveState();
+  render();
+}
+
+function saveAiDraftAsWorkOrderNote(workOrderId = "", kind = "internal-summary") {
+  const workOrder = getWorkOrder(workOrderId);
+  if (!workOrder || !canWorkOnTicket(workOrder)) return;
+  const text = getAiDraftText(kind, workOrder.id);
+  if (!text) return;
+  const label = kind === "customer-summary" ? "AI customer summary" : "AI internal summary";
+  workOrder.notes = appendDatedWorkNote(workOrder.notes, `${label}\n${text}`);
+  workOrder.updatedAt = new Date().toISOString();
+  addWorkOrderHistory(workOrder, label, text);
+  addActivity(label, `${formatIssueNumber(workOrder)} - ${workOrder.title || "Ticket"}`);
   saveState();
   render();
 }
@@ -41103,6 +41480,7 @@ function normalizeState(input) {
       billingUpdatedBy: item.billingUpdatedBy || "",
       billingServiceAmount: Math.max(0, Number(item.billingServiceAmount || 0)),
       billingLines: normalizeBillingLines(item.billingLines || []),
+      partsUsed: normalizeWorkOrderPartsUsed(item.partsUsed || []),
       customerPo: item.customerPo || item.customerPO || "",
       jobCostLaborHours: Math.max(0, Number(item.jobCostLaborHours || item.laborHours || 0)),
       jobCostLaborRate: Math.max(0, Number(item.jobCostLaborRate || item.laborRate || 0)),
