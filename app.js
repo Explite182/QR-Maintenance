@@ -19447,6 +19447,97 @@ function portalContactNotificationLabel(contact = {}) {
   return enabled.length ? enabled.join(", ") : "No notifications";
 }
 
+function parseEmailRecipients(value = "") {
+  return [...new Set(String(value || "")
+    .split(/[;,]/)
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean))];
+}
+
+function formatEmailRecipients(recipients = []) {
+  return parseEmailRecipients(recipients.join(",")).join(", ");
+}
+
+function portalContactReceives(contact = {}, kind = "jobs") {
+  const notifications = normalizePortalContactNotifications(contact.notifications);
+  return Boolean(notifications[kind]);
+}
+
+function portalContactCanSeeLocation(contact = {}, locationId = "", customerId = "") {
+  const locationIds = Array.isArray(contact.locationIds) ? contact.locationIds.filter(Boolean) : [];
+  if (!locationIds.length) return true;
+  if (!locationId) return false;
+  return locationIds.some((contactLocationId) => {
+    if (contactLocationId !== locationId) return false;
+    const locationRecord = getLocation(contactLocationId);
+    return !customerId || locationRecord?.customerId === customerId;
+  });
+}
+
+function notificationRecipientsForScope(customerId = "", locationId = "", kind = "jobs") {
+  const contacts = customerPortalContacts(customerId)
+    .filter((contact) => isEmailAddress(contact.email))
+    .filter((contact) => portalContactReceives(contact, kind))
+    .filter((contact) => portalContactCanSeeLocation(contact, locationId, customerId));
+  return contacts.map((contact) => ({
+    name: contact.name || contact.email,
+    email: contact.email,
+    role: contact.role || "Customer contact",
+    source: "portal-contact"
+  }));
+}
+
+function fallbackCustomerRecipient(customerId = "", locationId = "") {
+  const customer = getCustomer(customerId);
+  const locationRecord = getLocation(locationId);
+  const email = locationRecord?.contactEmail || customer?.reportEmailTo || customer?.contactEmail || "";
+  if (!isEmailAddress(email)) return null;
+  return {
+    name: locationRecord?.contactName || customer?.contactName || customer?.name || email,
+    email,
+    role: locationRecord?.contactEmail ? "Location contact" : "Customer contact",
+    source: "fallback"
+  };
+}
+
+function customerNotificationRecipients(record = {}, kind = "jobs") {
+  const customerId = record.customerId || record.customer_id || "";
+  const locationId = record.locationId || record.location_id || "";
+  const recipients = notificationRecipientsForScope(customerId, locationId, kind);
+  if (!recipients.length) {
+    const fallback = fallbackCustomerRecipient(customerId, locationId);
+    if (fallback) recipients.push(fallback);
+  }
+  const seen = new Set();
+  return recipients.filter((recipient) => {
+    const email = String(recipient.email || "").trim().toLowerCase();
+    if (!email || seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  });
+}
+
+function customerNotificationRecipientEmails(record = {}, kind = "jobs") {
+  return customerNotificationRecipients(record, kind).map((recipient) => recipient.email);
+}
+
+function renderCustomerNotificationPreview(record = {}, kind = "jobs", emptyLabel = "No matching portal contacts") {
+  const recipients = customerNotificationRecipients(record, kind);
+  const label = PORTAL_CONTACT_NOTIFICATION_OPTIONS.find((option) => option.key === kind)?.label || "Notifications";
+  return `
+    <div class="customer-notification-preview">
+      <strong>${escapeHtml(label)} recipients</strong>
+      ${recipients.length ? `
+        <div>
+          ${recipients.map((recipient) => `
+            <span>${escapeHtml(recipient.name)} &lt;${escapeHtml(recipient.email)}&gt;${recipient.role ? ` | ${escapeHtml(recipient.role)}` : ""}</span>
+          `).join("")}
+        </div>
+      ` : `<p class="muted">${escapeHtml(emptyLabel)}</p>`}
+    </div>
+  `;
+}
+
 function renderPortalContactForm(customer, contact = null, disabled = "") {
   const locations = locationsForCustomer(customer.id).sort((a, b) => a.name.localeCompare(b.name));
   const selectedLocations = new Set(Array.isArray(contact?.locationIds) ? contact.locationIds : []);
@@ -35789,6 +35880,7 @@ function renderWorkOrderSchedulePanel(workOrder = {}) {
             }).join("")}
           </div>
         ` : `<p class="muted">No visit scheduled yet.</p>`}
+        ${renderCustomerNotificationPreview(workOrder, "visits", "No portal contacts are set to receive scheduled visit updates for this location.")}
         <form class="schedule-ticket-form" data-ticket-schedule-form="${escapeAttribute(workOrder.id)}">
           <label>
             Visit date/time
@@ -35939,6 +36031,7 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
           ${canUseForBilling ? `<button type="button" class="secondary mini" data-estimate-convert-billing="${escapeAttribute(estimate.id)}">Use for billing</button>` : ""}
         </div>
       </header>
+      ${renderCustomerNotificationPreview(estimate, "estimates", "No portal contacts are set to receive estimates for this location.")}
       <div class="estimate-lines">
         ${lines.length ? lines.map((line) => `
           <div class="estimate-line-row">
@@ -36453,12 +36546,15 @@ async function emailEstimate(estimateId = "", button = null) {
     alert("Add at least one estimate line before emailing this quote.");
     return;
   }
-  const recipient = window.prompt("Customer email address:", details.customerEmail || "");
+  const suggestedRecipients = formatEmailRecipients(customerNotificationRecipientEmails(estimate, "estimates"));
+  const recipient = window.prompt("Customer email address:", suggestedRecipients || details.customerEmail || "");
   if (recipient === null) return;
-  if (!isEmailAddress(recipient.trim())) {
-    alert("Enter a valid customer email address.");
+  const recipients = parseEmailRecipients(recipient);
+  if (!recipients.length || recipients.some((email) => !isEmailAddress(email))) {
+    alert("Enter one or more valid customer email addresses.");
     return;
   }
+  const recipientLabel = recipients.join(", ");
   const quoteLink = await ensureEstimatePublicLink(estimateId);
   if (!quoteLink) return;
   const subject = `SiteWorks Quote ${estimate.estimateNumber}: ${estimate.title || workOrder.title || "Estimate"}`;
@@ -36469,7 +36565,7 @@ async function emailEstimate(estimateId = "", button = null) {
   }
   try {
     const response = await sendSiteWorksEmail("quote", {
-      to: recipient.trim(),
+      to: recipientLabel,
       subject,
       text: buildEstimateEmailBody(details, quoteLink),
       html: buildEstimateEmailHtml(details, quoteLink),
@@ -36486,22 +36582,22 @@ async function emailEstimate(estimateId = "", button = null) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(getEmailFunctionError(result, "The quote email could not be sent."));
-    addWorkOrderHistory(workOrder, "Quote email sent", buildEmailHistoryDetails(recipient.trim(), result));
-    addActivity("Quote emailed", `${estimate.estimateNumber} to ${recipient.trim()}`);
+    addWorkOrderHistory(workOrder, "Quote email sent", buildEmailHistoryDetails(recipientLabel, result));
+    addActivity("Quote emailed", `${estimate.estimateNumber} to ${recipientLabel}`);
     saveState();
     render();
     alert(buildEmailSuccessAlert("Quote email", result));
   } catch (error) {
     console.warn("Quote email failed.", error);
     addWorkOrderHistory(workOrder, "Quote email failed", error.message || "Automatic quote email could not be sent.");
-    addActivity("Quote email failed", `${estimate.estimateNumber} to ${recipient.trim()}`);
+    addActivity("Quote email failed", `${estimate.estimateNumber} to ${recipientLabel}`);
     saveState();
     const useDraft = confirm(buildCustomerUpdateFailurePrompt(error, "customer"));
     if (useDraft) {
-      addWorkOrderHistory(workOrder, "Quote fallback email draft opened", `Draft to ${recipient.trim()}`);
-      addActivity("Quote fallback email draft", `${estimate.estimateNumber} to ${recipient.trim()}`);
+      addWorkOrderHistory(workOrder, "Quote fallback email draft opened", `Draft to ${recipientLabel}`);
+      addActivity("Quote fallback email draft", `${estimate.estimateNumber} to ${recipientLabel}`);
       saveState();
-      openEstimateEmailDraft(details, recipient.trim(), quoteLink);
+      openEstimateEmailDraft(details, recipientLabel, quoteLink);
     }
     render();
   } finally {
@@ -36752,7 +36848,7 @@ function renderCompactWorkOrderAssignmentControl(item) {
 
 function renderCustomerCommunicationPanel(item = {}) {
   if (!canWorkOnTicket(item)) return "";
-  const suggestedEmail = getCustomerScheduleEmail(item);
+  const suggestedEmail = formatEmailRecipients(customerNotificationRecipientEmails(item, "jobs"));
   const updates = Array.isArray(item.customerUpdates) ? item.customerUpdates : [];
   return `
     <details class="ticket-sub-drawer customer-update-panel">
@@ -36770,7 +36866,7 @@ function renderCustomerCommunicationPanel(item = {}) {
           </label>
           <label>
             Customer email
-            <input name="recipient" type="email" value="${escapeAttribute(suggestedEmail)}" placeholder="customer@example.com" required>
+            <input name="recipient" value="${escapeAttribute(suggestedEmail)}" placeholder="customer@example.com, manager@example.com" required>
           </label>
           <label class="customer-update-message">
             Message note
@@ -36778,6 +36874,7 @@ function renderCustomerCommunicationPanel(item = {}) {
           </label>
           <button type="submit" class="primary mini">Send Update</button>
         </form>
+        ${renderCustomerNotificationPreview(item, "jobs", "No portal contacts are set to receive job updates for this location.")}
         <div class="customer-update-history">
           ${updates.length ? updates.slice(0, 5).map((update) => `
             <article>
@@ -36961,11 +37058,12 @@ function openCustomerUpdateEmailDraft(parts = {}, recipient = "") {
 }
 
 async function sendCustomerTicketUpdate(workOrder = {}, formData = new FormData(), button = null) {
-  const recipient = String(formData.get("recipient") || "").trim();
-  if (!isEmailAddress(recipient)) {
-    alert("Enter a valid customer email address.");
+  const recipients = parseEmailRecipients(formData.get("recipient") || "");
+  if (!recipients.length || recipients.some((recipient) => !isEmailAddress(recipient))) {
+    alert("Enter one or more valid customer email addresses.");
     return;
   }
+  const recipientLabel = recipients.join(", ");
   const parts = buildCustomerUpdateParts(workOrder, formData);
   const originalText = button?.textContent || "";
   if (button) {
@@ -36974,7 +37072,7 @@ async function sendCustomerTicketUpdate(workOrder = {}, formData = new FormData(
   }
   try {
     const response = await sendSiteWorksEmail("schedule", {
-      to: recipient,
+      to: recipientLabel,
       subject: parts.subject,
       text: parts.text,
       html: parts.html,
@@ -36997,7 +37095,7 @@ async function sendCustomerTicketUpdate(workOrder = {}, formData = new FormData(
         id: crypto.randomUUID(),
         type: parts.updateType,
         label: parts.templateLabel,
-        recipient,
+        recipient: recipientLabel,
         message: String(formData.get("message") || "").trim(),
         sentAt: now,
         sentBy: getCurrentUserLabel()
@@ -37005,8 +37103,8 @@ async function sendCustomerTicketUpdate(workOrder = {}, formData = new FormData(
       ...(Array.isArray(workOrder.customerUpdates) ? workOrder.customerUpdates : [])
     ].slice(0, 20);
     workOrder.updatedAt = now;
-    addWorkOrderHistory(workOrder, `Customer update sent: ${parts.templateLabel}`, buildEmailHistoryDetails(recipient, result));
-    addActivity("Customer update sent", `${parts.details.issueNumber} to ${recipient}`);
+    addWorkOrderHistory(workOrder, `Customer update sent: ${parts.templateLabel}`, buildEmailHistoryDetails(recipientLabel, result));
+    addActivity("Customer update sent", `${parts.details.issueNumber} to ${recipientLabel}`);
     saveState();
     syncSingleWorkOrderToServer(workOrder);
     render();
@@ -37014,13 +37112,13 @@ async function sendCustomerTicketUpdate(workOrder = {}, formData = new FormData(
   } catch (error) {
     console.warn("Customer update email failed.", error);
     addWorkOrderHistory(workOrder, `Customer update failed: ${parts.templateLabel}`, error.message || "Automatic customer update could not be sent.");
-    addActivity("Customer update failed", `${parts.details.issueNumber} to ${recipient}`);
+    addActivity("Customer update failed", `${parts.details.issueNumber} to ${recipientLabel}`);
     saveState();
     const useDraft = confirm(buildEmailFailurePrompt(error, "customer"));
     if (useDraft) {
-      addWorkOrderHistory(workOrder, `Customer update draft opened: ${parts.templateLabel}`, `Draft to ${recipient}`);
+      addWorkOrderHistory(workOrder, `Customer update draft opened: ${parts.templateLabel}`, `Draft to ${recipientLabel}`);
       saveState();
-      openCustomerUpdateEmailDraft(parts, recipient);
+      openCustomerUpdateEmailDraft(parts, recipientLabel);
     }
     render();
   } finally {
@@ -37168,13 +37266,15 @@ async function sendScheduledVisitEmail(workOrderId = "", button = null, messageT
     return;
   }
   const details = getIssueReportDetails(workOrder);
-  const suggested = getCustomerScheduleEmail(workOrder);
+  const suggested = formatEmailRecipients(customerNotificationRecipientEmails(workOrder, "visits"));
   const recipient = window.prompt("Customer email address:", suggested || "");
   if (recipient === null) return;
-  if (!isEmailAddress(recipient.trim())) {
-    alert("Enter a valid customer email address.");
+  const recipients = parseEmailRecipients(recipient);
+  if (!recipients.length || recipients.some((email) => !isEmailAddress(email))) {
+    alert("Enter one or more valid customer email addresses.");
     return;
   }
+  const recipientLabel = recipients.join(", ");
   const confirmationLink = ensureScheduledVisitPublicLink(workOrder, visit);
   visit.confirmationLink = confirmationLink;
   if (messageType === "on-way") {
@@ -37195,7 +37295,7 @@ async function sendScheduledVisitEmail(workOrderId = "", button = null, messageT
   }
   try {
     const response = await sendSiteWorksEmail("schedule", {
-      to: recipient.trim(),
+      to: recipientLabel,
       subject: parts.subject,
       text: parts.text,
       html: parts.html,
@@ -37212,22 +37312,22 @@ async function sendScheduledVisitEmail(workOrderId = "", button = null, messageT
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(getEmailFunctionError(result, `The ${actionLabel.toLowerCase()} email could not be sent.`));
-    addWorkOrderHistory(workOrder, `${actionLabel} email sent`, `${formatDateTime(new Date(visit.scheduledAt))} to ${recipient.trim()} | ${buildEmailHistoryDetails(recipient.trim(), result)}`);
-    addActivity(`${actionLabel} emailed`, `${details.issueNumber} to ${recipient.trim()}`);
+    addWorkOrderHistory(workOrder, `${actionLabel} email sent`, `${formatDateTime(new Date(visit.scheduledAt))} to ${recipientLabel} | ${buildEmailHistoryDetails(recipientLabel, result)}`);
+    addActivity(`${actionLabel} emailed`, `${details.issueNumber} to ${recipientLabel}`);
     saveState();
     render();
     alert(buildEmailSuccessAlert(`${actionLabel} email`, result));
   } catch (error) {
     console.warn(`${actionLabel} email failed.`, error);
     addWorkOrderHistory(workOrder, `${actionLabel} email failed`, error.message || `Automatic ${actionLabel.toLowerCase()} email could not be sent.`);
-    addActivity(`${actionLabel} email failed`, `${details.issueNumber} to ${recipient.trim()}`);
+    addActivity(`${actionLabel} email failed`, `${details.issueNumber} to ${recipientLabel}`);
     saveState();
     const useDraft = confirm(buildEmailFailurePrompt(error, "customer"));
     if (useDraft) {
-      addWorkOrderHistory(workOrder, `${actionLabel} fallback email draft opened`, `Draft to ${recipient.trim()}`);
-      addActivity(`${actionLabel} fallback email draft`, `${details.issueNumber} to ${recipient.trim()}`);
+      addWorkOrderHistory(workOrder, `${actionLabel} fallback email draft opened`, `Draft to ${recipientLabel}`);
+      addActivity(`${actionLabel} fallback email draft`, `${details.issueNumber} to ${recipientLabel}`);
       saveState();
-      openScheduleEmailDraft(details, visit, recipient.trim(), messageType);
+      openScheduleEmailDraft(details, visit, recipientLabel, messageType);
     }
     render();
   } finally {
@@ -37319,8 +37419,10 @@ function getEmailFunctionReportDetails(details) {
   };
 }
 
-function getCustomerReportNotificationSettings(customerId) {
+function getCustomerReportNotificationSettings(customerId, locationId = "") {
   const customer = getCustomer(customerId);
+  const requestRecipients = notificationRecipientsForScope(customerId, locationId, "requests").map((recipient) => recipient.email);
+  if (requestRecipients.length) return { enabled: true, recipient: requestRecipients.join(", ") };
   if (!customer?.reportEmailEnabled) return { enabled: false, recipient: "" };
   const recipient = String(customer.reportEmailTo || customer.contactEmail || "").trim();
   return { enabled: true, recipient };
@@ -37397,10 +37499,11 @@ function renderWorkOrderEmailStatusPanel(item) {
 async function notifyCustomerReportCreated(item) {
   if (!item || item.customerReportEmailSentAt || item.customerReportEmailFailedAt || item.customerReportEmailSkippedAt) return;
   if (item.source !== "Public QR report") return;
-  const settings = getCustomerReportNotificationSettings(item.customerId);
+  const settings = getCustomerReportNotificationSettings(item.customerId, item.locationId || "");
   if (!settings.enabled) return;
   const details = getIssueReportDetails(item);
-  if (!isEmailAddress(settings.recipient)) {
+  const recipients = parseEmailRecipients(settings.recipient);
+  if (!recipients.length || recipients.some((recipient) => !isEmailAddress(recipient))) {
     item.customerReportEmailSkippedAt = new Date().toISOString();
     item.customerReportEmailError = "Customer report email is enabled, but no valid recipient is saved.";
     addWorkOrderHistory(item, "Customer report email skipped", "Customer report email is enabled, but no valid recipient is saved.");
@@ -37411,7 +37514,7 @@ async function notifyCustomerReportCreated(item) {
     return;
   }
   item.customerReportEmailPendingAt = new Date().toISOString();
-  item.customerReportEmailTo = settings.recipient;
+  item.customerReportEmailTo = recipients.join(", ");
   item.customerReportEmailError = "";
   item.updatedAt = new Date().toISOString();
   saveState();
@@ -37419,7 +37522,7 @@ async function notifyCustomerReportCreated(item) {
   try {
     const reportDetails = getEmailFunctionReportDetails(details);
     const response = await sendSiteWorksEmail("ticket", {
-      to: settings.recipient,
+      to: recipients.join(", "),
       ticket: reportDetails,
       issue: reportDetails,
       serviceRequest: reportDetails
@@ -37433,9 +37536,9 @@ async function notifyCustomerReportCreated(item) {
     item.customerReportEmailSkippedAt = "";
     item.customerReportEmailPendingAt = "";
     item.customerReportEmailError = "";
-    item.customerReportEmailTo = settings.recipient;
-    addWorkOrderHistory(item, "Customer report email sent", buildEmailHistoryDetails(settings.recipient, result));
-    addActivity("Customer report email sent", `${details.issueNumber} to ${settings.recipient}`);
+    item.customerReportEmailTo = recipients.join(", ");
+    addWorkOrderHistory(item, "Customer report email sent", buildEmailHistoryDetails(recipients.join(", "), result));
+    addActivity("Customer report email sent", `${details.issueNumber} to ${recipients.join(", ")}`);
   } catch (error) {
     console.warn("Customer report email failed.", error);
     item.customerReportEmailFailedAt = new Date().toISOString();
@@ -37443,9 +37546,9 @@ async function notifyCustomerReportCreated(item) {
     item.customerReportEmailSkippedAt = "";
     item.customerReportEmailPendingAt = "";
     item.customerReportEmailError = error.message || "Automatic customer report email could not be sent.";
-    item.customerReportEmailTo = settings.recipient;
+    item.customerReportEmailTo = recipients.join(", ");
     addWorkOrderHistory(item, "Customer report email failed", error.message || "Automatic customer report email could not be sent.");
-    addActivity("Customer report email failed", `${details.issueNumber} to ${settings.recipient}`);
+    addActivity("Customer report email failed", `${details.issueNumber} to ${recipients.join(", ")}`);
   }
   item.updatedAt = new Date().toISOString();
   saveState();

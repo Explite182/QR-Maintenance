@@ -15893,6 +15893,39 @@ button.asset-detail-card {
   resize: vertical;
 }
 
+.customer-notification-preview {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px dashed rgba(8, 112, 95, 0.26);
+  border-radius: 10px;
+  background: rgba(240, 253, 250, 0.78);
+}
+
+.customer-notification-preview > strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.customer-notification-preview div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.customer-notification-preview span {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgba(8, 112, 95, 0.18);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
 .customer-update-history {
   display: grid;
   gap: 8px;
