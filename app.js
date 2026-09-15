@@ -579,13 +579,52 @@ function withRecordMediaScope(record, scope = {}) {
   return next;
 }
 
+const PORTAL_CONTACT_NOTIFICATION_OPTIONS = [
+  { key: "jobs", label: "Open jobs" },
+  { key: "visits", label: "Scheduled visits" },
+  { key: "estimates", label: "Estimates" },
+  { key: "requests", label: "Customer requests" },
+  { key: "pmReports", label: "PM reports" }
+];
+
+function normalizePortalContactNotifications(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    jobs: source.jobs !== false,
+    visits: source.visits !== false,
+    estimates: source.estimates !== false,
+    requests: source.requests !== false,
+    pmReports: Boolean(source.pmReports)
+  };
+}
+
+function normalizePortalContacts(contacts = []) {
+  const source = Array.isArray(contacts) ? contacts : [];
+  return source.map((contact) => {
+    const locationIds = Array.isArray(contact?.locationIds)
+      ? contact.locationIds
+      : [contact?.locationId].filter(Boolean);
+    return {
+      id: contact?.id || crypto.randomUUID(),
+      name: String(contact?.name || "").trim(),
+      email: String(contact?.email || "").trim(),
+      role: String(contact?.role || "Customer contact").trim() || "Customer contact",
+      locationIds: [...new Set(locationIds.map(String).filter(Boolean))],
+      notifications: normalizePortalContactNotifications(contact?.notifications)
+    };
+  }).filter((contact) => contact.name || contact.email)
+    .sort((a, b) => `${a.name || a.email}`.localeCompare(`${b.name || b.email}`, undefined, { sensitivity: "base", numeric: true }));
+}
+
 function customerFromStructuredRow(row) {
+  const payload = structuredPayload(row);
   return {
     id: row.id,
     name: row.name || "",
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
-    ...structuredPayload(row)
+    ...payload,
+    portalContacts: normalizePortalContacts(payload.portalContacts || row.portal_contacts || [])
   };
 }
 
@@ -8144,6 +8183,7 @@ els.customerForm.addEventListener("submit", (event) => {
     contactNotes: els.customerContactNotes?.value.trim() || "",
     reportEmailEnabled: Boolean(els.customerReportEmailEnabled?.checked),
     reportEmailTo: els.customerReportEmailTo?.value.trim() || "",
+    portalContacts: [],
     createdAt: new Date().toISOString()
   };
 
@@ -8257,6 +8297,54 @@ els.templateList?.addEventListener("input", (event) => {
 els.customerList?.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!canManageSetup()) return;
+  const portalContactForm = event.target.closest("form[data-customer-portal-contact-form]");
+  if (portalContactForm) {
+    const customer = getCustomer(portalContactForm.dataset.customerPortalContactForm);
+    if (!customer || !canManageCustomerSetup(customer.id)) return;
+    const formData = new FormData(portalContactForm);
+    const contactId = String(formData.get("contactId") || "").trim();
+    const name = String(formData.get("name") || "").trim();
+    const email = String(formData.get("email") || "").trim();
+    if (!name || !email) {
+      alert("Enter a portal contact name and email.");
+      return;
+    }
+    if (!isEmailAddress(email)) {
+      alert("Enter a valid portal contact email.");
+      return;
+    }
+    const validLocationIds = new Set(locationsForCustomer(customer.id).map((locationRecord) => locationRecord.id));
+    const locationIds = formData.getAll("locationIds")
+      .map(String)
+      .filter((locationId) => validLocationIds.has(locationId));
+    const nextContact = {
+      id: contactId || crypto.randomUUID(),
+      name,
+      email,
+      role: String(formData.get("role") || "Customer contact").trim() || "Customer contact",
+      locationIds,
+      notifications: {
+        jobs: formData.get("notifyJobs") === "on",
+        visits: formData.get("notifyVisits") === "on",
+        estimates: formData.get("notifyEstimates") === "on",
+        requests: formData.get("notifyRequests") === "on",
+        pmReports: formData.get("notifyPmReports") === "on"
+      }
+    };
+    const contacts = normalizePortalContacts(customer.portalContacts || []);
+    const existingIndex = contacts.findIndex((contact) => contact.id === nextContact.id);
+    if (existingIndex >= 0) {
+      contacts[existingIndex] = nextContact;
+    } else {
+      contacts.push(nextContact);
+    }
+    customer.portalContacts = normalizePortalContacts(contacts);
+    customer.updatedAt = new Date().toISOString();
+    addActivity(existingIndex >= 0 ? "Customer portal contact updated" : "Customer portal contact added", `${customer.name} | ${nextContact.email}`);
+    saveState();
+    render();
+    return;
+  }
   const form = event.target.closest("form[data-customer-id]");
   if (!form) return;
   const customer = getCustomer(form.dataset.customerId);
@@ -8273,6 +8361,7 @@ els.customerList?.addEventListener("submit", (event) => {
   customer.contactNotes = String(formData.get("contactNotes") || "").trim();
   customer.reportEmailEnabled = formData.get("reportEmailEnabled") === "on";
   customer.reportEmailTo = String(formData.get("reportEmailTo") || "").trim();
+  customer.portalContacts = normalizePortalContacts(customer.portalContacts || []);
   customer.updatedAt = new Date().toISOString();
   addActivity("Customer updated", customer.name);
   saveState();
@@ -8280,6 +8369,24 @@ els.customerList?.addEventListener("submit", (event) => {
 });
 
 els.customerList?.addEventListener("click", async (event) => {
+  const deletePortalContactButton = event.target.closest("[data-delete-customer-portal-contact]");
+  if (deletePortalContactButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const customer = getCustomer(deletePortalContactButton.dataset.customerId);
+    const contactId = deletePortalContactButton.dataset.deleteCustomerPortalContact || "";
+    if (!customer || !canManageCustomerSetup(customer.id)) return;
+    const contacts = normalizePortalContacts(customer.portalContacts || []);
+    const contact = contacts.find((item) => item.id === contactId);
+    if (!contact) return;
+    if (!confirm(`Remove portal contact "${contact.name || contact.email}"?`)) return;
+    customer.portalContacts = contacts.filter((item) => item.id !== contactId);
+    customer.updatedAt = new Date().toISOString();
+    addActivity("Customer portal contact removed", `${customer.name} | ${contact.email}`);
+    saveState();
+    render();
+    return;
+  }
   const copyButton = event.target.closest("[data-copy-customer-request-link]");
   const printButton = event.target.closest("[data-print-customer-request-label]");
   if (!copyButton && !printButton) return;
@@ -19272,6 +19379,119 @@ function renderCustomers() {
     : `<p class="muted">No customers added yet.</p>`;
 }
 
+function customerPortalContacts(customerId = "") {
+  const customer = getCustomer(customerId);
+  return normalizePortalContacts(customer?.portalContacts || []);
+}
+
+function portalContactLocationLabel(contact = {}, customerId = "") {
+  const locationIds = Array.isArray(contact.locationIds) ? contact.locationIds : [];
+  if (!locationIds.length) return "All locations";
+  const names = locationIds
+    .map((locationId) => getLocation(locationId))
+    .filter((locationRecord) => locationRecord?.customerId === customerId)
+    .map((locationRecord) => locationRecord.name);
+  return names.length ? names.join(", ") : "All locations";
+}
+
+function portalContactNotificationLabel(contact = {}) {
+  const notifications = normalizePortalContactNotifications(contact.notifications);
+  const enabled = PORTAL_CONTACT_NOTIFICATION_OPTIONS
+    .filter((option) => notifications[option.key])
+    .map((option) => option.label);
+  return enabled.length ? enabled.join(", ") : "No notifications";
+}
+
+function renderPortalContactForm(customer, contact = null, disabled = "") {
+  const locations = locationsForCustomer(customer.id).sort((a, b) => a.name.localeCompare(b.name));
+  const selectedLocations = new Set(Array.isArray(contact?.locationIds) ? contact.locationIds : []);
+  const notifications = normalizePortalContactNotifications(contact?.notifications);
+  const title = contact ? "Edit portal contact" : "Add portal contact";
+  const locationOptions = locations.length
+    ? locations.map((locationRecord) => `
+      <label class="inline-check">
+        <input type="checkbox" name="locationIds" value="${escapeAttribute(locationRecord.id)}" ${selectedLocations.has(locationRecord.id) ? "checked" : ""} ${disabled}>
+        ${escapeHtml(locationRecord.name)}
+      </label>
+    `).join("")
+    : `<span class="muted">No locations added yet. This contact will see all customer-level portal items.</span>`;
+  const notificationOptions = PORTAL_CONTACT_NOTIFICATION_OPTIONS.map((option) => `
+    <label class="inline-check">
+      <input type="checkbox" name="notify${option.key.charAt(0).toUpperCase()}${option.key.slice(1)}" ${notifications[option.key] ? "checked" : ""} ${disabled}>
+      ${escapeHtml(option.label)}
+    </label>
+  `).join("");
+
+  return `
+    <form class="portal-contact-form" data-customer-portal-contact-form="${escapeAttribute(customer.id)}">
+      <input type="hidden" name="contactId" value="${escapeAttribute(contact?.id || "")}">
+      <div class="portal-contact-form-grid">
+        <label>
+          Name
+          <input name="name" required value="${escapeAttribute(contact?.name || "")}" placeholder="Property manager" ${disabled}>
+        </label>
+        <label>
+          Email
+          <input name="email" type="email" required value="${escapeAttribute(contact?.email || "")}" placeholder="manager@example.com" ${disabled}>
+        </label>
+        <label>
+          Role
+          <input name="role" value="${escapeAttribute(contact?.role || "")}" placeholder="Manager, tenant, owner" ${disabled}>
+        </label>
+      </div>
+      <div class="portal-contact-options">
+        <div>
+          <strong>Visible locations</strong>
+          <span>Leave all unchecked for all locations.</span>
+          <div class="portal-contact-checks">${locationOptions}</div>
+        </div>
+        <div>
+          <strong>Notifications</strong>
+          <span>Choose what this contact should receive.</span>
+          <div class="portal-contact-checks">${notificationOptions}</div>
+        </div>
+      </div>
+      <div class="record-actions">
+        <button type="submit" class="secondary mini" ${disabled}>${title}</button>
+        ${contact ? `<button type="button" class="secondary mini danger-action" data-customer-id="${escapeAttribute(customer.id)}" data-delete-customer-portal-contact="${escapeAttribute(contact.id)}" ${disabled}>Remove</button>` : ""}
+      </div>
+    </form>
+  `;
+}
+
+function renderCustomerPortalContactManager(customer, disabled = "") {
+  const contacts = customerPortalContacts(customer.id);
+  return `
+    <section class="portal-contact-panel">
+      <header>
+        <div>
+          <strong>Portal contacts</strong>
+          <span>Name, email, role, visible locations, and notification preferences.</span>
+        </div>
+        <span>${contacts.length} contact${contacts.length === 1 ? "" : "s"}</span>
+      </header>
+      ${contacts.length ? `
+        <div class="portal-contact-list">
+          ${contacts.map((contact) => `
+            <details class="portal-contact-card">
+              <summary>
+                <span>
+                  <strong>${escapeHtml(contact.name || contact.email)}</strong>
+                  <small>${escapeHtml(contact.email)} | ${escapeHtml(contact.role || "Customer contact")}</small>
+                </span>
+                <small>${escapeHtml(portalContactLocationLabel(contact, customer.id))}</small>
+              </summary>
+              <p class="portal-contact-meta">Notifications: ${escapeHtml(portalContactNotificationLabel(contact))}</p>
+              ${renderPortalContactForm(customer, contact, disabled)}
+            </details>
+          `).join("")}
+        </div>
+      ` : `<p class="muted">No portal contacts added yet.</p>`}
+      ${renderPortalContactForm(customer, null, disabled)}
+    </section>
+  `;
+}
+
 function renderCustomerEditor(customer) {
   const disabled = canManageSetup() ? "" : "disabled";
   const contactSummary = [
@@ -19323,6 +19543,7 @@ function renderCustomerEditor(customer) {
           <button type="button" class="secondary mini" data-print-customer-request-label="${escapeAttribute(customer.id)}" ${disabled}>Print Request QR + NFC</button>
         </div>
       </form>
+      ${renderCustomerPortalContactManager(customer, disabled)}
     </details>
   `;
 }
@@ -30204,12 +30425,17 @@ function renderCustomerPortalAccess(customerId = "", locationId = "") {
   if (!canManageUsers()) return "";
   const customer = getCustomer(customerId);
   const users = customerPortalUsers(customerId);
+  const contacts = customerPortalContacts(customerId);
   const link = getCustomerPortalUrl(customerId);
+  const contactSummary = [
+    `${users.length} login${users.length === 1 ? "" : "s"}`,
+    `${contacts.length} contact${contacts.length === 1 ? "" : "s"}`
+  ].join(" | ");
   return `
     <section class="portal-section portal-access-card">
       <header>
         <strong>Portal access</strong>
-        <span>${escapeHtml(users.length ? `${users.length} customer login${users.length === 1 ? "" : "s"}` : "No customer logins")}</span>
+        <span>${escapeHtml(contactSummary)}</span>
       </header>
       <div class="portal-access-actions">
         <button type="button" class="secondary mini" data-copy-customer-portal-link="${escapeAttribute(customerId)}" data-link-label="Copy portal link">Copy portal link</button>
@@ -30232,6 +30458,20 @@ function renderCustomerPortalAccess(customerId = "", locationId = "") {
           `;
         }).join("") : `
           <p class="muted">Create a Customer role user for ${escapeHtml(customer?.name || "this customer")} in Admin & Settings, then send the invite from here.</p>
+        `}
+      </div>
+      <div class="portal-access-users">
+        <strong>Portal contacts</strong>
+        ${contacts.length ? contacts.map((contact) => `
+          <article class="portal-access-user">
+            <div>
+              <strong>${escapeHtml(contact.name || contact.email)}</strong>
+              <span>${escapeHtml(contact.email)} | ${escapeHtml(contact.role || "Customer contact")}</span>
+              <span>${escapeHtml(portalContactLocationLabel(contact, customerId))} | ${escapeHtml(portalContactNotificationLabel(contact))}</span>
+            </div>
+          </article>
+        `).join("") : `
+          <p class="muted">Add portal contacts in the customer record to track customer-side contacts and notification preferences.</p>
         `}
       </div>
     </section>

@@ -1402,6 +1402,99 @@ textarea:disabled {
   overflow-wrap: anywhere;
 }
 
+.portal-contact-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(8, 112, 95, 0.2);
+  border-radius: 10px;
+  background: rgba(240, 253, 250, 0.68);
+}
+
+.portal-contact-panel > header,
+.portal-contact-card > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.portal-contact-panel > header div,
+.portal-contact-card > summary span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.portal-contact-panel > header span,
+.portal-contact-card small,
+.portal-contact-meta {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portal-contact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.portal-contact-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.portal-contact-card > summary {
+  cursor: pointer;
+}
+
+.portal-contact-form {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px dashed rgba(8, 112, 95, 0.22);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.portal-contact-form-grid,
+.portal-contact-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.portal-contact-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.portal-contact-options > div {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.portal-contact-options > div > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portal-contact-checks {
+  display: grid;
+  gap: 6px;
+  max-height: 148px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+
 .user-list-item {
   display: grid;
   gap: 2px;
@@ -17637,9 +17730,16 @@ button.asset-detail-card {
   }
 
   .portal-access-actions,
-  .portal-access-user {
+  .portal-access-user,
+  .portal-contact-panel > header,
+  .portal-contact-card > summary {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .portal-contact-form-grid,
+  .portal-contact-options {
+    grid-template-columns: 1fr;
   }
 
   .quickbooks-export-status {
