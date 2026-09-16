@@ -2201,6 +2201,25 @@ function siteMapAssetsForScope(customerId = "", locationId = "") {
   );
 }
 
+function focusSiteMapOnCurrentContext() {
+  const { customerId, locationId } = currentSiteMapScope();
+  if (!customerId || !locationId) return false;
+  const changedCustomer = selectedCustomerId !== customerId;
+  const changedLocation = selectedLocationId !== locationId;
+  if (!changedCustomer && !changedLocation) return false;
+  selectedCustomerId = customerId;
+  selectedLocationId = locationId;
+  if (els.customerFilter) els.customerFilter.value = customerId;
+  if (els.locationFilter) els.locationFilter.value = locationId;
+  siteMapLayerFilter = "all";
+  siteMapAreaFilter = "all";
+  siteMapOverlayMode = "normal";
+  selectedSiteMapOverlayAssetId = "";
+  siteMapLevelId = "main";
+  siteMapViewportMemory = { left: 0, top: 0 };
+  return true;
+}
+
 function siteMapScopeLabel(map = null) {
   const scope = map || currentSiteMapScope();
   const customer = getCustomer(scope.customerId)?.name || "Current customer";
@@ -13149,6 +13168,7 @@ function closeSidebarTarget(targetId) {
 function openSidebarTarget(targetId) {
   const target = document.getElementById(targetId);
   if (!target) return;
+  const siteMapScopeChanged = targetId === "siteMapPanel" ? focusSiteMapOnCurrentContext() : false;
 
   const isOpen = target.tagName === "DETAILS"
     ? target.open && !target.classList.contains("hidden")
@@ -13176,6 +13196,13 @@ function openSidebarTarget(targetId) {
   if (isAutomationTargetId(targetId)) syncAutomationSidebarMenuState();
   if (targetId === "pmCalendarPanel") syncPmSidebarMenuState();
   syncCalendarFocusState();
+  if (targetId === "siteMapPanel") {
+    if (siteMapScopeChanged) {
+      renderLocationOptions();
+      renderDashboard();
+    }
+    renderSiteMapIfReady();
+  }
 }
 
 function automationTargetIds() {
