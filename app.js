@@ -13835,12 +13835,12 @@ function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
     };
   }
   return {
-    label: "Last seen",
-    className: "is-warning",
+    label: "Offline",
+    className: "is-offline",
     lastSeenAt,
     ageMs,
     relativeText,
-    detail: "No live heartbeat; showing last known controller data."
+    detail: "No live heartbeat; controller appears offline."
   };
 }
 
