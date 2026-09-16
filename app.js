@@ -7927,6 +7927,7 @@ els.logoutBtn.addEventListener("click", () => {
 els.offlineStatusBtn?.addEventListener("click", () => {
   offlineStatusPanelOpen = !offlineStatusPanelOpen;
   renderOfflineStatus();
+  els.offlineStatusBtn.blur();
 });
 
 els.offlineStatusPanel?.addEventListener("click", async (event) => {
@@ -7944,7 +7945,24 @@ els.offlineStatusPanel?.addEventListener("click", async (event) => {
       return;
     }
     await syncStructuredDataToServer();
+    offlineStatusPanelOpen = false;
+    renderOfflineStatus();
   }
+});
+
+document.addEventListener("click", (event) => {
+  if (!offlineStatusPanelOpen) return;
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (els.offlineStatusBtn?.contains(target) || els.offlineStatusPanel?.contains(target)) return;
+  offlineStatusPanelOpen = false;
+  renderOfflineStatus();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !offlineStatusPanelOpen) return;
+  offlineStatusPanelOpen = false;
+  renderOfflineStatus();
 });
 
 window.addEventListener("online", () => {
