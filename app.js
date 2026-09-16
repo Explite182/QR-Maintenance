@@ -2166,13 +2166,39 @@ async function finishCloudDelete(label, deleteResultPromise) {
 function currentSiteMapScope() {
   const customerId = selectedCustomerId && selectedCustomerId !== "all"
     ? selectedCustomerId
-    : visibleCustomers()[0]?.id || state.customers[0]?.id || "";
-  const locationId = selectedLocationId && selectedLocationId !== "all" ? selectedLocationId : "";
+    : getSelectedAsset()?.customerId || visibleCustomers()[0]?.id || state.customers[0]?.id || "";
+  const locationId = currentSiteMapLocationId(customerId);
   return { customerId, locationId };
 }
 
+function currentSiteMapLocationId(customerId = "") {
+  if (selectedLocationId && selectedLocationId !== "all" && getLocation(selectedLocationId)) {
+    return selectedLocationId;
+  }
+  const selectedAsset = getSelectedAsset();
+  if (
+    selectedAsset?.locationId &&
+    (!customerId || selectedAsset.customerId === customerId) &&
+    canSeeLocation(selectedAsset.locationId, selectedAsset.customerId)
+  ) {
+    return selectedAsset.locationId;
+  }
+  const locations = customerId ? locationsForCustomer(customerId) : [];
+  return locations.length === 1 ? locations[0].id : "";
+}
+
 function isSiteMapLocationSelected() {
-  return Boolean(selectedLocationId && selectedLocationId !== "all");
+  return Boolean(currentSiteMapScope().locationId);
+}
+
+function siteMapAssetsForScope(customerId = "", locationId = "") {
+  if (!customerId || !locationId) return [];
+  return state.assets.filter((asset) =>
+    canSeeAsset(asset) &&
+    asset.customerId === customerId &&
+    asset.locationId === locationId &&
+    matchesAssetGlobalSearch(asset)
+  );
 }
 
 function siteMapScopeLabel(map = null) {
@@ -2782,10 +2808,11 @@ function getCurrentSiteMap(create = false) {
 function renderSiteMap() {
   if (!els.siteMapPanel) return;
   const hasLocation = isSiteMapLocationSelected();
+  const { customerId: siteMapCustomerId, locationId: siteMapLocationId } = currentSiteMapScope();
   const map = hasLocation ? getCurrentSiteMap(true) : getCurrentSiteMap(false);
   const levels = map ? ensureSiteMapLevels(map, true) : [];
   const activeLevel = getActiveSiteMapLevel(map, true);
-  const assets = hasLocation ? filteredAssets() : [];
+  const assets = hasLocation ? siteMapAssetsForScope(siteMapCustomerId, siteMapLocationId) : [];
   const pins = Array.isArray(activeLevel?.pins) ? activeLevel.pins : [];
   const allPins = getAllSiteMapPins(map);
   const pinnedAssetIds = new Set(allPins.map((pin) => pin.assetId).filter(Boolean));
