@@ -12872,6 +12872,101 @@ html[data-theme="dark"] .site-map-empty {
   gap: 14px;
 }
 
+.pm-customer-report {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(15, 32, 39, 0.05);
+}
+
+.pm-customer-report > header,
+.pm-customer-report-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pm-customer-report > header strong,
+.pm-customer-report-card header strong {
+  color: var(--ink);
+}
+
+.pm-customer-report > header span,
+.pm-customer-report-card header span,
+.pm-customer-report-next span,
+.pm-customer-report-exceptions span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.pm-customer-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pm-customer-report-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(220, 230, 227, 0.86);
+  border-radius: 10px;
+  background: #f8fcfb;
+}
+
+.pm-customer-report-card.is-good {
+  border-color: #a7e3c5;
+  background: #effdf5;
+}
+
+.pm-customer-report-card.is-watch {
+  border-color: #f0d486;
+  background: #fff8dc;
+}
+
+.pm-customer-report-card.is-risk {
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+
+.pm-customer-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pm-customer-report-metrics span,
+.pm-customer-report-next {
+  padding: 8px;
+  border: 1px solid rgba(220, 230, 227, 0.86);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.pm-customer-report-metrics strong,
+.pm-customer-report-next strong {
+  color: var(--ink);
+}
+
+.pm-customer-report-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pm-customer-report-exceptions {
+  display: grid;
+  gap: 5px;
+}
+
 .pm-compliance-card {
   display: grid;
   gap: 8px;
@@ -12924,6 +13019,75 @@ html[data-theme="dark"] .site-map-empty {
 .pm-compliance-exception.is-watch {
   border-color: #f0d486;
   background: #fff8dc;
+}
+
+.portal-pm-report {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.5fr) minmax(0, 1.4fr);
+  gap: 12px;
+  align-items: stretch;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fcfb;
+}
+
+.portal-pm-report.is-good {
+  border-color: #a7e3c5;
+  background: #effdf5;
+}
+
+.portal-pm-report.is-watch {
+  border-color: #f0d486;
+  background: #fff8dc;
+}
+
+.portal-pm-report.is-risk {
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+
+.portal-pm-report-score {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+
+.portal-pm-report-score span,
+.portal-pm-report-exceptions span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.portal-pm-report-score strong {
+  color: var(--ink);
+  font-size: 26px;
+}
+
+.portal-pm-report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portal-pm-report-grid span {
+  padding: 8px;
+  border: 1px solid rgba(220, 230, 227, 0.86);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.portal-pm-report-grid strong {
+  color: var(--ink);
+}
+
+.portal-pm-report-exceptions {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
 }
 
 .pm-calendar-month-wrap {
@@ -19843,8 +20007,12 @@ body.panel-schedule-open {
   .pm-calendar-summary,
   .pm-compliance-summary,
   .pm-compliance-grid,
+  .pm-customer-report-grid,
+  .pm-customer-report-metrics,
   .pm-compliance-row,
   .pm-compliance-exception,
+  .portal-pm-report,
+  .portal-pm-report-grid,
   .customer-update-form,
   .pm-calendar-day-heading,
   .pm-calendar-item,

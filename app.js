@@ -7369,6 +7369,8 @@ const els = {
   pmComplianceCount: document.getElementById("pmComplianceCount"),
   pmComplianceSummary: document.getElementById("pmComplianceSummary"),
   pmComplianceContent: document.getElementById("pmComplianceContent"),
+  printPmCustomerReportBtn: document.getElementById("printPmCustomerReportBtn"),
+  emailPmCustomerReportBtn: document.getElementById("emailPmCustomerReportBtn"),
   exportPmComplianceBtn: document.getElementById("exportPmComplianceBtn"),
   workOrderCount: document.getElementById("workOrderCount"),
   workOrderNumberFilter: document.getElementById("workOrderNumberFilter"),
@@ -10887,6 +10889,14 @@ els.downloadPmCalendarIcsBtn?.addEventListener("click", () => {
 
 els.copyPmCalendarFeedBtn?.addEventListener("click", () => {
   copyPmCalendarFeedLink();
+});
+
+els.printPmCustomerReportBtn?.addEventListener("click", () => {
+  printPmCustomerReport();
+});
+
+els.emailPmCustomerReportBtn?.addEventListener("click", () => {
+  emailPmCustomerReport();
 });
 
 els.exportPmComplianceBtn?.addEventListener("click", () => {
@@ -29015,12 +29025,143 @@ function pmComplianceExceptions(report = pmComplianceRecords()) {
     .slice(0, 12);
 }
 
+function pmCustomerReportRows(report = pmComplianceRecords()) {
+  const rowsByScope = new Map();
+  const ensureRow = (customer, location) => {
+    const customerId = customer?.id || "no-customer";
+    const locationId = location?.id || "all-locations";
+    const key = `${customerId}:${locationId}`;
+    if (!rowsByScope.has(key)) {
+      rowsByScope.set(key, {
+        key,
+        customer,
+        location,
+        equipment: 0,
+        completed: 0,
+        failed: 0,
+        needsAttention: 0,
+        overdue: 0,
+        dueSoon: 0,
+        scheduled: 0,
+        nextDueDate: null,
+        exceptions: []
+      });
+    }
+    return rowsByScope.get(key);
+  };
+  report.assetStatus.forEach((record) => {
+    const row = ensureRow(record.customer, record.location);
+    const hasScheduledVisit = record.visits.length > 0;
+    row.equipment += 1;
+    row.scheduled += hasScheduledVisit ? 1 : 0;
+    row.overdue += record.due.daysUntil < 0 && !hasScheduledVisit ? 1 : 0;
+    row.dueSoon += record.due.daysUntil >= 0 && record.due.daysUntil <= 14 && !hasScheduledVisit ? 1 : 0;
+    const dueTime = new Date(record.due.nextDate || 0).getTime();
+    if (Number.isFinite(dueTime) && dueTime > 0 && (!row.nextDueDate || dueTime < new Date(row.nextDueDate).getTime())) {
+      row.nextDueDate = record.due.nextDate;
+    }
+    if (record.due.daysUntil < 0 || record.failedTickets.length) {
+      row.exceptions.push({
+        type: record.failedTickets.length ? "Failed PM follow-up" : "Overdue PM",
+        asset: record.asset,
+        date: record.due.nextDate,
+        detail: record.failedTickets.length
+          ? `${record.failedTickets.length} open follow-up${record.failedTickets.length === 1 ? "" : "s"}`
+          : record.due.label
+      });
+    }
+  });
+  report.completed.forEach((record) => {
+    const row = ensureRow(record.customer, record.location);
+    const failed = /failed/i.test(record.status);
+    const attention = /needs attention|failed/i.test(record.status);
+    row.completed += 1;
+    row.failed += failed ? 1 : 0;
+    row.needsAttention += attention ? 1 : 0;
+    if (attention) {
+      row.exceptions.push({
+        type: failed ? "Failed PM" : "Needs attention",
+        asset: record.asset,
+        date: record.completedAt,
+        detail: record.status
+      });
+    }
+  });
+  return [...rowsByScope.values()]
+    .filter((row) => row.customer || row.equipment || row.completed)
+    .sort((a, b) =>
+      (b.overdue + b.failed + b.needsAttention + b.dueSoon) - (a.overdue + a.failed + a.needsAttention + a.dueSoon)
+      || String(a.customer?.name || "").localeCompare(String(b.customer?.name || ""), undefined, { sensitivity: "base", numeric: true })
+      || String(a.location?.name || "").localeCompare(String(b.location?.name || ""), undefined, { sensitivity: "base", numeric: true })
+    );
+}
+
+function pmCustomerReportScore(row = {}) {
+  const risk = Number(row.overdue || 0) + Number(row.failed || 0) + Number(row.needsAttention || 0);
+  const base = Number(row.equipment || 0) + Number(row.completed || 0) + risk;
+  if (!base) return 100;
+  return Math.max(0, Math.min(100, Math.round(((base - risk) / base) * 100)));
+}
+
+function renderPmCustomerReports(rows = pmCustomerReportRows()) {
+  return `
+    <section class="pm-customer-report">
+      <header>
+        <div>
+          <strong>Customer PM reports</strong>
+          <span>${escapeHtml(formatInventoryNumber(rows.length))} customer/location report${rows.length === 1 ? "" : "s"}</span>
+        </div>
+      </header>
+      <div class="pm-customer-report-grid">
+        ${rows.length ? rows.slice(0, 8).map(renderPmCustomerReportCard).join("") : `<p class="muted">No customer PM report data for this view yet.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderPmCustomerReportCard(row = {}) {
+  const score = pmCustomerReportScore(row);
+  const statusClass = score >= 90 ? "is-good" : score >= 75 ? "is-watch" : "is-risk";
+  const exceptions = row.exceptions.slice(0, 3);
+  return `
+    <article class="pm-customer-report-card ${statusClass}">
+      <header>
+        <div>
+          <strong>${escapeHtml(row.customer?.name || "Customer")}</strong>
+          <span>${escapeHtml(row.location?.name || "All locations")}</span>
+        </div>
+        <strong>${escapeHtml(`${score}%`)}</strong>
+      </header>
+      <div class="pm-customer-report-metrics">
+        <span><strong>${escapeHtml(formatInventoryNumber(row.equipment))}</strong> equipment</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(row.completed))}</strong> completed</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(row.scheduled))}</strong> scheduled</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(row.overdue))}</strong> overdue</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(row.dueSoon))}</strong> due soon</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(row.needsAttention))}</strong> attention</span>
+      </div>
+      <div class="pm-customer-report-next">
+        <span>Next due</span>
+        <strong>${escapeHtml(row.nextDueDate ? formatDate(row.nextDueDate) : "None scheduled")}</strong>
+      </div>
+      ${exceptions.length ? `
+        <div class="pm-customer-report-exceptions">
+          ${exceptions.map((item) => `
+            <span>${escapeHtml(item.asset?.name || "Equipment")} - ${escapeHtml(item.type)}${item.detail ? ` | ${escapeHtml(item.detail)}` : ""}</span>
+          `).join("")}
+        </div>
+      ` : `<p class="muted">No PM exceptions for this report.</p>`}
+    </article>
+  `;
+}
+
 function renderPmCompliance() {
   if (!els.pmComplianceSummary || !els.pmComplianceContent) return;
   const report = pmComplianceRecords();
   const buckets = pmComplianceStatusBuckets(report);
   const rollups = pmComplianceRollups(report);
   const exceptions = pmComplianceExceptions(report);
+  const customerReports = pmCustomerReportRows(report);
   if (els.pmComplianceCount) els.pmComplianceCount.textContent = `${buckets.score}%`;
   els.pmComplianceSummary.innerHTML = `
     <article class="${buckets.score >= 90 ? "is-good" : buckets.score >= 75 ? "is-watch" : "is-risk"}">
@@ -29034,6 +29175,7 @@ function renderPmCompliance() {
     <article><strong>${escapeHtml(formatInventoryNumber(buckets.equipmentCount))}</strong><span>Equipment tracked</span></article>
   `;
   els.pmComplianceContent.innerHTML = `
+    ${renderPmCustomerReports(customerReports)}
     <section class="pm-compliance-grid">
       ${renderPmComplianceRollup("By location", rollups.locations, "No location data for this view.")}
       ${renderPmComplianceRollup("By tech / contractor", rollups.technicians, "No tech activity for this view.")}
@@ -29089,7 +29231,23 @@ function renderPmComplianceException(item = {}) {
 function exportPmComplianceCsv() {
   const report = pmComplianceRecords();
   const exceptions = pmComplianceExceptions(report);
+  const customerReports = pmCustomerReportRows(report);
   const rows = [
+    ["Customer PM Report", "Location", "Score", "Equipment", "Completed", "Scheduled", "Overdue", "Due Soon", "Needs Attention", "Failed", "Next Due"],
+    ...customerReports.map((row) => [
+      row.customer?.name || "",
+      row.location?.name || "All locations",
+      `${pmCustomerReportScore(row)}%`,
+      row.equipment,
+      row.completed,
+      row.scheduled,
+      row.overdue,
+      row.dueSoon,
+      row.needsAttention,
+      row.failed,
+      row.nextDueDate ? formatDate(row.nextDueDate) : ""
+    ]),
+    [],
     ["Type", "Severity", "Customer", "Location", "Equipment", "Date", "Owner", "Detail"],
     ...exceptions.map((item) => [
       item.type,
@@ -29122,6 +29280,118 @@ function exportPmComplianceCsv() {
   link.download = `siteworks-pm-compliance-${timestampForFile()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function pmCustomerReportContextLabel() {
+  const customer = getCustomer(selectedCustomerId);
+  const locationRecord = selectedLocationId === "all" ? null : getLocation(selectedLocationId);
+  return [
+    customer?.name || "All customers",
+    locationRecord?.name || "All locations",
+    pmComplianceWindow().label
+  ].filter(Boolean).join(" | ");
+}
+
+function printPmCustomerReport() {
+  const report = pmComplianceRecords();
+  const rows = pmCustomerReportRows(report);
+  if (!rows.length) {
+    alert("No PM/customer report data is available for this view.");
+    return;
+  }
+  const generatedAt = formatDateTime(new Date());
+  const htmlRows = rows.map((row) => `
+    <tr>
+      <td><strong>${escapeHtml(row.customer?.name || "Customer")}</strong><br>${escapeHtml(row.location?.name || "All locations")}</td>
+      <td>${escapeHtml(`${pmCustomerReportScore(row)}%`)}</td>
+      <td>${escapeHtml(formatInventoryNumber(row.equipment))}</td>
+      <td>${escapeHtml(formatInventoryNumber(row.completed))}</td>
+      <td>${escapeHtml(formatInventoryNumber(row.scheduled))}</td>
+      <td>${escapeHtml(formatInventoryNumber(row.overdue))}</td>
+      <td>${escapeHtml(formatInventoryNumber(row.dueSoon))}</td>
+      <td>${escapeHtml(formatInventoryNumber(row.needsAttention))}</td>
+      <td>${escapeHtml(row.nextDueDate ? formatDate(row.nextDueDate) : "None")}</td>
+      <td>${escapeHtml(row.exceptions.slice(0, 4).map((item) => `${item.asset?.name || "Equipment"} - ${item.type}`).join("; ") || "None")}</td>
+    </tr>
+  `).join("");
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) return;
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>SiteWorks PM Customer Report</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #142128; padding: 24px; }
+          h1 { margin: 0 0 6px; font-size: 24px; }
+          .meta { color: #607179; font-weight: 700; margin-bottom: 18px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #dbe7e3; padding: 8px; text-align: left; vertical-align: top; }
+          th { background: #eef7f4; }
+          button { margin-bottom: 12px; padding: 9px 12px; border: 1px solid #cfd9d5; border-radius: 8px; background: #08705f; color: white; font-weight: 800; }
+          @media print { button { display: none; } body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <button onclick="window.print()">Print / Save PDF</button>
+        <h1>SiteWorks PM Customer Report</h1>
+        <div class="meta">${escapeHtml(pmCustomerReportContextLabel())}<br>Generated ${escapeHtml(generatedAt)}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Customer / Location</th>
+              <th>Score</th>
+              <th>Equipment</th>
+              <th>Completed</th>
+              <th>Scheduled</th>
+              <th>Overdue</th>
+              <th>Due soon</th>
+              <th>Attention</th>
+              <th>Next due</th>
+              <th>Exceptions</th>
+            </tr>
+          </thead>
+          <tbody>${htmlRows}</tbody>
+        </table>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+  addActivity("PM customer report printed", pmCustomerReportContextLabel());
+  saveState();
+}
+
+function emailPmCustomerReport() {
+  const rows = pmCustomerReportRows(pmComplianceRecords());
+  if (!rows.length) {
+    alert("No PM/customer report data is available for this view.");
+    return;
+  }
+  const subject = `SiteWorks PM Customer Report - ${pmCustomerReportContextLabel()}`;
+  const lines = [
+    "SiteWorks PM Customer Report",
+    pmCustomerReportContextLabel(),
+    `Generated ${formatDateTime(new Date())}`,
+    "",
+    ...rows.map((row) => [
+      `${row.customer?.name || "Customer"} | ${row.location?.name || "All locations"}`,
+      `Score: ${pmCustomerReportScore(row)}%`,
+      `Equipment: ${row.equipment}`,
+      `Completed PMs: ${row.completed}`,
+      `Scheduled: ${row.scheduled}`,
+      `Overdue: ${row.overdue}`,
+      `Due soon: ${row.dueSoon}`,
+      `Needs attention: ${row.needsAttention}`,
+      `Next due: ${row.nextDueDate ? formatDate(row.nextDueDate) : "None"}`,
+      row.exceptions.length ? `Exceptions: ${row.exceptions.slice(0, 4).map((item) => `${item.asset?.name || "Equipment"} - ${item.type}`).join("; ")}` : "Exceptions: None"
+    ].join("\n")),
+    "",
+    "Sent from SiteWorks"
+  ];
+  addActivity("PM customer report email draft opened", pmCustomerReportContextLabel());
+  saveState();
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n\n"))}`;
 }
 
 function downloadPmCalendarIcs() {
@@ -30549,6 +30819,7 @@ function renderCustomerPortal() {
     ${renderCustomerPortalAccess(customerId, locationId)}
     ${renderCustomerPortalRequestForm(customerId, assets)}
     ${renderCustomerPortalSection("Portal overview", [customerPortalOverviewRecord(customerId, locationId, openTickets, visits, estimates, assets)], renderCustomerPortalOverview, "No portal summary available.")}
+    ${renderCustomerPortalSection("Maintenance report", [customerPortalPmReportRecord(customerId, locationId, assets)], renderCustomerPortalPmReport, "No maintenance report available.")}
     ${renderCustomerPortalSection("Upcoming visits", visits, renderCustomerPortalVisit, "No visits are scheduled yet.")}
     ${renderCustomerPortalSection("Open jobs", openTickets.slice(0, 8), renderCustomerPortalTicket, "No open jobs right now.")}
     ${renderCustomerPortalSection("Customer requests", requests.slice(0, 6), renderCustomerPortalRequest, "No customer requests in this view.")}
@@ -30725,6 +30996,74 @@ function renderCustomerPortalOverview(record = {}) {
       <div>
         <span>Overdue PMs</span>
         <strong>${escapeHtml(formatInventoryNumber(record.overdueAssets || 0))}</strong>
+      </div>
+    </article>
+  `;
+}
+
+function customerPortalPmReportRecord(customerId = "", locationId = "", assets = []) {
+  const assetIds = new Set(assets.map((asset) => asset.id));
+  const sinceTime = addDays(today, -29).getTime();
+  const visits = normalizeScheduledVisits(state.scheduledVisits || [])
+    .filter((visit) => assetIds.has(visit.assetId))
+    .filter((visit) => !["Completed", "Cancelled"].includes(visit.status));
+  const completed = assets.flatMap((asset) => (asset.history || [])
+    .filter((history) => new Date(history.completedAt || 0).getTime() >= sinceTime)
+    .map((history) => ({ asset, history })));
+  const overdueAssets = assets.filter((asset) => getDueInfo(asset).daysUntil < 0);
+  const dueSoonAssets = assets.filter((asset) => {
+    const due = getDueInfo(asset);
+    return due.daysUntil >= 0 && due.daysUntil <= 14;
+  });
+  const attentionItems = completed
+    .filter((record) => /needs attention|failed/i.test(record.history.result || ""))
+    .map((record) => ({
+      asset: record.asset,
+      type: /failed/i.test(record.history.result || "") ? "Failed PM" : "Needs attention",
+      detail: record.history.result || "Needs attention"
+    }));
+  const overdueItems = overdueAssets.map((asset) => ({
+    asset,
+    type: "Overdue PM",
+    detail: getDueInfo(asset).label
+  }));
+  const scoreBase = assets.length + completed.length + overdueItems.length + attentionItems.length;
+  const risk = overdueItems.length + attentionItems.length;
+  const score = scoreBase ? Math.max(0, Math.round(((scoreBase - risk) / scoreBase) * 100)) : 100;
+  return {
+    customerId,
+    locationId,
+    score,
+    equipment: assets.length,
+    completed: completed.length,
+    scheduled: visits.length,
+    overdue: overdueAssets.length,
+    dueSoon: dueSoonAssets.length,
+    needsAttention: attentionItems.length,
+    exceptions: [...overdueItems, ...attentionItems].slice(0, 5)
+  };
+}
+
+function renderCustomerPortalPmReport(record = {}) {
+  const scoreClass = record.score >= 90 ? "is-good" : record.score >= 75 ? "is-watch" : "is-risk";
+  return `
+    <article class="portal-pm-report ${scoreClass}">
+      <div class="portal-pm-report-score">
+        <span>PM score</span>
+        <strong>${escapeHtml(`${record.score}%`)}</strong>
+      </div>
+      <div class="portal-pm-report-grid">
+        <span><strong>${escapeHtml(formatInventoryNumber(record.equipment))}</strong> Equipment</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(record.completed))}</strong> Completed</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(record.scheduled))}</strong> Scheduled</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(record.overdue))}</strong> Overdue</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(record.dueSoon))}</strong> Due soon</span>
+        <span><strong>${escapeHtml(formatInventoryNumber(record.needsAttention))}</strong> Attention</span>
+      </div>
+      <div class="portal-pm-report-exceptions">
+        ${record.exceptions.length ? record.exceptions.map((item) => `
+          <span>${escapeHtml(item.asset?.name || "Equipment")} - ${escapeHtml(item.type)}${item.detail ? ` | ${escapeHtml(item.detail)}` : ""}</span>
+        `).join("") : `<span>No PM exceptions for this view.</span>`}
       </div>
     </article>
   `;
