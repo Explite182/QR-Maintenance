@@ -5551,7 +5551,8 @@ function renderMonitoring() {
 }
 
 function systemPortfolioScopeLabel() {
-  return `${getCustomer(selectedCustomerId)?.name || "No customer selected"} | All locations`;
+  const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
+  return `${getCustomer(selectedCustomerId)?.name || "No customer selected"} | ${currentLocation?.name || "All locations"}`;
 }
 
 function systemPortfolioSummaryTile(label, value, className = "") {
@@ -5615,7 +5616,11 @@ function energyMockMeterForLocation(locationRecord = {}) {
 function energyMockMetersForCurrentCustomer() {
   if (!selectedCustomerId || selectedCustomerId === ALL_CUSTOMERS) return [];
   return locationsForCustomer(selectedCustomerId)
-    .filter((locationRecord) => canSeeLocation(locationRecord.id, locationRecord.customerId))
+    .filter((locationRecord) =>
+      locationRecord.customerId === selectedCustomerId &&
+      canSeeLocation(locationRecord.id, locationRecord.customerId) &&
+      (selectedLocationId === ALL_LOCATIONS || locationRecord.id === selectedLocationId)
+    )
     .map((locationRecord) => ({
       locationRecord,
       meter: energyMockMeterForLocation(locationRecord)
@@ -5755,7 +5760,6 @@ function renderEnergyLocationDetail(currentCustomer = null, currentLocation = nu
           </div>
         </article>
       </div>
-      ${renderAssetAiAssistPanel(asset, health)}
     </section>
   `;
 }
@@ -5768,10 +5772,7 @@ function renderAutomationEnergy() {
 
   const currentCustomer = getCustomer(selectedCustomerId);
   const currentLocation = selectedLocationId === ALL_LOCATIONS ? null : getLocation(selectedLocationId);
-  const records = energyMockMetersForCurrentCustomer();
-  const visibleRecords = currentLocation
-    ? records.filter(({ locationRecord }) => locationRecord.id === currentLocation.id)
-    : records;
+  const visibleRecords = energyMockMetersForCurrentCustomer();
   const totalKw = visibleRecords.reduce((total, { meter }) => total + meter.currentKw, 0);
   const totalKwh = visibleRecords.reduce((total, { meter }) => total + meter.todayKwh, 0);
   const needsAttention = visibleRecords.filter(({ meter }) => meter.status.label === "Needs attention").length;
@@ -5797,14 +5798,14 @@ function renderAutomationEnergy() {
   list.innerHTML = `
     <section class="system-portfolio-list" aria-label="Energy for all locations">
       <div class="pump-overview-grid">
-        ${systemPortfolioSummaryTile("Sites monitored", String(records.length))}
+        ${systemPortfolioSummaryTile("Sites monitored", String(visibleRecords.length))}
         ${systemPortfolioSummaryTile("Live demand", formatEnergyNumber(totalKw, " kW"), totalKw ? "is-running" : "")}
         ${systemPortfolioSummaryTile("Today", formatEnergyNumber(totalKwh, " kWh"), "is-muted")}
         ${systemPortfolioSummaryTile("Needs attention", String(needsAttention), needsAttention ? "is-warning" : "")}
       </div>
       <div class="pump-scope-strip">${escapeHtml(systemPortfolioScopeLabel())}</div>
       <div class="pump-equipment-list">
-        ${records.length ? records.map(({ locationRecord, meter }) => systemPortfolioRow({
+        ${visibleRecords.length ? visibleRecords.map(({ locationRecord, meter }) => systemPortfolioRow({
           className: meter.status.className,
           title: meter.name,
           subtitle: `Energy | ${locationRecord.name || "No location"}`,
@@ -5817,7 +5818,7 @@ function renderAutomationEnergy() {
           ],
           actionLabel: "Open energy",
           actionAttribute: "data-open-system-location",
-          actionValue: `energy|${locationRecord.id}`
+          actionValue: `energy|${selectedCustomerId}|${locationRecord.id}`
         })).join("") : `
           <div class="automation-empty-state">
             <strong>No locations found for this customer.</strong>
@@ -11176,8 +11177,21 @@ document.addEventListener("click", async (event) => {
   const openSystemLocationButton = event.target.closest("[data-open-system-location]");
   if (openSystemLocationButton) {
     event.preventDefault();
-    const [system, locationId] = String(openSystemLocationButton.dataset.openSystemLocation || "").split("|");
+    const parts = String(openSystemLocationButton.dataset.openSystemLocation || "").split("|");
+    const system = parts[0] || "";
+    const customerId = parts.length > 2 ? parts[1] : selectedCustomerId;
+    const locationId = parts.length > 2 ? parts[2] : parts[1];
     if (locationId) {
+      const locationRecord = getLocation(locationId);
+      if (
+        !locationRecord ||
+        locationRecord.customerId !== customerId ||
+        locationRecord.customerId !== selectedCustomerId ||
+        !canSeeLocation(locationRecord.id, locationRecord.customerId)
+      ) {
+        render();
+        return;
+      }
       selectedLocationId = locationId;
       if (els.locationFilter) els.locationFilter.value = locationId;
       siteMapLayerFilter = "all";
@@ -28214,7 +28228,7 @@ function scheduledVisitCalendarRecords(windowInfo = pmCalendarWindow()) {
         dueDate,
         customer: getCustomer(workOrder.customerId),
         location: getLocation(workOrder.locationId),
-        asset: getAsset(workOrder.assetId) || getRawAsset(workOrder.assetId)
+        asset: getScopedAssetForRecord(workOrder)
       };
     })
     .filter(Boolean)
@@ -30800,7 +30814,11 @@ function renderServiceScheduleVisit(visit = {}) {
   const ticket = getWorkOrder(visit.workOrderId);
   const customer = getCustomer(visit.customerId || ticket?.customerId);
   const locationRecord = getLocation(visit.locationId || ticket?.locationId);
-  const asset = getAsset(visit.assetId || ticket?.assetId);
+  const asset = getScopedAssetForRecord({
+    assetId: visit.assetId || ticket?.assetId || "",
+    customerId: visit.customerId || ticket?.customerId || "",
+    locationId: visit.locationId || ticket?.locationId || ""
+  });
   return `
     <article class="service-schedule-row is-${escapeAttribute(String(visit.status || "Scheduled").toLowerCase().replace(/[^a-z0-9]+/g, "-"))}">
       <time>${escapeHtml(formatDateTime(visit.scheduledAt))}</time>
@@ -31200,7 +31218,7 @@ function renderCustomerPortalVisit(visit = {}) {
 
 function renderCustomerPortalTicket(ticket = {}) {
   const locationRecord = getLocation(ticket.locationId);
-  const asset = getAsset(ticket.assetId);
+  const asset = getScopedAssetForRecord(ticket);
   return `
     <article class="portal-row">
       <span class="portal-status">${escapeHtml(ticket.status || "Open")}</span>
@@ -31893,7 +31911,7 @@ function buildBillingRecord(workOrder) {
   if (!workOrder || !canSeeWorkOrder(workOrder)) return null;
   const customer = getCustomer(workOrder.customerId);
   const locationRecord = getLocation(workOrder.locationId);
-  const asset = getAsset(workOrder.assetId);
+  const asset = getScopedAssetForRecord(workOrder);
   const lineItems = workOrderBillingLineItems(workOrder);
   const jobCost = buildJobCostRecord(workOrder, lineItems);
   return {
@@ -33360,7 +33378,7 @@ function getDrawerItemUrl(type, id) {
 function renderServiceRequestItem(request) {
   const customer = getCustomer(request.customerId);
   const locationRecord = getLocation(request.locationId);
-  const asset = getAsset(request.assetId);
+  const asset = getScopedAssetForRecord(request);
   const assignedLabel = request.assignedUserName || "Unassigned";
   const createdLabel = request.createdAt ? formatDate(new Date(request.createdAt)) : "Not recorded";
   const ageLabel = formatOpenServiceRequestAge(request);
@@ -33885,7 +33903,7 @@ function renderAiDraftCard(workOrder = {}, kind = "", title = "", text = "", app
 }
 
 function buildWorkOrderAiDrafts(workOrder = {}) {
-  const asset = getAsset(workOrder.assetId);
+  const asset = getScopedAssetForRecord(workOrder);
   const customer = getCustomer(workOrder.customerId);
   const locationRecord = getLocation(workOrder.locationId);
   const history = workOrderHistoryEntries(workOrder);
@@ -34177,7 +34195,7 @@ function assetSearchText(asset) {
 
 function matchesWorkOrderGlobalSearch(item) {
   if (!globalQuery) return true;
-  const asset = getRawAsset(item.assetId);
+  const asset = getScopedAssetForRecord(item);
   return [
     formatIssueNumber(item),
     item.issueNumber,
@@ -34203,7 +34221,7 @@ function matchesWorkOrderGlobalSearch(item) {
 
 function matchesServiceRequestGlobalSearch(item) {
   if (!globalQuery) return true;
-  const asset = getRawAsset(item.assetId);
+  const asset = getScopedAssetForRecord(item);
   return [
     formatServiceRequestNumber(item),
     item.serviceRequestNumber,
@@ -35886,7 +35904,7 @@ function renderHistoryItem(item, index) {
 }
 
 function renderWorkOrderItem(item) {
-  const asset = getAsset(item.assetId);
+  const asset = getScopedAssetForRecord(item);
   const customer = getCustomer(item.customerId);
   const locationRecord = getLocation(item.locationId);
   const assignedLabel = item.assignedUserName || getUser(item.assignedUserId)?.name || getUser(item.assignedUserId)?.username || "Unassigned";
@@ -36048,6 +36066,14 @@ function renderWorkOrderItem(item) {
       </div>
     </details>
   `;
+}
+
+function getScopedAssetForRecord(record = {}) {
+  const asset = getAsset(record.assetId);
+  if (!asset) return null;
+  if (record.customerId && asset.customerId !== record.customerId) return null;
+  if (record.locationId && asset.locationId !== record.locationId) return null;
+  return asset;
 }
 
 function renderWorkOrderJobCostPanel(workOrder = {}) {
@@ -36524,7 +36550,11 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
   const datalistId = `estimateLineItems-${estimate.id}`;
   const customer = getCustomer(estimate.customerId || workOrder?.customerId);
   const locationRecord = getLocation(estimate.locationId || workOrder?.locationId);
-  const asset = getAsset(estimate.assetId || workOrder?.assetId);
+  const asset = getScopedAssetForRecord({
+    assetId: estimate.assetId || workOrder?.assetId || "",
+    customerId: estimate.customerId || workOrder?.customerId || "",
+    locationId: estimate.locationId || workOrder?.locationId || ""
+  });
   const contextText = [
     workOrder.id ? formatIssueNumber(workOrder) : "Standalone quote",
     customer?.name,
@@ -36890,7 +36920,11 @@ function getEstimateDetails(estimateId = "") {
   if (!estimate) return null;
   const customer = getCustomer(estimate.customerId || workOrder?.customerId);
   const locationRecord = getLocation(estimate.locationId || workOrder?.locationId);
-  const asset = getAsset(estimate.assetId || workOrder?.assetId);
+  const asset = getScopedAssetForRecord({
+    assetId: estimate.assetId || workOrder?.assetId || "",
+    customerId: estimate.customerId || workOrder?.customerId || "",
+    locationId: estimate.locationId || workOrder?.locationId || ""
+  });
   const lines = normalizeEstimateLines(estimate.lines || []);
   return {
     estimate,
@@ -37471,7 +37505,7 @@ function renderCustomerCommunicationPanel(item = {}) {
 }
 
 function getIssueReportDetails(item) {
-  const asset = getAsset(item.assetId) || getRawAsset(item.assetId);
+  const asset = getScopedAssetForRecord(item);
   const customer = getCustomer(item.customerId);
   const locationRecord = getLocation(item.locationId);
   const assignedLabel = item.assignedUserName || getUser(item.assignedUserId)?.name || getUser(item.assignedUserId)?.username || "Unassigned";
@@ -38278,7 +38312,7 @@ async function sendServiceRequestAssignmentEmail(request, user) {
 }
 
 function getServiceRequestReportDetails(request) {
-  const asset = getAsset(request.assetId) || getRawAsset(request.assetId);
+  const asset = getScopedAssetForRecord(request);
   const customer = getCustomer(request.customerId);
   const locationRecord = getLocation(request.locationId);
   const assignedLabel = request.assignedUserName || getUser(request.assignedUserId)?.name || getUser(request.assignedUserId)?.username || "Unassigned";
@@ -39068,7 +39102,7 @@ function completedTicketRecords() {
     .map((workOrder) => ({
       type: "workOrder",
       workOrder,
-      asset: getAsset(workOrder.assetId),
+      asset: getScopedAssetForRecord(workOrder),
       customer: getCustomer(workOrder.customerId),
       location: getLocation(workOrder.locationId),
       completedAt: workOrder.resolvedAt || workOrder.updatedAt || workOrder.createdAt
