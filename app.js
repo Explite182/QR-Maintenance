@@ -27498,6 +27498,15 @@ function notificationDetailText(notification = {}) {
       notification.created_at ? formatDateTime(notification.created_at) : ""
     ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" | ");
   }
+  if (notification.type === "lighting-attention") {
+    return [
+      notification.message || "",
+      metadata.customerName || customer?.name || "",
+      metadata.locationName || location?.name || "",
+      metadata.equipmentName || "",
+      notification.created_at ? formatDateTime(notification.created_at) : ""
+    ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(" | ");
+  }
   if (notification.type === "breaker-trip" || notification.type === "esp-offline") {
     return [
       notification.message || "",
@@ -27577,6 +27586,7 @@ function renderNotificationCenterItem(notification = {}) {
   const isServerHealth = notification.type === "server-health";
   const isPumpAttention = notification.type === "pump-attention";
   const isHvacAttention = notification.type === "hvac-attention" || String(notification.type || "").startsWith("hvac-");
+  const isLightingAttention = notification.type === "lighting-attention";
   const isSynthetic = Boolean(notificationMetadata(notification).synthetic);
   return `
     <article class="notification-center-item is-${escapeAttribute(status)} is-${escapeAttribute(severity)}">
@@ -27590,7 +27600,8 @@ function renderNotificationCenterItem(notification = {}) {
         ${isServerHealth ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Server</button>` : ""}
         ${isPumpAttention ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Pump</button>` : ""}
         ${isHvacAttention ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open HVAC</button>` : ""}
-        ${!isBreakerTrip && !isPumpAttention && !isHvacAttention && ["esp-offline", "lighting-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
+        ${isLightingAttention ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open Lighting</button>` : ""}
+        ${!isBreakerTrip && !isPumpAttention && !isHvacAttention && !isLightingAttention && ["esp-offline", "lighting-offline", "key-overdue"].includes(notification.type) ? `<button type="button" class="secondary mini" data-notification-open="${escapeAttribute(notification.id)}">Open</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status === "active" ? `<button type="button" class="secondary mini" data-notification-ack="${escapeAttribute(notification.id)}">Ack</button>` : ""}
         ${!isBreakerTrip && !isSynthetic && status !== "resolved" ? `<button type="button" class="secondary mini" data-notification-resolve="${escapeAttribute(notification.id)}">Resolve</button>` : ""}
       </div>
@@ -27995,7 +28006,19 @@ function openServerNotification(id) {
       }, 50);
     }
     document.getElementById("monitoringPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  } else if (notification.type === "lighting-offline") {
+  } else if (notification.type === "lighting-offline" || notification.type === "lighting-attention") {
+    const targetCustomerId = notification.customer_id || notification.customerId || metadata.customerId || "";
+    const targetLocationId = notification.location_id || notification.locationId || metadata.locationId || "";
+    if (targetCustomerId && canSeeCustomer(targetCustomerId) && getCustomer(targetCustomerId)) {
+      selectedCustomerId = targetCustomerId;
+      selectedContractorCustomerId = targetCustomerId;
+      if (els.customerFilter) els.customerFilter.value = targetCustomerId;
+    }
+    if (targetLocationId && canSeeLocation(targetLocationId, targetCustomerId || selectedCustomerId) && getLocation(targetLocationId)) {
+      selectedLocationId = targetLocationId;
+      renderLocationOptions();
+      if (els.locationFilter) els.locationFilter.value = targetLocationId;
+    }
     setLightingAutomationTab("controllers");
     openAutomationSidebarTab("lighting");
     window.setTimeout(() => {
