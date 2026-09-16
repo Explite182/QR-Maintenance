@@ -274,6 +274,9 @@
           <button type="button" class="sidebar-nav-btn" data-open-target="workOrdersPanel" aria-expanded="false">
             <span>Open Jobs</span>
           </button>
+          <button type="button" class="sidebar-nav-btn" data-open-target="estimatesPanel" aria-expanded="false">
+            <span>Quotes / Estimates</span>
+          </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="customerPortalPanel" aria-expanded="false">
             <span>Customer Portal</span>
           </button>
@@ -1186,6 +1189,19 @@
         </div>
         <div id="serviceScheduleBoard" class="service-schedule-board" data-panel-body></div>
         <div id="workOrderList" class="work-order-list" data-panel-body></div>
+      </section>
+
+        <section id="estimatesPanel" class="work-orders-panel estimates-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+        <div class="section-title clickable-panel-title" data-panel-toggle="estimatesPanel">
+          <h2>Quotes / Estimates</h2>
+          <div class="panel-title-actions">
+            <span id="estimatesCount">0</span>
+          </div>
+        </div>
+        <div class="estimates-panel-body" data-panel-body>
+          <div id="standaloneEstimateCreate"></div>
+          <div id="estimatesList" class="estimates-list"></div>
+        </div>
       </section>
 
         <section id="billingQueuePanel" class="work-orders-panel billing-queue-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
@@ -2713,6 +2729,7 @@
     <div id="mobileCreateMenu" class="mobile-create-menu hidden" aria-label="Create new">
       <button type="button" data-mobile-create-action="newEquipment">Add Equipment</button>
       <button type="button" data-mobile-create-action="newTicket">Create Job</button>
+      <button type="button" data-mobile-create-action="newEstimate">Create Estimate</button>
       <button type="button" data-mobile-create-action="newServiceRequest">Create Service Call</button>
       <button type="button" data-mobile-create-action="newInventory">Add Inventory Item</button>
       <button type="button" data-mobile-create-action="newKey">Add Key</button>

@@ -17517,6 +17517,40 @@ button.asset-detail-card {
   gap: 10px;
 }
 
+.estimates-panel-body,
+.estimates-list {
+  display: grid;
+  gap: 14px;
+}
+
+.standalone-estimate-create {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(15, 32, 39, 0.05);
+}
+
+.standalone-estimate-create form {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.standalone-estimate-create label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.standalone-estimate-create input,
+.standalone-estimate-create select {
+  min-width: 0;
+}
+
 .estimate-create-form,
 .estimate-line-form {
   display: grid;
@@ -17912,6 +17946,7 @@ button.asset-detail-card {
   .schedule-ticket-form,
   .billing-review-form,
   .billing-line-form,
+  .standalone-estimate-create form,
   .estimate-create-form,
   .estimate-line-form,
   .estimate-line-row,
