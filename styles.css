@@ -8160,6 +8160,12 @@ textarea:disabled {
   background: #fef2f2;
 }
 
+.lighting-zone-card.is-feedback-fault {
+  border-color: #dc2626;
+  background: #fef2f2;
+  box-shadow: inset 4px 0 0 #dc2626;
+}
+
 .lighting-zone-card.is-warning summary strong {
   color: #7c4a03;
   background: #facc15;
@@ -8675,6 +8681,12 @@ textarea:disabled {
   border-color: rgba(252, 165, 165, 0.8);
   color: #fecaca;
   background: #7f1d1d;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card.is-feedback-fault {
+  border-color: rgba(248, 113, 113, 0.95);
+  background: linear-gradient(180deg, rgba(69, 10, 10, 0.96), rgba(30, 8, 10, 0.98));
+  box-shadow: inset 5px 0 0 #ef4444, 0 0 18px rgba(239, 68, 68, 0.18);
 }
 
 @media (max-width: 640px) {

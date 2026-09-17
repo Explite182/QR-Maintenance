@@ -13812,8 +13812,6 @@ function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
   const lastSeenAt = getLightingControllerLastActivityAt(controller);
   const lastSeenTime = Date.parse(lastSeenAt);
   const outputSafety = controller.outputSafety || controller.data?.outputSafety || {};
-  const clockHealth = controller.clockHealth || controller.data?.clockHealth || diagnostics.lastClockSync || {};
-  const timedOverride = controller.timedOverride || controller.data?.timedOverride || {};
   const lockoutMask = Number(outputSafety.lockoutMask || 0) || 0;
   if (lockoutMask > 0) {
     return {
@@ -13851,6 +13849,17 @@ function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
   const ageMs = Math.max(0, nowMs - lastSeenTime);
   const relativeText = formatLightingControllerSeenAge(ageMs);
   if (ageMs <= LIGHTING_CONTROLLER_ONLINE_WINDOW_MS) {
+    const feedbackMismatches = getLightingControllerFeedbackMismatches(controller);
+    if (feedbackMismatches.length) {
+      return {
+        label: "Needs attention",
+        className: "is-warning",
+        lastSeenAt,
+        ageMs,
+        relativeText,
+        detail: `${feedbackMismatches.length} relay confirmation mismatch${feedbackMismatches.length === 1 ? "" : "es"}: ${feedbackMismatches.map((zone) => zone.name || `output ${zone.outputNumber || zone.output_number || "?"}`).join(", ")}.`
+      };
+    }
     return {
       label: "Online",
       className: "is-online",
@@ -13907,6 +13916,8 @@ function getLightingNetworkSummary() {
   const onlineCount = controllerHealth.filter((health) => health.label === "Online").length;
   const checkingCount = controllerHealth.filter((health) => health.label === "Checking").length;
   const offlineCount = controllerHealth.filter((health) => health.label === "Offline").length;
+  const faultCount = controllerHealth.filter((health) => ["Needs attention", "Safety lockout", "Restart fault"].includes(health.label)).length;
+  if (faultCount) return { label: `Alarm ${faultCount}/${total}`, className: "is-warning" };
   if (onlineCount) return { label: `Online ${onlineCount}/${total}`, className: "is-on" };
   if (checkingCount) return { label: `Checking ${checkingCount}/${total}`, className: "is-checking" };
   if (offlineCount) return { label: `Offline ${offlineCount}/${total}`, className: "is-offline" };
@@ -13919,7 +13930,7 @@ function renderLightingNetworkSummary() {
   const summary = getLightingNetworkSummary();
   if (value) value.textContent = summary.label;
   if (card) {
-    card.classList.remove("is-on", "is-warning", "is-checking", "is-offline", "is-setup");
+    card.classList.remove("is-on", "is-warning", "is-fault", "is-checking", "is-offline", "is-setup");
     card.classList.add(summary.className);
   }
   renderLightingPhysicalStatus(summary);
@@ -13944,8 +13955,8 @@ function renderLightingPhysicalStatus(summary = getLightingNetworkSummary()) {
     hmiStatus.className = summary.className || "";
   }
   const hasPower = summary.label !== "Select location" && summary.label !== "No controllers";
-  const isOnline = summary.className === "is-on" || summary.className === "is-checking" || summary.className === "is-setup";
-  const hasAlarm = summary.className === "is-offline";
+  const isOnline = summary.className === "is-on" || summary.className === "is-warning" || summary.className === "is-checking" || summary.className === "is-setup";
+  const hasAlarm = summary.className === "is-warning" || summary.className === "is-fault" || summary.className === "is-offline";
   const hasOverride = getVisibleLightingOverrides(lightingOverridesCache).some((override) => getLightingOverrideIsActive(override));
   setLightingLedState("power", hasPower);
   setLightingLedState("status", isOnline);
@@ -14781,6 +14792,13 @@ function getLightingZoneFeedbackStatus(zone = {}) {
   };
 }
 
+function getLightingControllerFeedbackMismatches(controller = {}) {
+  return lightingZonesCache.filter((zone) => {
+    if (String(zone.controllerId || zone.controller_id || "") !== String(controller.id || "")) return false;
+    return getLightingZoneFeedbackStatus(zone)?.className === "is-mismatch";
+  });
+}
+
 function getLightingZoneInputEffect(zone = {}) {
   const { scopeKey } = getLightingScopeDetails();
   if (lightingInputsLoadedScope !== scopeKey) return null;
@@ -14949,10 +14967,10 @@ function renderLightingZones() {
     const displayedState = priorityDecision.source === "Zone setting" || priorityDecision.source === "Schedule/default"
       ? priorityDecision.state
       : `${priorityDecision.state} by ${priorityDecision.source.toLowerCase()}`;
-    const stateClass = `${String(priorityDecision.state || state).toLowerCase() === "on" ? "is-on" : ""} ${priorityDecision.className || ""}`.trim();
+    const feedbackStatus = getLightingZoneFeedbackStatus(zone);
+    const stateClass = `${String(priorityDecision.state || state).toLowerCase() === "on" ? "is-on" : ""} ${priorityDecision.className || ""} ${feedbackStatus?.className === "is-mismatch" ? "is-feedback-fault" : ""}`.trim();
     const isEditing = zone.id === editingLightingZoneId;
     const isOpen = zone.id && openLightingZoneDetails.has(zone.id);
-    const feedbackStatus = getLightingZoneFeedbackStatus(zone);
     if (isEditing) {
       return `
         <details class="lighting-zone-card ${stateClass}" open>
