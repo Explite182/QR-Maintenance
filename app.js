@@ -11100,7 +11100,7 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  const openWorkDrawer = document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)");
+  const openWorkDrawer = getOpenWorkRecordDrawer();
   if (openWorkDrawer && !openWorkDrawer.contains(event.target)) {
     event.preventDefault();
     closeFocusedWorkDrawer(openWorkDrawer);
@@ -16870,7 +16870,8 @@ function closeSelectedAssetDrawers() {
 }
 
 function getOpenWorkRecordDrawer() {
-  return document.querySelector(".work-order-drawer[open]:not(.completed-pm-item)");
+  return Array.from(document.querySelectorAll(".work-order-drawer[open]:not(.completed-pm-item)"))
+    .find((drawer) => drawer.getClientRects().length > 0) || null;
 }
 
 function workSubDrawerKey(drawer = null) {
