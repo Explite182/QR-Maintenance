@@ -15125,6 +15125,8 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
   const restartMonitor = controller.restartMonitor || controller.data?.restartMonitor || {};
   const boot = controller.bootDiagnostics || controller.data?.bootDiagnostics || {};
   const outputSafety = controller.outputSafety || controller.data?.outputSafety || {};
+  const clockHealth = controller.clockHealth || controller.data?.clockHealth || diagnostics.lastClockSync || {};
+  const timedOverride = controller.timedOverride || controller.data?.timedOverride || {};
   const offlineState = controller.offlineState || controller.data?.offlineState || {};
   const eventLog = Array.isArray(controller.eventLog || controller.data?.eventLog) ? (controller.eventLog || controller.data?.eventLog) : [];
   const commandText = diagnostics.lastCommandAck
