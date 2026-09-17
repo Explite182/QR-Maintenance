@@ -9656,6 +9656,16 @@ textarea:disabled {
   background: #fffbeb;
 }
 
+.lighting-controller-card.is-warning {
+  border-color: rgba(245, 158, 11, 0.55);
+  background: #fffbeb;
+}
+
+.lighting-controller-card.is-fault {
+  border-color: rgba(185, 28, 28, 0.5);
+  background: #fff1f2;
+}
+
 .lighting-controller-card.is-offline {
   border-color: rgba(185, 28, 28, 0.35);
   background: #fff5f5;
@@ -9708,6 +9718,18 @@ textarea:disabled {
   border-color: #fcd34d;
   background: #fffbeb;
   color: #92400e;
+}
+
+.lighting-controller-status-pill.is-warning {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.lighting-controller-status-pill.is-fault {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .lighting-controller-status-pill.is-offline {

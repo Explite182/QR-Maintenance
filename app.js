@@ -13802,6 +13802,19 @@ function getLightingControllerLastActivityAt(controller = {}) {
 function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
   const lastSeenAt = getLightingControllerLastActivityAt(controller);
   const lastSeenTime = Date.parse(lastSeenAt);
+  const restartMonitor = controller.restartMonitor || controller.data?.restartMonitor || {};
+  const restartStatus = String(restartMonitor.status || "").toLowerCase();
+  const restartCount = Number(restartMonitor.restartCountLast15m || 0) || 0;
+  if (["warning", "critical"].includes(restartStatus) && restartCount > 0) {
+    return {
+      label: restartStatus === "critical" ? "Restart fault" : "Needs attention",
+      className: restartStatus === "critical" ? "is-fault" : "is-warning",
+      lastSeenAt,
+      ageMs: Number.isFinite(lastSeenTime) ? Math.max(0, nowMs - lastSeenTime) : null,
+      relativeText: Number.isFinite(lastSeenTime) ? formatLightingControllerSeenAge(Math.max(0, nowMs - lastSeenTime)) : "Recently restarted",
+      detail: `${restartCount} restart${restartCount === 1 ? "" : "s"} detected in the last 15 minutes.`
+    };
+  }
   if (!lastSeenAt || !Number.isFinite(lastSeenTime)) {
     return {
       label: "Setup only",
@@ -15035,6 +15048,7 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
   const command = diagnostics.lastCommandAck || diagnostics.lastCommandPoll || {};
   const firmware = diagnostics.lastFirmwareStatus || diagnostics.lastFirmwareCheck || {};
   const network = diagnostics.lastNetwork || {};
+  const restartMonitor = controller.restartMonitor || controller.data?.restartMonitor || {};
   const commandText = diagnostics.lastCommandAck
     ? `O${command.outputNumber || "?"} ${command.desiredState || "command"} ${command.status || ""}`.trim()
     : "Poll checked";
@@ -15063,6 +15077,7 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
         <span>Last command <strong>${escapeHtml(command.checkedAt ? `${commandText} | ${formatLightingDiagnosticTime(command.checkedAt)}` : "Not reported yet")}</strong></span>
         <span>Firmware check <strong>${escapeHtml(firmware.checkedAt ? `${firmwareText} | ${formatLightingDiagnosticTime(firmware.checkedAt)}` : "Not reported yet")}</strong></span>
         <span>Network <strong>${escapeHtml(`${controller.networkType || network.type || "network"} | uptime ${uptimeText}`)}</strong></span>
+        <span>Restart monitor <strong>${escapeHtml(restartMonitor.restartCountLast15m ? `${restartMonitor.restartCountLast15m} in the last 15 min${restartMonitor.lastRestartAt ? ` | last ${formatLightingDiagnosticTime(restartMonitor.lastRestartAt)}` : ""}` : "No recent restarts")}</strong></span>
       </div>
     </details>
   `;
