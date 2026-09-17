@@ -13802,6 +13802,18 @@ function getLightingControllerLastActivityAt(controller = {}) {
 function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
   const lastSeenAt = getLightingControllerLastActivityAt(controller);
   const lastSeenTime = Date.parse(lastSeenAt);
+  const outputSafety = controller.outputSafety || controller.data?.outputSafety || {};
+  const lockoutMask = Number(outputSafety.lockoutMask || 0) || 0;
+  if (lockoutMask > 0) {
+    return {
+      label: "Safety lockout",
+      className: "is-fault",
+      lastSeenAt,
+      ageMs: Number.isFinite(lastSeenTime) ? Math.max(0, nowMs - lastSeenTime) : null,
+      relativeText: Number.isFinite(lastSeenTime) ? formatLightingControllerSeenAge(Math.max(0, nowMs - lastSeenTime)) : "Recently reported",
+      detail: `Output lockout mask ${lockoutMask}; excessive switching was blocked.`
+    };
+  }
   const restartMonitor = controller.restartMonitor || controller.data?.restartMonitor || {};
   const restartStatus = String(restartMonitor.status || "").toLowerCase();
   const restartCount = Number(restartMonitor.restartCountLast15m || 0) || 0;
@@ -15051,6 +15063,8 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
   const firmware = diagnostics.lastFirmwareStatus || diagnostics.lastFirmwareCheck || {};
   const network = diagnostics.lastNetwork || {};
   const restartMonitor = controller.restartMonitor || controller.data?.restartMonitor || {};
+  const boot = controller.bootDiagnostics || controller.data?.bootDiagnostics || {};
+  const outputSafety = controller.outputSafety || controller.data?.outputSafety || {};
   const commandText = diagnostics.lastCommandAck
     ? `O${command.outputNumber || "?"} ${command.desiredState || "command"} ${command.status || ""}`.trim()
     : "Poll checked";
@@ -15081,6 +15095,8 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
         <span>Firmware check <strong>${escapeHtml(firmware.checkedAt ? `${firmwareText} | ${formatLightingDiagnosticTime(firmware.checkedAt)}` : "Not reported yet")}</strong></span>
         <span>Network <strong>${escapeHtml(`${controller.networkType || network.type || "network"} | uptime ${uptimeText}`)}</strong></span>
         <span>Restart monitor <strong>${escapeHtml(restartMonitor.restartCountLast15m ? `${restartMonitor.restartCountLast15m} in the last 15 min${restartMonitor.lastRestartAt ? ` | last ${formatLightingDiagnosticTime(restartMonitor.lastRestartAt)}` : ""}` : "No recent restarts")}</strong></span>
+        <span>Last boot <strong>${escapeHtml(boot.resetReason ? `${boot.resetReason} | previous uptime ${formatLightingControllerSeenAge(Number(boot.previousUptimeMs || 0))}` : "Not reported yet")}</strong></span>
+        <span>Output safety <strong>${escapeHtml(outputSafety.lockoutMask ? `LOCKED | mask ${outputSafety.lockoutMask} | ${outputSafety.lastError || "excessive switching"}` : `Ready${outputSafety.blockedChangeCount ? ` | ${outputSafety.blockedChangeCount} blocked change(s)` : ""}`)}</strong></span>
       </div>
     </details>
   `;
