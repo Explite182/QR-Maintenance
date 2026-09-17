@@ -15110,7 +15110,11 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
         <span>Last boot <strong>${escapeHtml(boot.resetReason ? `${boot.resetReason} | previous uptime ${formatLightingControllerSeenAge(Number(boot.previousUptimeMs || 0))}` : "Not reported yet")}</strong></span>
         <span>Output safety <strong>${escapeHtml(outputSafety.lockoutMask ? `LOCKED | mask ${outputSafety.lockoutMask} | ${outputSafety.lastError || "excessive switching"}` : `Ready${outputSafety.blockedChangeCount ? ` | ${outputSafety.blockedChangeCount} blocked change(s)` : ""}`)}</strong></span>
         <span>Offline behavior <strong>${escapeHtml(offlineState.active ? offlineState.summary || "Active" : "Cloud connected")}</strong></span>
-        <span>Persistent log <strong>${escapeHtml(eventLog.length ? `${eventLog.length} event(s) | latest: ${eventLog[eventLog.length - 1]?.type || "event"} - ${eventLog[eventLog.length - 1]?.detail || ""}` : "No device events reported yet")}</strong></span>
+        <span>Persistent log <strong>${escapeHtml(eventLog.length ? `${eventLog.length} event(s)` : "No device events reported yet")}</strong></span>
+        ${eventLog.length ? `<details class="lighting-device-event-log">
+          <summary>Recent device events</summary>
+          <div>${eventLog.slice(-12).reverse().map((event) => `<span><strong>${escapeHtml(event.type || "event")}</strong> ${escapeHtml(event.detail || "")}${event.uptimeMs ? ` <small>at ${escapeHtml(Math.round(Number(event.uptimeMs) / 1000))}s uptime</small>` : ""}</span>`).join("")}</div>
+        </details>` : ""}
       </div>
     </details>
   `;
