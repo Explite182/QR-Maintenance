@@ -8097,7 +8097,7 @@ textarea:disabled {
 
 .lighting-zone-card summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: center;
   min-height: 58px;
@@ -8128,6 +8128,36 @@ textarea:disabled {
 
 .lighting-zone-card.is-on summary strong {
   background: #0f8f66;
+}
+
+.lighting-zone-card summary .lighting-zone-feedback {
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #475569;
+  background: #f8fafc;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.lighting-zone-card summary .lighting-zone-feedback.is-made {
+  border-color: #6ee7b7;
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.lighting-zone-card summary .lighting-zone-feedback.is-not-made {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.lighting-zone-card summary .lighting-zone-feedback.is-mismatch {
+  border-color: #fca5a5;
+  color: #b91c1c;
+  background: #fef2f2;
 }
 
 .lighting-zone-card.is-warning summary strong {
@@ -8627,6 +8657,36 @@ textarea:disabled {
 
 .lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card summary span {
   color: #f8fafc;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card summary .lighting-zone-feedback {
+  border-color: rgba(148, 163, 184, 0.42);
+  color: #cbd5e1;
+  background: #111827;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card summary .lighting-zone-feedback.is-made {
+  border-color: rgba(110, 231, 183, 0.72);
+  color: #a7f3d0;
+  background: #064e3b;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card summary .lighting-zone-feedback.is-mismatch {
+  border-color: rgba(252, 165, 165, 0.8);
+  color: #fecaca;
+  background: #7f1d1d;
+}
+
+@media (max-width: 640px) {
+  .lighting-zone-card summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .lighting-zone-card summary .lighting-zone-feedback {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+  }
 }
 
 .lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card summary strong {

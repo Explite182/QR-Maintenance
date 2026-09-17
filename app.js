@@ -13812,6 +13812,8 @@ function getLightingControllerHealth(controller = {}, nowMs = Date.now()) {
   const lastSeenAt = getLightingControllerLastActivityAt(controller);
   const lastSeenTime = Date.parse(lastSeenAt);
   const outputSafety = controller.outputSafety || controller.data?.outputSafety || {};
+  const clockHealth = controller.clockHealth || controller.data?.clockHealth || diagnostics.lastClockSync || {};
+  const timedOverride = controller.timedOverride || controller.data?.timedOverride || {};
   const lockoutMask = Number(outputSafety.lockoutMask || 0) || 0;
   if (lockoutMask > 0) {
     return {
@@ -14738,11 +14740,45 @@ function getLightingZoneFeedbackSummary(zone = {}) {
   if (!inputs.length) return "";
   return inputs.map((input) => {
     const inputNumber = input.inputNumber || input.input_number || "?";
-    const state = getLightingInputHasLiveState(input)
-      ? (getLightingInputIsActive(input) ? "made" : "not made")
-      : "waiting";
+    const activeStateIsClosed = String(input.activeState || input.active_state || "Closed").toLowerCase() !== "open";
+    const contactMade = activeStateIsClosed ? getLightingInputIsActive(input) : !getLightingInputIsActive(input);
+    const state = getLightingInputHasLiveState(input) ? (contactMade ? "made" : "not made") : "waiting";
     return `DI${inputNumber} ${input.label || "relay feedback"} ${state}`;
   }).join(" | ");
+}
+
+function getLightingZoneFeedbackStatus(zone = {}) {
+  const inputs = getLightingZoneFeedbackInputs(zone);
+  if (!inputs.length) return null;
+  const input = inputs[0];
+  if (!getLightingInputHasLiveState(input)) {
+    return { label: "Feedback waiting", className: "is-waiting" };
+  }
+  const activeStateIsClosed = String(input.activeState || input.active_state || "Closed").toLowerCase() !== "open";
+  const contactMade = activeStateIsClosed ? getLightingInputIsActive(input) : !getLightingInputIsActive(input);
+  const controller = getLightingControllerById(zone.controllerId || zone.controller_id || "");
+  const reportedOutputs = controller?.lightingOutputs || controller?.data?.lightingOutputs || [];
+  const reportedOutput = reportedOutputs.find((output) => (
+    Number(output.outputNumber || output.output_number) === Number(zone.outputNumber || zone.output_number)
+  ));
+  const outputState = String(reportedOutput?.state || "").toLowerCase();
+  if (!outputState) {
+    return {
+      label: contactMade ? "Contact made" : "Contact not made",
+      className: contactMade ? "is-made" : "is-not-made"
+    };
+  }
+  const outputIsOn = outputState === "on" || outputState === "true" || outputState === "1";
+  if (outputIsOn !== contactMade) {
+    return {
+      label: `Mismatch: contact ${contactMade ? "made" : "not made"}`,
+      className: "is-mismatch"
+    };
+  }
+  return {
+    label: outputIsOn ? "Confirmed ON" : "Confirmed OFF",
+    className: outputIsOn ? "is-made" : "is-not-made"
+  };
 }
 
 function getLightingZoneInputEffect(zone = {}) {
@@ -14916,6 +14952,7 @@ function renderLightingZones() {
     const stateClass = `${String(priorityDecision.state || state).toLowerCase() === "on" ? "is-on" : ""} ${priorityDecision.className || ""}`.trim();
     const isEditing = zone.id === editingLightingZoneId;
     const isOpen = zone.id && openLightingZoneDetails.has(zone.id);
+    const feedbackStatus = getLightingZoneFeedbackStatus(zone);
     if (isEditing) {
       return `
         <details class="lighting-zone-card ${stateClass}" open>
@@ -14965,7 +15002,11 @@ function renderLightingZones() {
     }
     return `
       <details class="lighting-zone-card ${stateClass}" data-lighting-zone-details="${escapeHtml(zone.id)}"${isOpen ? " open" : ""}>
-        <summary><span>${escapeHtml(zone.name)}</span><strong>${escapeHtml(displayedState)}</strong></summary>
+        <summary>
+          <span>${escapeHtml(zone.name)}</span>
+          ${feedbackStatus ? `<span class="lighting-zone-feedback ${feedbackStatus.className}">${escapeHtml(feedbackStatus.label)}</span>` : ""}
+          <strong>${escapeHtml(displayedState)}</strong>
+        </summary>
         <div class="lighting-zone-details">
           <span>Mode <strong>${escapeHtml(zone.mode || "Auto")}</strong></span>
           <span>Controller <strong>${escapeHtml(zone.controllerName || getLightingControllerById(zone.controllerId)?.name || "Not assigned")}</strong></span>
@@ -15118,6 +15159,8 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
         <span>Restart monitor <strong>${escapeHtml(restartMonitor.restartCountLast15m ? `${restartMonitor.restartCountLast15m} in the last 15 min${restartMonitor.lastRestartAt ? ` | last ${formatLightingDiagnosticTime(restartMonitor.lastRestartAt)}` : ""}` : "No recent restarts")}</strong></span>
         <span>Last boot <strong>${escapeHtml(boot.resetReason ? `${boot.resetReason} | previous uptime ${formatLightingControllerSeenAge(Number(boot.previousUptimeMs || 0))}` : "Not reported yet")}</strong></span>
         <span>Output safety <strong>${escapeHtml(outputSafety.lockoutMask ? `LOCKED | mask ${outputSafety.lockoutMask} | ${outputSafety.lastError || "excessive switching"}` : `Ready${outputSafety.blockedChangeCount ? ` | ${outputSafety.blockedChangeCount} blocked change(s)` : ""}`)}</strong></span>
+        <span>Clock health <strong>${escapeHtml(clockHealth.checkedAt ? `${clockHealth.healthy ? "Synchronized" : "FAULT"} | ${clockHealth.localTime || clockHealth.status || "Time unavailable"}${Number.isFinite(Number(clockHealth.skewSeconds)) ? ` | skew ${clockHealth.skewSeconds}s` : ""}` : "Not reported yet")}</strong></span>
+        <span>Timed override <strong>${escapeHtml(timedOverride.active ? `Active | output mask ${timedOverride.outputMask || 0} | ${Math.ceil(Number(timedOverride.remainingSeconds || 0) / 60)} min remaining` : "Inactive")}</strong></span>
         <span>Offline behavior <strong>${escapeHtml(offlineState.active ? offlineState.summary || "Active" : "Cloud connected")}</strong></span>
         <span>Persistent log <strong>${escapeHtml(eventLog.length ? `${eventLog.length} event(s)` : "No device events reported yet")}</strong></span>
         ${eventLog.length ? `<details class="lighting-device-event-log" data-lighting-device-event-log="${escapeHtml(controllerId)}"${openLightingControllerEventLogs.has(controllerId) ? " open" : ""}>
@@ -16148,8 +16191,11 @@ function renderLightingInputs() {
           </label>
           <label>Action
             <select name="action">
-              ${["No action", "Monitor relay feedback", "Turn zone on", "Turn zone off", "Press turns zone on", "Press turns zone off", "Hold off when active", "Allow schedule when active", "Manual override on", "Manual override off"].map((action) => `<option value="${action}"${action === input.action ? " selected" : ""}>${action}</option>`).join("")}
+              ${["No action", "Monitor relay feedback", "Timed override", "Press toggles zone", "Turn zone on", "Turn zone off", "Press turns zone on", "Press turns zone off", "Hold off when active", "Allow schedule when active", "Manual override on", "Manual override off"].map((action) => `<option value="${action}"${action === input.action ? " selected" : ""}>${action}</option>`).join("")}
             </select>
+          </label>
+          <label>Override duration (minutes)
+            <input name="durationMinutes" type="number" min="1" max="720" value="${escapeHtml(input.durationMinutes || input.data?.durationMinutes || 120)}">
           </label>
           <label>Time window
             <select name="windowMode">
@@ -16224,6 +16270,7 @@ function renderLightingInputs() {
           <span>Active when <strong>${escapeHtml(input.activeState || "Closed")}</strong></span>
           <span>Target <strong>${escapeHtml(targetName)}</strong></span>
           <span>Action <strong>${escapeHtml(actionText)}</strong></span>
+          ${String(input.action || "").toLowerCase() === "timed override" ? `<span>Override duration <strong>${escapeHtml(input.durationMinutes || input.data?.durationMinutes || 120)} minutes</strong></span>` : ""}
           <span>Time window <strong>${escapeHtml(getLightingInputWindowDescription(input))}</strong></span>
           <span>Contact <strong>${escapeHtml(contactText)}</strong></span>
           <span>Live state <strong>${escapeHtml(liveText)}</strong></span>
@@ -16270,6 +16317,7 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
     label: String(formData.get("label") || "").trim(),
     activeState: String(formData.get("activeState") || "Closed").trim(),
     action: String(formData.get("action") || "No action").trim(),
+    durationMinutes: Math.max(1, Math.min(720, Number(formData.get("durationMinutes") || 120) || 120)),
     windowMode,
     windowStart,
     windowEnd,
@@ -16301,7 +16349,8 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
         zoneName: input.zoneName,
         windowMode: input.windowMode,
         windowStart: input.windowStart,
-        windowEnd: input.windowEnd
+        windowEnd: input.windowEnd,
+        durationMinutes: input.durationMinutes
       }
     });
     if (!response.ok) throw new Error(`Lighting input save failed: ${response.status}`);
