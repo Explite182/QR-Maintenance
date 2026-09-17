@@ -6463,6 +6463,7 @@ let editingLightingControllerId = "";
 let lightingLiveRefreshActive = false;
 let pendingLightingApiKey = null;
 const openLightingControllerDiagnostics = new Set();
+const openLightingControllerEventLogs = new Set();
 let lightingZonesCache = [];
 let lightingZonesLoadedScope = "";
 let lightingZonesLoading = false;
@@ -10187,6 +10188,14 @@ document.addEventListener("toggle", (event) => {
     } else {
       openLightingZoneDetails.delete(zoneId);
     }
+    return;
+  }
+  const eventLog = event.target.closest?.("[data-lighting-device-event-log]");
+  if (eventLog) {
+    const controllerId = eventLog.dataset.lightingDeviceEventLog || "";
+    if (!controllerId) return;
+    if (eventLog.open) openLightingControllerEventLogs.add(controllerId);
+    else openLightingControllerEventLogs.delete(controllerId);
     return;
   }
   const diagnostics = event.target.closest?.("[data-lighting-controller-diagnostics]");
@@ -15111,7 +15120,7 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
         <span>Output safety <strong>${escapeHtml(outputSafety.lockoutMask ? `LOCKED | mask ${outputSafety.lockoutMask} | ${outputSafety.lastError || "excessive switching"}` : `Ready${outputSafety.blockedChangeCount ? ` | ${outputSafety.blockedChangeCount} blocked change(s)` : ""}`)}</strong></span>
         <span>Offline behavior <strong>${escapeHtml(offlineState.active ? offlineState.summary || "Active" : "Cloud connected")}</strong></span>
         <span>Persistent log <strong>${escapeHtml(eventLog.length ? `${eventLog.length} event(s)` : "No device events reported yet")}</strong></span>
-        ${eventLog.length ? `<details class="lighting-device-event-log">
+        ${eventLog.length ? `<details class="lighting-device-event-log" data-lighting-device-event-log="${escapeHtml(controllerId)}"${openLightingControllerEventLogs.has(controllerId) ? " open" : ""}>
           <summary>Recent device events</summary>
           <div>${eventLog.slice(-12).reverse().map((event) => `<span><strong>${escapeHtml(event.type || "event")}</strong> ${escapeHtml(event.detail || "")}${event.uptimeMs ? ` <small>at ${escapeHtml(Math.round(Number(event.uptimeMs) / 1000))}s uptime</small>` : ""}</span>`).join("")}</div>
         </details>` : ""}
