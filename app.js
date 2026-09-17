@@ -14983,8 +14983,9 @@ function renderLightingControllerOutputSummary(controller = {}) {
   if (!zones.length) {
     return `<span>Outputs <strong>No zones mapped yet</strong></span>`;
   }
+  const reportedOutputs = controller.lightingOutputs || controller.data?.lightingOutputs || [];
   return `<span>Outputs <strong>${zones.map((zone) => (
-    `O${escapeHtml(zone.outputNumber || "?")}: ${escapeHtml(zone.name || "Zone")}`
+    `O${escapeHtml(zone.outputNumber || "?")}: ${escapeHtml(zone.name || "Zone")} ${escapeHtml((reportedOutputs.find((output) => Number(output.outputNumber) === Number(zone.outputNumber))?.state || zone.actualState || zone.actual_state || zone.desiredState || zone.desired_state || "Unknown"))}`
   )).join(" | ")}</strong></span>`;
 }
 
@@ -15045,6 +15046,7 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
   const detailSummary = `${health.label} | ${zones} zone${zones === 1 ? "" : "s"} | ${inputs} input${inputs === 1 ? "" : "s"}`;
   const config = diagnostics.lastConfigSync || {};
   const input = diagnostics.lastInputSync || {};
+  const output = diagnostics.lastOutputSync || {};
   const command = diagnostics.lastCommandAck || diagnostics.lastCommandPoll || {};
   const firmware = diagnostics.lastFirmwareStatus || diagnostics.lastFirmwareCheck || {};
   const network = diagnostics.lastNetwork || {};
@@ -15074,6 +15076,7 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
         ${renderLightingControllerActiveControlSummary(controller)}
         <span>Config sync <strong>${escapeHtml(config.checkedAt ? `${formatLightingDiagnosticTime(config.checkedAt)} | ${config.rules || 0} rule(s)` : "Not reported yet")}</strong></span>
         <span>Input report <strong>${escapeHtml(input.checkedAt ? `${formatLightingDiagnosticTime(input.checkedAt)} | ${input.activeCount || 0}/${input.inputCount || 0} active${activeInputs}` : "Not reported yet")}</strong></span>
+        <span>Output report <strong>${escapeHtml(output.checkedAt ? `${formatLightingDiagnosticTime(output.checkedAt)} | mask ${output.outputMask || 0}${output.source ? ` | ${output.source}` : ""}` : "Not reported yet")}</strong></span>
         <span>Last command <strong>${escapeHtml(command.checkedAt ? `${commandText} | ${formatLightingDiagnosticTime(command.checkedAt)}` : "Not reported yet")}</strong></span>
         <span>Firmware check <strong>${escapeHtml(firmware.checkedAt ? `${firmwareText} | ${formatLightingDiagnosticTime(firmware.checkedAt)}` : "Not reported yet")}</strong></span>
         <span>Network <strong>${escapeHtml(`${controller.networkType || network.type || "network"} | uptime ${uptimeText}`)}</strong></span>
