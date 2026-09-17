@@ -14934,6 +14934,15 @@ function renderLightingZones() {
             <label>Brightness %
               <input name="brightnessLevel" type="number" min="0" max="100" step="5" value="${escapeHtml(brightnessLevel)}">
             </label>
+            <label>When cloud is offline
+              <select name="offlineBehavior">
+                ${[
+                  ["continue-schedule", "Continue local schedule"],
+                  ["hold", "Hold current state"],
+                  ["safe-off", "Force safe off"]
+                ].map(([value, label]) => `<option value="${value}"${value === (zone.offlineBehavior || zone.data?.offlineBehavior || "continue-schedule") ? " selected" : ""}>${label}</option>`).join("")}
+              </select>
+            </label>
             <label>Notes
               <textarea name="notes" rows="2">${escapeHtml(zone.notes || "")}</textarea>
             </label>
@@ -14954,6 +14963,7 @@ function renderLightingZones() {
           <span>Output <strong>${escapeHtml(zone.outputNumber || "Not assigned")}</strong></span>
           <span>Brightness <strong>${escapeHtml(getLightingZoneBrightnessLabel(zone))}</strong></span>
           <span>Status <strong>${escapeHtml(zone.status || "Setup only")}</strong></span>
+          <span>Cloud outage <strong>${escapeHtml(({ "continue-schedule": "Continue local schedule", hold: "Hold current state", "safe-off": "Force safe off" })[zone.offlineBehavior || zone.data?.offlineBehavior || "continue-schedule"])}</strong></span>
           <span class="lighting-priority-effect">Active rule <strong>${escapeHtml(priorityDecision.source)}: ${escapeHtml(priorityDecision.details.join(" | "))}</strong></span>
           ${overrideEffect ? `<span class="lighting-override-effect">Override <strong>${escapeHtml(overrideEffect.text)}</strong></span>` : ""}
               ${inputEffect ? `<span class="lighting-input-effect">Input control <strong>${escapeHtml(inputEffect.text)}</strong></span>` : ""}
@@ -15065,6 +15075,8 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
   const restartMonitor = controller.restartMonitor || controller.data?.restartMonitor || {};
   const boot = controller.bootDiagnostics || controller.data?.bootDiagnostics || {};
   const outputSafety = controller.outputSafety || controller.data?.outputSafety || {};
+  const offlineState = controller.offlineState || controller.data?.offlineState || {};
+  const eventLog = Array.isArray(controller.eventLog || controller.data?.eventLog) ? (controller.eventLog || controller.data?.eventLog) : [];
   const commandText = diagnostics.lastCommandAck
     ? `O${command.outputNumber || "?"} ${command.desiredState || "command"} ${command.status || ""}`.trim()
     : "Poll checked";
@@ -15097,6 +15109,8 @@ function renderLightingControllerDiagnostics(controller = {}, controllerHealth =
         <span>Restart monitor <strong>${escapeHtml(restartMonitor.restartCountLast15m ? `${restartMonitor.restartCountLast15m} in the last 15 min${restartMonitor.lastRestartAt ? ` | last ${formatLightingDiagnosticTime(restartMonitor.lastRestartAt)}` : ""}` : "No recent restarts")}</strong></span>
         <span>Last boot <strong>${escapeHtml(boot.resetReason ? `${boot.resetReason} | previous uptime ${formatLightingControllerSeenAge(Number(boot.previousUptimeMs || 0))}` : "Not reported yet")}</strong></span>
         <span>Output safety <strong>${escapeHtml(outputSafety.lockoutMask ? `LOCKED | mask ${outputSafety.lockoutMask} | ${outputSafety.lastError || "excessive switching"}` : `Ready${outputSafety.blockedChangeCount ? ` | ${outputSafety.blockedChangeCount} blocked change(s)` : ""}`)}</strong></span>
+        <span>Offline behavior <strong>${escapeHtml(offlineState.active ? offlineState.summary || "Active" : "Cloud connected")}</strong></span>
+        <span>Persistent log <strong>${escapeHtml(eventLog.length ? `${eventLog.length} event(s) | latest: ${eventLog[eventLog.length - 1]?.type || "event"} - ${eventLog[eventLog.length - 1]?.detail || ""}` : "No device events reported yet")}</strong></span>
       </div>
     </details>
   `;
@@ -16704,6 +16718,7 @@ async function saveLightingZoneFromForm(form, existingZoneId = "") {
     mode: String(formData.get("mode") || "Auto").trim(),
     desiredState: String(formData.get("desiredState") || "Off").trim(),
     brightnessLevel: clampLightingBrightness(formData.get("brightnessLevel"), getLightingZoneBrightness(existingZone || {})),
+    offlineBehavior: String(formData.get("offlineBehavior") || existingZone?.offlineBehavior || existingZone?.data?.offlineBehavior || "continue-schedule"),
     status: existingZone?.status || "Setup only",
     notes: String(formData.get("notes") || "").trim(),
     createdAt: existingZone?.createdAt || new Date().toISOString()
@@ -16711,7 +16726,8 @@ async function saveLightingZoneFromForm(form, existingZoneId = "") {
   zone.data = {
     ...(existingZone?.data && typeof existingZone.data === "object" ? existingZone.data : {}),
     controllerName: zone.controllerName,
-    brightnessLevel: zone.brightnessLevel
+    brightnessLevel: zone.brightnessLevel,
+    offlineBehavior: zone.offlineBehavior
   };
   if (!zone.name) {
     if (status) status.textContent = "Zone name is required.";

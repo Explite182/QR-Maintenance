@@ -1755,6 +1755,13 @@
                 <label>Brightness %
                   <input name="brightnessLevel" type="number" min="0" max="100" step="5" value="100">
                 </label>
+                <label>When cloud is offline
+                  <select name="offlineBehavior">
+                    <option value="continue-schedule">Continue local schedule</option>
+                    <option value="hold">Hold current state</option>
+                    <option value="safe-off">Force safe off</option>
+                  </select>
+                </label>
                 <label>Notes <textarea name="notes" rows="3" placeholder="Area, circuit, contactor, or schedule notes"></textarea></label>
                 <div class="lighting-controller-help">
                   <strong>Setup only</strong>
@@ -2848,7 +2855,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260916-backdrop-fix-5"></script>
+  <script src="/app.js?v=20260916-lighting-resilience-6"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
