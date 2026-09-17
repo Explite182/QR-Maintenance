@@ -14013,7 +14013,12 @@ function renderLightingHome() {
   list.innerHTML = zones.map((zone) => {
     const priorityDecision = getLightingZonePriorityDecision(zone);
     const effectiveState = priorityDecision.state || zone.desiredState || "Off";
-    const isOn = String(effectiveState).toLowerCase() === "on";
+    const lastKnownIsOn = String(effectiveState).toLowerCase() === "on";
+    const zoneController = getLightingControllerById(zone.controllerId || zone.controller_id || "");
+    const controllerLastActivityTime = Date.parse(getLightingControllerLastActivityAt(zoneController || {}));
+    const controllerIsFresh = !zoneController || (Number.isFinite(controllerLastActivityTime)
+      && Date.now() - controllerLastActivityTime <= LIGHTING_CONTROLLER_ONLINE_WINDOW_MS);
+    const isOn = controllerIsFresh && lastKnownIsOn;
     const hasOverride = Boolean(priorityDecision.overrideEffect);
     const hasInput = Boolean(priorityDecision.inputEffect);
     const brightness = getLightingZoneBrightnessLabel(zone);
@@ -14026,17 +14031,18 @@ function renderLightingHome() {
     const tileClass = [
       "lighting-hmi-zone-tile",
       isOn ? "is-on" : "is-off",
+      controllerIsFresh ? "" : "is-controller-offline",
       hasOverride ? "is-override" : "",
       hasInput ? "is-input" : ""
     ].filter(Boolean).join(" ");
     return `
-      <button type="button" class="${tileClass}" data-lighting-zone-command="${escapeHtml(zone.id)}" data-lighting-zone-state="${isOn ? "Off" : "On"}">
+      <button type="button" class="${tileClass}" data-lighting-zone-command="${escapeHtml(zone.id)}" data-lighting-zone-state="${isOn ? "Off" : "On"}"${controllerIsFresh ? "" : " disabled"}>
         <span class="lighting-hmi-lamp"></span>
         <strong>${escapeHtml(zone.name || "Lighting zone")}</strong>
-        <b>${escapeHtml(isOn ? "ON" : "OFF")}</b>
+        <b>${escapeHtml(controllerIsFresh ? (isOn ? "ON" : "OFF") : "UNKNOWN")}</b>
         <span>${escapeHtml(brightness)}</span>
-        <em>${schedule ? "Schedule active" : "Manual ready"}</em>
-        <small>${hasOverride ? "Override" : hasInput ? "Input control" : commandStatus}</small>
+        <em>${controllerIsFresh ? (schedule ? "Schedule active" : "Manual ready") : `Last known ${lastKnownIsOn ? "ON" : "OFF"}`}</em>
+        <small>${controllerIsFresh ? (hasOverride ? "Override" : hasInput ? "Input control" : commandStatus) : "Controller offline"}</small>
       </button>
     `;
   }).join("");
