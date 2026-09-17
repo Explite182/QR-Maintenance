@@ -14762,12 +14762,18 @@ function getLightingZoneFeedbackStatus(zone = {}) {
   const inputs = getLightingZoneFeedbackInputs(zone);
   if (!inputs.length) return null;
   const input = inputs[0];
+  const controller = getLightingControllerById(zone.controllerId || zone.controller_id || "");
+  const lastActivityTime = Date.parse(getLightingControllerLastActivityAt(controller || {}));
+  const controllerIsFresh = Number.isFinite(lastActivityTime)
+    && Date.now() - lastActivityTime <= LIGHTING_CONTROLLER_ONLINE_WINDOW_MS;
+  if (controller && !controllerIsFresh) {
+    return { label: "Feedback unavailable", className: "is-stale" };
+  }
   if (!getLightingInputHasLiveState(input)) {
     return { label: "Feedback waiting", className: "is-waiting" };
   }
   const activeStateIsClosed = String(input.activeState || input.active_state || "Closed").toLowerCase() !== "open";
   const contactMade = activeStateIsClosed ? getLightingInputIsActive(input) : !getLightingInputIsActive(input);
-  const controller = getLightingControllerById(zone.controllerId || zone.controller_id || "");
   const reportedOutputs = controller?.lightingOutputs || controller?.data?.lightingOutputs || [];
   const reportedOutput = reportedOutputs.find((output) => (
     Number(output.outputNumber || output.output_number) === Number(zone.outputNumber || zone.output_number)
@@ -14940,6 +14946,9 @@ function renderLightingZones() {
     ? lightingZonesCache
     : getLightingZones().filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId));
   const zonesOn = zones.filter((zone) => {
+    const controller = getLightingControllerById(zone.controllerId || zone.controller_id || "");
+    const lastActivityTime = Date.parse(getLightingControllerLastActivityAt(controller || {}));
+    if (controller && (!Number.isFinite(lastActivityTime) || Date.now() - lastActivityTime > LIGHTING_CONTROLLER_ONLINE_WINDOW_MS)) return false;
     const priorityDecision = getLightingZonePriorityDecision(zone);
     const effectiveState = priorityDecision.state || zone.desiredState || "";
     return String(effectiveState).toLowerCase() === "on";
@@ -14964,11 +14973,16 @@ function renderLightingZones() {
     const priorityDecision = getLightingZonePriorityDecision(zone);
     const inputEffect = priorityDecision.inputEffect;
     const overrideEffect = priorityDecision.overrideEffect;
-    const displayedState = priorityDecision.source === "Zone setting" || priorityDecision.source === "Schedule/default"
+    const lastKnownState = priorityDecision.source === "Zone setting" || priorityDecision.source === "Schedule/default"
       ? priorityDecision.state
       : `${priorityDecision.state} by ${priorityDecision.source.toLowerCase()}`;
     const feedbackStatus = getLightingZoneFeedbackStatus(zone);
-    const stateClass = `${String(priorityDecision.state || state).toLowerCase() === "on" ? "is-on" : ""} ${priorityDecision.className || ""} ${feedbackStatus?.className === "is-mismatch" ? "is-feedback-fault" : ""}`.trim();
+    const zoneController = getLightingControllerById(zone.controllerId || zone.controller_id || "");
+    const controllerLastActivityTime = Date.parse(getLightingControllerLastActivityAt(zoneController || {}));
+    const controllerIsFresh = !zoneController || (Number.isFinite(controllerLastActivityTime)
+      && Date.now() - controllerLastActivityTime <= LIGHTING_CONTROLLER_ONLINE_WINDOW_MS);
+    const displayedState = controllerIsFresh ? lastKnownState : "Unknown";
+    const stateClass = `${controllerIsFresh && String(priorityDecision.state || state).toLowerCase() === "on" ? "is-on" : ""} ${priorityDecision.className || ""} ${feedbackStatus?.className === "is-mismatch" ? "is-feedback-fault" : ""} ${controllerIsFresh ? "" : "is-controller-offline"}`.trim();
     const isEditing = zone.id === editingLightingZoneId;
     const isOpen = zone.id && openLightingZoneDetails.has(zone.id);
     if (isEditing) {
@@ -15031,6 +15045,7 @@ function renderLightingZones() {
           <span>Output <strong>${escapeHtml(zone.outputNumber || "Not assigned")}</strong></span>
           <span>Brightness <strong>${escapeHtml(getLightingZoneBrightnessLabel(zone))}</strong></span>
           <span>Status <strong>${escapeHtml(zone.status || "Setup only")}</strong></span>
+          ${controllerIsFresh ? "" : `<span class="lighting-offline-state">Live state <strong>Controller offline | last known ${escapeHtml(lastKnownState)}</strong></span>`}
           <span>Cloud outage <strong>${escapeHtml(({ "continue-schedule": "Continue local schedule", hold: "Hold current state", "safe-off": "Force safe off" })[zone.offlineBehavior || zone.data?.offlineBehavior || "continue-schedule"])}</strong></span>
           <span class="lighting-priority-effect">Active rule <strong>${escapeHtml(priorityDecision.source)}: ${escapeHtml(priorityDecision.details.join(" | "))}</strong></span>
           ${overrideEffect ? `<span class="lighting-override-effect">Override <strong>${escapeHtml(overrideEffect.text)}</strong></span>` : ""}

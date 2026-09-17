@@ -8154,6 +8154,12 @@ textarea:disabled {
   background: #f1f5f9;
 }
 
+.lighting-zone-card summary .lighting-zone-feedback.is-stale {
+  border-color: #94a3b8;
+  color: #475569;
+  background: #e2e8f0;
+}
+
 .lighting-zone-card summary .lighting-zone-feedback.is-mismatch {
   border-color: #fca5a5;
   color: #b91c1c;
@@ -8164,6 +8170,12 @@ textarea:disabled {
   border-color: #dc2626;
   background: #fef2f2;
   box-shadow: inset 4px 0 0 #dc2626;
+}
+
+.lighting-zone-card.is-controller-offline {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+  box-shadow: inset 4px 0 0 #64748b;
 }
 
 .lighting-zone-card.is-warning summary strong {
@@ -8687,6 +8699,18 @@ textarea:disabled {
   border-color: rgba(248, 113, 113, 0.95);
   background: linear-gradient(180deg, rgba(69, 10, 10, 0.96), rgba(30, 8, 10, 0.98));
   box-shadow: inset 5px 0 0 #ef4444, 0 0 18px rgba(239, 68, 68, 0.18);
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card.is-controller-offline {
+  border-color: rgba(148, 163, 184, 0.65);
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.98));
+  box-shadow: inset 5px 0 0 #64748b;
+}
+
+.lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card.is-controller-offline summary strong {
+  border-color: rgba(148, 163, 184, 0.55);
+  color: #e2e8f0;
+  background: #334155;
 }
 
 @media (max-width: 640px) {
