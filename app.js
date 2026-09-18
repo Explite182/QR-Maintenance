@@ -1239,6 +1239,7 @@ function requireServerSessionForApp(showMessage = true) {
 
 function buildSharedStatePayload(uploadedAt) {
   return {
+    companyProfile: normalizeCompanyProfile(state.companyProfile),
     customers: state.customers || [],
     locations: state.locations || [],
     templates: state.templates || [],
@@ -6412,6 +6413,9 @@ const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
 const LEGACY_CLOUD_URL = "";
 const LEGACY_CLOUD_ANON_KEY = "";
 const SHARED_APP_STATE_ID = "main";
+const COMPANY_PROFILE_STATE_ID = "company-profile";
+let companyProfileCloudLoaded = false;
+let companyProfileCloudLoading = false;
 const AUTH_SESSION_KEY = "siteworks-session-v1";
 const SYNC_STATUS_STORAGE_KEY = "siteworks-sync-status-v1";
 const LEGACY_STORAGE_BUCKET = "siteworks-files";
@@ -7138,6 +7142,23 @@ const els = {
   issueImportStatus: document.getElementById("issueImportStatus"),
   issueImportPreview: document.getElementById("issueImportPreview"),
   setupDrawer: document.getElementById("setupDrawer"),
+  companyProfileDrawer: document.getElementById("companyProfileDrawer"),
+  companyProfileForm: document.getElementById("companyProfileForm"),
+  companyProfileSummary: document.getElementById("companyProfileSummary"),
+  companyLogoPreview: document.getElementById("companyLogoPreview"),
+  companyLogoInput: document.getElementById("companyLogoInput"),
+  removeCompanyLogoBtn: document.getElementById("removeCompanyLogoBtn"),
+  companyName: document.getElementById("companyName"),
+  companyLegalName: document.getElementById("companyLegalName"),
+  companyAddress: document.getElementById("companyAddress"),
+  companyPhone: document.getElementById("companyPhone"),
+  companyEmail: document.getElementById("companyEmail"),
+  companyWebsite: document.getElementById("companyWebsite"),
+  companyTaxNumber: document.getElementById("companyTaxNumber"),
+  companyReplyTo: document.getElementById("companyReplyTo"),
+  companyQuoteTerms: document.getElementById("companyQuoteTerms"),
+  companyAccentColor: document.getElementById("companyAccentColor"),
+  companyProfileStatus: document.getElementById("companyProfileStatus"),
   userDrawer: document.getElementById("userDrawer"),
   contractorDrawer: document.getElementById("contractorDrawer"),
   backupDrawer: document.getElementById("backupDrawer"),
@@ -10962,6 +10983,76 @@ els.exportPmCalendarBtn?.addEventListener("click", () => {
   exportPmCalendarCsv();
 });
 
+els.companyLogoInput?.addEventListener("change", async () => {
+  const file = els.companyLogoInput.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    els.companyProfileStatus.textContent = "Choose an image file for the logo.";
+    els.companyLogoInput.value = "";
+    return;
+  }
+  const dataUrl = await fileToDataUrl(file);
+  const resized = await resizePhotoDataUrl(dataUrl, 700, 0.88);
+  els.companyLogoPreview.innerHTML = `<img src="${escapeAttribute(resized)}" alt="Company logo preview">`;
+  els.companyLogoPreview.dataset.pendingLogo = resized;
+  els.companyProfileStatus.textContent = "Logo ready. Save the company profile to apply it.";
+});
+
+els.removeCompanyLogoBtn?.addEventListener("click", () => {
+  els.companyLogoPreview.dataset.pendingLogo = "";
+  els.companyLogoPreview.textContent = "No logo uploaded";
+  els.companyLogoInput.value = "";
+  els.companyProfileStatus.textContent = "Logo removed. Save the company profile to apply it.";
+});
+
+els.companyProfileForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (currentRole !== "Admin") return;
+  const name = els.companyName.value.trim();
+  const email = els.companyEmail.value.trim();
+  const replyTo = els.companyReplyTo.value.trim();
+  if (!name) {
+    els.companyProfileStatus.textContent = "Enter the company name.";
+    return;
+  }
+  if ((email && !isEmailAddress(email)) || (replyTo && !isEmailAddress(replyTo))) {
+    els.companyProfileStatus.textContent = "Enter valid company and reply-to email addresses.";
+    return;
+  }
+  state.companyProfile = normalizeCompanyProfile({
+    name,
+    legalName: els.companyLegalName.value.trim(),
+    address: els.companyAddress.value.trim(),
+    phone: els.companyPhone.value.trim(),
+    email,
+    website: els.companyWebsite.value.trim(),
+    taxNumber: els.companyTaxNumber.value.trim(),
+    replyTo,
+    quoteTerms: els.companyQuoteTerms.value.trim(),
+    accentColor: els.companyAccentColor.value,
+    logoDataUrl: els.companyLogoPreview.dataset.pendingLogo || "",
+    updatedAt: new Date().toISOString()
+  });
+  addActivity("Company profile updated", state.companyProfile.name);
+  saveState();
+  try {
+    const updatedAt = new Date().toISOString();
+    const response = await siteworksApi.saveSharedState({
+      id: COMPANY_PROFILE_STATE_ID,
+      data: { companyProfile: state.companyProfile },
+      updated_at: updatedAt
+    });
+    if (!response.ok) throw new Error(await response.text());
+    companyProfileCloudLoaded = true;
+  } catch (error) {
+    els.companyProfileStatus.textContent = "Saved on this device, but the server copy could not be updated.";
+    console.warn("Company profile cloud save failed.", error);
+    return;
+  }
+  renderCompanyProfile();
+  els.companyProfileStatus.textContent = "Company profile saved. New quotes will use this branding.";
+});
+
 els.downloadPmCalendarIcsBtn?.addEventListener("click", () => {
   downloadPmCalendarIcs();
 });
@@ -12994,6 +13085,7 @@ function render() {
     return;
   }
   if (!currentUser) return;
+  if (["Admin", "Manager"].includes(currentRole) && !companyProfileCloudLoaded && !companyProfileCloudLoading) loadCompanyProfileFromServer();
   resetInactivityLogoutTimer();
   restoreScannedAssetSelection();
   restoreScannedInventorySelection();
@@ -13021,6 +13113,7 @@ function render() {
   renderSyncHealth();
   renderOfflineStatus();
   renderQrSettings();
+  renderCompanyProfile();
   renderAssetTableControls();
   renderAssetTable();
   renderWorkOrders();
@@ -31073,6 +31166,84 @@ function renderWorkOrders() {
   renderServiceScheduleBoard(visibleWorkOrders);
 }
 
+function defaultCompanyProfile() {
+  return {
+    name: "SiteWorks",
+    legalName: "",
+    address: "",
+    phone: "",
+    email: "",
+    website: "",
+    taxNumber: "",
+    replyTo: "",
+    quoteTerms: "Prices are valid until the date shown above unless otherwise noted.",
+    accentColor: "#0f766e",
+    logoDataUrl: "",
+    updatedAt: ""
+  };
+}
+
+function normalizeCompanyProfile(profile = {}) {
+  const fallback = defaultCompanyProfile();
+  const accentColor = /^#[0-9a-f]{6}$/i.test(String(profile.accentColor || ""))
+    ? String(profile.accentColor)
+    : fallback.accentColor;
+  return {
+    ...fallback,
+    ...profile,
+    name: String(profile.name || fallback.name).trim() || fallback.name,
+    accentColor,
+    logoDataUrl: String(profile.logoDataUrl || "")
+  };
+}
+
+function renderCompanyProfile() {
+  if (!els.companyProfileForm) return;
+  const profile = normalizeCompanyProfile(state.companyProfile);
+  const activeInput = document.activeElement;
+  if (!els.companyProfileForm.contains(activeInput)) {
+    els.companyName.value = profile.name;
+    els.companyLegalName.value = profile.legalName;
+    els.companyAddress.value = profile.address;
+    els.companyPhone.value = profile.phone;
+    els.companyEmail.value = profile.email;
+    els.companyWebsite.value = profile.website;
+    els.companyTaxNumber.value = profile.taxNumber;
+    els.companyReplyTo.value = profile.replyTo;
+    els.companyQuoteTerms.value = profile.quoteTerms;
+    els.companyAccentColor.value = profile.accentColor;
+    els.companyLogoPreview.dataset.pendingLogo = profile.logoDataUrl;
+    els.companyLogoPreview.innerHTML = profile.logoDataUrl
+      ? `<img src="${escapeAttribute(profile.logoDataUrl)}" alt="${escapeAttribute(profile.name)} logo">`
+      : "No logo uploaded";
+  }
+  els.companyProfileSummary.textContent = profile.updatedAt ? profile.name : "Not set";
+  els.companyProfileForm.querySelectorAll("input, textarea, button").forEach((control) => {
+    control.disabled = currentRole !== "Admin";
+  });
+}
+
+async function loadCompanyProfileFromServer() {
+  if (!currentUser || companyProfileCloudLoading || companyProfileCloudLoaded) return;
+  companyProfileCloudLoading = true;
+  try {
+    const response = await siteworksApi.loadSharedState(COMPANY_PROFILE_STATE_ID);
+    if (!response.ok) throw new Error(await response.text());
+    const payload = await response.json();
+    const record = Array.isArray(payload) ? payload[0] : payload;
+    if (record?.data?.companyProfile) {
+      state.companyProfile = normalizeCompanyProfile(record.data.companyProfile);
+      persistLocalStateOnly(false);
+    }
+    companyProfileCloudLoaded = true;
+    renderCompanyProfile();
+  } catch (error) {
+    console.warn("Company profile cloud load failed.", error);
+  } finally {
+    companyProfileCloudLoading = false;
+  }
+}
+
 function renderSwNumberRecord(record) {
   if (record.type === "service") return renderServiceRequestItem(record.item);
   if (record.type === "pm") return renderCompletedTicketItem(record.item);
@@ -37324,6 +37495,9 @@ function getEstimateDetails(estimateId = "") {
 
 function buildEstimatePreviewHtml(details) {
   const { estimate, workOrder, customer, locationRecord, asset, lines, requiredTotal, fullTotal } = details;
+  const company = normalizeCompanyProfile(estimate.companyProfile || state.companyProfile);
+  const accent = company.accentColor;
+  const companyContact = [company.address, company.phone, company.email, company.website].filter(Boolean).join(" | ");
   const requiredLines = lines.filter((line) => !line.optional);
   const optionalLines = lines.filter((line) => line.optional);
   const lineRows = (items) => items.map((line) => `
@@ -37343,10 +37517,12 @@ function buildEstimatePreviewHtml(details) {
         <style>
           body { margin: 0; padding: 32px; background: #eef4f2; color: #172126; font-family: Arial, sans-serif; }
           main { max-width: 860px; margin: 0 auto; padding: 34px; border: 1px solid #d8e4e0; border-radius: 14px; background: #fff; }
-          header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 3px solid #0f766e; padding-bottom: 18px; margin-bottom: 24px; }
+          header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 3px solid ${escapeHtml(accent)}; padding-bottom: 18px; margin-bottom: 24px; }
+          .brand { display: flex; gap: 16px; align-items: flex-start; }
+          .brand img { width: 110px; max-height: 70px; object-fit: contain; }
           h1, h2, p { margin: 0; }
           h1 { color: #14566b; font-size: 28px; }
-          h2 { margin-top: 28px; margin-bottom: 10px; color: #0f766e; font-size: 16px; text-transform: uppercase; letter-spacing: .04em; }
+          h2 { margin-top: 28px; margin-bottom: 10px; color: ${escapeHtml(accent)}; font-size: 16px; text-transform: uppercase; letter-spacing: .04em; }
           .meta { color: #5f7178; line-height: 1.5; }
           .box { display: grid; gap: 6px; padding: 14px; border: 1px solid #d8e4e0; border-radius: 10px; background: #f8fcfb; }
           table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -37355,7 +37531,7 @@ function buildEstimatePreviewHtml(details) {
           td:nth-child(3), td:nth-child(4), td:nth-child(5), th:nth-child(3), th:nth-child(4), th:nth-child(5) { text-align: right; }
           .totals { margin-left: auto; margin-top: 18px; width: min(340px, 100%); }
           .totals div { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #d8e4e0; font-weight: 700; }
-          .total { color: #0f766e; font-size: 20px; }
+          .total { color: ${escapeHtml(accent)}; font-size: 20px; }
           .footer { margin-top: 32px; color: #5f7178; font-size: 13px; line-height: 1.5; }
           @media print { body { background: #fff; padding: 0; } main { border: 0; border-radius: 0; } button { display: none; } }
         </style>
@@ -37363,10 +37539,15 @@ function buildEstimatePreviewHtml(details) {
       <body>
         <main>
           <header>
-            <div>
-              <p class="meta">SiteWorks Estimate / Quote</p>
-              <h1>${escapeHtml(estimate.estimateNumber || "Estimate")}</h1>
-              <p>${escapeHtml(estimate.title || workOrder?.title || "Estimate")}</p>
+            <div class="brand">
+              ${company.logoDataUrl ? `<img src="${escapeAttribute(company.logoDataUrl)}" alt="${escapeAttribute(company.name)} logo">` : ""}
+              <div>
+                <p class="meta">${escapeHtml(company.name)} Estimate / Quote</p>
+                <h1>${escapeHtml(estimate.estimateNumber || "Estimate")}</h1>
+                <p>${escapeHtml(estimate.title || workOrder?.title || "Estimate")}</p>
+                ${companyContact ? `<p class="meta">${escapeHtml(companyContact)}</p>` : ""}
+                ${company.taxNumber ? `<p class="meta">GST / Tax ${escapeHtml(company.taxNumber)}</p>` : ""}
+              </div>
             </div>
             <div class="box">
               <strong>${escapeHtml(estimate.status || "Draft")}</strong>
@@ -37396,7 +37577,7 @@ function buildEstimatePreviewHtml(details) {
             ${fullTotal !== requiredTotal ? `<div><span>With options</span><strong>${escapeHtml(formatMoney(fullTotal))}</strong></div>` : ""}
             <div class="total"><span>Total</span><strong>${escapeHtml(formatMoney(requiredTotal))}</strong></div>
           </section>
-          <p class="footer">Reply to this quote to approve, decline, or ask questions. Prices are valid until the date shown above unless otherwise noted.</p>
+          <p class="footer">${escapeHtml(company.quoteTerms || "Prices are valid until the date shown above unless otherwise noted.")}</p>
           <button onclick="window.print()">Print / Save PDF</button>
         </main>
       </body>
@@ -37445,6 +37626,7 @@ async function ensureEstimatePublicLink(estimateId = "") {
     return "";
   }
   if (!estimate.publicToken) estimate.publicToken = makePublicQuoteToken();
+  estimate.companyProfile = normalizeCompanyProfile(state.companyProfile);
   if (estimate.status === "Draft") estimate.status = "Sent";
   estimate.linkedForCustomerAt = estimate.linkedForCustomerAt || new Date().toISOString();
   estimate.updatedAt = new Date().toISOString();
@@ -37474,6 +37656,7 @@ async function copyEstimatePublicLink(estimateId = "") {
 
 function buildEstimateEmailBody(details, quoteLink) {
   const { estimate, workOrder, lines, requiredTotal, fullTotal } = details;
+  const company = normalizeCompanyProfile(estimate.companyProfile || state.companyProfile);
   return [
     `Hello,`,
     "",
@@ -37493,15 +37676,23 @@ function buildEstimateEmailBody(details, quoteLink) {
     `Required total: ${formatMoney(requiredTotal)}`,
     fullTotal !== requiredTotal ? `With options: ${formatMoney(fullTotal)}` : "",
     "",
-    "Please use the link above to accept or decline the quote. No SiteWorks login is required."
+    "Please use the link above to accept or decline the quote. No SiteWorks login is required.",
+    "",
+    company.name,
+    [company.phone, company.email, company.website].filter(Boolean).join(" | ")
   ].filter(Boolean).join("\n");
 }
 
 function buildEstimateEmailHtml(details, quoteLink) {
   const { estimate, workOrder, lines, requiredTotal, fullTotal } = details;
+  const company = normalizeCompanyProfile(estimate.companyProfile || state.companyProfile);
   return `
     <div style="font-family:Arial,sans-serif;color:#172126;line-height:1.45;">
-      <h2 style="margin:0 0 4px;color:#14566b;">SiteWorks Quote ${escapeHtml(estimate.estimateNumber || "")}</h2>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+        ${company.logoDataUrl ? `<img src="${escapeAttribute(company.logoDataUrl)}" alt="${escapeAttribute(company.name)} logo" style="max-width:120px;max-height:64px;object-fit:contain;">` : ""}
+        <div><strong style="font-size:18px;">${escapeHtml(company.name)}</strong>${company.email || company.phone ? `<div style="color:#68777d;">${escapeHtml([company.phone, company.email].filter(Boolean).join(" | "))}</div>` : ""}</div>
+      </div>
+      <h2 style="margin:0 0 4px;color:${escapeAttribute(company.accentColor)};">Quote ${escapeHtml(estimate.estimateNumber || "")}</h2>
       <p style="margin:0 0 18px;font-weight:700;">${escapeHtml(estimate.title || workOrder?.title || "Estimate")}</p>
       <p>Please review the quote below.</p>
       <p><a href="${escapeAttribute(quoteLink)}" style="display:inline-block;background:#08705f;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;">Review and accept quote</a></p>
@@ -37523,7 +37714,7 @@ function buildEstimateEmailHtml(details, quoteLink) {
       </table>
       <p style="font-size:18px;font-weight:700;">Required total: ${escapeHtml(formatMoney(requiredTotal))}</p>
       ${fullTotal !== requiredTotal ? `<p>With optional items: ${escapeHtml(formatMoney(fullTotal))}</p>` : ""}
-      <p style="color:#68777d;">No SiteWorks login is required to accept or decline this quote.</p>
+      <p style="color:#68777d;">${escapeHtml(company.quoteTerms || "No SiteWorks login is required to accept or decline this quote.")}</p>
     </div>
   `;
 }
@@ -37566,6 +37757,7 @@ async function emailEstimate(estimateId = "", button = null) {
       subject,
       text: buildEstimateEmailBody(details, quoteLink),
       html: buildEstimateEmailHtml(details, quoteLink),
+      replyTo: normalizeCompanyProfile(estimate.companyProfile || state.companyProfile).replyTo,
       scope: {
         id: workOrder?.id || estimate.id,
         issueNumber: workOrder?.id ? formatIssueNumber(workOrder) : estimate.estimateNumber,
@@ -40736,10 +40928,18 @@ async function renderPublicQuote() {
   const lines = normalizeEstimateLines(quote.lines || []);
   const requiredTotal = Number(quote.required_total ?? quote.requiredTotal ?? lines.filter((line) => !line.optional).reduce((sum, line) => sum + estimateLineAmount(line), 0));
   const fullTotal = Number(quote.full_total ?? quote.fullTotal ?? lines.reduce((sum, line) => sum + estimateLineAmount(line), 0));
+  const company = normalizeCompanyProfile(quote.company_profile || quote.companyProfile || {});
   const isClosed = ["Accepted", "Declined"].includes(quote.status);
   els.publicQuoteTitle.textContent = `${quote.estimate_number || quote.estimateNumber || "Quote"} | ${quote.title || "Review quote"}`;
   els.publicQuoteContext.textContent = [quote.customer_name, quote.location_name, quote.asset_name].filter(Boolean).join(" | ");
   els.publicQuoteBody.innerHTML = `
+    <section class="public-quote-brand" style="--quote-accent:${escapeAttribute(company.accentColor)}">
+      ${company.logoDataUrl ? `<img src="${escapeAttribute(company.logoDataUrl)}" alt="${escapeAttribute(company.name)} logo">` : ""}
+      <div>
+        <strong>${escapeHtml(company.name)}</strong>
+        ${[company.phone, company.email, company.website].filter(Boolean).map((value) => `<span>${escapeHtml(value)}</span>`).join("")}
+      </div>
+    </section>
     <article class="public-quote-summary">
       <div>
         <span>Status</span>
@@ -40765,6 +40965,7 @@ async function renderPublicQuote() {
       `).join("") || `<p class="muted">No quote lines were found.</p>`}
     </div>
     ${fullTotal !== requiredTotal ? `<p class="report-context">With optional items: ${escapeHtml(formatMoney(fullTotal))}</p>` : ""}
+    ${company.quoteTerms ? `<p class="public-quote-terms">${escapeHtml(company.quoteTerms)}</p>` : ""}
   `;
   els.publicQuoteForm?.classList.toggle("hidden", isClosed);
   if (els.publicQuoteMessage) {
@@ -42965,6 +43166,7 @@ function getInitialUser() {
 
 function normalizeState(input) {
   const normalized = {
+    companyProfile: normalizeCompanyProfile(input.companyProfile),
     customers: input.customers || [],
     locations: input.locations || [],
     templates: input.templates?.length ? input.templates : seedTemplates(),
@@ -43399,6 +43601,7 @@ function normalizeState(input) {
 
 function emptyState() {
   return {
+    companyProfile: defaultCompanyProfile(),
     customers: [],
     locations: [],
     templates: seedTemplates(),

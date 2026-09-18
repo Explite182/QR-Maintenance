@@ -10677,6 +10677,57 @@ html[data-theme="dark"] .sidebar .template-editor textarea {
   gap: 10px;
 }
 
+.company-logo-preview {
+  display: grid;
+  place-items: center;
+  min-height: 92px;
+  padding: 12px;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.company-logo-preview img {
+  max-width: 180px;
+  max-height: 76px;
+  object-fit: contain;
+}
+
+.public-quote-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 3px solid var(--quote-accent, #0f766e);
+}
+
+.public-quote-brand img {
+  width: 120px;
+  max-height: 70px;
+  object-fit: contain;
+}
+
+.public-quote-brand div {
+  display: grid;
+  gap: 3px;
+}
+
+.public-quote-brand strong {
+  font-size: 20px;
+}
+
+.public-quote-brand span,
+.public-quote-terms {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.public-quote-terms {
+  white-space: pre-line;
+}
+
 label {
   display: grid;
   gap: 6px;
