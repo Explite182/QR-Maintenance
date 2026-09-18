@@ -6402,7 +6402,10 @@ function renderMonitoringEvents(devices) {
 
 const STORAGE_KEY = "qr-pm-prototype-v3";
 const AUTO_BACKUP_KEY = "qr-pm-prototype-auto-backups-v1";
-const MAX_AUTO_BACKUPS = 5;
+const MAX_AUTO_BACKUPS = 2;
+const LOCAL_MONITORING_EVENT_LIMIT = 250;
+const LOCAL_MONITORING_ALERT_LIMIT = 250;
+const LOCAL_ACTIVITY_LOG_LIMIT = 500;
 const MAX_ACTIVITY_LOG_ENTRIES = 1000;
 const ACTIVITY_LOG_VISIBLE_ENTRIES = 100;
 const LEGACY_KEYS = ["qr-pm-prototype-v2", "qr-pm-prototype-v1"];
@@ -43468,7 +43471,8 @@ function saveStateQuietly() {
 }
 
 function persistLocalStateOnly(showStorageWarning = true) {
-  if (!setLocalStorageWithRecovery(STORAGE_KEY, JSON.stringify(state))) {
+  const localSnapshot = compactStateForBrowserStorage(state);
+  if (!setLocalStorageWithRecovery(STORAGE_KEY, JSON.stringify(localSnapshot))) {
     if (showStorageWarning) showStorageFullWarning();
     console.warn("Local browser storage is full; continuing without a local save.");
     return false;
@@ -43479,6 +43483,20 @@ function persistLocalStateOnly(showStorageWarning = true) {
     console.warn("Auto backup skipped because browser storage is full.", error);
   }
   return true;
+}
+
+function compactStateForBrowserStorage(source = {}) {
+  return {
+    ...source,
+    monitoringEvents: (source.monitoringEvents || []).slice(0, LOCAL_MONITORING_EVENT_LIMIT),
+    monitoringAlerts: (source.monitoringAlerts || []).slice(0, LOCAL_MONITORING_ALERT_LIMIT),
+    activityLog: (source.activityLog || []).slice(0, LOCAL_ACTIVITY_LOG_LIMIT),
+    monitoringDevices: (source.monitoringDevices || []).map((device) => ({
+      ...device,
+      rawPayloads: (device.rawPayloads || []).slice(0, 5),
+      recentErrors: (device.recentErrors || []).slice(0, 10)
+    }))
+  };
 }
 
 function setLocalStorageWithRecovery(key, value) {
@@ -43602,7 +43620,7 @@ function createAutoBackup() {
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     version: 3,
-    state
+    state: compactStateForBrowserStorage(state)
   };
   const backups = [backup, ...getAutoBackups()].slice(0, MAX_AUTO_BACKUPS);
   writeAutoBackups(backups);
@@ -44234,7 +44252,7 @@ async function renderSiteMapPdf(file) {
   if (!pdfjs?.getDocument) {
     throw new Error("PDF support is still loading. Wait a moment, then choose the PDF again.");
   }
-  pdfjs.GlobalWorkerOptions.workerSrc = pdfjs.GlobalWorkerOptions.workerSrc || "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfjs.GlobalWorkerOptions.workerSrc || "/vendor/pdfjs/pdf.worker.min.js?v=3.11.174";
   const data = await fileToArrayBuffer(file);
   const pdfDocument = await pdfjs.getDocument({ data }).promise;
   const page = await pdfDocument.getPage(1);

@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SiteWorks Site Map Test</title>
+  <style>
+    :root {
+      --ink: #101820;
+      --muted: #64747b;
+      --line: #d8e3e1;
+      --panel: #ffffff;
+      --paper: #f4f8f7;
+      --accent: #08705f;
+      --accent-soft: #e7f3f0;
+      --shadow: 0 18px 46px rgba(15, 35, 32, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    main {
+      display: grid;
+      gap: 14px;
+      width: min(1180px, calc(100% - 28px));
+      margin: 20px auto;
+    }
+
+    h1,
+    h2,
+    p {
+      margin: 0;
+    }
+
+    .topbar,
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .topbar h1 {
+      font-size: 20px;
+    }
+
+    .topbar p {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr)) auto;
+      gap: 10px;
+      padding: 14px;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    input,
+    select,
+    button {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 11px;
+      color: var(--ink);
+      background: #fff;
+      font-weight: 800;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+      gap: 14px;
+    }
+
+    .map-card {
+      padding: 14px;
+    }
+
+    .controls,
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .chip {
+      min-height: 34px;
+      border-color: #cbd9d6;
+      color: #33464d;
+      background: #fff;
+    }
+
+    .chip.active {
+      border-color: #9fc9c1;
+      color: #053f35;
+      background: var(--accent-soft);
+    }
+
+    .viewport {
+      height: min(68vh, 720px);
+      min-height: 420px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #eef5f3;
+      cursor: grab;
+    }
+
+    .viewport.dragging {
+      cursor: grabbing;
+    }
+
+    .stage {
+      position: relative;
+      width: 100%;
+      min-width: 720px;
+      margin: 0 auto;
+      background: #fff;
+    }
+
+    .demo-map,
+    .map-image {
+      display: block;
+      width: 100%;
+      min-height: 520px;
+      object-fit: contain;
+      background: #fff;
+    }
+
+    .demo-map {
+      display: grid;
+      grid-template-columns: 1.1fr 0.75fr 1fr;
+      grid-template-rows: 0.8fr 1fr 0.7fr;
+      gap: 10px;
+      padding: 18px;
+      color: #617177;
+    }
+
+    .room {
+      display: grid;
+      place-items: center;
+      border: 2px solid #b7c9c6;
+      background: #f9fcfb;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .pin {
+      position: absolute;
+      width: 26px;
+      height: 26px;
+      border: 2px solid #fff;
+      border-radius: 999px;
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 8px 18px rgba(15, 35, 32, 0.28);
+      transform: translate(-50%, -50%);
+    }
+
+    .pin.electrical { background: #cf3f35; }
+    .pin.hvac { background: #2878c7; }
+    .pin.life-safety { background: #b3265d; }
+    .pin.plumbing { background: #2c8a95; }
+    .pin.fitness { background: #08705f; }
+    .pin.construction { background: #8a6a1d; }
+
+    .tooltip {
+      position: absolute;
+      z-index: 4;
+      bottom: calc(100% + 10px);
+      left: 50%;
+      width: max-content;
+      max-width: min(280px, 80vw);
+      padding: 9px 10px;
+      border: 1px solid rgba(15, 23, 42, 0.16);
+      border-radius: 8px;
+      color: #14202a;
+      background: #fff;
+      box-shadow: 0 14px 30px rgba(15, 23, 42, 0.2);
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.35;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 4px);
+      transition: opacity 0.14s ease, transform 0.14s ease;
+    }
+
+    .pin:hover .tooltip,
+    .pin:focus-visible .tooltip {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      align-content: start;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfefe;
+    }
+
+    .row strong,
+    .row span {
+      display: block;
+    }
+
+    .row span {
+      margin-top: 3px;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    @media (max-width: 760px) {
+      main {
+        width: min(100% - 18px, 620px);
+        margin: 10px auto 86px;
+      }
+
+      .topbar,
+      .toolbar,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        display: grid;
+      }
+
+      .toolbar {
+        gap: 8px;
+      }
+
+      .viewport {
+        height: min(46vh, 390px);
+        min-height: 250px;
+      }
+
+      .stage {
+        min-width: 560px;
+      }
+
+      .demo-map,
+      .map-image {
+        min-height: 330px;
+      }
+
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="topbar">
+      <div>
+        <h1>Site Map Test</h1>
+        <p>Upload a floor plan, add pins, test layers/zones, zoom, pan, and mobile wrapping.</p>
+      </div>
+      <p id="status" class="status">Demo map loaded.</p>
+    </section>
+
+    <section class="card toolbar">
+      <label>
+        Map file
+        <input id="fileInput" type="file" accept="image/*,application/pdf,.pdf">
+      </label>
+      <label>
+        Equipment
+        <select id="equipment">
+          <option>Tread</option>
+          <option>Electrical Panel C</option>
+          <option>RTU-1</option>
+          <option>Fire Alarm Panel</option>
+          <option>Water Heater</option>
+        </select>
+      </label>
+      <label>
+        Zone / Area
+        <input id="area" placeholder="Reception, Mech Room">
+      </label>
+      <label>
+        Layer
+        <select id="layer">
+          <option value="fitness">Fitness equipment</option>
+          <option value="electrical">Electrical</option>
+          <option value="hvac">HVAC</option>
+          <option value="life-safety">Life safety</option>
+          <option value="plumbing">Plumbing</option>
+          <option value="construction">Future tenant space / construction</option>
+        </select>
+      </label>
+      <label>
+        Label
+        <input id="label" placeholder="Optional">
+      </label>
+      <button id="addPin" class="primary" type="button">Add Pin</button>
+    </section>
+
+    <section class="layout">
+      <section class="card map-card">
+        <div class="controls">
+          <button type="button" data-zoom="out">-</button>
+          <button type="button" data-zoom="reset">100%</button>
+          <button type="button" data-zoom="in">+</button>
+          <button type="button" id="clearPins">Clear Pins</button>
+        </div>
+        <div id="filters" class="filters"></div>
+        <div id="viewport" class="viewport">
+          <div id="stage" class="stage">
+            <div id="demoMap" class="demo-map">
+              <div class="room">Reception</div>
+              <div class="room">Office</div>
+              <div class="room">Cardio Area</div>
+              <div class="room">Strength Area</div>
+              <div class="room">Mech Room</div>
+              <div class="room">Electrical Room</div>
+              <div class="room">Washrooms</div>
+              <div class="room">Storage</div>
+              <div class="room">Future Tenant Space</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="card list" id="pinList"></section>
+    </section>
+  </main>
+
+  <script src="/vendor/pdfjs/pdf.min.js?v=3.11.174"></script>
+  <script>
+    const layers = ["all", "electrical", "hvac", "life-safety", "plumbing", "fitness", "construction"];
+    const layerLabels = {
+      all: "All layers",
+      electrical: "Electrical",
+      hvac: "HVAC",
+      "life-safety": "Life safety",
+      plumbing: "Plumbing",
+      fitness: "Fitness equipment",
+      construction: "Future tenant / construction"
+    };
+    const pins = [];
+    let pendingPin = false;
+    let zoom = 1;
+    let layerFilter = "all";
+    let areaFilter = "all";
+    let drag = null;
+
+    const els = {
+      fileInput: document.getElementById("fileInput"),
+      equipment: document.getElementById("equipment"),
+      area: document.getElementById("area"),
+      layer: document.getElementById("layer"),
+      label: document.getElementById("label"),
+      addPin: document.getElementById("addPin"),
+      clearPins: document.getElementById("clearPins"),
+      filters: document.getElementById("filters"),
+      viewport: document.getElementById("viewport"),
+      stage: document.getElementById("stage"),
+      demoMap: document.getElementById("demoMap"),
+      pinList: document.getElementById("pinList"),
+      status: document.getElementById("status")
+    };
+
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#039;"
+      }[char]));
+    }
+
+    function visiblePins() {
+      return pins.filter((pin) => (layerFilter === "all" || pin.layer === layerFilter) && (areaFilter === "all" || pin.area.toLowerCase() === areaFilter));
+    }
+
+    function renderFilters() {
+      const areas = [...new Set(pins.map((pin) => pin.area).filter(Boolean))].sort();
+      if (areaFilter !== "all" && !areas.some((area) => area.toLowerCase() === areaFilter)) areaFilter = "all";
+      const areaButtons = ["all", ...areas.map((area) => area.toLowerCase())];
+      els.filters.innerHTML = `
+        ${layers.map((layer) => `<button type="button" class="chip ${layerFilter === layer ? "active" : ""}" data-layer="${layer}">${escapeHtml(layerLabels[layer])}</button>`).join("")}
+        ${areaButtons.map((area) => `<button type="button" class="chip ${areaFilter === area ? "active" : ""}" data-area="${area}">${escapeHtml(area === "all" ? "All zones" : areas.find((item) => item.toLowerCase() === area) || area)}</button>`).join("")}
+      `;
+    }
+
+    function renderPins() {
+      els.stage.querySelectorAll(".pin").forEach((pin) => pin.remove());
+      visiblePins().forEach((pin, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `pin ${pin.layer}`;
+        button.style.left = `${pin.x}%`;
+        button.style.top = `${pin.y}%`;
+        button.innerHTML = `${index + 1}<span class="tooltip"><strong>${escapeHtml(pin.title)}</strong><br>${escapeHtml(layerLabels[pin.layer] || pin.layer)}${pin.area ? ` | ${escapeHtml(pin.area)}` : ""}</span>`;
+        els.stage.appendChild(button);
+      });
+      els.pinList.innerHTML = visiblePins().length ? visiblePins().map((pin, index) => `
+        <article class="row">
+          <div>
+            <strong>${index + 1}. ${escapeHtml(pin.title)}</strong>
+            <span>${escapeHtml(pin.area || "No zone")}</span>
+            <span>${escapeHtml(layerLabels[pin.layer] || pin.layer)}</span>
+          </div>
+          <button type="button" data-delete="${pin.id}">Remove</button>
+        </article>
+      `).join("") : `<p class="status">No pins match the current filters.</p>`;
+      els.status.textContent = `${visiblePins().length}/${pins.length} pin${pins.length === 1 ? "" : "s"} visible.`;
+      renderFilters();
+    }
+
+    function setZoom(next) {
+      zoom = Math.max(0.75, Math.min(5, Math.round(next * 100) / 100));
+      els.stage.style.width = `${Math.round(zoom * 100)}%`;
+      document.querySelector('[data-zoom="reset"]').textContent = `${Math.round(zoom * 100)}%`;
+    }
+
+    els.fileInput.addEventListener("change", async () => {
+      const file = els.fileInput.files?.[0];
+      if (!file) return;
+      const url = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
+        ? await renderPdfFirstPage(file)
+        : URL.createObjectURL(file);
+      els.demoMap.outerHTML = `<img id="demoMap" class="map-image" src="${url}" alt="Uploaded test map">`;
+      els.demoMap = document.getElementById("demoMap");
+      pins.length = 0;
+      setZoom(1);
+      renderPins();
+      els.status.textContent = `${file.name} loaded.`;
+    });
+
+    async function renderPdfFirstPage(file) {
+      if (!window.pdfjsLib) throw new Error("PDF renderer did not load.");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.js?v=3.11.174";
+      const bytes = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 2.4 });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      return canvas.toDataURL("image/jpeg", 0.92);
+    }
+
+    els.addPin.addEventListener("click", () => {
+      pendingPin = true;
+      els.status.textContent = "Tap the map to place the pin.";
+    });
+
+    els.stage.addEventListener("click", (event) => {
+      if (!pendingPin || event.target.closest(".pin")) return;
+      const rect = els.stage.getBoundingClientRect();
+      pins.push({
+        id: crypto.randomUUID(),
+        title: els.label.value.trim() || els.equipment.value,
+        area: els.area.value.trim(),
+        layer: els.layer.value,
+        x: Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100)),
+        y: Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100))
+      });
+      pendingPin = false;
+      els.label.value = "";
+      renderPins();
+    });
+
+    document.addEventListener("click", (event) => {
+      const layer = event.target.closest("[data-layer]")?.dataset.layer;
+      const area = event.target.closest("[data-area]")?.dataset.area;
+      const deleteId = event.target.closest("[data-delete]")?.dataset.delete;
+      if (layer) {
+        layerFilter = layer;
+        renderPins();
+      }
+      if (area) {
+        areaFilter = area;
+        renderPins();
+      }
+      if (deleteId) {
+        const index = pins.findIndex((pin) => pin.id === deleteId);
+        if (index >= 0) pins.splice(index, 1);
+        renderPins();
+      }
+      const zoomAction = event.target.closest("[data-zoom]")?.dataset.zoom;
+      if (zoomAction === "in") setZoom(zoom + 0.25);
+      if (zoomAction === "out") setZoom(zoom - 0.25);
+      if (zoomAction === "reset") setZoom(1);
+    });
+
+    els.clearPins.addEventListener("click", () => {
+      pins.length = 0;
+      renderPins();
+    });
+
+    els.viewport.addEventListener("pointerdown", (event) => {
+      if (event.target.closest("button, input, select")) return;
+      drag = {
+        id: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        left: els.viewport.scrollLeft,
+        top: els.viewport.scrollTop
+      };
+      els.viewport.setPointerCapture(event.pointerId);
+      els.viewport.classList.add("dragging");
+    });
+
+    els.viewport.addEventListener("pointermove", (event) => {
+      if (!drag || drag.id !== event.pointerId) return;
+      els.viewport.scrollLeft = drag.left - (event.clientX - drag.x);
+      els.viewport.scrollTop = drag.top - (event.clientY - drag.y);
+    });
+
+    els.viewport.addEventListener("pointerup", () => {
+      drag = null;
+      els.viewport.classList.remove("dragging");
+    });
+
+    pins.push(
+      { id: crypto.randomUUID(), title: "Tread", area: "Cardio Area", layer: "fitness", x: 75, y: 35 },
+      { id: crypto.randomUUID(), title: "Electrical Panel C", area: "Electrical Room", layer: "electrical", x: 52, y: 80 }
+    );
+    renderPins();
+  </script>
+</body>
+</html>
