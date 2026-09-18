@@ -1,4 +1,4 @@
-const SITEWORKS_SW_VERSION = "20260918-sync-status-2";
+const SITEWORKS_SW_VERSION = "20260918-session-403-3";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
@@ -9,7 +9,7 @@ const STATIC_ASSETS = [
   "/js/panel-hmi-standard-model.js?v=20260901-pm-history-optional-12",
   "/js/panel-hmi-siteworks-adapter.js?v=20260901-pm-history-optional-12",
   "/js/panel-hmi-standard-renderer.js?v=20260901-pm-history-optional-12",
-  "/app.js?v=20260918-sync-status-2",
+  "/app.js?v=20260918-session-403-3",
   "/manifest.webmanifest?v=20260901-pm-history-optional-12",
   "/assets/equipment/pump-centrifugal-blue.png?v=20260901-pm-history-optional-12",
   "/assets/equipment/rtu-rooftop-unit.png?v=20260901-pm-history-optional-12"

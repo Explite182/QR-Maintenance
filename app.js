@@ -41440,7 +41440,28 @@ function siteworksServerUrl(path) {
   return `${cleanBase}/${cleanPath}`;
 }
 
-function siteworksServerFetch(path, options = {}) {
+function serverResponseRejectsSession(response, errorText = "") {
+  if (response?.status === 401) return true;
+  if (response?.status !== 403) return false;
+  return /login required|not authenticated|invalid (?:jwt|token)|token expired|session expired/i.test(String(errorText || ""));
+}
+
+function expireRejectedServerSession(message = "Please log in again. Your SiteWorks server session expired.") {
+  currentUser = null;
+  currentRole = "Customer";
+  state.currentUserId = "";
+  clearAuthSession();
+  try {
+    persistLocalStateOnly(false);
+  } catch (error) {
+    console.warn("Expired server session state could not be saved.", error);
+  }
+  lastAuthError = message;
+  if (els.loginError) els.loginError.textContent = message;
+  renderAuth();
+}
+
+async function siteworksServerFetch(path, options = {}) {
   const body = options.body;
   const hasFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const session = getSavedAuthSession();
@@ -41451,24 +41472,19 @@ function siteworksServerFetch(path, options = {}) {
   };
   const fetchOptions = { ...options, headers };
   if (!fetchOptions.cache) fetchOptions.cache = "no-store";
-  return fetch(siteworksServerUrl(path), fetchOptions);
+  const response = await fetch(siteworksServerUrl(path), fetchOptions);
+  if (response.status === 401 || response.status === 403) {
+    const errorText = await response.clone().text().catch(() => "");
+    if (serverResponseRejectsSession(response, errorText)) expireRejectedServerSession();
+  }
+  return response;
 }
 
 async function requireOkServerResponse(response, fallbackMessage = "SiteWorks server request failed.") {
   if (response.ok) return;
   const errorText = await response.text();
-  if (response.status === 401 || isExpiredAuthText(errorText)) {
-    currentUser = null;
-    currentRole = "Customer";
-    state.currentUserId = "";
-    clearAuthSession();
-    lastAuthError = "Please log in again. The SiteWorks server session expired.";
-    try {
-      persistLocalStateOnly(false);
-    } catch (error) {
-      console.warn("Expired server session state could not be saved.", error);
-    }
-    renderAuth();
+  if (serverResponseRejectsSession(response, errorText) || isExpiredAuthText(errorText)) {
+    expireRejectedServerSession("Please log in again. The SiteWorks server session expired.");
   }
   throw new Error(errorText || fallbackMessage);
 }
