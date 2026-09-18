@@ -14332,16 +14332,20 @@ async function loadLightingCommandsForCurrentScope({ force = false } = {}) {
   const { canUseLocation, scopeKey } = getLightingScopeDetails();
   if (!canUseLocation || lightingCommandsLoading) return;
   if (!force && lightingCommandsLoadedScope === scopeKey) return;
+  const previousCommands = lightingCommandsLoadedScope === scopeKey ? lightingCommandsCache.slice() : [];
   lightingCommandsLoading = true;
   try {
     const response = await siteworksApi.loadLightingCommands(selectedCustomerId, selectedLocationId);
     if (!response.ok) throw new Error(`Lighting command load failed: ${response.status}`);
     const payload = await response.json();
-    lightingCommandsCache = Array.isArray(payload.commands) ? payload.commands : [];
+    const serverCommands = Array.isArray(payload.commands) ? payload.commands : [];
+    lightingCommandsCache = force && previousCommands.length && !serverCommands.length
+      ? previousCommands
+      : serverCommands;
     lightingCommandsLoadedScope = scopeKey;
   } catch (error) {
     console.warn("Lighting command status could not be loaded from the server.", error);
-    lightingCommandsCache = [];
+    lightingCommandsCache = previousCommands;
     lightingCommandsLoadedScope = scopeKey;
   } finally {
     lightingCommandsLoading = false;
@@ -14354,6 +14358,7 @@ async function loadLightingControllersForCurrentScope({ force = false } = {}) {
   const scopeKey = getLightingControllerScopeKey();
   if (!scopeKey || lightingControllersLoading) return;
   if (!force && lightingControllersLoadedScope === scopeKey) return;
+  const previousControllers = lightingControllersLoadedScope === scopeKey ? lightingControllersCache.slice() : [];
   lightingControllersLoading = true;
   const status = document.querySelector("[data-lighting-controller-status]");
   if (status) status.textContent = "Loading lighting controllers...";
@@ -14365,9 +14370,9 @@ async function loadLightingControllersForCurrentScope({ force = false } = {}) {
     const localScopeControllers = getLightingControllers().filter((controller) => (
       controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId
     ));
-    lightingControllersCache = serverControllers.length || !localScopeControllers.length
+    lightingControllersCache = serverControllers.length || (!localScopeControllers.length && !previousControllers.length)
       ? serverControllers
-      : localScopeControllers;
+      : (localScopeControllers.length ? localScopeControllers : previousControllers);
     lightingControllersLoadedScope = scopeKey;
     const localOtherScopes = getLightingControllers().filter((controller) => (
       controller.customerId !== selectedCustomerId || controller.locationId !== selectedLocationId
@@ -14386,9 +14391,10 @@ async function loadLightingControllersForCurrentScope({ force = false } = {}) {
     if (status) status.textContent = "";
   } catch (error) {
     console.warn("Lighting controllers could not be loaded from the server.", error);
-    lightingControllersCache = getLightingControllers().filter((controller) => (
+    const savedControllers = getLightingControllers().filter((controller) => (
       controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId
     ));
+    lightingControllersCache = savedControllers.length ? savedControllers : previousControllers;
     lightingControllersLoadedScope = scopeKey;
     if (status) status.textContent = "Using local saved controllers until the server endpoint is available.";
   } finally {
@@ -14404,6 +14410,7 @@ async function loadLightingZonesForCurrentScope({ force = false } = {}) {
   const { canUseLocation, scopeKey } = getLightingScopeDetails();
   if (!canUseLocation || lightingZonesLoading) return;
   if (!force && lightingZonesLoadedScope === scopeKey) return;
+  const previousZones = lightingZonesLoadedScope === scopeKey ? lightingZonesCache.slice() : [];
   lightingZonesLoading = true;
   const status = document.querySelector("[data-lighting-zone-status]");
   if (status) status.textContent = "Loading lighting zones...";
@@ -14411,14 +14418,18 @@ async function loadLightingZonesForCurrentScope({ force = false } = {}) {
     const response = await siteworksApi.loadLightingZones(selectedCustomerId, selectedLocationId);
     if (!response.ok) throw new Error(`Lighting zone load failed: ${response.status}`);
     const payload = await response.json();
-    lightingZonesCache = sortLightingZones(Array.isArray(payload.zones) ? payload.zones : []);
+    const serverZones = sortLightingZones(Array.isArray(payload.zones) ? payload.zones : []);
+    lightingZonesCache = force && previousZones.length && !serverZones.length
+      ? previousZones
+      : serverZones;
     lightingZonesLoadedScope = scopeKey;
     if (status) status.textContent = "";
   } catch (error) {
     console.warn("Lighting zones could not be loaded from the server.", error);
-    lightingZonesCache = sortLightingZones(getLightingZones().filter((zone) => (
+    const savedZones = sortLightingZones(getLightingZones().filter((zone) => (
       zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId
     )));
+    lightingZonesCache = savedZones.length ? savedZones : previousZones;
     lightingZonesLoadedScope = scopeKey;
     if (status) status.textContent = "Using local saved zones until the server endpoint is available.";
   } finally {
@@ -14433,6 +14444,7 @@ async function loadLightingInputsForCurrentScope({ force = false } = {}) {
   const { canUseLocation, scopeKey } = getLightingScopeDetails();
   if (!canUseLocation || lightingInputsLoading) return;
   if (!force && lightingInputsLoadedScope === scopeKey) return;
+  const previousInputs = lightingInputsLoadedScope === scopeKey ? lightingInputsCache.slice() : [];
   lightingInputsLoading = true;
   const status = document.querySelector("[data-lighting-input-status]");
   if (status) status.textContent = "Loading lighting inputs...";
@@ -14440,14 +14452,18 @@ async function loadLightingInputsForCurrentScope({ force = false } = {}) {
     const response = await siteworksApi.loadLightingInputs(selectedCustomerId, selectedLocationId);
     if (!response.ok) throw new Error(`Lighting input load failed: ${response.status}`);
     const payload = await response.json();
-    lightingInputsCache = Array.isArray(payload.inputs) ? payload.inputs : [];
+    const serverInputs = Array.isArray(payload.inputs) ? payload.inputs : [];
+    lightingInputsCache = force && previousInputs.length && !serverInputs.length
+      ? previousInputs
+      : serverInputs;
     lightingInputsLoadedScope = scopeKey;
     if (status) status.textContent = "";
   } catch (error) {
     console.warn("Lighting inputs could not be loaded from the server.", error);
-    lightingInputsCache = getLightingInputs().filter((input) => (
+    const savedInputs = getLightingInputs().filter((input) => (
       input.customerId === selectedCustomerId && input.locationId === selectedLocationId
     ));
+    lightingInputsCache = savedInputs.length ? savedInputs : previousInputs;
     lightingInputsLoadedScope = scopeKey;
     if (status) status.textContent = "Using local saved inputs until the server endpoint is available.";
   } finally {
