@@ -14320,6 +14320,8 @@ function renderLightingHistory() {
       ? " | manual schedule"
       : source === "schedule"
         ? " | schedule"
+        : source === "device-report"
+          ? " | controller reported"
         : "";
     const staleText = isLightingCommandStale(command) ? " | waiting on controller" : "";
     return `
