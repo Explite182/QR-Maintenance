@@ -3874,8 +3874,8 @@ async function syncMonitoringStatusFromApi() {
   } catch (error) {
     setMonitoringConnectionStatus("offline");
     const now = Date.now();
-    if (!syncMonitoringLiveStatusFromServer.lastWarningAt || now - syncMonitoringLiveStatusFromServer.lastWarningAt > 60 * 1000) {
-      syncMonitoringLiveStatusFromServer.lastWarningAt = now;
+    if (!syncMonitoringStatusFromApi.lastWarningAt || now - syncMonitoringStatusFromApi.lastWarningAt > 60 * 1000) {
+      syncMonitoringStatusFromApi.lastWarningAt = now;
       console.warn("Monitoring live status sync failed", error);
     }
   }
