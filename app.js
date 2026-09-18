@@ -24417,11 +24417,11 @@ function getHvacControllers() {
   return state.hvacControllers;
 }
 
-function saveHvacControllers(controllers = [], { sync = true } = {}) {
+function saveHvacControllers(controllers = [], { sync = true, persist = true } = {}) {
   state.hvacControllers = controllers.map(normalizeHvacController);
   if (sync) {
     saveState();
-  } else {
+  } else if (persist) {
     state.updatedAt = new Date().toISOString();
     persistLocalStateOnly();
   }
@@ -24455,7 +24455,7 @@ async function loadHvacControllersForCurrentScope(force = false) {
     hvacControllersLoadedAt = Date.now();
     hvacControllersServerLoadedAt = hvacControllersLoadedAt;
     const localOtherScopes = getHvacControllers().filter((controller) => `${controller.customerId}:${controller.locationId}` !== scopeKey);
-    saveHvacControllers([...hvacControllersCache, ...localOtherScopes], { sync: false });
+    saveHvacControllers([...hvacControllersCache, ...localOtherScopes], { sync: false, persist: false });
     if (!serverControllers.length && localScopeControllers.length) {
       Promise.allSettled(localScopeControllers.map((controller) => siteworksApi.saveHvacController({
         ...controller,
