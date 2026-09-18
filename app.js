@@ -18418,7 +18418,7 @@ function renderInventoryItem(item) {
   ].filter(Boolean).join(" | ");
   const photoSrc = mediaSource(item.photo);
   const photoThumb = photoSrc
-    ? `<button type="button" class="inventory-thumb" data-view-photo data-photo-src="${escapeAttribute(photoSrc)}" data-photo-caption="${escapeAttribute(item.photo?.name || item.name || "Inventory photo")}"><img alt="" src="${escapeAttribute(photoSrc)}"></button>`
+    ? `<span class="inventory-thumb"><img alt="" src="${escapeAttribute(photoSrc)}"></span>`
     : `<span class="inventory-thumb inventory-thumb-empty" aria-hidden="true">${escapeHtml((item.category || "P").slice(0, 1).toUpperCase())}</span>`;
   const descriptionPreview = item.description ? `<p>${escapeHtml(item.description)}</p>` : "";
   const notesPreview = item.notes ? `<p>${escapeHtml(item.notes)}</p>` : "";
@@ -18448,13 +18448,11 @@ function renderInventoryItem(item) {
           <strong>${escapeHtml(formatInventoryNumber(item.quantity))}</strong>
           <small>Avail ${escapeHtml(formatInventoryNumber(availableQuantity))} | Min ${escapeHtml(formatInventoryNumber(item.minStock))}</small>
         </div>
-        <div class="inventory-actions">
-          <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="-1" ${canManage ? "" : "disabled"}>-</button>
-          <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="1" ${canManage ? "" : "disabled"}>+</button>
-        </div>
       </summary>
       <div class="inventory-detail-panel">
         <div class="inventory-detail-actions">
+          <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="-1" ${canManage ? "" : "disabled"}>-</button>
+          <button type="button" class="secondary mini" data-adjust-inventory-item="${escapeAttribute(item.id)}" data-delta="1" ${canManage ? "" : "disabled"}>+</button>
           <button type="button" class="secondary mini" data-copy-inventory-link="${escapeAttribute(item.id)}" data-link-label="Copy QR Link">Copy QR Link</button>
           <button type="button" class="secondary mini" data-print-inventory-qr="${escapeAttribute(item.id)}">Print QR</button>
           <button type="button" class="secondary mini danger-action" data-delete-inventory-item="${escapeAttribute(item.id)}" ${canManage ? "" : "disabled"}>Delete</button>
@@ -19185,7 +19183,9 @@ function renderKeyRecord(key) {
           <small>${escapeHtml(checkedOut ? getKeyDueLabel(key) : key.storageLocation || "No storage location")}</small>
           ${!checkedOut ? `<small>${escapeHtml(formatKeyCheckoutWindow(key))}</small>` : ""}
         </div>
-        <div class="inventory-actions">
+      </summary>
+      <div class="inventory-detail-panel">
+        <div class="inventory-detail-actions">
           <button type="button" class="secondary mini" data-key-action="${escapeAttribute(key.id)}" data-action="${checkedOut ? "checkin" : "checkout"}" ${canManage ? "" : "disabled"}>${checkedOut ? "Check In" : "Check Out"}</button>
           <button type="button" class="secondary mini" data-write-key-nfc="${escapeAttribute(key.id)}" ${canManage ? "" : "disabled"}>Write NFC Tag</button>
           <button type="button" class="secondary mini" data-verify-key-nfc="${escapeAttribute(key.id)}" ${canManage ? "" : "disabled"}>Read / Verify</button>
@@ -19193,8 +19193,6 @@ function renderKeyRecord(key) {
           <button type="button" class="secondary mini" data-print-key-qr="${escapeAttribute(key.id)}">Print QR</button>
           <button type="button" class="secondary mini danger-action" data-delete-key="${escapeAttribute(key.id)}" ${canManage ? "" : "disabled"}>Delete</button>
         </div>
-      </summary>
-      <div class="inventory-detail-panel">
         <div class="inventory-qr-card">
           <img alt="Key QR code for ${escapeAttribute(key.keyName || "key")}" src="${qrUrl(keyUrl)}">
           <div>
@@ -32652,14 +32650,14 @@ function renderBillingQueueItem(record) {
             <span class="drawer-param-badge ${customerMapped && !unmappedLines ? "badge-ok" : "badge-warn"}">${customerMapped && !unmappedLines ? "QB mapped" : `QB map ${unmappedLines + (customerMapped ? 0 : 1)} needed`}</span>
           </div>
         </div>
+      </summary>
+      <div class="ticket-drawer-body">
         <div class="ticket-summary-tools">
           <button type="button" class="secondary mini" data-open-completed-ticket="${escapeAttribute(workOrder.id)}">Open Job</button>
           ${record.billingStatus !== "ready" ? `<button type="button" class="secondary mini" data-work-order-billing-action="${escapeAttribute(workOrder.id)}" data-billing-action="ready">Ready to Bill</button>` : ""}
           ${record.billingStatus !== "billed" ? `<button type="button" class="secondary mini" data-work-order-billing-action="${escapeAttribute(workOrder.id)}" data-billing-action="billed">Mark Billed</button>` : ""}
           ${record.billingStatus !== "draft" ? `<button type="button" class="secondary mini" data-work-order-billing-action="${escapeAttribute(workOrder.id)}" data-billing-action="draft">Needs Review</button>` : ""}
         </div>
-      </summary>
-      <div class="ticket-drawer-body">
         <form class="billing-review-form" data-billing-review-form="${escapeAttribute(workOrder.id)}">
           <label>
             Customer PO
@@ -33834,21 +33832,14 @@ function renderServiceRequestItem(request) {
           <span>${escapeHtml(asset?.name || "No equipment selected")} | ${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")}</span>
           <div class="ticket-list-badges">${profileBadges}</div>
         </div>
-        <div class="ticket-summary-tools">
-          ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
-          ${primaryActions}
-          ${moreActions.trim() ? `
-            <details class="ticket-action-menu">
-              <summary>More</summary>
-              <div class="ticket-action-menu-list">
-                ${moreActions}
-              </div>
-            </details>
-          ` : ""}
-          <button type="button" class="secondary mini ticket-drawer-close" data-close-work-drawer aria-label="Close service request drawer">X</button>
-        </div>
+        ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
       </summary>
       <div class="ticket-drawer-body">
+        <div class="ticket-summary-tools">
+          ${primaryActions}
+          ${moreActions}
+          <button type="button" class="secondary mini ticket-drawer-close" data-close-work-drawer aria-label="Close service request drawer">X</button>
+        </div>
         <section class="ticket-profile-card">
           ${drawerProfile}
         </section>
@@ -36383,13 +36374,13 @@ function renderWorkOrderItem(item) {
             <span>${escapeHtml(targetLabel)} | ${escapeHtml(customer?.name || "Unknown customer")} | ${escapeHtml(locationRecord?.name || "Unknown location")}</span>
             <div class="ticket-list-badges">${profileBadges}</div>
           </div>
+        ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
+      </summary>
+      <div class="ticket-drawer-body">
         <div class="ticket-summary-tools">
-          ${ageLabel ? `<span class="history-open-label">${escapeHtml(ageLabel)}</span>` : ""}
           ${headerActions}
           <button type="button" class="secondary mini ticket-drawer-close" data-close-work-drawer aria-label="Close job drawer">X</button>
         </div>
-      </summary>
-      <div class="ticket-drawer-body">
         <section class="ticket-profile-card">
           ${drawerProfile}
         </section>
