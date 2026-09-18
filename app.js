@@ -1823,12 +1823,13 @@ async function syncSingleServiceRequestToServer(item) {
 }
 
 async function syncStructuredDataToServer() {
-  if (!STRUCTURED_DATA_SYNC_ENABLED) return;
-  if (structuredSyncActive || !hasSharedMaintenanceData(state)) return;
+  if (!STRUCTURED_DATA_SYNC_ENABLED) return false;
+  if (structuredSyncActive) return false;
+  if (!hasSharedMaintenanceData(state)) return true;
   if (typeof isBrowserOnline === "function" && !isBrowserOnline()) {
     setSyncBanner("stale", "Offline mode", "Changes are saved on this device and will sync when back online.", 0);
     renderOfflineStatus();
-    return;
+    return false;
   }
   structuredSyncActive = true;
   setSyncBanner("saving", "Saving to cloud", "", 0);
@@ -2043,9 +2044,11 @@ async function syncStructuredDataToServer() {
     state.sharedDataUpdatedAt = state.updatedAt || new Date().toISOString();
     persistLocalStateOnly(false);
     markSyncSuccess("save");
+    return true;
   } catch (error) {
     markSyncError(error?.message || "Structured cloud save failed.");
     console.warn("Structured SiteWorks server sync skipped.", error);
+    return false;
   } finally {
     structuredSyncActive = false;
     renderSyncHealth();
@@ -7997,9 +8000,23 @@ els.offlineStatusPanel?.addEventListener("click", async (event) => {
       renderOfflineStatus();
       return;
     }
-    await syncStructuredDataToServer();
-    offlineStatusPanelOpen = false;
-    renderOfflineStatus();
+    const syncButton = target.closest("[data-offline-sync-now]");
+    if (syncButton) {
+      syncButton.disabled = true;
+      syncButton.textContent = "Syncing...";
+    }
+    setSyncBanner("loading", "Syncing SiteWorks", "Saving this device, then checking the cloud...", 0);
+    try {
+      const saved = await syncStructuredDataToServer();
+      if (!saved) throw new Error(syncHealth.lastError || "SiteWorks could not save this device to the cloud.");
+      await refreshCloudDataFromServer({ forceWhileEditing: true, manual: true });
+      offlineStatusPanelOpen = false;
+      setSyncBanner("ok", "Sync complete", "This device is current with SiteWorks.", 3000);
+    } catch (error) {
+      markSyncError(error?.message || "Manual cloud sync failed.");
+    } finally {
+      renderOfflineStatus();
+    }
   }
 });
 
