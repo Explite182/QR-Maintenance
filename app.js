@@ -24523,7 +24523,7 @@ function hvacControllerStatus(controller = {}) {
   if (hvacControllerIsFresh(controller)) {
     return { label: "Online", className: "is-running" };
   }
-  if (onlineStatus === "online") return { label: "Last seen", className: "is-info" };
+  if (onlineStatus === "online") return { label: "Offline", className: "is-warning" };
   const mode = String(controller.mode || controller.status || "Setup only").toLowerCase();
   if (mode.includes("control")) return { label: "Control ready", className: "is-running" };
   if (mode.includes("monitor")) return { label: "Monitoring ready", className: "is-info" };

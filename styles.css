@@ -2048,6 +2048,16 @@ textarea:disabled {
   box-shadow: 0 0 18px rgba(56, 189, 248, 0.85);
 }
 
+.hvac-scada-alert.is-warning .hvac-scada-led {
+  background: #f59e0b;
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.78);
+}
+
+.hvac-scada-alert.is-warning strong,
+.hvac-scada-alert.is-warning em {
+  color: #fbbf24;
+}
+
 .hvac-scada-alert strong,
 .hvac-scada-alert em {
   color: #5eead4;
