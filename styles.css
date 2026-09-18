@@ -13330,6 +13330,40 @@ html[data-theme="dark"] .site-map-empty {
   scroll-snap-type: x proximity;
 }
 
+.pm-calendar-unassigned-queue {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(180, 105, 0, 0.35);
+  background: #fffaf0;
+}
+
+.pm-calendar-unassigned-queue > div:first-child {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+}
+
+.pm-calendar-unassigned-queue span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pm-calendar-unassigned-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 7px;
+}
+
+@media (max-width: 760px) {
+  .pm-calendar-unassigned-queue {
+    grid-template-columns: 1fr;
+  }
+}
+
 .pm-calendar-week-column,
 .pm-calendar-tech-lane {
   min-height: 280px;
@@ -13363,6 +13397,12 @@ html[data-theme="dark"] .site-map-empty {
 
 .pm-calendar-week-column:hover {
   background: #f2fbf8;
+}
+
+.pm-calendar-week-column.is-drop-target {
+  border-color: rgba(8, 112, 95, 0.65);
+  background: #eefbf7;
+  box-shadow: inset 0 0 0 2px rgba(8, 112, 95, 0.18);
 }
 
 .pm-calendar-week-column.is-today {
@@ -13414,6 +13454,43 @@ html[data-theme="dark"] .site-map-empty {
 .pm-calendar-board-event.is-dragging {
   opacity: 0.55;
   cursor: grabbing;
+}
+
+.pm-calendar-board-event.has-schedule-conflict {
+  border-color: #dc2626;
+  background: #fff1f2;
+}
+
+.pm-calendar-conflict-badge {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.schedule-crew-picker {
+  min-width: 220px;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+}
+
+.schedule-crew-picker label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.schedule-crew-picker input {
+  width: auto;
 }
 
 html[data-theme="dark"] .pm-calendar-tech-lane.is-drop-target {

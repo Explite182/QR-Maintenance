@@ -12414,10 +12414,11 @@ document.addEventListener("dragstart", (event) => {
 document.addEventListener("dragend", (event) => {
   event.target.closest("[data-dispatch-work-order]")?.classList.remove("is-dragging");
   document.querySelectorAll(".pm-calendar-tech-lane.is-drop-target").forEach((lane) => lane.classList.remove("is-drop-target"));
+  document.querySelectorAll(".pm-calendar-week-column.is-drop-target").forEach((column) => column.classList.remove("is-drop-target"));
 });
 
 document.addEventListener("dragover", (event) => {
-  const lane = event.target.closest("[data-dispatch-assignee]");
+  const lane = event.target.closest("[data-dispatch-assignee], .pm-calendar-week-column[data-pm-calendar-day]");
   if (!lane || !canManageWorkOrders() || lane.dataset.dispatchAssignee === "pm-due") return;
   event.preventDefault();
   lane.classList.add("is-drop-target");
@@ -12425,18 +12426,22 @@ document.addEventListener("dragover", (event) => {
 });
 
 document.addEventListener("dragleave", (event) => {
-  const lane = event.target.closest("[data-dispatch-assignee]");
+  const lane = event.target.closest("[data-dispatch-assignee], .pm-calendar-week-column[data-pm-calendar-day]");
   if (!lane || lane.contains(event.relatedTarget)) return;
   lane.classList.remove("is-drop-target");
 });
 
 document.addEventListener("drop", (event) => {
-  const lane = event.target.closest("[data-dispatch-assignee]");
+  const lane = event.target.closest("[data-dispatch-assignee], .pm-calendar-week-column[data-pm-calendar-day]");
   if (!lane || !canManageWorkOrders() || lane.dataset.dispatchAssignee === "pm-due") return;
   event.preventDefault();
   lane.classList.remove("is-drop-target");
   const workOrderId = event.dataTransfer.getData("text/plain");
-  assignScheduledVisitFromDispatch(workOrderId, lane.dataset.dispatchAssignee || "", lane.dataset.dispatchAssigneeLabel || "");
+  if (lane.dataset.pmCalendarDay) {
+    rescheduleVisitFromDispatch(workOrderId, lane.dataset.pmCalendarDay);
+  } else {
+    assignScheduledVisitFromDispatch(workOrderId, lane.dataset.dispatchAssignee || "", lane.dataset.dispatchAssigneeLabel || "");
+  }
 });
 
 document.addEventListener("submit", (event) => {
@@ -28413,8 +28418,30 @@ function scheduledVisitCalendarRecords(windowInfo = pmCalendarWindow()) {
 }
 
 function pmCalendarAssigneeLabel(visit = {}, workOrder = {}) {
-  const user = getUser(visit.assignedUserId || workOrder.assignedUserId || "");
-  return user?.name || user?.username || visit.assignedUserName || workOrder.assignedUserName || "Unassigned";
+  const names = scheduledVisitAssignees(visit, workOrder).map((item) => item.name);
+  return names.length ? names.join(", ") : "Unassigned";
+}
+
+function scheduledVisitConflictIds(records = []) {
+  const conflicts = new Set();
+  const scheduled = records.filter((record) => record.kind === "scheduled" && !["Completed", "Cancelled"].includes(record.visit?.status));
+  scheduled.forEach((record, index) => {
+    const start = new Date(record.visit.scheduledAt).getTime();
+    const end = start + Math.max(15, Number(record.visit.durationMinutes || 60)) * 60000;
+    const assignees = new Set(scheduledVisitAssignees(record.visit, record.workOrder).map((item) => item.id ? `id:${item.id}` : `name:${item.name.toLowerCase()}`));
+    if (!assignees.size || !Number.isFinite(start)) return;
+    scheduled.slice(index + 1).forEach((other) => {
+      const otherStart = new Date(other.visit.scheduledAt).getTime();
+      const otherEnd = otherStart + Math.max(15, Number(other.visit.durationMinutes || 60)) * 60000;
+      const sharesTechnician = scheduledVisitAssignees(other.visit, other.workOrder)
+        .some((item) => assignees.has(item.id ? `id:${item.id}` : `name:${item.name.toLowerCase()}`));
+      if (sharesTechnician && start < otherEnd && otherStart < end) {
+        conflicts.add(record.visit.id);
+        conflicts.add(other.visit.id);
+      }
+    });
+  });
+  return conflicts;
 }
 
 function scheduledRouteCalendarRecords(windowInfo = pmCalendarWindow()) {
@@ -28516,6 +28543,7 @@ function groupPmCalendarRecords(records) {
 
 function renderPmCalendarWeekBoard(records, windowInfo) {
   const groups = groupPmCalendarRecords(records);
+  const conflictIds = scheduledVisitConflictIds(records);
   const days = [];
   for (let day = windowInfo.start; day <= windowInfo.end; day = addDays(day, 1)) {
     const date = startOfDay(day);
@@ -28529,7 +28557,7 @@ function renderPmCalendarWeekBoard(records, windowInfo) {
           <em>${items.length}</em>
         </div>
         <div class="pm-calendar-board-events">
-          ${items.length ? items.map(renderPmCalendarBoardEvent).join("") : `<p class="pm-calendar-board-empty">No visits or PMs</p>`}
+          ${items.length ? items.map((record) => renderPmCalendarBoardEvent(record, conflictIds)).join("") : `<p class="pm-calendar-board-empty">Drop a visit here</p>`}
         </div>
       </section>
     `);
@@ -28544,17 +28572,24 @@ function renderPmCalendarDayBoard(records, windowInfo) {
   const scheduledGroups = new Map();
   const pmDue = [];
   const workload = pmCalendarDayWorkload(dayRecords);
+  const conflictIds = scheduledVisitConflictIds(dayRecords);
   dayRecords.forEach((record) => {
     if (record.kind === "scheduled") {
-      const lane = pmCalendarDispatchAssigneeKey(record);
-      if (!scheduledGroups.has(lane)) scheduledGroups.set(lane, []);
-      scheduledGroups.get(lane).push(record);
+      const assignees = scheduledVisitAssignees(record.visit, record.workOrder);
+      const lanes = assignees.length
+        ? assignees.map((item) => item.id ? `user:${item.id}` : `name:${item.name.toLowerCase()}`)
+        : ["unassigned"];
+      lanes.forEach((lane) => {
+        if (!scheduledGroups.has(lane)) scheduledGroups.set(lane, []);
+        scheduledGroups.get(lane).push(record);
+      });
       return;
     }
     pmDue.push(record);
   });
   if (pmDue.length) scheduledGroups.set("PM due", pmDue);
   const dateKey = toDateInputValue(windowInfo.start);
+  const unscheduledWork = unscheduledDispatchWorkOrders();
   return `
     <section class="pm-calendar-day-board">
       <div class="pm-calendar-day-board-header">
@@ -28570,8 +28605,40 @@ function renderPmCalendarDayBoard(records, windowInfo) {
         </div>
         <button type="button" data-pm-calendar-add-on-day="${escapeAttribute(dateKey)}">Add job or service call</button>
       </div>
+      ${renderUnscheduledDispatchQueue(unscheduledWork)}
       <div class="pm-calendar-dispatch-lanes">
-        ${pmCalendarDispatchLanes(dayRecords, scheduledGroups, pmDue).map((lane) => renderPmCalendarDispatchLane(lane)).join("")}
+        ${pmCalendarDispatchLanes(dayRecords, scheduledGroups, pmDue).map((lane) => renderPmCalendarDispatchLane(lane, [], conflictIds)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function unscheduledDispatchWorkOrders() {
+  const scheduledIds = new Set(normalizeScheduledVisits(state.scheduledVisits || [])
+    .filter((visit) => !["Completed", "Cancelled"].includes(visit.status))
+    .map((visit) => visit.workOrderId));
+  return (state.workOrders || [])
+    .filter((workOrder) => isCurrentViewWorkOrder(workOrder))
+    .filter((workOrder) => !["Closed", "Resolved", "Cancelled"].includes(workOrder.status))
+    .filter((workOrder) => !scheduledIds.has(workOrder.id))
+    .sort((a, b) => new Date(a.dueAt || a.createdAt || 0) - new Date(b.dueAt || b.createdAt || 0));
+}
+
+function renderUnscheduledDispatchQueue(workOrders = []) {
+  if (!workOrders.length) return "";
+  return `
+    <section class="pm-calendar-unassigned-queue">
+      <div>
+        <strong>Unassigned work</strong>
+        <span>${workOrders.length} job${workOrders.length === 1 ? "" : "s"} without a visit</span>
+      </div>
+      <div class="pm-calendar-unassigned-items">
+        ${workOrders.map((workOrder) => `
+          <button type="button" class="pm-calendar-board-event pm-calendar-board-event-warning" draggable="true" data-dispatch-work-order="${escapeAttribute(workOrder.id)}" data-open-scheduled-ticket="${escapeAttribute(workOrder.id)}">
+            <strong>${escapeHtml(`${formatIssueNumber(workOrder)} - ${workOrder.title || "Work order"}`)}</strong>
+            <small>${escapeHtml(getLocation(workOrder.locationId)?.name || "No location")}</small>
+          </button>
+        `).join("")}
       </div>
     </section>
   `;
@@ -28600,7 +28667,7 @@ function pmCalendarDayWorkload(records = []) {
   };
 }
 
-function renderPmCalendarDispatchLane(lane = "Unassigned", items = []) {
+function renderPmCalendarDispatchLane(lane = "Unassigned", items = [], conflictIds = new Set()) {
   if (typeof lane === "object" && lane) {
     items = lane.items || [];
   }
@@ -28616,7 +28683,7 @@ function renderPmCalendarDispatchLane(lane = "Unassigned", items = []) {
         <span>${items.length} item${items.length === 1 ? "" : "s"}${hourText ? ` | ${escapeHtml(hourText)}` : ""}</span>
       </div>
       <div class="pm-calendar-board-events">
-        ${items.length ? items.map(renderPmCalendarBoardEvent).join("") : `<p class="pm-calendar-board-empty">No assigned jobs</p>`}
+        ${items.length ? items.map((record) => renderPmCalendarBoardEvent(record, conflictIds)).join("") : `<p class="pm-calendar-board-empty">No assigned jobs</p>`}
       </div>
     </section>
   `;
@@ -28639,7 +28706,10 @@ function pmCalendarDispatchLanes(dayRecords = [], scheduledGroups = new Map(), p
   addLane("unassigned", "Unassigned");
   pmCalendarDispatchAssigneeOptions(dayRecords).forEach((assignee) => addLane(assignee.key, assignee.label));
   scheduledGroups.forEach((items, key) => {
-    const label = key === "unassigned" ? "Unassigned" : items[0]?.assigneeLabel || key.replace(/^name:/, "");
+    const user = key.startsWith("user:") ? getUser(key.slice(5)) : null;
+    const label = key === "unassigned"
+      ? "Unassigned"
+      : user?.name || user?.username || key.replace(/^name:/, "");
     addLane(key, label).items.push(...items);
   });
   if (pmDue.length) addLane("pm-due", "PM due").items.push(...pmDue);
@@ -28701,22 +28771,37 @@ function resolveDispatchAssignee(value = "", customerId = "", fallbackLabel = ""
 function assignScheduledVisitFromDispatch(workOrderId = "", assigneeValue = "", fallbackLabel = "") {
   const workOrder = getWorkOrder(workOrderId);
   if (!workOrder || !canManageWorkOrders()) return;
-  const visit = normalizeScheduledVisits(state.scheduledVisits || []).find((item) => item.workOrderId === workOrder.id);
-  if (!visit) return;
+  const existingVisit = normalizeScheduledVisits(state.scheduledVisits || []).find((item) => item.workOrderId === workOrder.id);
+  const defaultDate = parseLocalDate(pmCalendarDate) || new Date();
+  defaultDate.setHours(8, 0, 0, 0);
+  const visit = existingVisit || {
+    id: crypto.randomUUID(),
+    workOrderId: workOrder.id,
+    customerId: workOrder.customerId,
+    locationId: workOrder.locationId,
+    assetId: workOrder.assetId,
+    scheduledAt: defaultDate.toISOString(),
+    durationMinutes: 60,
+    status: "Scheduled",
+    notes: "",
+    createdAt: new Date().toISOString()
+  };
   const { user, contractor, label } = resolveDispatchAssignee(assigneeValue, workOrder.customerId, fallbackLabel);
   const previous = pmCalendarAssigneeLabel(visit, workOrder);
   visit.assignedUserId = user?.id || "";
   visit.assignedUserName = label;
+  visit.assignedUsers = user || label ? [{ id: user?.id || "", name: label }] : [];
   visit.updatedAt = new Date().toISOString();
   workOrder.assignedUserId = user?.id || "";
   workOrder.assignedUserName = label;
+  if (!existingVisit) workOrder.dueAt = visit.scheduledAt;
   workOrder.updatedAt = new Date().toISOString();
   state.scheduledVisits = normalizeScheduledVisits([
     visit,
     ...(state.scheduledVisits || []).filter((item) => item.id !== visit.id)
   ]);
   ensureScheduledVisitSnapshot(workOrder, visit);
-  addWorkOrderHistory(workOrder, "Dispatch reassigned", `${previous || "Unassigned"} -> ${label || "Unassigned"}`);
+  addWorkOrderHistory(workOrder, existingVisit ? "Dispatch reassigned" : "Visit scheduled from dispatch", existingVisit ? `${previous || "Unassigned"} -> ${label || "Unassigned"}` : `${formatDateTime(visit.scheduledAt)} | ${label || "Unassigned"}`);
   if (contractor) {
     addWorkOrderHistory(workOrder, "Assigned contractor", `${contractor.name}${contractor.email ? ` | ${contractor.email}` : ""}${contractor.trade ? ` | ${contractor.trade}` : ""}`);
   }
@@ -28728,6 +28813,46 @@ function assignScheduledVisitFromDispatch(workOrderId = "", assigneeValue = "", 
   syncSingleWorkOrderToServer(workOrder);
   render();
   syncWorkDrawerBackdrop();
+}
+
+function rescheduleVisitFromDispatch(workOrderId = "", dateKey = "") {
+  const workOrder = getWorkOrder(workOrderId);
+  const existingVisit = normalizeScheduledVisits(state.scheduledVisits || []).find((item) => item.workOrderId === workOrderId);
+  const targetDate = parseLocalDate(dateKey);
+  if (!workOrder || !targetDate || !canManageWorkOrders()) return;
+  targetDate.setHours(8, 0, 0, 0);
+  const visit = existingVisit || {
+    id: crypto.randomUUID(),
+    workOrderId: workOrder.id,
+    customerId: workOrder.customerId,
+    locationId: workOrder.locationId,
+    assetId: workOrder.assetId,
+    scheduledAt: targetDate.toISOString(),
+    durationMinutes: 60,
+    assignedUserId: workOrder.assignedUserId || "",
+    assignedUserName: workOrder.assignedUserName || "",
+    assignedUsers: normalizeScheduledVisitAssignees(workOrder),
+    status: "Scheduled",
+    notes: "",
+    createdAt: new Date().toISOString()
+  };
+  const previous = new Date(visit.scheduledAt);
+  if (Number.isNaN(previous.getTime())) return;
+  if (existingVisit) targetDate.setHours(previous.getHours(), previous.getMinutes(), 0, 0);
+  const nextScheduledAt = targetDate.toISOString();
+  if (existingVisit && nextScheduledAt === visit.scheduledAt) return;
+  const previousScheduledAt = visit.scheduledAt;
+  visit.scheduledAt = nextScheduledAt;
+  visit.updatedAt = new Date().toISOString();
+  workOrder.dueAt = nextScheduledAt;
+  workOrder.updatedAt = visit.updatedAt;
+  state.scheduledVisits = normalizeScheduledVisits([visit, ...(state.scheduledVisits || []).filter((item) => item.id !== visit.id)]);
+  ensureScheduledVisitSnapshot(workOrder, visit);
+  addWorkOrderHistory(workOrder, existingVisit ? "Dispatch rescheduled" : "Visit scheduled from dispatch", existingVisit ? `${formatDateTime(previousScheduledAt)} -> ${formatDateTime(nextScheduledAt)}` : formatDateTime(nextScheduledAt));
+  addActivity(existingVisit ? "Dispatch rescheduled" : "Visit scheduled", `${formatIssueNumber(workOrder)} - ${formatDateTime(nextScheduledAt)}`);
+  saveState();
+  syncSingleWorkOrderToServer(workOrder);
+  render();
 }
 
 function pmCalendarRecordTimeSort(a, b) {
@@ -28749,7 +28874,7 @@ function pmCalendarRecordTargetAttribute(record) {
   return `data-pm-calendar-asset="${escapeAttribute(record.asset.id)}"`;
 }
 
-function renderPmCalendarBoardEvent(record) {
+function renderPmCalendarBoardEvent(record, conflictIds = new Set()) {
   const tone = pmCalendarTone(record);
   const timeLabel = record.kind === "scheduled" ? pmCalendarShortTime(record.visit.scheduledAt) : "PM";
   const title = record.kind === "scheduled"
@@ -28762,11 +28887,13 @@ function renderPmCalendarBoardEvent(record) {
   const dispatchAttrs = record.kind === "scheduled" && canManageWorkOrders()
     ? `draggable="true" data-dispatch-work-order="${escapeAttribute(record.workOrder.id)}"`
     : "";
+  const hasConflict = record.kind === "scheduled" && conflictIds.has(record.visit?.id);
   return `
-    <button type="button" class="pm-calendar-board-event pm-calendar-board-event-${tone}" ${pmCalendarRecordTargetAttribute(record)} ${dispatchAttrs}>
+    <button type="button" class="pm-calendar-board-event pm-calendar-board-event-${tone}${hasConflict ? " has-schedule-conflict" : ""}" ${pmCalendarRecordTargetAttribute(record)} ${dispatchAttrs}>
       <span>${escapeHtml(timeLabel)}</span>
       <strong>${escapeHtml(title)}</strong>
       <small>${escapeHtml(meta || pmCalendarRecordStatus(record))}</small>
+      ${hasConflict ? `<em class="pm-calendar-conflict-badge">Overlap</em>` : ""}
     </button>
   `;
 }
@@ -30926,6 +31053,7 @@ function normalizeScheduledVisits(visits = []) {
     durationMinutes: Math.max(15, Number(visit.durationMinutes || visit.duration_minutes || 60)),
     assignedUserId: visit.assignedUserId || visit.assigned_user_id || "",
     assignedUserName: visit.assignedUserName || visit.assigned_user_name || "",
+    assignedUsers: normalizeScheduledVisitAssignees(visit),
     status: ["Scheduled", "On my way", "In progress", "Completed", "Cancelled"].includes(visit.status) ? visit.status : "Scheduled",
     publicToken: visit.publicToken || visit.public_token || "",
     publicTokenHash: visit.publicTokenHash || visit.public_token_hash || "",
@@ -30939,6 +31067,38 @@ function normalizeScheduledVisits(visits = []) {
     createdAt: visit.createdAt || visit.created_at || new Date().toISOString(),
     updatedAt: visit.updatedAt || visit.updated_at || visit.createdAt || new Date().toISOString()
   })).filter((visit) => visit.workOrderId && visit.scheduledAt);
+}
+
+function normalizeScheduledVisitAssignees(visit = {}) {
+  const source = Array.isArray(visit.assignedUsers) ? visit.assignedUsers : Array.isArray(visit.assigned_users) ? visit.assigned_users : [];
+  const assignees = source.map((item) => ({
+    id: String(item?.id || item?.userId || item?.user_id || "").trim(),
+    name: String(item?.name || item?.userName || item?.user_name || "").trim()
+  })).filter((item) => item.id || item.name);
+  const primaryId = String(visit.assignedUserId || visit.assigned_user_id || "").trim();
+  const primaryName = String(visit.assignedUserName || visit.assigned_user_name || "").trim();
+  if ((primaryId || primaryName) && !assignees.some((item) => item.id === primaryId && item.name === primaryName)) {
+    assignees.unshift({ id: primaryId, name: primaryName });
+  }
+  const seen = new Set();
+  return assignees.filter((item) => {
+    const key = item.id ? `id:${item.id}` : `name:${item.name.toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function scheduledVisitAssignees(visit = {}, workOrder = {}) {
+  const normalized = normalizeScheduledVisitAssignees({
+    ...visit,
+    assignedUserId: visit.assignedUserId || workOrder.assignedUserId || "",
+    assignedUserName: visit.assignedUserName || workOrder.assignedUserName || ""
+  });
+  return normalized.map((item) => {
+    const user = item.id ? getUser(item.id) : null;
+    return { id: item.id, name: user?.name || user?.username || item.name || "Assigned technician" };
+  });
 }
 
 function scheduledVisitsForWorkOrder(workOrderId = "") {
@@ -31566,6 +31726,10 @@ function saveScheduledVisitForWorkOrder(workOrderId = "", formData = new FormDat
   if (!scheduledAt) return;
   const users = getAssignableUsersForWorkOrder(workOrder);
   const assignedUser = users.find((user) => user.id === String(formData.get("assignedUserId") || "")) || null;
+  const additionalAssignedUsers = formData.getAll("additionalAssignedUserIds")
+    .map((id) => users.find((user) => user.id === String(id || "")))
+    .filter(Boolean)
+    .filter((user) => user.id !== assignedUser?.id);
   const visitId = String(formData.get("visitId") || "").trim();
   const now = new Date().toISOString();
   const existingVisit = visitId
@@ -31582,6 +31746,7 @@ function saveScheduledVisitForWorkOrder(workOrderId = "", formData = new FormDat
     durationMinutes: Math.max(15, Number(formData.get("durationMinutes") || 60)),
     assignedUserId: assignedUser?.id || "",
     assignedUserName: assignedUser ? assignedUser.name || assignedUser.username || "" : "",
+    assignedUsers: [assignedUser, ...additionalAssignedUsers].filter(Boolean).map((user) => ({ id: user.id, name: user.name || user.username || "" })),
     status: String(formData.get("status") || "Scheduled").trim() || "Scheduled",
     notes: String(formData.get("notes") || "").trim(),
     createdAt: existingVisit?.createdAt || now,
@@ -36532,6 +36697,15 @@ function renderWorkOrderSchedulePanel(workOrder = {}) {
               ${users.map((user) => `<option value="${escapeAttribute(user.id)}" ${nextVisit?.assignedUserId === user.id || (!nextVisit && workOrder.assignedUserId === user.id) ? "selected" : ""}>${escapeHtml(user.name || user.username)}</option>`).join("")}
             </select>
           </label>
+          <fieldset class="schedule-crew-picker">
+            <legend>Additional technicians</legend>
+            ${users.filter((user) => user.id !== (nextVisit?.assignedUserId || workOrder.assignedUserId)).map((user) => `
+              <label>
+                <input type="checkbox" name="additionalAssignedUserIds" value="${escapeAttribute(user.id)}" ${scheduledVisitAssignees(nextVisit || {}, workOrder).some((item) => item.id === user.id && user.id !== nextVisit?.assignedUserId) ? "checked" : ""}>
+                <span>${escapeHtml(user.name || user.username)}</span>
+              </label>
+            `).join("") || `<span class="muted">No additional technicians available.</span>`}
+          </fieldset>
           <label>
             Duration
             <input name="durationMinutes" type="number" min="15" step="15" value="${escapeAttribute(nextVisit?.durationMinutes || 60)}">
@@ -37938,6 +38112,7 @@ function ensureScheduledVisitSnapshot(workOrder = {}, visit = {}) {
       durationMinutes: visit.durationMinutes || 60,
       assignedUserId: visit.assignedUserId || "",
       assignedUserName: visit.assignedUserName || "",
+      assignedUsers: normalizeScheduledVisitAssignees(visit),
       notes: visit.notes || "",
       status: visit.status || "Scheduled",
       responseStatus: visit.confirmationStatus || existing.responseStatus || "",
