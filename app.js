@@ -40921,7 +40921,15 @@ async function renderPublicQuote() {
   if (!quote) {
     els.publicQuoteTitle.textContent = "Quote not available";
     els.publicQuoteContext.textContent = "";
-    els.publicQuoteBody.innerHTML = `<p class="login-error">${escapeHtml(publicQuoteLookupState.message || "This quote link could not be loaded.")}</p>`;
+    els.publicQuoteBody.innerHTML = `
+      <p class="login-error">${escapeHtml(publicQuoteLookupState.message || "This quote link could not be loaded.")}</p>
+      <button type="button" class="secondary" data-public-quote-retry>Try Again</button>
+    `;
+    els.publicQuoteBody.querySelector("[data-public-quote-retry]")?.addEventListener("click", () => {
+      publicQuoteLookupState.loaded = false;
+      publicQuoteLookupState.message = "";
+      renderPublicQuote();
+    });
     els.publicQuoteForm?.classList.add("hidden");
     return;
   }
@@ -41096,24 +41104,34 @@ async function submitPublicScheduleResponse(event) {
   }
 }
 
-async function loadPublicQuote(id, token) {
+async function loadPublicQuote(id, token, attempts = 3) {
   publicQuoteLookupState.loading = true;
   renderPublicQuote();
-  try {
-    const response = await siteworksApi.loadPublicQuote(id, token);
-    if (!response.ok) throw new Error(await response.text());
-    publicQuoteLookupState.quote = await response.json();
-    publicQuoteLookupState.loaded = true;
-    publicQuoteLookupState.message = "";
-  } catch (error) {
-    console.warn("Public quote load failed.", error);
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await siteworksApi.loadPublicQuote(id, token);
+      if (!response.ok) throw new Error(await response.text());
+      publicQuoteLookupState.quote = await response.json();
+      publicQuoteLookupState.loaded = true;
+      publicQuoteLookupState.message = "";
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      console.warn(`Public quote load attempt ${attempt} failed.`, error);
+      if (attempt < attempts) await new Promise((resolve) => window.setTimeout(resolve, attempt * 900));
+    }
+  }
+  if (lastError) {
     publicQuoteLookupState.quote = null;
     publicQuoteLookupState.loaded = true;
-    publicQuoteLookupState.message = readableServerError(error?.message || error) || "Quote could not be loaded.";
-  } finally {
-    publicQuoteLookupState.loading = false;
-    renderPublicQuote();
+    publicQuoteLookupState.message = isLikelyNetworkError(lastError?.message || lastError)
+      ? "The quote server did not respond. Check your connection and try again."
+      : readableServerError(lastError?.message || lastError) || "Quote could not be loaded.";
   }
+  publicQuoteLookupState.loading = false;
+  renderPublicQuote();
 }
 
 async function submitPublicQuoteResponse(event) {
@@ -41142,7 +41160,16 @@ async function submitPublicQuoteResponse(event) {
     els.publicQuoteForm?.reset();
   } catch (error) {
     console.warn("Public quote response failed.", error);
-    publicQuoteLookupState.message = `Quote was not updated: ${readableServerError(error?.message || error) || "Try again."}`;
+    publicQuoteLookupState.message = "Confirming whether the quote response was received...";
+    publicQuoteLookupState.loaded = false;
+    publicQuoteLookupState.loading = false;
+    await loadPublicQuote(id, token, 3);
+    const confirmedStatus = publicQuoteLookupState.quote?.status || "";
+    if (confirmedStatus === action) {
+      publicQuoteLookupState.message = action === "Accepted" ? "Quote accepted. Thank you." : "Quote declined. Thank you.";
+    } else {
+      publicQuoteLookupState.message = `Quote was not updated: ${readableServerError(error?.message || error) || "Try again."}`;
+    }
   } finally {
     buttons.forEach((button) => { button.disabled = false; });
     renderPublicQuote();
