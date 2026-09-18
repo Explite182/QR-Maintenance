@@ -30825,7 +30825,7 @@ function renderOfflineStatus() {
     : status === "syncing"
       ? "Syncing"
       : status === "error"
-        ? `Sync issue${pendingText ? ` | ${pendingText} waiting` : ""}`
+        ? pendingText ? `Sync issue | ${pendingText} waiting` : "Cloud connection issue"
         : status === "pending"
           ? `${pendingText || 1} waiting to sync`
           : "Online | synced";
@@ -30839,7 +30839,9 @@ function renderOfflineStatus() {
     : pending
       ? "These local changes are saved on this device and still need to reach the cloud."
       : hasError
-        ? "SiteWorks hit a cloud sync issue. Your local work is still on this device."
+        ? pending
+          ? "SiteWorks could not send all local changes. Your work remains saved on this device."
+          : "Your work is saved in the cloud, but the latest background connection check failed."
         : "Cloud sync is current for this device.";
   const lastCloud = syncHealth.lastCloudSaveAt ? `Last cloud save ${formatSyncTimestamp(syncHealth.lastCloudSaveAt)}` : "No cloud save recorded yet";
   const lastLocal = syncHealth.lastLocalSaveAt ? `Last local save ${formatSyncTimestamp(syncHealth.lastLocalSaveAt)}` : "No local changes yet";
@@ -30850,7 +30852,7 @@ function renderOfflineStatus() {
         <span>${count} waiting</span>
       </div>
     `).join("")
-    : `<div class="offline-status-row"><span>Status</span><span>Synced</span></div>`;
+    : `<div class="offline-status-row"><span>Status</span><span>${hasError ? "Cloud save current" : "Synced"}</span></div>`;
 
   els.offlineStatusPanel.innerHTML = `
     <div>
@@ -30870,7 +30872,7 @@ function renderOfflineStatus() {
       ${hasError ? `
         <div class="offline-status-row">
           <span>Last issue</span>
-          <span>${escapeHtml(friendlySyncErrorTitle(syncHealth.lastError))}</span>
+          <span>${escapeHtml(`${friendlySyncErrorTitle(syncHealth.lastError)}${syncHealth.lastErrorAt ? ` | ${formatSyncTimestamp(syncHealth.lastErrorAt)}` : ""}`)}</span>
         </div>
       ` : ""}
     </div>
