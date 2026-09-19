@@ -37249,6 +37249,7 @@ function createStandaloneEstimate(formData = new FormData()) {
     validUntil: String(formData.get("validUntil") || "").trim(),
     customerNote: "",
     lines: [],
+    companyProfile: normalizeCompanyProfile(state.companyProfile),
     createdBy: getCurrentUserLabel(),
     createdAt: now,
     updatedAt: now
@@ -37287,6 +37288,7 @@ function createEstimateForWorkOrder(workOrderId = "", formData = new FormData())
     validUntil: String(formData.get("validUntil") || "").trim(),
     customerNote: "",
     lines: normalizeEstimateLines(seedLines),
+    companyProfile: normalizeCompanyProfile(state.companyProfile),
     createdBy: getCurrentUserLabel(),
     createdAt: now,
     updatedAt: now
@@ -37319,6 +37321,7 @@ function createAiEstimateForWorkOrder(workOrderId = "") {
     validUntil: toDateInputValue(addDays(new Date(), 30)),
     customerNote: "Drafted by SiteWorks AI Assist. Review pricing and wording before sending.",
     lines,
+    companyProfile: normalizeCompanyProfile(state.companyProfile),
     createdBy: getCurrentUserLabel(),
     createdAt: now,
     updatedAt: now
@@ -37600,6 +37603,16 @@ function buildEstimatePreviewHtml(details) {
 function previewEstimate(estimateId = "") {
   const details = getEstimateDetails(estimateId);
   if (!details) return;
+  const currentCompany = normalizeCompanyProfile(state.companyProfile);
+  const savedCompany = normalizeCompanyProfile(details.estimate.companyProfile || {});
+  if (currentCompany.updatedAt && currentCompany.updatedAt !== savedCompany.updatedAt) {
+    details.estimate.companyProfile = currentCompany;
+    details.estimate.updatedAt = new Date().toISOString();
+    saveState();
+    syncSingleEstimateToServer(details.estimate).catch((error) => {
+      console.warn("Updated estimate branding could not be saved to the server yet.", error);
+    });
+  }
   const previewWindow = window.open("", "_blank");
   if (!previewWindow) {
     alert("Pop-up blocked. Please allow pop-ups for SiteWorks to preview the quote.");
