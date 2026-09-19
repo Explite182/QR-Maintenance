@@ -43708,10 +43708,11 @@ function saveStateQuietly() {
 
 function persistLocalStateOnly(showStorageWarning = true) {
   let localSnapshot = compactStateForBrowserStorage(state);
-  let saved = setLocalStorageWithRecovery(STORAGE_KEY, JSON.stringify(localSnapshot));
+  let saved = setLocalStorageWithRecovery(STORAGE_KEY, JSON.stringify(localSnapshot), false);
   if (!saved) {
     localSnapshot = compactStateForConstrainedBrowserStorage(state);
     saved = setLocalStorageWithRecovery(STORAGE_KEY, JSON.stringify(localSnapshot));
+    if (saved) console.info("SiteWorks saved a compact offline snapshot because browser storage is limited.");
   }
   if (!saved) {
     if (showStorageWarning) showStorageFullWarning();
@@ -43759,7 +43760,7 @@ function compactStateForConstrainedBrowserStorage(source = {}) {
   });
 }
 
-function setLocalStorageWithRecovery(key, value) {
+function setLocalStorageWithRecovery(key, value, logFailure = true) {
   try {
     localStorage.setItem(key, value);
     return true;
@@ -43769,7 +43770,7 @@ function setLocalStorageWithRecovery(key, value) {
       localStorage.setItem(key, value);
       return true;
     } catch (retryError) {
-      console.warn(`Browser storage write failed for ${key}.`, retryError);
+      if (logFailure) console.warn(`Browser storage write failed for ${key}.`, retryError);
       return false;
     }
   }
