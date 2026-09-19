@@ -6798,7 +6798,7 @@ function runMonitoringOfflineCheck(shouldSave = true) {
   if (monitoringEngine()?.runOfflineCheck) {
     const result = monitoringEngine().runOfflineCheck(state, { makeId, now: new Date().toISOString() });
     if (result.changed && shouldSave) {
-      saveStateQuietly();
+      persistLocalStateOnly(false);
       render();
     }
     return;
@@ -6826,7 +6826,7 @@ function runMonitoringOfflineCheck(shouldSave = true) {
     }
   });
   if (changed && shouldSave) {
-    saveStateQuietly();
+    persistLocalStateOnly(false);
     render();
   }
 }
@@ -7666,7 +7666,7 @@ async function handleLoginSubmit(event = null) {
       }
       els.loginError.textContent = "Opening scanned item...";
       await runWithTimeout(openScannedAssetAfterLogin(), 5000);
-      saveStateQuietly();
+      persistLocalStateOnly(false);
       els.loginForm.reset();
       els.loginError.textContent = "";
       render();
@@ -7691,7 +7691,7 @@ async function handleLoginSubmit(event = null) {
     els.loginError.textContent = "Loading SiteWorks data...";
     await runWithTimeout(bootstrapCloudData(), 7000);
     await runWithTimeout(openScannedAssetAfterLogin(), 5000);
-    saveStateQuietly();
+    persistLocalStateOnly(false);
     els.loginForm.reset();
     els.loginError.textContent = "";
     render();
@@ -42470,7 +42470,10 @@ async function signInWithSiteWorks(email, password, options = {}) {
       return null;
     }
     const session = await response.json();
-    saveAuthSession(session);
+    if (!saveAuthSession(session)) {
+      lastAuthError = "SiteWorks could not securely save this login because browser storage is full. Reload and try again.";
+      return null;
+    }
     if (options.fastProfileFallback && els.loginError) {
       setQrLoginTrace("Password accepted. Opening SiteWorks...");
       await new Promise((resolve) => window.requestAnimationFrame(resolve));
@@ -42845,7 +42848,7 @@ function findStateUserForCurrentSession() {
 }
 
 function saveAuthSession(session) {
-  if (!session?.access_token) return;
+  if (!session?.access_token) return false;
   const savedAt = Math.floor(Date.now() / 1000);
   const cleanSession = {
     ...session,
@@ -42854,11 +42857,9 @@ function saveAuthSession(session) {
       session.expires_in ? savedAt + Number(session.expires_in) : 0
     )
   };
-  try {
-    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(cleanSession));
-  } catch (error) {
-    console.warn("Auth session was not saved because browser storage is full.", error);
-  }
+  const saved = setLocalStorageWithRecovery(AUTH_SESSION_KEY, JSON.stringify(cleanSession));
+  if (!saved) console.warn("Auth session was not saved because browser storage is full.");
+  return saved;
 }
 
 function getSavedAuthSession() {
