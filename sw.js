@@ -1,8 +1,8 @@
-const SITEWORKS_SW_VERSION = "20260918-public-quote-retry-12";
+const SITEWORKS_SW_VERSION = "20260918-mobile-menu-layer-14";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260918-company-profile-11",
+  "/styles.css?v=20260918-mobile-menu-layer-14",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
