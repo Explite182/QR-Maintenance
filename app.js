@@ -104,8 +104,8 @@ async function loadStructuredDataFromServer(options = {}) {
       markSyncSuccess("load");
       return true;
     }
-    applyStructuredState(structuredRows, structuredUpdatedAt);
-    markSyncSuccess("load");
+    const applyResult = applyStructuredState(structuredRows, structuredUpdatedAt);
+    markSyncSuccess("load", { cloudCurrent: !applyResult.keptLocalChanges });
     return true;
   } catch (error) {
     structuredDataLoading = false;
@@ -270,11 +270,19 @@ function applyStructuredState(rows, updatedAt = "") {
   selectedId = getAssetIdFromUrl() || selectedId;
   persistLocalStateOnly(false);
   applyingSharedState = false;
-  if (mergedAssetResult.keptLocalChanges || mergedWorkOrderResult.keptLocalChanges || mergedServiceRequestResult.keptLocalChanges || mergedEstimateResult.keptLocalChanges || mergedInventoryResult.keptLocalChanges) {
+  const keptLocalChanges = Boolean(
+    mergedAssetResult.keptLocalChanges ||
+    mergedWorkOrderResult.keptLocalChanges ||
+    mergedServiceRequestResult.keptLocalChanges ||
+    mergedEstimateResult.keptLocalChanges ||
+    mergedInventoryResult.keptLocalChanges
+  );
+  if (keptLocalChanges) {
     scheduleStructuredDataSync(0);
   }
   render();
   window.setTimeout(syncLoginQrReportPrompt, 0);
+  return { keptLocalChanges };
 }
 
 function mergeStructuredWorkOrdersWithLocalPublicReports(structuredWorkOrders = [], localWorkOrders = []) {
@@ -5267,7 +5275,7 @@ function runMonitoringOfflineCheck(shouldSave = true) {
   if (monitoringEngine()?.runOfflineCheck) {
     const result = monitoringEngine().runOfflineCheck(state, { makeId, now: new Date().toISOString() });
     if (result.changed && shouldSave) {
-      saveStateQuietly();
+      persistLocalStateOnly(false);
       render();
     }
     return;
@@ -5289,7 +5297,7 @@ function runMonitoringOfflineCheck(shouldSave = true) {
     }
   });
   if (changed && shouldSave) {
-    saveStateQuietly();
+    persistLocalStateOnly(false);
     render();
   }
 }
@@ -30912,7 +30920,7 @@ function buildOfflinePendingSummary() {
   const sinceTime = dateValue(syncHealth.lastCloudSaveAt);
   const rows = [
     ["Equipment / PMs", countRecordsChangedAfter(state.assets, sinceTime)],
-    ["Jobs / visits", countRecordsChangedAfter([...(state.workOrders || []), ...(state.scheduledVisits || [])], sinceTime)],
+    ["Jobs / visits", countRecordsChangedAfter(state.workOrders, sinceTime)],
     ["Quotes", countRecordsChangedAfter(state.estimates, sinceTime)],
     ["Requests", countRecordsChangedAfter(state.serviceRequests, sinceTime)],
     ["Inventory / keys", countRecordsChangedAfter([...(state.inventoryItems || []), ...(state.keys || []), ...(state.keyLogs || [])], sinceTime)]
@@ -31029,9 +31037,12 @@ function formatSyncTimestamp(value) {
   return formatDateTime(new Date(value));
 }
 
-function markSyncSuccess(type) {
+function markSyncSuccess(type, options = {}) {
   const now = new Date().toISOString();
-  if (type === "load") syncHealth.lastCloudLoadAt = now;
+  if (type === "load") {
+    syncHealth.lastCloudLoadAt = now;
+    if (options.cloudCurrent) syncHealth.lastCloudSaveAt = now;
+  }
   if (type === "save") syncHealth.lastCloudSaveAt = now;
   if (type === "publicReports") syncHealth.lastPublicReportSyncAt = now;
   syncHealth.lastError = "";
