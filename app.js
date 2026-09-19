@@ -44626,7 +44626,10 @@ function slugifyStoragePath(value) {
 function mediaSource(file) {
   if (!file) return "";
   const signedUrl = signedMediaSource(file);
-  const source = signedUrl || file.url || file.publicUrl || file.public_url || file.dataUrl || "";
+  const hasServerPath = siteworksServerEnabled() && Boolean(getServerStoragePath(file));
+  const source = signedUrl || (hasServerPath
+    ? file.dataUrl || ""
+    : file.url || file.publicUrl || file.public_url || file.dataUrl || "");
   return source && !isFailedMediaSource(source) ? source : "";
 }
 
