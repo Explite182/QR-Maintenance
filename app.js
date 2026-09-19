@@ -12470,9 +12470,14 @@ document.addEventListener("submit", (event) => {
   const standaloneCreateForm = event.target.closest("[data-standalone-estimate-create]");
   const createForm = event.target.closest("[data-estimate-create-form]");
   const lineForm = event.target.closest("[data-estimate-line-form]");
-  if (!standaloneCreateForm && !createForm && !lineForm) return;
+  const descriptionForm = event.target.closest("[data-estimate-description-form]");
+  if (!standaloneCreateForm && !createForm && !lineForm && !descriptionForm) return;
   event.preventDefault();
   if (!canManageWorkOrders()) return;
+  if (descriptionForm) {
+    updateEstimateDescription(descriptionForm.dataset.estimateDescriptionForm, new FormData(descriptionForm));
+    return;
+  }
   if (standaloneCreateForm) {
     createStandaloneEstimate(new FormData(standaloneCreateForm));
     return;
@@ -37163,6 +37168,13 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
         </div>
       </header>
       ${renderCustomerNotificationPreview(estimate, "estimates", "No portal contacts are set to receive estimates for this location.")}
+      <form class="estimate-description-form" data-estimate-description-form="${escapeAttribute(estimate.id)}">
+        <label>
+          Work description
+          <textarea name="customerNote" rows="3" placeholder="Describe the work included in this estimate and the expected result.">${escapeHtml(estimate.customerNote || "")}</textarea>
+        </label>
+        <button type="submit" class="secondary mini">Save description</button>
+      </form>
       <div class="estimate-lines">
         ${lines.length ? lines.map((line) => `
           <div class="estimate-line-row">
@@ -37383,6 +37395,21 @@ function deleteEstimateLine(estimateId = "", lineId = "") {
   render();
 }
 
+function updateEstimateDescription(estimateId = "", formData = new FormData()) {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !canManageWorkOrders()) return;
+  estimate.customerNote = String(formData.get("customerNote") || "").trim();
+  estimate.updatedAt = new Date().toISOString();
+  if (workOrder) addWorkOrderHistory(workOrder, "Estimate description updated", estimate.estimateNumber);
+  addActivity("Estimate description updated", `${estimate.estimateNumber} - ${estimate.title || "Estimate"}`);
+  saveState();
+  syncSingleEstimateToServer(estimate).catch((error) => {
+    console.warn("Estimate description could not be saved to the server yet.", error);
+  });
+  render();
+}
+
 function updateEstimateStatus(estimateId = "", status = "Draft") {
   const estimate = getEstimate(estimateId);
   const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
@@ -37577,6 +37604,10 @@ function buildEstimatePreviewHtml(details) {
             <span>${escapeHtml(locationRecord?.name || "Location not set")}</span>
             <span>${escapeHtml(asset?.name || workOrder?.areaName || "Equipment / area")}</span>
           </section>
+          ${estimate.customerNote ? `
+            <h2>Work Description</h2>
+            <section class="box"><span>${escapeHtml(estimate.customerNote)}</span></section>
+          ` : ""}
           <h2>Required Work</h2>
           <table>
             <thead><tr><th>Type</th><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
@@ -37694,6 +37725,7 @@ function buildEstimateEmailBody(details, quoteLink) {
     `Customer / location: ${details.context || "Not set"}`,
     workOrder?.id ? `Job: ${formatIssueNumber(workOrder)}` : "Standalone quote",
     `Valid until: ${estimate.validUntil ? inventoryDateLabel(estimate.validUntil) : "Not set"}`,
+    estimate.customerNote ? `Work description: ${estimate.customerNote}` : "",
     "",
     `Review and accept/decline online: ${quoteLink}`,
     "",
@@ -37722,6 +37754,7 @@ function buildEstimateEmailHtml(details, quoteLink) {
       <h2 style="margin:0 0 4px;color:${escapeAttribute(company.accentColor)};">Quote ${escapeHtml(estimate.estimateNumber || "")}</h2>
       <p style="margin:0 0 18px;font-weight:700;">${escapeHtml(estimate.title || workOrder?.title || "Estimate")}</p>
       <p>Please review the quote below.</p>
+      ${estimate.customerNote ? `<div style="margin:14px 0;padding:12px;border:1px solid #dbe5e1;background:#f8fafc;"><strong>Work description</strong><p style="margin:6px 0 0;white-space:pre-wrap;">${escapeHtml(estimate.customerNote)}</p></div>` : ""}
       <p><a href="${escapeAttribute(quoteLink)}" style="display:inline-block;background:#08705f;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;">Review and accept quote</a></p>
       <table style="border-collapse:collapse;width:100%;max-width:760px;margin-top:16px;">
         <tr><td style="border:1px solid #dbe5e1;padding:8px;font-weight:700;background:#f8fafc;">Customer / location</td><td style="border:1px solid #dbe5e1;padding:8px;">${escapeHtml(details.context || "Not set")}</td></tr>
@@ -40964,6 +40997,7 @@ async function renderPublicQuote() {
   const requiredTotal = Number(quote.required_total ?? quote.requiredTotal ?? lines.filter((line) => !line.optional).reduce((sum, line) => sum + estimateLineAmount(line), 0));
   const fullTotal = Number(quote.full_total ?? quote.fullTotal ?? lines.reduce((sum, line) => sum + estimateLineAmount(line), 0));
   const company = normalizeCompanyProfile(quote.company_profile || quote.companyProfile || {});
+  const customerNote = String(quote.customer_note || quote.customerNote || "").trim();
   const isClosed = ["Accepted", "Declined"].includes(quote.status);
   els.publicQuoteTitle.textContent = `${quote.estimate_number || quote.estimateNumber || "Quote"} | ${quote.title || "Review quote"}`;
   els.publicQuoteContext.textContent = [quote.customer_name, quote.location_name, quote.asset_name].filter(Boolean).join(" | ");
@@ -40989,6 +41023,7 @@ async function renderPublicQuote() {
         <strong>${escapeHtml(formatMoney(requiredTotal))}</strong>
       </div>
     </article>
+    ${customerNote ? `<section class="public-quote-description"><strong>Work description</strong><p>${escapeHtml(customerNote)}</p></section>` : ""}
     <div class="public-quote-lines">
       ${lines.map((line) => `
         <div class="public-quote-line">

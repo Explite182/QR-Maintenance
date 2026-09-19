@@ -17984,6 +17984,44 @@ button.asset-detail-card {
   gap: 6px;
 }
 
+.estimate-description-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.estimate-description-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.estimate-description-form textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+}
+
+.public-quote-description {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fcfb;
+}
+
+.public-quote-description p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
 .estimate-line-row {
   display: grid;
   grid-template-columns: minmax(74px, 0.6fr) minmax(180px, 1.7fr) minmax(120px, 0.85fr) minmax(90px, 0.7fr) auto;
@@ -21101,9 +21139,13 @@ body.panel-schedule-open {
     right: 12px;
     bottom: calc(84px + env(safe-area-inset-bottom));
     left: 12px;
-    z-index: 112;
+    z-index: 130;
     display: grid;
     gap: 8px;
+    max-height: calc(100dvh - 118px - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     padding: 12px;
     background: rgba(255, 255, 255, 0.98);
     border: 1px solid rgba(220, 230, 227, 0.95);
