@@ -14413,6 +14413,8 @@ function renderLightingHistory() {
       ? " | manual schedule"
       : source === "schedule"
         ? " | schedule"
+        : source === "controller-event-log"
+          ? " | controller log"
         : source === "device-report"
           ? " | controller reported"
         : "";
