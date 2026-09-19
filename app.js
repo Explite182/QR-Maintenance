@@ -61,7 +61,7 @@ async function loadStructuredDataFromServer(options = {}) {
       fetchOptionalStructuredRows("site_maps", "updated_at.asc"),
       fetchOptionalStructuredRows("monitoring_devices", "updated_at.asc"),
       fetchOptionalStructuredRows("monitoring_channels", "updated_at.asc"),
-      fetchOptionalStructuredRows("monitoring_events", "created_at.desc"),
+      fetchOptionalStructuredRows("monitoring_events", "created_at.desc", LOCAL_MONITORING_EVENT_LIMIT),
       fetchOptionalStructuredRows("monitoring_alerts", "updated_at.desc")
     ]);
     structuredDataLoading = false;
@@ -137,9 +137,9 @@ async function fetchStructuredRows(table, order = "updated_at.asc") {
   }
 }
 
-async function fetchOptionalStructuredRows(table, order = "updated_at.asc") {
+async function fetchOptionalStructuredRows(table, order = "updated_at.asc", limit = 0) {
   try {
-    return await siteworksApi.loadRows(table, order);
+    return await siteworksApi.loadRows(table, order, limit);
   } catch (error) {
     const warningKey = `${table}:${order}`;
     const now = Date.now();
@@ -42367,9 +42367,10 @@ const siteworksApi = {
       body: JSON.stringify(payload)
     });
   },
-  loadRows(table, order = "updated_at.asc") {
+  loadRows(table, order = "updated_at.asc", limit = 0) {
     if (siteworksServerEnabled()) {
-      return this.server(`/api/data/${encodeURIComponent(table)}?order=${encodeURIComponent(order)}`).then(async (response) => {
+      const limitQuery = Number(limit) > 0 ? `&limit=${encodeURIComponent(Math.floor(Number(limit)))}` : "";
+      return this.server(`/api/data/${encodeURIComponent(table)}?order=${encodeURIComponent(order)}${limitQuery}`).then(async (response) => {
         await requireOkServerResponse(response, `Server data load failed for ${table}.`);
         return response.json();
       });
@@ -42378,6 +42379,7 @@ const siteworksApi = {
     const query = [
       `select=${structuredTableSelectColumns(table)}`,
       `order=${encodeURIComponent(order)}`,
+      Number(limit) > 0 ? `limit=${encodeURIComponent(Math.floor(Number(limit)))}` : "",
       scope
     ].filter(Boolean).join("&");
     return cloudApi.select(`${table}?${query}`);
