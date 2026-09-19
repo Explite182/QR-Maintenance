@@ -43707,14 +43707,19 @@ function saveStateQuietly() {
 }
 
 function persistLocalStateOnly(showStorageWarning = true) {
-  const localSnapshot = compactStateForBrowserStorage(state);
-  if (!setLocalStorageWithRecovery(STORAGE_KEY, JSON.stringify(localSnapshot))) {
+  let localSnapshot = compactStateForBrowserStorage(state);
+  let saved = setLocalStorageWithRecovery(STORAGE_KEY, JSON.stringify(localSnapshot));
+  if (!saved) {
+    localSnapshot = compactStateForConstrainedBrowserStorage(state);
+    saved = setLocalStorageWithRecovery(STORAGE_KEY, JSON.stringify(localSnapshot));
+  }
+  if (!saved) {
     if (showStorageWarning) showStorageFullWarning();
     console.warn("Local browser storage is full; continuing without a local save.");
     return false;
   }
   try {
-    createAutoBackup();
+    createAutoBackup(localSnapshot);
   } catch (error) {
     console.warn("Auto backup skipped because browser storage is full.", error);
   }
@@ -43733,6 +43738,25 @@ function compactStateForBrowserStorage(source = {}) {
       recentErrors: (device.recentErrors || []).slice(0, 10)
     }))
   };
+}
+
+function compactStateForConstrainedBrowserStorage(source = {}) {
+  const stripEmbeddedMedia = (value, key = "") => {
+    if (/^(dataUrl|photoDataUrl|logoDataUrl|imageDataUrl|pdfDataUrl)$/i.test(key)) return "";
+    if (Array.isArray(value)) return value.map((item) => stripEmbeddedMedia(item));
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(Object.entries(value).map(([itemKey, item]) => [
+      itemKey,
+      stripEmbeddedMedia(item, itemKey)
+    ]));
+  };
+  const compact = compactStateForBrowserStorage(source);
+  return stripEmbeddedMedia({
+    ...compact,
+    monitoringEvents: (compact.monitoringEvents || []).slice(0, 50),
+    monitoringAlerts: (compact.monitoringAlerts || []).slice(0, 100),
+    activityLog: (compact.activityLog || []).slice(0, 150)
+  });
 }
 
 function setLocalStorageWithRecovery(key, value) {
@@ -43851,12 +43875,12 @@ function currentDeviceLabel() {
   return `${browser} on ${device}`;
 }
 
-function createAutoBackup() {
+function createAutoBackup(snapshot = compactStateForConstrainedBrowserStorage(state)) {
   const backup = {
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     version: 3,
-    state: compactStateForBrowserStorage(state)
+    state: snapshot
   };
   const backups = [backup, ...getAutoBackups()].slice(0, MAX_AUTO_BACKUPS);
   writeAutoBackups(backups);
@@ -43880,6 +43904,7 @@ function writeAutoBackups(backups) {
       remaining = remaining.slice(0, -1);
     }
   }
+  localStorage.removeItem(AUTO_BACKUP_KEY);
 }
 
 function exportDataBackup(reason = "manual") {
