@@ -42942,6 +42942,8 @@ function applyForcedLogoutFromUrl() {
 }
 
 async function bootstrapCloudData() {
+  if (!currentUser || isPublicReportUrl()) return false;
+  if (siteworksServerEnabled() && !requireServerSessionForApp(false)) return false;
   const shouldGateInitialData = currentUser && !isPublicReportUrl();
   if (currentUser && !isPublicReportUrl()) {
     initialCloudDataLoaded = false;
@@ -42991,6 +42993,8 @@ async function bootstrapCloudData() {
 }
 
 async function refreshCloudDataFromServer(options = {}) {
+  if (!currentUser || isPublicReportUrl()) return false;
+  if (siteworksServerEnabled() && !requireServerSessionForApp(false)) return false;
   if (shouldDeferCloudRefresh(options)) {
     scheduleDeferredCloudRefresh();
     setSyncBanner("refresh", "Cloud refresh paused", "Finish this job and SiteWorks will refresh after you close it.", 3000);
