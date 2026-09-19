@@ -37534,8 +37534,9 @@ function buildEstimatePreviewHtml(details) {
           body { margin: 0; padding: 32px; background: #eef4f2; color: #172126; font-family: Arial, sans-serif; }
           main { max-width: 860px; margin: 0 auto; padding: 34px; border: 1px solid #d8e4e0; border-radius: 14px; background: #fff; }
           header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 3px solid ${escapeHtml(accent)}; padding-bottom: 18px; margin-bottom: 24px; }
-          .brand { display: flex; gap: 16px; align-items: flex-start; }
-          .brand img { width: 110px; max-height: 70px; object-fit: contain; }
+          .brand { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: center; min-width: 0; }
+          .brand img { width: 150px; height: 86px; object-fit: contain; object-position: center; }
+          .brand-copy { display: grid; gap: 3px; min-width: 0; }
           h1, h2, p { margin: 0; }
           h1 { color: #14566b; font-size: 28px; }
           h2 { margin-top: 28px; margin-bottom: 10px; color: ${escapeHtml(accent)}; font-size: 16px; text-transform: uppercase; letter-spacing: .04em; }
@@ -37557,8 +37558,8 @@ function buildEstimatePreviewHtml(details) {
           <header>
             <div class="brand">
               ${company.logoDataUrl ? `<img src="${escapeAttribute(company.logoDataUrl)}" alt="${escapeAttribute(company.name)} logo">` : ""}
-              <div>
-                <p class="meta">${escapeHtml(company.name)} Estimate / Quote</p>
+              <div class="brand-copy">
+                <p class="meta">Estimate / Quote</p>
                 <h1>${escapeHtml(estimate.estimateNumber || "Estimate")}</h1>
                 <p>${escapeHtml(estimate.title || workOrder?.title || "Estimate")}</p>
                 ${companyContact ? `<p class="meta">${escapeHtml(companyContact)}</p>` : ""}
