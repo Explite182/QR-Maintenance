@@ -13606,9 +13606,18 @@ function getLightingScheduleClockParts(date = new Date()) {
     }).formatToParts(date).forEach((part) => {
       parts[part.type] = part.value;
     });
+    const dateParts = {};
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Vancouver",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date).forEach((part) => {
+      dateParts[part.type] = part.value;
+    });
     const hour = parts.hour === "24" ? "00" : parts.hour;
     return {
-      dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+      dateKey: `${dateParts.year}-${dateParts.month}-${dateParts.day}`,
       dateLabel: `${parts.weekday || ""}, ${parts.month || ""} ${parts.day || ""}, ${parts.year || ""}`.replace(/\s+/g, " ").trim(),
       timeLabel: `${hour}:${parts.minute}:${parts.second}`,
       timeValue: `${hour}:${parts.minute}`
