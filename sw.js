@@ -1,15 +1,15 @@
-const SITEWORKS_SW_VERSION = "20260919-estimate-description-25";
+const SITEWORKS_SW_VERSION = "20260921-lighting-solar-26";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260919-estimate-description-25",
+  "/styles.css?v=20260921-lighting-solar-26",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
   "/js/panel-hmi-standard-model.js?v=20260901-pm-history-optional-12",
   "/js/panel-hmi-siteworks-adapter.js?v=20260901-pm-history-optional-12",
   "/js/panel-hmi-standard-renderer.js?v=20260901-pm-history-optional-12",
-  "/app.js?v=20260919-estimate-description-25",
+  "/app.js?v=20260921-lighting-solar-26",
   "/vendor/pdfjs/pdf.min.js?v=3.11.174",
   "/vendor/pdfjs/pdf.worker.min.js?v=3.11.174",
   "/manifest.webmanifest?v=20260901-pm-history-optional-12",

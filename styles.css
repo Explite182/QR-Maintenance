@@ -8038,7 +8038,7 @@ textarea:disabled {
 
 .lighting-schedule-clock {
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, max-content)) minmax(180px, 1fr);
+  grid-template-columns: repeat(5, minmax(120px, max-content)) minmax(180px, 1fr);
   gap: 10px;
   align-items: center;
   padding: 12px;

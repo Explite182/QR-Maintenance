@@ -13608,6 +13608,7 @@ function getLightingScheduleClockParts(date = new Date()) {
     });
     const hour = parts.hour === "24" ? "00" : parts.hour;
     return {
+      dateKey: `${parts.year}-${parts.month}-${parts.day}`,
       dateLabel: `${parts.weekday || ""}, ${parts.month || ""} ${parts.day || ""}, ${parts.year || ""}`.replace(/\s+/g, " ").trim(),
       timeLabel: `${hour}:${parts.minute}:${parts.second}`,
       timeValue: `${hour}:${parts.minute}`
@@ -13618,11 +13619,64 @@ function getLightingScheduleClockParts(date = new Date()) {
     const minute = String(date.getMinutes()).padStart(2, "0");
     const second = String(date.getSeconds()).padStart(2, "0");
     return {
+      dateKey: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
       dateLabel: "Local browser time fallback",
       timeLabel: `${hour}:${minute}:${second}`,
       timeValue: `${hour}:${minute}`
     };
   }
+}
+
+function getLightingSolarCoordinates(schedule = {}) {
+  const data = schedule.data && typeof schedule.data === "object" ? schedule.data : {};
+  const locationRecord = getLocation(schedule.locationId || schedule.location_id || selectedLocationId) || {};
+  const latitude = Number(schedule.solarLatitude ?? data.solarLatitude ?? locationRecord.latitude ?? locationRecord.lat);
+  const longitude = Number(schedule.solarLongitude ?? data.solarLongitude ?? locationRecord.longitude ?? locationRecord.lng ?? locationRecord.lon);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) return { latitude, longitude, source: "saved coordinates" };
+  const locationText = [locationRecord.name, locationRecord.address, schedule.locationName, data.locationName].filter(Boolean).join(" ").toLowerCase();
+  const knownLocations = [
+    [/coquitlam/, 49.2838, -122.7932, "Coquitlam"],
+    [/north vancouver/, 49.3200, -123.0724, "North Vancouver"],
+    [/burnaby/, 49.2488, -122.9805, "Burnaby"],
+    [/surrey|newton/, 49.1913, -122.8490, "Surrey"],
+    [/richmond/, 49.1666, -123.1336, "Richmond"],
+    [/abbotsford|abby/, 49.0504, -122.3045, "Abbotsford"],
+    [/vancouver/, 49.2827, -123.1207, "Vancouver"]
+  ];
+  const match = knownLocations.find(([pattern]) => pattern.test(locationText));
+  return match ? { latitude: match[1], longitude: match[2], source: match[3] } : { latitude: 49.2827, longitude: -123.1207, source: "Vancouver fallback" };
+}
+
+function getLightingSolarEvent(dateKey = "", schedule = {}, mode = "sunset", offsetMinutes = 0) {
+  const dateMatch = String(dateKey).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dateMatch) return null;
+  const coordinates = getLightingSolarCoordinates(schedule);
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[3]);
+  const dayStart = Date.UTC(year, month - 1, day);
+  const dayOfYear = Math.floor((dayStart - Date.UTC(year, 0, 0)) / 86400000);
+  const toRadians = (degrees) => degrees * Math.PI / 180;
+  const toDegrees = (radians) => radians * 180 / Math.PI;
+  const normalize = (value, range) => ((value % range) + range) % range;
+  const sunrise = mode === "sunrise";
+  const longitudeHour = coordinates.longitude / 15;
+  const approximateTime = dayOfYear + ((sunrise ? 6 : 18) - longitudeHour) / 24;
+  const meanAnomaly = 0.9856 * approximateTime - 3.289;
+  const trueLongitude = normalize(meanAnomaly + 1.916 * Math.sin(toRadians(meanAnomaly)) + 0.020 * Math.sin(toRadians(2 * meanAnomaly)) + 282.634, 360);
+  let rightAscension = normalize(toDegrees(Math.atan(0.91764 * Math.tan(toRadians(trueLongitude)))), 360);
+  rightAscension += Math.floor(trueLongitude / 90) * 90 - Math.floor(rightAscension / 90) * 90;
+  rightAscension /= 15;
+  const sinDeclination = 0.39782 * Math.sin(toRadians(trueLongitude));
+  const cosDeclination = Math.cos(Math.asin(sinDeclination));
+  const cosHourAngle = (Math.cos(toRadians(90.833)) - sinDeclination * Math.sin(toRadians(coordinates.latitude))) / (cosDeclination * Math.cos(toRadians(coordinates.latitude)));
+  if (cosHourAngle < -1 || cosHourAngle > 1) return null;
+  const hourAngle = (sunrise ? 360 - toDegrees(Math.acos(cosHourAngle)) : toDegrees(Math.acos(cosHourAngle))) / 15;
+  const localMeanTime = hourAngle + rightAscension - 0.06571 * approximateTime - 6.622;
+  const utcHours = normalize(localMeanTime - longitudeHour, 24);
+  const eventDate = new Date(dayStart + Math.round(utcHours * 3600000) + Number(offsetMinutes || 0) * 60000);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(eventDate).map((part) => [part.type, part.value]));
+  return { time: `${parts.hour}:${parts.minute}`, label: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", hour: "numeric", minute: "2-digit" }).format(eventDate), source: coordinates.source };
 }
 
 function renderLightingScheduleClock() {
@@ -13634,9 +13688,13 @@ function renderLightingScheduleClock() {
   const timeEl = clock.querySelector("[data-lighting-schedule-clock-time]");
   const dateEl = clock.querySelector("[data-lighting-schedule-clock-date]");
   const nextEl = clock.querySelector("[data-lighting-schedule-clock-next]");
+  const sunriseEl = clock.querySelector("[data-lighting-sunrise-time]");
+  const sunsetEl = clock.querySelector("[data-lighting-sunset-time]");
   if (timeEl) timeEl.textContent = current.timeLabel;
   if (dateEl) dateEl.textContent = current.dateLabel;
   if (nextEl) nextEl.textContent = nextMinute.timeValue;
+  if (sunriseEl) sunriseEl.textContent = getLightingSolarEvent(current.dateKey, {}, "sunrise")?.label || "Unavailable";
+  if (sunsetEl) sunsetEl.textContent = getLightingSolarEvent(current.dateKey, {}, "sunset")?.label || "Unavailable";
 }
 
 async function runLightingSchedulesNow() {
@@ -14329,8 +14387,10 @@ function getLightingScheduleTriggerLabel(schedule = {}, key = "on") {
   if (mode === "sunrise" || mode === "sunset") {
     const base = mode === "sunrise" ? "Sunrise" : "Sunset";
     const offsetText = offset > 0 ? ` +${offset} min` : offset < 0 ? ` ${offset} min` : "";
+    const solarEvent = getLightingSolarEvent(getLightingScheduleClockParts(new Date()).dateKey, schedule, mode, offset);
+    const resolvedText = solarEvent ? ` ${solarEvent.label}` : " unavailable";
     const fallbackText = fixedTime ? ` (${fixedTime} fallback)` : "";
-    return `${base}${offsetText} ${suffix}${fallbackText}`;
+    return `${base}${offsetText}${resolvedText} ${suffix}${fallbackText}`;
   }
   return `${fixedTime || "No time"} ${suffix}`;
 }
@@ -16604,6 +16664,8 @@ async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
   const existingSchedule = existingScheduleId
     ? lightingSchedulesCache.find((item) => item.id === existingScheduleId) || getLightingSchedules().find((item) => item.id === existingScheduleId)
     : null;
+  const solarCoordinates = getLightingSolarCoordinates({ locationId: selectedLocationId });
+  const locationName = getLocation(selectedLocationId)?.name || "";
   const schedule = {
     id: existingScheduleId || crypto.randomUUID?.() || `lighting-schedule-${Date.now()}`,
     customerId: selectedCustomerId,
@@ -16620,6 +16682,9 @@ async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
     offOffsetMinutes: Number(formData.get("offOffsetMinutes") || 0) || 0,
     enabled: formData.get("enabled") !== "off",
     notes: String(formData.get("notes") || "").trim(),
+    solarLatitude: solarCoordinates.latitude,
+    solarLongitude: solarCoordinates.longitude,
+    locationName,
     createdAt: existingSchedule?.createdAt || new Date().toISOString()
   };
   if (!schedule.name) {
@@ -16644,7 +16709,10 @@ async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
         onMode: schedule.onMode,
         offMode: schedule.offMode,
         onOffsetMinutes: schedule.onOffsetMinutes,
-        offOffsetMinutes: schedule.offOffsetMinutes
+        offOffsetMinutes: schedule.offOffsetMinutes,
+        solarLatitude: schedule.solarLatitude,
+        solarLongitude: schedule.solarLongitude,
+        locationName: schedule.locationName
       }
     });
     if (!response.ok) throw new Error(`Lighting schedule save failed: ${response.status}`);
