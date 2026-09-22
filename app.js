@@ -7291,6 +7291,7 @@ const els = {
   locationForm: document.getElementById("locationForm"),
   locationCustomer: document.getElementById("locationCustomer"),
   locationName: document.getElementById("locationName"),
+  locationAddress: document.getElementById("locationAddress"),
   locationContactName: document.getElementById("locationContactName"),
   locationContactEmail: document.getElementById("locationContactEmail"),
   locationContactPhone: document.getElementById("locationContactPhone"),
@@ -8788,6 +8789,7 @@ els.locationForm.addEventListener("submit", (event) => {
     id: crypto.randomUUID(),
     customerId,
     name: els.locationName.value.trim(),
+    address: els.locationAddress?.value.trim() || "",
     contactName: els.locationContactName?.value.trim() || "",
     contactEmail: els.locationContactEmail?.value.trim() || "",
     contactPhone: els.locationContactPhone?.value.trim() || "",
@@ -8823,6 +8825,7 @@ els.locationList.addEventListener("submit", (event) => {
 
   locationRecord.customerId = nextCustomerId;
   locationRecord.name = nextName;
+  locationRecord.address = String(formData.get("address") || "").trim();
   locationRecord.contactName = String(formData.get("contactName") || "").trim();
   locationRecord.contactEmail = String(formData.get("contactEmail") || "").trim();
   locationRecord.contactPhone = String(formData.get("contactPhone") || "").trim();
@@ -20190,6 +20193,7 @@ function renderLocationEditor(locationRecord) {
     `<option value="${escapeAttribute(customer.id)}" ${locationRecord.customerId === customer.id ? "selected" : ""}>${escapeHtml(customer.name)}</option>`
   ).join("");
   const contactSummary = [
+    locationRecord.address,
     locationRecord.contactName,
     locationRecord.contactEmail,
     locationRecord.contactPhone
@@ -20212,6 +20216,10 @@ function renderLocationEditor(locationRecord) {
         <label>
           Location name
           <input name="name" required value="${escapeAttribute(locationRecord.name)}" ${disabled}>
+        </label>
+        <label>
+          Address
+          <input name="address" autocomplete="street-address" value="${escapeAttribute(locationRecord.address || "")}" placeholder="Street address, city, province, postal code" ${disabled}>
         </label>
         <label>
           Site contact
@@ -43391,6 +43399,7 @@ function normalizeState(input) {
   }));
 
   normalized.locations = normalized.locations.map((locationRecord) => ({
+    address: "",
     contactName: "",
     contactEmail: "",
     contactPhone: "",

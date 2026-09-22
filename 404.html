@@ -312,7 +312,11 @@
               </label>
               <label>
                 Location name
-                <input id="locationName" required placeholder="Main Plant">
+                <input id="locationName" required placeholder="Location">
+              </label>
+              <label>
+                Address
+                <input id="locationAddress" autocomplete="street-address" placeholder="Street address, city, province, postal code">
               </label>
               <label>
                 Site contact
@@ -2382,11 +2386,11 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260901-pm-history-optional-12"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260901-pm-history-optional-12"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260901-pm-history-optional-12"></script>
-  <script src="/app.js?v=20260901-pm-history-optional-12"></script>
+  <script src="/app.js?v=20260922-location-address-28"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-navigator.serviceWorker.register("/sw.js?v=20260901-pm-history-optional-12").catch((error) => {
+navigator.serviceWorker.register("/sw.js?v=20260922-location-address-28").catch((error) => {
           console.warn("SiteWorks app install support was not started.", error);
         });
       });

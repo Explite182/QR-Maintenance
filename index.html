@@ -430,7 +430,11 @@
               </label>
               <label>
                 Location name
-                <input id="locationName" required placeholder="Main Plant">
+                <input id="locationName" required placeholder="Location">
+              </label>
+              <label>
+                Address
+                <input id="locationAddress" autocomplete="street-address" placeholder="Street address, city, province, postal code">
               </label>
               <label>
                 Site contact
@@ -2919,7 +2923,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260921-lighting-solar-date-27"></script>
+  <script src="/app.js?v=20260922-location-address-28"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
