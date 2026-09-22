@@ -5436,16 +5436,28 @@ function loadMonitoringDeviceForm(deviceId) {
   elements.deviceForm.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function deleteMonitoringDevice(deviceId) {
+async function deleteMonitoringDevice(deviceId) {
   if (!canManageMonitoringSetup()) return;
   const device = getMonitoringDevice(deviceId);
   if (!device || !window.confirm(`Delete monitoring device "${device.name}" and its channel mappings?`)) return;
   state.monitoringDevices = state.monitoringDevices.filter(item => item.id !== deviceId);
   state.monitoringChannels = state.monitoringChannels.filter(item => item.deviceId !== deviceId);
   state.monitoringAlerts = state.monitoringAlerts.filter(item => item.deviceId !== deviceId);
+  state.monitoringEvents = state.monitoringEvents.filter(item => item.deviceId !== deviceId);
   addActivity("Monitoring device deleted", device.name);
   saveState();
   render();
+
+  const deleteResults = [];
+  deleteResults.push(await deleteStructuredRows("monitoring_alerts", "device_id", [deviceId]));
+  deleteResults.push(await deleteStructuredRows("monitoring_events", "device_id", [deviceId]));
+  deleteResults.push(await deleteStructuredRows("monitoring_channels", "device_id", [deviceId]));
+  deleteResults.push(await deleteStructuredRows("monitoring_devices", "id", [deviceId]));
+  if (deleteResults.some((result) => result === false)) {
+    alert(`${device.name} was removed on this device, but the SiteWorks server did not accept the complete delete. It may return after refreshing.`);
+    return;
+  }
+  await syncStructuredDataToServer();
 }
 
 function deleteMonitoringChannel(channelId) {
@@ -13009,7 +13021,7 @@ document.addEventListener("click", async (event) => {
   }
   const deleteDevice = event.target.closest("[data-monitoring-delete-device]");
   if (deleteDevice) {
-    deleteMonitoringDevice(deleteDevice.dataset.monitoringDeleteDevice);
+    await deleteMonitoringDevice(deleteDevice.dataset.monitoringDeleteDevice);
     return;
   }
   if (event.target.closest("#monitoringRotateKeyBtn")) {
