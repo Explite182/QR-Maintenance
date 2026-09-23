@@ -15008,10 +15008,16 @@ function getLightingInputActionDescription(input = {}) {
 function getLightingZoneFeedbackInputs(zone = {}) {
   const { scopeKey } = getLightingScopeDetails();
   if (lightingInputsLoadedScope !== scopeKey) return [];
+  const zoneControllerId = String(zone.controllerId || zone.controller_id || "").trim();
   return lightingInputsCache.filter((input) => {
     if (!isLightingInputRelayFeedback(input)) return false;
-    const targetZoneId = input.zoneId || input.zone_id || "";
-    return !targetZoneId || targetZoneId === zone.id;
+    const inputControllerId = String(input.controllerId || input.controller_id || "").trim();
+    if (inputControllerId && zoneControllerId && inputControllerId !== zoneControllerId) return false;
+    const targetZoneId = String(input.zoneId || input.zone_id || "").trim();
+    if (targetZoneId) return targetZoneId === String(zone.id || "");
+    const targetOutput = Number(input.outputNumber ?? input.output_number ?? input.data?.outputNumber ?? input.data?.output_number ?? 0) || 0;
+    const zoneOutput = Number(zone.outputNumber ?? zone.output_number ?? 0) || 0;
+    return targetOutput > 0 && targetOutput === zoneOutput;
   });
 }
 
@@ -15077,9 +15083,12 @@ function getLightingControllerFeedbackMismatches(controller = {}) {
 function getLightingZoneInputEffect(zone = {}) {
   const { scopeKey } = getLightingScopeDetails();
   if (lightingInputsLoadedScope !== scopeKey) return null;
+  const zoneControllerId = String(zone.controllerId || zone.controller_id || "").trim();
   const effects = lightingInputsCache.filter((input) => {
     const actionState = getLightingInputActionState(input);
     if (!actionState) return false;
+    const inputControllerId = String(input.controllerId || input.controller_id || "").trim();
+    if (inputControllerId && zoneControllerId && inputControllerId !== zoneControllerId) return false;
     const targetZoneId = input.zoneId || input.zone_id || "";
     return !targetZoneId || targetZoneId === zone.id;
   });
