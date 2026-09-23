@@ -9478,9 +9478,37 @@ textarea:disabled {
 
 .lighting-input-row-head {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) auto;
+  grid-template-columns: 58px minmax(0, 1fr) auto 12px;
   align-items: center;
   gap: 10px;
+}
+
+.lighting-input-collapsible > summary {
+  cursor: pointer;
+  list-style: none;
+  min-height: 38px;
+  user-select: none;
+}
+
+.lighting-input-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lighting-input-expand-icon {
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 160ms ease;
+}
+
+.lighting-input-collapsible[open] .lighting-input-expand-icon {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+
+.lighting-input-collapsible-body {
+  padding-top: 10px;
 }
 
 .lighting-input-row-head > span {

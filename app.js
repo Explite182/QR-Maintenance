@@ -16581,8 +16581,8 @@ function renderLightingInputs() {
     const actionText = getLightingInputActionDescription(input);
     const statusClass = input.enabled === false ? "is-disabled" : (isActive ? "is-active" : (hasLiveState ? "is-inactive" : "is-waiting"));
     return `
-      <div class="lighting-list-row${liveClass}">
-        <div class="lighting-input-row-head">
+      <details class="lighting-list-row lighting-input-collapsible${liveClass}">
+        <summary class="lighting-input-row-head">
           <div class="lighting-contact-visual is-${escapeHtml(contactState)}" aria-hidden="true">
             <span class="lighting-contact-terminal"></span>
             <span class="lighting-contact-blade"></span>
@@ -16590,8 +16590,10 @@ function renderLightingInputs() {
           </div>
           <strong>${escapeHtml(headline)}</strong>
           <span class="lighting-input-status-pill ${statusClass}">${escapeHtml(liveStatus)}</span>
-        </div>
-        <div class="lighting-input-detail-grid">
+          <span class="lighting-input-expand-icon" aria-hidden="true"></span>
+        </summary>
+        <div class="lighting-input-collapsible-body">
+          <div class="lighting-input-detail-grid">
           <span>Label <strong>${escapeHtml(input.label || `Input ${inputNumber}`)}</strong></span>
           <span>Controller <strong>${escapeHtml(controllerName)}</strong></span>
           <span>Type <strong>${escapeHtml(input.inputType || "Aux contact")}</strong></span>
@@ -16602,12 +16604,13 @@ function renderLightingInputs() {
           <span>Time window <strong>${escapeHtml(getLightingInputWindowDescription(input))}</strong></span>
           <span>Contact <strong>${escapeHtml(contactText)}</strong></span>
           <span>Live state <strong>${escapeHtml(liveText)}</strong></span>
+          </div>
+          <div class="lighting-zone-actions">
+            <button type="button" data-lighting-input-edit="${escapeHtml(input.id)}">Edit</button>
+            <button type="button" data-lighting-input-delete="${escapeHtml(input.id)}">Delete</button>
+          </div>
         </div>
-        <div class="lighting-zone-actions">
-          <button type="button" data-lighting-input-edit="${escapeHtml(input.id)}">Edit</button>
-          <button type="button" data-lighting-input-delete="${escapeHtml(input.id)}">Delete</button>
-        </div>
-      </div>
+      </details>
     `;
   }).join("");
 }
