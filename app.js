@@ -15888,13 +15888,18 @@ function renderLightingFirmware() {
   const assignments = Array.isArray(lightingFirmwareCache.assignments) ? lightingFirmwareCache.assignments : [];
   const firmware = Array.isArray(lightingFirmwareCache.firmware) ? lightingFirmwareCache.firmware : [];
   assignmentList.innerHTML = assignments.length
-    ? assignments.map((assignment) => `
+    ? assignments.map((assignment) => {
+      const controllerId = String(assignment.controllerId || assignment.controller_id || "");
+      const controller = lightingControllersCache.find((item) => String(item.id || "") === controllerId);
+      const controllerName = assignment.controllerName || controller?.name || "Lighting controller";
+      const deviceUid = assignment.deviceUid || assignment.device_uid || controller?.uid || controller?.deviceUid || controller?.device_uid || "No UID";
+      return `
       <div class="lighting-list-row lighting-firmware-assignment ${getLightingFirmwareStatusClass(assignment.status)}">
         <div class="lighting-firmware-row-header">
-          <strong>${escapeHtml(assignment.controllerName || "Lighting controller")}</strong>
+          <strong>${escapeHtml(controllerName)}</strong>
           ${renderLightingFirmwareStatusBadge(assignment.status)}
         </div>
-        <span>${escapeHtml(assignment.deviceUid || "No UID")} | ${escapeHtml(assignment.version || "Firmware")} ${assignment.reportedVersion ? `| running ${escapeHtml(assignment.reportedVersion)}` : ""}</span>
+        <span>${escapeHtml(deviceUid)} | ${escapeHtml(assignment.version || "Firmware")} ${assignment.reportedVersion ? `| running ${escapeHtml(assignment.reportedVersion)}` : ""}</span>
         <div class="lighting-firmware-details">
           <span>Assigned <strong>${assignment.assignedAt ? escapeHtml(formatDateTime(assignment.assignedAt)) : "Not reported"}</strong></span>
           <span>Started <strong>${assignment.startedAt ? escapeHtml(formatDateTime(assignment.startedAt)) : "Not started"}</strong></span>
@@ -15902,7 +15907,8 @@ function renderLightingFirmware() {
         </div>
         ${assignment.error ? `<span class="lighting-firmware-error">${escapeHtml(assignment.error)}</span>` : ""}
       </div>
-    `).join("")
+    `;
+    }).join("")
     : `<div class="lighting-list-row"><strong>No firmware assigned yet</strong><span>Assign a registered firmware version to a controller when you are ready to test OTA.</span></div>`;
   versionList.innerHTML = firmware.length
     ? firmware.map((item) => `

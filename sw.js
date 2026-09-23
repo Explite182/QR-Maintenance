@@ -1,4 +1,4 @@
-const SITEWORKS_SW_VERSION = "20260922-monitoring-cloud-delete-29";
+const SITEWORKS_SW_VERSION = "20260922-firmware-uid-display-30";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
@@ -9,7 +9,7 @@ const STATIC_ASSETS = [
   "/js/panel-hmi-standard-model.js?v=20260901-pm-history-optional-12",
   "/js/panel-hmi-siteworks-adapter.js?v=20260901-pm-history-optional-12",
   "/js/panel-hmi-standard-renderer.js?v=20260901-pm-history-optional-12",
-  "/app.js?v=20260922-monitoring-cloud-delete-29",
+  "/app.js?v=20260922-firmware-uid-display-30",
   "/vendor/pdfjs/pdf.min.js?v=3.11.174",
   "/vendor/pdfjs/pdf.worker.min.js?v=3.11.174",
   "/manifest.webmanifest?v=20260901-pm-history-optional-12",
