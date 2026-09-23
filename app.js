@@ -12385,6 +12385,18 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const editEstimateLineButton = event.target.closest("[data-edit-estimate-line]");
+  if (editEstimateLineButton && canManageWorkOrders()) {
+    event.preventDefault();
+    const item = editEstimateLineButton.closest(".estimate-line-item");
+    const form = item?.querySelector("[data-estimate-line-edit-form]");
+    if (form) {
+      form.classList.toggle("hidden");
+      editEstimateLineButton.textContent = form.classList.contains("hidden") ? "Edit" : "Cancel";
+    }
+    return;
+  }
+
   const convertEstimateButton = event.target.closest("[data-estimate-convert-billing]");
   if (convertEstimateButton && canManageWorkOrders()) {
     event.preventDefault();
@@ -12487,10 +12499,16 @@ document.addEventListener("submit", (event) => {
   const standaloneCreateForm = event.target.closest("[data-standalone-estimate-create]");
   const createForm = event.target.closest("[data-estimate-create-form]");
   const lineForm = event.target.closest("[data-estimate-line-form]");
+  const lineEditForm = event.target.closest("[data-estimate-line-edit-form]");
   const descriptionForm = event.target.closest("[data-estimate-description-form]");
-  if (!standaloneCreateForm && !createForm && !lineForm && !descriptionForm) return;
+  const detailsForm = event.target.closest("[data-estimate-details-form]");
+  if (!standaloneCreateForm && !createForm && !lineForm && !lineEditForm && !descriptionForm && !detailsForm) return;
   event.preventDefault();
   if (!canManageWorkOrders()) return;
+  if (detailsForm) {
+    updateEstimateDetails(detailsForm.dataset.estimateDetailsForm, new FormData(detailsForm));
+    return;
+  }
   if (descriptionForm) {
     updateEstimateDescription(descriptionForm.dataset.estimateDescriptionForm, new FormData(descriptionForm));
     return;
@@ -12502,6 +12520,14 @@ document.addEventListener("submit", (event) => {
   if (createForm) {
     const formData = new FormData(createForm);
     createEstimateForWorkOrder(createForm.dataset.estimateCreateForm, formData);
+    return;
+  }
+  if (lineEditForm) {
+    updateEstimateLine(
+      lineEditForm.dataset.estimateLineEditForm,
+      lineEditForm.dataset.estimateLineId,
+      new FormData(lineEditForm)
+    );
     return;
   }
   const formData = new FormData(lineForm);
@@ -37381,6 +37407,20 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
           ${canUseForBilling ? `<button type="button" class="secondary mini" data-estimate-convert-billing="${escapeAttribute(estimate.id)}">Use for billing</button>` : ""}
         </div>
       </header>
+      <details class="estimate-details-editor">
+        <summary>Edit estimate details</summary>
+        <form data-estimate-details-form="${escapeAttribute(estimate.id)}">
+          <label>
+            Title
+            <input name="title" value="${escapeAttribute(estimate.title || "Service estimate")}" required>
+          </label>
+          <label>
+            Valid until
+            <input name="validUntil" type="date" value="${escapeAttribute(estimate.validUntil || "")}">
+          </label>
+          <button type="submit" class="secondary mini">Save details</button>
+        </form>
+      </details>
       ${renderCustomerNotificationPreview(estimate, "estimates", "No portal contacts are set to receive estimates for this location.")}
       <form class="estimate-description-form" data-estimate-description-form="${escapeAttribute(estimate.id)}">
         <label>
@@ -37391,12 +37431,26 @@ function renderEstimateRecord(estimate = {}, workOrder = {}) {
       </form>
       <div class="estimate-lines">
         ${lines.length ? lines.map((line) => `
-          <div class="estimate-line-row">
-            <span>${escapeHtml(line.optional ? "Optional" : line.type)}</span>
-            <strong>${escapeHtml(line.description)}</strong>
-            <em>${escapeHtml(formatInventoryNumber(line.quantity))} x ${escapeHtml(formatMoney(line.rate))}</em>
-            <b>${escapeHtml(formatMoney(estimateLineAmount(line)))}</b>
-            <button type="button" class="secondary mini danger-action" data-delete-estimate-line="${escapeAttribute(estimate.id)}" data-estimate-line-id="${escapeAttribute(line.id)}">Remove</button>
+          <div class="estimate-line-item">
+            <div class="estimate-line-row">
+              <span>${escapeHtml(line.optional ? "Optional" : line.type)}</span>
+              <strong>${escapeHtml(line.description)}</strong>
+              <em>${escapeHtml(formatInventoryNumber(line.quantity))} x ${escapeHtml(formatMoney(line.rate))}</em>
+              <b>${escapeHtml(formatMoney(estimateLineAmount(line)))}</b>
+              <div class="estimate-line-actions">
+                <button type="button" class="secondary mini" data-edit-estimate-line>Edit</button>
+                <button type="button" class="secondary mini danger-action" data-delete-estimate-line="${escapeAttribute(estimate.id)}" data-estimate-line-id="${escapeAttribute(line.id)}">Remove</button>
+              </div>
+            </div>
+            <form class="estimate-line-form estimate-line-edit-form hidden" data-estimate-line-edit-form="${escapeAttribute(estimate.id)}" data-estimate-line-id="${escapeAttribute(line.id)}">
+              <label>Type<select name="lineType">${["Service", "Product", "Material", "Labour"].map((type) => `<option ${line.type === type ? "selected" : ""}>${type}</option>`).join("")}</select></label>
+              <label>Description<input name="description" value="${escapeAttribute(line.description)}" required></label>
+              <label>Qty<input name="quantity" type="number" min="0.01" step="0.01" value="${escapeAttribute(formatInventoryNumber(line.quantity))}" required></label>
+              <label>Rate<input name="rate" type="number" min="0" step="0.01" value="${escapeAttribute(Number(line.rate || 0).toFixed(2))}" required></label>
+              <label class="checkbox-row"><input name="optional" type="checkbox" ${line.optional ? "checked" : ""}>Optional</label>
+              <label class="checkbox-row"><input name="taxable" type="checkbox" ${line.taxable !== false ? "checked" : ""}>Taxable</label>
+              <button type="submit" class="primary mini">Save line</button>
+            </form>
           </div>
         `).join("") : `<p class="muted">Add at least one line before sending this estimate.</p>`}
       </div>
@@ -37606,6 +37660,63 @@ function deleteEstimateLine(estimateId = "", lineId = "") {
   if (workOrder) addWorkOrderHistory(workOrder, "Estimate line removed", `${estimate.estimateNumber} | ${removedLine?.description || "Line removed"}`);
   addActivity("Estimate line removed", `${estimate.estimateNumber} - ${removedLine?.description || "Line"}`);
   saveState();
+  render();
+}
+
+function updateEstimateLine(estimateId = "", lineId = "", formData = new FormData()) {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !lineId || !canManageWorkOrders()) return;
+  const lines = normalizeEstimateLines(estimate.lines || []);
+  const lineIndex = lines.findIndex((line) => line.id === lineId);
+  if (lineIndex < 0) return;
+  const description = String(formData.get("description") || "").trim();
+  const quantity = Math.max(0, Number(formData.get("quantity") || 0));
+  const rate = Math.max(0, Number(formData.get("rate") || 0));
+  if (!description || quantity <= 0 || !Number.isFinite(rate)) {
+    alert("Enter a description, quantity, and rate for this estimate line.");
+    return;
+  }
+  const previous = lines[lineIndex];
+  lines[lineIndex] = {
+    ...previous,
+    type: String(formData.get("lineType") || previous.type || "Service"),
+    description,
+    itemName: previous.itemName || description,
+    quantity,
+    rate,
+    optional: formData.get("optional") === "on",
+    taxable: formData.get("taxable") === "on"
+  };
+  estimate.lines = lines;
+  estimate.updatedAt = new Date().toISOString();
+  if (workOrder) addWorkOrderHistory(workOrder, "Estimate line updated", `${estimate.estimateNumber} | ${description} | ${formatMoney(estimateLineAmount(lines[lineIndex]))}`);
+  addActivity("Estimate line updated", `${estimate.estimateNumber} - ${description}`);
+  saveState();
+  syncSingleEstimateToServer(estimate).catch((error) => {
+    console.warn("Estimate line could not be saved to the server yet.", error);
+  });
+  render();
+}
+
+function updateEstimateDetails(estimateId = "", formData = new FormData()) {
+  const estimate = getEstimate(estimateId);
+  const workOrder = estimate ? getWorkOrder(estimate.workOrderId) : null;
+  if (!estimate || !canManageWorkOrders()) return;
+  const title = String(formData.get("title") || "").trim();
+  if (!title) {
+    alert("Enter a title for this estimate.");
+    return;
+  }
+  estimate.title = title;
+  estimate.validUntil = String(formData.get("validUntil") || "").trim();
+  estimate.updatedAt = new Date().toISOString();
+  if (workOrder) addWorkOrderHistory(workOrder, "Estimate details updated", `${estimate.estimateNumber} | ${title}`);
+  addActivity("Estimate details updated", `${estimate.estimateNumber} - ${title}`);
+  saveState();
+  syncSingleEstimateToServer(estimate).catch((error) => {
+    console.warn("Estimate details could not be saved to the server yet.", error);
+  });
   render();
 }
 
