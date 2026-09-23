@@ -9052,10 +9052,12 @@ els.photoViewerImage.addEventListener("click", (event) => {
   event.stopPropagation();
 });
 
-els.photoSideBayImage?.addEventListener("click", (event) => {
-  event.stopPropagation();
-  closePhotoSideBay();
-});
+const photoZoomState = new WeakMap();
+
+els.photoSideBay?.addEventListener("click", (event) => handlePhotoViewerAction(event, els.photoSideBay, els.photoSideBayImage));
+els.photoViewer?.addEventListener("click", (event) => handlePhotoViewerAction(event, els.photoViewer, els.photoViewerImage));
+enablePhotoZoom(els.photoSideBayImage);
+enablePhotoZoom(els.photoViewerImage);
 
 els.addPanelCircuitBtn?.addEventListener("click", () => {
   if (!canEditEquipment()) return;
@@ -15262,6 +15264,14 @@ function renderLightingZones() {
                 ].map(([value, label]) => `<option value="${value}"${value === (zone.offlineBehavior || zone.data?.offlineBehavior || "continue-schedule") ? " selected" : ""}>${label}</option>`).join("")}
               </select>
             </label>
+            <label>When clock is unavailable
+              <select name="clockFallback">
+                ${[
+                  ["safe-off", "Force output off"],
+                  ["safe-on", "Force output on"]
+                ].map(([value, label]) => `<option value="${value}"${value === (zone.clockFallback || zone.data?.clockFallback || "safe-off") ? " selected" : ""}>${label}</option>`).join("")}
+              </select>
+            </label>
             <label>Notes
               <textarea name="notes" rows="2">${escapeHtml(zone.notes || "")}</textarea>
             </label>
@@ -15288,6 +15298,7 @@ function renderLightingZones() {
           <span>Status <strong>${escapeHtml(zone.status || "Setup only")}</strong></span>
           ${controllerIsFresh ? "" : `<span class="lighting-offline-state">Live state <strong>Controller offline | last known ${escapeHtml(lastKnownState)}</strong></span>`}
           <span>Cloud outage <strong>${escapeHtml(({ "continue-schedule": "Continue local schedule", hold: "Hold current state", "safe-off": "Force safe off" })[zone.offlineBehavior || zone.data?.offlineBehavior || "continue-schedule"])}</strong></span>
+          <span>Clock unavailable <strong>${escapeHtml((zone.clockFallback || zone.data?.clockFallback || "safe-off") === "safe-on" ? "Force output on" : "Force output off")}</strong></span>
           <span class="lighting-priority-effect">Active rule <strong>${escapeHtml(priorityDecision.source)}: ${escapeHtml(priorityDecision.details.join(" | "))}</strong></span>
           ${overrideEffect ? `<span class="lighting-override-effect">Override <strong>${escapeHtml(overrideEffect.text)}</strong></span>` : ""}
               ${inputEffect ? `<span class="lighting-input-effect">Input control <strong>${escapeHtml(inputEffect.text)}</strong></span>` : ""}
@@ -16594,6 +16605,8 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
     controllerName: selectedController?.name || existingInput?.controllerName || "",
     zoneId,
     zoneName: selectedZone?.name || (zoneId ? existingInput?.zoneName : "All zones") || "All zones",
+    outputNumber: selectedZone ? Number(selectedZone.outputNumber || selectedZone.output_number || 0) || null : null,
+    targetAllZones: !zoneId,
     inputNumber: String(formData.get("inputNumber") || "1").trim(),
     inputType: String(formData.get("inputType") || "Aux contact").trim(),
     label: String(formData.get("label") || "").trim(),
@@ -16622,6 +16635,7 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
       location_id: input.locationId,
       controller_id: input.controllerId,
       zone_id: input.zoneId,
+      output_number: input.outputNumber,
       input_number: input.inputNumber,
       input_type: input.inputType,
       active_state: input.activeState,
@@ -16629,6 +16643,10 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
         ...existingData,
         controllerName: input.controllerName,
         zoneName: input.zoneName,
+        outputNumber: input.outputNumber,
+        output_number: input.outputNumber,
+        targetAllZones: input.targetAllZones,
+        target_all_zones: input.targetAllZones,
         windowMode: input.windowMode,
         windowStart: input.windowStart,
         windowEnd: input.windowEnd,
@@ -17071,6 +17089,7 @@ async function saveLightingZoneFromForm(form, existingZoneId = "") {
     desiredState: String(formData.get("desiredState") || "Off").trim(),
     brightnessLevel: clampLightingBrightness(formData.get("brightnessLevel"), getLightingZoneBrightness(existingZone || {})),
     offlineBehavior: String(formData.get("offlineBehavior") || existingZone?.offlineBehavior || existingZone?.data?.offlineBehavior || "continue-schedule"),
+    clockFallback: String(formData.get("clockFallback") || existingZone?.clockFallback || existingZone?.data?.clockFallback || "safe-off"),
     status: existingZone?.status || "Setup only",
     notes: String(formData.get("notes") || "").trim(),
     createdAt: existingZone?.createdAt || new Date().toISOString()
@@ -17079,7 +17098,8 @@ async function saveLightingZoneFromForm(form, existingZoneId = "") {
     ...(existingZone?.data && typeof existingZone.data === "object" ? existingZone.data : {}),
     controllerName: zone.controllerName,
     brightnessLevel: zone.brightnessLevel,
-    offlineBehavior: zone.offlineBehavior
+    offlineBehavior: zone.offlineBehavior,
+    clockFallback: zone.clockFallback
   };
   if (!zone.name) {
     if (status) status.textContent = "Zone name is required.";
@@ -36373,17 +36393,103 @@ function renderAssetThumbnail(asset) {
   return `<img alt="Photo of ${escapeHtml(asset.name)}" src="${escapeAttribute(photoSrc)}">`;
 }
 
-function openPhotoViewer(src, caption) {
+function openPhotoViewer(src, caption, forceFullScreen = false) {
   if (!src) return;
   const activeDrawer = getActivePhotoDrawer();
-  if (activeDrawer) {
-    openPhotoSideBay(src, activeDrawer);
+  if (activeDrawer && !forceFullScreen) {
+    openPhotoSideBay(src, activeDrawer, caption);
     closePhotoViewer();
     return;
   }
   els.photoViewerImage.src = src;
   els.photoViewerCaption.textContent = caption || "Equipment photo";
+  resetPhotoZoom(els.photoViewerImage);
   els.photoViewer.classList.remove("hidden");
+}
+
+function getPhotoZoomState(image) {
+  if (!image) return null;
+  if (!photoZoomState.has(image)) photoZoomState.set(image, { scale: 1, x: 0, y: 0, dragging: false });
+  return photoZoomState.get(image);
+}
+
+function applyPhotoZoom(image) {
+  const state = getPhotoZoomState(image);
+  if (!state) return;
+  image.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+  image.classList.toggle("is-zoomed", state.scale > 1);
+  const container = image.closest(".photo-viewer, .photo-side-bay");
+  const resetButton = container?.querySelector('[data-photo-action="reset"]');
+  if (resetButton) resetButton.textContent = `${Math.round(state.scale * 100)}%`;
+}
+
+function setPhotoZoom(image, scale) {
+  const state = getPhotoZoomState(image);
+  if (!state) return;
+  state.scale = Math.max(1, Math.min(5, scale));
+  if (state.scale === 1) {
+    state.x = 0;
+    state.y = 0;
+  }
+  applyPhotoZoom(image);
+}
+
+function resetPhotoZoom(image) {
+  const state = getPhotoZoomState(image);
+  if (!state) return;
+  Object.assign(state, { scale: 1, x: 0, y: 0, dragging: false });
+  applyPhotoZoom(image);
+}
+
+function enablePhotoZoom(image) {
+  const stage = image?.closest(".photo-zoom-stage");
+  if (!image || !stage) return;
+  stage.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const state = getPhotoZoomState(image);
+    setPhotoZoom(image, state.scale + (event.deltaY < 0 ? 0.25 : -0.25));
+  }, { passive: false });
+  image.addEventListener("dblclick", () => {
+    const state = getPhotoZoomState(image);
+    setPhotoZoom(image, state.scale > 1 ? 1 : 2);
+  });
+  image.addEventListener("pointerdown", (event) => {
+    const state = getPhotoZoomState(image);
+    if (state.scale <= 1) return;
+    state.dragging = true;
+    state.startX = event.clientX - state.x;
+    state.startY = event.clientY - state.y;
+    image.setPointerCapture(event.pointerId);
+  });
+  image.addEventListener("pointermove", (event) => {
+    const state = getPhotoZoomState(image);
+    if (!state.dragging) return;
+    state.x = event.clientX - state.startX;
+    state.y = event.clientY - state.startY;
+    applyPhotoZoom(image);
+  });
+  image.addEventListener("pointerup", (event) => {
+    const state = getPhotoZoomState(image);
+    state.dragging = false;
+    if (image.hasPointerCapture(event.pointerId)) image.releasePointerCapture(event.pointerId);
+  });
+}
+
+function handlePhotoViewerAction(event, container, image) {
+  const button = event.target.closest("[data-photo-action]");
+  if (!button || !container?.contains(button)) return;
+  const action = button.dataset.photoAction;
+  const state = getPhotoZoomState(image);
+  if (action === "zoom-in") setPhotoZoom(image, state.scale + 0.25);
+  if (action === "zoom-out") setPhotoZoom(image, state.scale - 0.25);
+  if (action === "reset") resetPhotoZoom(image);
+  if (action === "close") container === els.photoSideBay ? closePhotoSideBay() : closePhotoViewer();
+  if (action === "expand" && image?.src) {
+    const src = image.src;
+    const caption = container.dataset.photoCaption || "Job photo";
+    closePhotoSideBay();
+    openPhotoViewer(src, caption, true);
+  }
 }
 
 function handleInlineImageLoadError(event) {
@@ -36439,6 +36545,7 @@ function isFailedMediaSource(source = "") {
 
 function closePhotoViewer() {
   els.photoViewer.classList.add("hidden");
+  resetPhotoZoom(els.photoViewerImage);
   els.photoViewerImage.removeAttribute("src");
   els.photoViewerCaption.textContent = "";
 }
@@ -36452,10 +36559,12 @@ function getActivePhotoDrawer() {
   return null;
 }
 
-function openPhotoSideBay(src, drawer) {
+function openPhotoSideBay(src, drawer, caption = "Job photo") {
   if (!els.photoSideBay || !els.photoSideBayImage || !drawer) return;
   positionPhotoSideBay(drawer);
   els.photoSideBayImage.src = src;
+  els.photoSideBay.dataset.photoCaption = caption;
+  resetPhotoZoom(els.photoSideBayImage);
   els.photoSideBay.classList.remove("hidden");
 }
 
@@ -36469,7 +36578,9 @@ function positionPhotoSideBay(drawer) {
 function closePhotoSideBay() {
   if (!els.photoSideBay || !els.photoSideBayImage) return;
   els.photoSideBay.classList.add("hidden");
+  resetPhotoZoom(els.photoSideBayImage);
   els.photoSideBayImage.removeAttribute("src");
+  delete els.photoSideBay.dataset.photoCaption;
   els.photoSideBay.style.removeProperty("--photo-bay-right");
 }
 
@@ -37994,6 +38105,12 @@ function getWorkOrderPhotos(item) {
   return photos;
 }
 
+function ticketActivitySourceLabel(source) {
+  const value = String(source || "").trim();
+  if (value.toLowerCase() === "public qr report") return "Public QR";
+  return getInitials(value || "System");
+}
+
 function renderTicketActivityTimeline(item, showHeading = true) {
   const entries = workOrderHistoryEntries(item);
   const photos = getWorkOrderPhotos(item);
@@ -38010,7 +38127,7 @@ function renderTicketActivityTimeline(item, showHeading = true) {
       <div class="ticket-timeline">
         ${notes ? `
           <article class="ticket-timeline-entry">
-            <div class="ticket-timeline-avatar">${escapeHtml(getInitials(createdBy))}</div>
+            <div class="ticket-timeline-avatar" title="${escapeAttribute(createdBy)}">${escapeHtml(ticketActivitySourceLabel(createdBy))}</div>
             <div class="ticket-timeline-bubble">
               <header>
                 <strong>Work notes</strong>
@@ -38033,10 +38150,10 @@ function renderTicketActivityTimeline(item, showHeading = true) {
         `}
         ${photos.map((photo, index) => `
           <article class="ticket-timeline-entry">
-            <div class="ticket-timeline-avatar">P${index + 1}</div>
+            <div class="ticket-timeline-avatar" title="Submitted photo ${index + 1}">Photo ${index + 1}</div>
             <div class="ticket-timeline-bubble">
               <header>
-                <strong>${escapeHtml(photo.label || "Submitted photo")}</strong>
+                <strong>${escapeHtml(photo.label || `Submitted photo ${index + 1}`)}</strong>
                 <span>${escapeHtml(photo.addedAt ? formatDateTime(new Date(photo.addedAt)) : formatDateTime(new Date(createdAt)))}</span>
               </header>
               <button type="button" class="history-photo-button ticket-photo-card timeline-photo-card" data-view-photo data-photo-src="${escapeAttribute(mediaSource(photo))}" data-photo-caption="${escapeAttribute(photo.caption || photo.name || "Job photo")}">
