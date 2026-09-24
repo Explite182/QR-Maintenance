@@ -12,11 +12,28 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260901-pm-history-optional-12">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260901-pm-history-optional-12">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260901-pm-history-optional-12">
-  <link rel="stylesheet" href="/styles.css?v=20260923-override-label-39">
+  <link rel="stylesheet" href="/styles.css?v=20260923-contractor-logbook-40">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
 <body>
+  <section id="publicContractorLogbookScreen" class="report-screen hidden">
+    <div class="report-card contractor-checkin-card">
+      <div><p class="eyebrow">SiteWorks contractor logbook</p><h1 id="publicContractorLogbookTitle">Contractor sign in</h1><p id="publicContractorLogbookContext" class="report-context">Loading location...</p></div>
+      <form id="publicContractorLogbookForm" class="stack hidden">
+        <div class="form-grid"><label>Your name <input id="publicContractorName" required autocomplete="name"></label><label>Company <input id="publicContractorCompany" required autocomplete="organization"></label></div>
+        <div class="form-grid"><label>Email <input id="publicContractorEmail" type="email" autocomplete="email"></label><label>Phone <input id="publicContractorPhone" type="tel" autocomplete="tel"></label></div>
+        <label>Person being visited <input id="publicContractorHost" placeholder="Site contact"></label>
+        <label>Reason for visit / work description <textarea id="publicContractorPurpose" rows="3" required></textarea></label>
+        <label>Job or work-order number <input id="publicContractorWorkOrder" placeholder="Optional"></label>
+        <label class="check-row"><input id="publicContractorSafety" type="checkbox" required> I have reviewed the site safety and emergency requirements.</label>
+        <div class="form-grid"><button type="submit" name="contractorAction" value="sign-in">Sign In</button><button type="submit" name="contractorAction" value="sign-out" class="secondary" formnovalidate>Sign Out</button></div>
+        <p id="publicContractorLogbookMessage" class="login-message"></p>
+      </form>
+      <small class="report-note">No SiteWorks account is required. Visit times are recorded by the SiteWorks server.</small>
+    </div>
+  </section>
+
   <section id="publicKeyScreen" class="report-screen hidden">
     <div class="report-card">
       <div>
@@ -2398,7 +2415,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260901-pm-history-optional-12"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260901-pm-history-optional-12"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260901-pm-history-optional-12"></script>
-  <script src="/app.js?v=20260923-override-label-39"></script>
+  <script src="/app.js?v=20260923-contractor-logbook-40"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

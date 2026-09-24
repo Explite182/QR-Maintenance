@@ -9511,6 +9511,19 @@ textarea:disabled {
   padding-top: 10px;
 }
 
+.contractor-checkin-card {
+  width: min(680px, calc(100vw - 28px));
+}
+
+.contractor-logbook-controls .inventory-qr-card {
+  align-items: center;
+}
+
+.contractor-logbook-controls .inventory-qr-card img {
+  width: 148px;
+  height: 148px;
+}
+
 .lighting-input-row-head > span {
   color: var(--muted);
   font-size: 0.78rem;

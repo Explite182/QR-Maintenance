@@ -7002,6 +7002,7 @@ let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
 let intentionalLogoutAt = 0;
+let contractorLogbookState = { token: "", link: "", visits: [], loading: false };
 let lastPublicReportError = "";
 let publicKeyLookupState = {
   uid: "",
@@ -7299,6 +7300,31 @@ const els = {
   contractorCount: document.getElementById("contractorCount"),
   contractorCustomerHint: document.getElementById("contractorCustomerHint"),
   contractorList: document.getElementById("contractorList"),
+  contractorLogbookLocation: document.getElementById("contractorLogbookLocation"),
+  contractorLogbookCreateBtn: document.getElementById("contractorLogbookCreateBtn"),
+  contractorLogbookCopyBtn: document.getElementById("contractorLogbookCopyBtn"),
+  contractorLogbookWriteNfcBtn: document.getElementById("contractorLogbookWriteNfcBtn"),
+  contractorLogbookPrintBtn: document.getElementById("contractorLogbookPrintBtn"),
+  contractorLogbookRange: document.getElementById("contractorLogbookRange"),
+  contractorLogbookExportBtn: document.getElementById("contractorLogbookExportBtn"),
+  contractorLogbookLinkCard: document.getElementById("contractorLogbookLinkCard"),
+  contractorLogbookStatus: document.getElementById("contractorLogbookStatus"),
+  contractorLogbookSummary: document.getElementById("contractorLogbookSummary"),
+  contractorLogbookList: document.getElementById("contractorLogbookList"),
+  contractorOnsiteCount: document.getElementById("contractorOnsiteCount"),
+  publicContractorLogbookScreen: document.getElementById("publicContractorLogbookScreen"),
+  publicContractorLogbookTitle: document.getElementById("publicContractorLogbookTitle"),
+  publicContractorLogbookContext: document.getElementById("publicContractorLogbookContext"),
+  publicContractorLogbookForm: document.getElementById("publicContractorLogbookForm"),
+  publicContractorName: document.getElementById("publicContractorName"),
+  publicContractorCompany: document.getElementById("publicContractorCompany"),
+  publicContractorEmail: document.getElementById("publicContractorEmail"),
+  publicContractorPhone: document.getElementById("publicContractorPhone"),
+  publicContractorHost: document.getElementById("publicContractorHost"),
+  publicContractorPurpose: document.getElementById("publicContractorPurpose"),
+  publicContractorWorkOrder: document.getElementById("publicContractorWorkOrder"),
+  publicContractorSafety: document.getElementById("publicContractorSafety"),
+  publicContractorLogbookMessage: document.getElementById("publicContractorLogbookMessage"),
   activityLogCount: document.getElementById("activityLogCount"),
   activityLogList: document.getElementById("activityLogList"),
   locationForm: document.getElementById("locationForm"),
@@ -10700,6 +10726,60 @@ els.contractorCustomer?.addEventListener("change", () => {
   renderPreferredContractors();
 });
 
+els.publicContractorLogbookForm?.addEventListener("submit", submitPublicContractorLogbook);
+
+els.contractorLogbookLocation?.addEventListener("change", () => {
+  contractorLogbookState = { token: "", link: "", visits: [], loading: false };
+  loadContractorLogbook();
+});
+
+els.contractorLogbookRange?.addEventListener("change", loadContractorLogbook);
+
+els.contractorLogbookCreateBtn?.addEventListener("click", async () => {
+  try {
+    await createContractorLogbookLink();
+    await loadContractorLogbook();
+    els.contractorLogbookStatus.textContent = "Contractor QR/NFC link is ready.";
+  } catch (error) {
+    els.contractorLogbookStatus.textContent = readableServerError(error?.message || error);
+  }
+});
+
+els.contractorLogbookCopyBtn?.addEventListener("click", async () => {
+  if (!contractorLogbookState.token) await createContractorLogbookLink();
+  await copyText(contractorLogbookPublicUrl());
+  els.contractorLogbookStatus.textContent = "Contractor scan link copied.";
+});
+
+els.contractorLogbookWriteNfcBtn?.addEventListener("click", async () => {
+  try {
+    if (!contractorLogbookState.token) await createContractorLogbookLink();
+    els.contractorLogbookStatus.textContent = "Hold an NFC tag on the ACR122U reader...";
+    const url = contractorLogbookPublicUrl();
+    await callNfcBridgeWithFallback(["/nfc/write", "/write", "/api/nfc/write"], {
+      url, fallbackUrl: url, recordType: "contractor-logbook",
+      recordId: getContractorLogbookLocation(), name: "SiteWorks Contractor Logbook"
+    });
+    els.contractorLogbookStatus.textContent = "Contractor logbook NFC tag written.";
+  } catch (error) {
+    els.contractorLogbookStatus.textContent = `NFC write failed: ${error.message || "Bridge unavailable."}`;
+  }
+});
+
+els.contractorLogbookPrintBtn?.addEventListener("click", async () => {
+  if (!contractorLogbookState.token) await createContractorLogbookLink();
+  const locationRecord = getLocation(getContractorLogbookLocation());
+  const url = contractorLogbookPublicUrl();
+  els.labelSheet.innerHTML = `<div class="print-label print-label-nfc"><img alt="" src="${qrUrl(url)}"><div class="print-label-copy"><span class="label-brand">SiteWorks Contractor Logbook</span><strong>${escapeHtml(locationRecord?.name || "Location")}</strong><span>${escapeHtml(locationRecord?.address || "")}</span><span>Tap NFC or scan QR to sign in or out</span></div><div class="print-nfc-target"><span>NFC</span><small>Entrance tag</small></div></div>`;
+  window.print();
+});
+
+els.contractorLogbookExportBtn?.addEventListener("click", exportContractorLogbookCsv);
+
+els.contractorDrawer?.addEventListener("toggle", () => {
+  if (els.contractorDrawer.open) loadContractorLogbook();
+});
+
 els.inventoryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageInventory()) return;
@@ -13132,6 +13212,10 @@ function render() {
   if (!requireServerSessionForApp()) return;
   captureOpenWorkSubDrawers();
   renderAuth();
+  if (isPublicContractorLogbookUrl()) {
+    renderPublicContractorLogbook();
+    return;
+  }
   if (isPublicKeyUrl()) {
     renderPublicKeyScan();
     return;
@@ -13157,6 +13241,7 @@ function render() {
   ensureSelection();
   renderUsers();
   renderPreferredContractors();
+  renderContractorLogbook();
   renderAccessRequests();
   renderActivityLog();
   renderTemplates();
@@ -13257,6 +13342,7 @@ function renderAuth() {
   const isPublicKey = isPublicKeyUrl();
   const isPublicQuote = isPublicQuoteUrl();
   const isPublicSchedule = isPublicScheduleUrl();
+  const isContractorLogbook = isPublicContractorLogbookUrl();
   const isLoggedIn = Boolean(currentUser);
   const hasScannedAsset = Boolean(getAssetIdFromUrl());
   const needsFirstAdmin = !isReport && !isPublicKey && !isPublicQuote && !isPublicSchedule && !isLoggedIn && !hasSetupUsers();
@@ -13264,7 +13350,8 @@ function renderAuth() {
   els.publicReportScreen.classList.toggle("hidden", !isReport);
   els.publicQuoteScreen?.classList.toggle("hidden", !isPublicQuote);
   els.publicScheduleScreen?.classList.toggle("hidden", !isPublicSchedule);
-  els.loginScreen.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || isPublicSchedule || isLoggedIn);
+  els.publicContractorLogbookScreen?.classList.toggle("hidden", !isContractorLogbook);
+  els.loginScreen.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || isPublicSchedule || isContractorLogbook || isLoggedIn);
   els.loginForm.classList.toggle("hidden", passwordRecoveryMode);
   els.passwordResetForm?.classList.toggle("hidden", !passwordRecoveryMode);
   els.loginQrReportPrompt.classList.toggle("hidden", passwordRecoveryMode || isReport || isPublicKey || isPublicQuote || isPublicSchedule || isLoggedIn || !hasScannedAsset);
@@ -13275,8 +13362,8 @@ function renderAuth() {
   }
   syncLoginQrReportPrompt();
   els.firstAdminForm.classList.add("hidden");
-  els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || isPublicSchedule || !isLoggedIn));
-  if (isReport || isPublicKey || isPublicQuote || isPublicSchedule || !isLoggedIn) return;
+  els.appOnly.forEach((node) => node.classList.toggle("hidden", isReport || isPublicKey || isPublicQuote || isPublicSchedule || isContractorLogbook || !isLoggedIn));
+  if (isReport || isPublicKey || isPublicQuote || isPublicSchedule || isContractorLogbook || !isLoggedIn) return;
   els.currentUserName.textContent = currentUser.name || currentUser.username;
   els.currentUserRole.textContent = currentUser.role;
   renderUserSwitcher();
@@ -41280,7 +41367,15 @@ function isPublicScheduleUrl() {
 }
 
 function isPublicOnlyUrl() {
-  return isPublicReportUrl() || isPublicKeyUrl() || isPublicQuoteUrl() || isPublicScheduleUrl();
+  return isPublicReportUrl() || isPublicKeyUrl() || isPublicQuoteUrl() || isPublicScheduleUrl() || isPublicContractorLogbookUrl();
+}
+
+function getPublicContractorLogbookToken() {
+  return new URLSearchParams(location.search).get("contractorLog") || "";
+}
+
+function isPublicContractorLogbookUrl() {
+  return Boolean(getPublicContractorLogbookToken());
 }
 
 function isPublicKeyUrl() {
@@ -41587,6 +41682,146 @@ async function submitPublicQuoteResponse(event) {
     buttons.forEach((button) => { button.disabled = false; });
     renderPublicQuote();
   }
+}
+
+async function renderPublicContractorLogbook() {
+  const token = getPublicContractorLogbookToken();
+  if (!token || !els.publicContractorLogbookForm) return;
+  if (els.publicContractorLogbookForm.dataset.loaded === token) return;
+  els.publicContractorLogbookContext.textContent = "Loading location...";
+  try {
+    const response = await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}`), { cache: "no-store" });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json();
+    els.publicContractorLogbookTitle.textContent = `Contractor logbook | ${data.locationName || "SiteWorks"}`;
+    els.publicContractorLogbookContext.textContent = [data.customerName, data.locationAddress].filter(Boolean).join(" | ");
+    els.publicContractorLogbookForm.classList.remove("hidden");
+    els.publicContractorLogbookForm.dataset.loaded = token;
+  } catch (error) {
+    els.publicContractorLogbookTitle.textContent = "Logbook unavailable";
+    els.publicContractorLogbookContext.textContent = readableServerError(error?.message || error);
+    els.publicContractorLogbookForm.classList.add("hidden");
+  }
+}
+
+async function submitPublicContractorLogbook(event) {
+  event.preventDefault();
+  const token = getPublicContractorLogbookToken();
+  const submitter = event.submitter;
+  const action = submitter?.value === "sign-out" ? "sign-out" : "sign-in";
+  const payload = {
+    action,
+    contractorName: els.publicContractorName.value.trim(),
+    company: els.publicContractorCompany.value.trim(),
+    email: els.publicContractorEmail.value.trim(),
+    phone: els.publicContractorPhone.value.trim(),
+    hostName: els.publicContractorHost.value.trim(),
+    purpose: els.publicContractorPurpose.value.trim(),
+    workOrder: els.publicContractorWorkOrder.value.trim(),
+    safetyAcknowledged: els.publicContractorSafety.checked,
+    scanMethod: "QR/NFC"
+  };
+  if (!payload.email && !payload.phone) {
+    els.publicContractorLogbookMessage.textContent = "Enter an email or phone number so your visit can be matched when signing out.";
+    return;
+  }
+  const buttons = [...els.publicContractorLogbookForm.querySelectorAll("button")];
+  buttons.forEach((button) => { button.disabled = true; });
+  els.publicContractorLogbookMessage.textContent = action === "sign-in" ? "Signing you in..." : "Signing you out...";
+  try {
+    const response = await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}/action`), {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    });
+    const text = await response.text();
+    if (!response.ok) throw new Error(text);
+    els.publicContractorLogbookMessage.textContent = action === "sign-in"
+      ? `Signed in at ${new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", hour: "numeric", minute: "2-digit" }).format(new Date())}.`
+      : "Signed out. Thank you.";
+    els.publicContractorLogbookForm.reset();
+  } catch (error) {
+    els.publicContractorLogbookMessage.textContent = readableServerError(error?.message || error) || "The visit was not updated.";
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+function getContractorLogbookLocation() {
+  return els.contractorLogbookLocation?.value || selectedLocationId || "";
+}
+
+function contractorLogbookPublicUrl(token = contractorLogbookState.token) {
+  const base = normalizeBaseUrl(getQrBaseUrl() || PRODUCTION_SITE_URL);
+  return `${base}?contractorLog=${encodeURIComponent(token || "")}`;
+}
+
+function renderContractorLogbook() {
+  if (!els.contractorLogbookLocation) return;
+  const locations = visibleLocationsForReportLabels().filter((item) => item.id !== ALL_LOCATIONS);
+  const previous = els.contractorLogbookLocation.value || selectedLocationId;
+  els.contractorLogbookLocation.innerHTML = locations.map((item) => `<option value="${escapeAttribute(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+  if (locations.some((item) => item.id === previous)) els.contractorLogbookLocation.value = previous;
+  const visits = contractorLogbookState.visits || [];
+  const onsite = visits.filter((visit) => !visit.signedOutAt);
+  if (els.contractorOnsiteCount) els.contractorOnsiteCount.textContent = `${onsite.length} onsite`;
+  if (els.contractorLogbookSummary) els.contractorLogbookSummary.innerHTML = `
+    <div class="metric-card"><span>Currently onsite</span><strong>${onsite.length}</strong></div>
+    <div class="metric-card"><span>Visits in report</span><strong>${visits.length}</strong></div>`;
+  if (els.contractorLogbookList) els.contractorLogbookList.innerHTML = visits.length ? visits.map((visit) => `
+    <article class="${visit.signedOutAt ? "" : "is-warning"}">
+      <strong>${escapeHtml(visit.contractorName)}${visit.company ? ` | ${escapeHtml(visit.company)}` : ""}</strong>
+      <small>In ${escapeHtml(formatDateTime(new Date(visit.signedInAt)))}${visit.signedOutAt ? ` | Out ${escapeHtml(formatDateTime(new Date(visit.signedOutAt)))}` : " | Currently onsite"}</small>
+      <small>${escapeHtml([visit.hostName && `Visiting ${visit.hostName}`, visit.workOrder && `Job ${visit.workOrder}`].filter(Boolean).join(" | "))}</small>
+      ${visit.purpose ? `<p>${escapeHtml(visit.purpose)}</p>` : ""}
+    </article>`).join("") : `<p class="muted">No contractor visits in this report period.</p>`;
+  if (contractorLogbookState.token && els.contractorLogbookLinkCard) {
+    const url = contractorLogbookPublicUrl();
+    els.contractorLogbookLinkCard.classList.remove("hidden");
+    els.contractorLogbookLinkCard.innerHTML = `<img alt="Contractor logbook QR code" src="${qrUrl(url)}"><div><strong>Contractor scan link</strong><small>${escapeHtml(url)}</small></div>`;
+  }
+}
+
+async function loadContractorLogbook() {
+  const locationId = getContractorLogbookLocation();
+  if (!locationId || !currentUser) return;
+  contractorLogbookState.loading = true;
+  if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "Loading contractor visits...";
+  try {
+    const [linksResponse, visitsResponse] = await Promise.all([
+      siteworksApi.server(`/api/contractor-logbook/links?location_id=${encodeURIComponent(locationId)}`),
+      siteworksApi.server(`/api/contractor-logbook/visits?location_id=${encodeURIComponent(locationId)}&range=${encodeURIComponent(els.contractorLogbookRange?.value || "day")}`)
+    ]);
+    if (!linksResponse.ok || !visitsResponse.ok) throw new Error("Could not load the contractor logbook.");
+    const links = await linksResponse.json(); const visits = await visitsResponse.json();
+    contractorLogbookState.token = links.links?.[0]?.token || "";
+    contractorLogbookState.visits = visits.visits || [];
+    if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "";
+  } catch (error) {
+    if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = readableServerError(error?.message || error);
+  } finally {
+    contractorLogbookState.loading = false;
+    renderContractorLogbook();
+  }
+}
+
+async function createContractorLogbookLink() {
+  const locationId = getContractorLogbookLocation();
+  const locationRecord = getLocation(locationId);
+  if (!locationRecord) return;
+  const response = await siteworksApi.server("/api/contractor-logbook/links", { method: "POST", body: JSON.stringify({ customerId: locationRecord.customerId, locationId }) });
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json();
+  contractorLogbookState.token = data.link?.token || "";
+  renderContractorLogbook();
+}
+
+function exportContractorLogbookCsv() {
+  const headers = ["Name", "Company", "Email", "Phone", "Host", "Purpose", "Work order", "Signed in", "Signed out"];
+  const rows = (contractorLogbookState.visits || []).map((visit) => [visit.contractorName, visit.company, visit.email, visit.phone, visit.hostName, visit.purpose, visit.workOrder, visit.signedInAt, visit.signedOutAt]);
+  const csv = [headers, ...rows].map((row) => row.map((value) => `"${String(value || "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  link.download = `siteworks-contractor-logbook-${els.contractorLogbookRange?.value || "day"}.csv`;
+  link.click(); URL.revokeObjectURL(link.href);
 }
 
 async function renderPublicKeyScan() {

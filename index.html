@@ -12,11 +12,41 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260923-override-label-39">
+  <link rel="stylesheet" href="/styles.css?v=20260923-contractor-logbook-40">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
 <body>
+  <section id="publicContractorLogbookScreen" class="report-screen hidden">
+    <div class="report-card contractor-checkin-card">
+      <div>
+        <p class="eyebrow">SiteWorks contractor logbook</p>
+        <h1 id="publicContractorLogbookTitle">Contractor sign in</h1>
+        <p id="publicContractorLogbookContext" class="report-context">Loading location...</p>
+      </div>
+      <form id="publicContractorLogbookForm" class="stack hidden">
+        <div class="form-grid">
+          <label>Your name <input id="publicContractorName" required autocomplete="name"></label>
+          <label>Company <input id="publicContractorCompany" required autocomplete="organization"></label>
+        </div>
+        <div class="form-grid">
+          <label>Email <input id="publicContractorEmail" type="email" autocomplete="email"></label>
+          <label>Phone <input id="publicContractorPhone" type="tel" autocomplete="tel"></label>
+        </div>
+        <label>Person being visited <input id="publicContractorHost" placeholder="Site contact"></label>
+        <label>Reason for visit / work description <textarea id="publicContractorPurpose" rows="3" required></textarea></label>
+        <label>Job or work-order number <input id="publicContractorWorkOrder" placeholder="Optional"></label>
+        <label class="check-row"><input id="publicContractorSafety" type="checkbox" required> I have reviewed the site safety and emergency requirements.</label>
+        <div class="form-grid">
+          <button type="submit" name="contractorAction" value="sign-in">Sign In</button>
+          <button type="submit" name="contractorAction" value="sign-out" class="secondary" formnovalidate>Sign Out</button>
+        </div>
+        <p id="publicContractorLogbookMessage" class="login-message"></p>
+      </form>
+      <small class="report-note">No SiteWorks account is required. Visit times are recorded by the SiteWorks server.</small>
+    </div>
+  </section>
+
   <section id="publicKeyScreen" class="report-screen hidden">
     <div class="report-card">
       <div>
@@ -608,11 +638,38 @@
       </details>
 
       <details id="contractorDrawer" class="sidebar-section setup-drawer">
-        <summary>Preferred Contacts</summary>
+        <summary>Contractors &amp; Logbook</summary>
         <section>
+          <details class="sidebar-sub-drawer" open>
+            <summary><span>Contractor Logbook</span><span id="contractorOnsiteCount">0 onsite</span></summary>
+            <div class="stack compact-form contractor-logbook-controls">
+              <label>Location <select id="contractorLogbookLocation"></select></label>
+              <div class="record-actions">
+                <button id="contractorLogbookCreateBtn" type="button">Create / Show Scan Link</button>
+                <button id="contractorLogbookCopyBtn" type="button" class="secondary">Copy Link</button>
+                <button id="contractorLogbookWriteNfcBtn" type="button" class="secondary">Write NFC</button>
+                <button id="contractorLogbookPrintBtn" type="button" class="secondary">Print QR + NFC</button>
+              </div>
+              <div id="contractorLogbookLinkCard" class="inventory-qr-card hidden"></div>
+              <div class="form-grid">
+                <label>Report period
+                  <select id="contractorLogbookRange">
+                    <option value="day">Today</option><option value="week">This week</option><option value="month">This month</option><option value="all">All visits</option>
+                  </select>
+                </label>
+                <label>Report actions
+                  <button id="contractorLogbookExportBtn" type="button" class="secondary">Export CSV</button>
+                </label>
+              </div>
+              <p id="contractorLogbookStatus" class="inline-status"></p>
+              <div id="contractorLogbookSummary" class="dashboard-grid"></div>
+              <div id="contractorLogbookList" class="activity-log-list"></div>
+            </div>
+          </details>
+          <details class="sidebar-sub-drawer">
+            <summary><span>Preferred Contacts</span><span id="contractorCount">0</span></summary>
           <div class="section-title">
             <h2>Contacts</h2>
-            <span id="contractorCount">0</span>
           </div>
           <form id="contractorForm" class="stack compact-form">
             <label>
@@ -635,6 +692,7 @@
             <button type="submit">Add Contact</button>
           </form>
           <div id="contractorList" class="user-list"></div>
+          </details>
         </section>
       </details>
 
@@ -2935,7 +2993,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260923-override-label-39"></script>
+  <script src="/app.js?v=20260923-contractor-logbook-40"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
