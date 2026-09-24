@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260924-logbook-safety-48">
+  <link rel="stylesheet" href="/styles.css?v=20260924-logbook-notify-directory-49">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -25,6 +25,16 @@
         <p id="publicContractorLogbookContext" class="report-context">Loading location...</p>
       </div>
       <form id="publicContractorLogbookForm" class="stack hidden">
+        <details class="contractor-returning-visitor">
+          <summary>Returning contractor? Fill my saved details</summary>
+          <div class="stack">
+            <label>Verified email <input id="publicContractorLookupEmail" type="email" autocomplete="email"></label>
+            <button id="publicContractorSendCodeBtn" type="button" class="secondary">Email Verification Code</button>
+            <label>Verification code <input id="publicContractorVerificationCode" inputmode="numeric" maxlength="6" placeholder="6-digit code"></label>
+            <button id="publicContractorVerifyBtn" type="button" class="secondary">Verify and Fill Details</button>
+            <p id="publicContractorVerificationMessage" class="login-message"></p>
+          </div>
+        </details>
         <div class="form-grid">
           <label>Your name <input id="publicContractorName" required autocomplete="name"></label>
           <label>Company <input id="publicContractorCompany" required autocomplete="organization"></label>
@@ -657,6 +667,11 @@
                 <button id="contractorLogbookSaveThresholdBtn" type="button" class="secondary">Save Threshold</button>
                 <button id="contractorLogbookPrintOnsiteBtn" type="button" class="secondary">Print Emergency Onsite List</button>
                 <button id="contractorLogbookExportOnsiteBtn" type="button" class="secondary">Export Onsite CSV</button>
+              </div>
+              <div class="contractor-notification-controls">
+                <label class="check-row"><input id="contractorLogbookNotifyArrival" type="checkbox"> Email the site contact when a contractor signs in</label>
+                <label>Notification email <input id="contractorLogbookNotificationEmail" type="email" placeholder="site-contact@example.com"></label>
+                <button id="contractorLogbookSaveNotificationBtn" type="button" class="secondary">Save Notification</button>
               </div>
               <div id="contractorLogbookLinkCard" class="inventory-qr-card hidden"></div>
               <div class="form-grid">
@@ -3007,7 +3022,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260924-logbook-safety-48"></script>
+  <script src="/app.js?v=20260924-logbook-notify-directory-49"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

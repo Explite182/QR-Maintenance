@@ -14294,6 +14294,23 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   margin: 0;
 }
 
+.contractor-notification-controls {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(240px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.contractor-returning-visitor {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfa;
+}
+
+.contractor-returning-visitor > summary { cursor: pointer; font-weight: 900; }
+.contractor-returning-visitor > .stack { margin-top: 10px; }
+
 .contractor-correction-note {
   color: var(--accent-dark);
   font-weight: 800;
@@ -14352,6 +14369,8 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   .contractor-safety-controls {
     grid-template-columns: 1fr;
   }
+
+  .contractor-notification-controls { grid-template-columns: 1fr; }
 
   .contractor-report-actions {
     grid-template-columns: 1fr;

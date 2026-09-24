@@ -7306,6 +7306,9 @@ const els = {
   contractorLogbookSaveThresholdBtn: document.getElementById("contractorLogbookSaveThresholdBtn"),
   contractorLogbookPrintOnsiteBtn: document.getElementById("contractorLogbookPrintOnsiteBtn"),
   contractorLogbookExportOnsiteBtn: document.getElementById("contractorLogbookExportOnsiteBtn"),
+  contractorLogbookNotifyArrival: document.getElementById("contractorLogbookNotifyArrival"),
+  contractorLogbookNotificationEmail: document.getElementById("contractorLogbookNotificationEmail"),
+  contractorLogbookSaveNotificationBtn: document.getElementById("contractorLogbookSaveNotificationBtn"),
   contractorLogbookCreateBtn: document.getElementById("contractorLogbookCreateBtn"),
   contractorLogbookCopyBtn: document.getElementById("contractorLogbookCopyBtn"),
   contractorLogbookWriteNfcBtn: document.getElementById("contractorLogbookWriteNfcBtn"),
@@ -7331,6 +7334,11 @@ const els = {
   publicContractorWorkOrder: document.getElementById("publicContractorWorkOrder"),
   publicContractorSafety: document.getElementById("publicContractorSafety"),
   publicContractorLogbookMessage: document.getElementById("publicContractorLogbookMessage"),
+  publicContractorLookupEmail: document.getElementById("publicContractorLookupEmail"),
+  publicContractorVerificationCode: document.getElementById("publicContractorVerificationCode"),
+  publicContractorSendCodeBtn: document.getElementById("publicContractorSendCodeBtn"),
+  publicContractorVerifyBtn: document.getElementById("publicContractorVerifyBtn"),
+  publicContractorVerificationMessage: document.getElementById("publicContractorVerificationMessage"),
   activityLogCount: document.getElementById("activityLogCount"),
   activityLogList: document.getElementById("activityLogList"),
   locationForm: document.getElementById("locationForm"),
@@ -10803,6 +10811,29 @@ els.contractorLogbookSaveThresholdBtn?.addEventListener("click", async () => {
   } catch (error) {
     if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = readableServerError(error?.message || error);
   }
+});
+els.contractorLogbookSaveNotificationBtn?.addEventListener("click", async () => {
+  try { await createContractorLogbookLink(); els.contractorLogbookStatus.textContent = "Arrival notification saved."; }
+  catch (error) { els.contractorLogbookStatus.textContent = readableServerError(error?.message || error); }
+});
+
+els.publicContractorSendCodeBtn?.addEventListener("click", async () => {
+  const token = getPublicContractorLogbookToken();
+  const email = els.publicContractorLookupEmail?.value.trim() || "";
+  const response = await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}/verification-request`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+  els.publicContractorVerificationMessage.textContent = response.ok ? "Check your email for a 6-digit code." : readableServerError(await response.text());
+});
+
+els.publicContractorVerifyBtn?.addEventListener("click", async () => {
+  const token = getPublicContractorLogbookToken();
+  const email = els.publicContractorLookupEmail?.value.trim() || "";
+  const code = els.publicContractorVerificationCode?.value.trim() || "";
+  const response = await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}/verification-confirm`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, code }) });
+  if (!response.ok) { els.publicContractorVerificationMessage.textContent = readableServerError(await response.text()); return; }
+  const { profile } = await response.json();
+  els.publicContractorName.value = profile.contractor_name || ""; els.publicContractorCompany.value = profile.company || "";
+  els.publicContractorEmail.value = profile.email || email; els.publicContractorPhone.value = profile.phone || ""; els.publicContractorHost.value = profile.host_name || "";
+  els.publicContractorVerificationMessage.textContent = "Verified. Your saved details have been filled in.";
 });
 
 document.addEventListener("submit", async (event) => {
@@ -41854,6 +41885,8 @@ function renderContractorLogbook() {
   const onsite = visits.filter((visit) => !visit.signedOutAt);
   const overdue = onsite.filter(isContractorVisitOverdue);
   if (els.contractorLogbookOverdueHours) els.contractorLogbookOverdueHours.value = String(contractorLogbookState.overdueHours || 12);
+  if (els.contractorLogbookNotifyArrival) els.contractorLogbookNotifyArrival.checked = contractorLogbookState.notifyOnArrival === true;
+  if (els.contractorLogbookNotificationEmail) els.contractorLogbookNotificationEmail.value = contractorLogbookState.notificationEmail || "";
   if (els.contractorOnsiteCount) els.contractorOnsiteCount.textContent = `${onsite.length} onsite`;
   if (els.contractorLogbookSummary) els.contractorLogbookSummary.innerHTML = `
     <div class="metric-card"><span>Currently onsite</span><strong>${onsite.length}</strong></div>
@@ -41905,6 +41938,8 @@ async function loadContractorLogbook() {
     contractorLogbookState.locationId = locationId;
     contractorLogbookState.token = links.links?.[0]?.token || "";
     contractorLogbookState.overdueHours = Number(links.links?.[0]?.overdue_hours || links.links?.[0]?.overdueHours || 12) || 12;
+    contractorLogbookState.notifyOnArrival = links.links?.[0]?.notify_on_arrival === true;
+    contractorLogbookState.notificationEmail = links.links?.[0]?.notification_email || "";
     contractorLogbookState.visits = visits.visits || [];
     if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "";
   } catch (error) {
@@ -41921,7 +41956,9 @@ async function createContractorLogbookLink() {
   const locationRecord = getLocation(locationId);
   if (!locationRecord) return;
   const overdueHours = Math.max(1, Math.min(168, Number(els.contractorLogbookOverdueHours?.value || contractorLogbookState.overdueHours || 12) || 12));
-  const response = await siteworksApi.server("/api/contractor-logbook/links", { method: "POST", body: JSON.stringify({ customerId: locationRecord.customerId, locationId, overdueHours }) });
+  const notifyOnArrival = els.contractorLogbookNotifyArrival?.checked === true;
+  const notificationEmail = els.contractorLogbookNotificationEmail?.value.trim() || locationRecord.contactEmail || "";
+  const response = await siteworksApi.server("/api/contractor-logbook/links", { method: "POST", body: JSON.stringify({ customerId: locationRecord.customerId, locationId, overdueHours, notifyOnArrival, notificationEmail }) });
   if (!response.ok) throw new Error(await response.text());
   const data = await response.json();
   contractorLogbookState.token = data.link?.token || "";
