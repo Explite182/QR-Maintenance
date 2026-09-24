@@ -14223,6 +14223,19 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   display: none;
 }
 
+#contractorLogbookPane > .sidebar-sub-drawer {
+  margin: 0;
+}
+
+#contractorLogbookPane > .sidebar-sub-drawer > summary {
+  padding: 14px 16px;
+  font-size: 16px;
+}
+
+#contractorLogbookPane .contractor-logbook-controls {
+  padding: 16px;
+}
+
 .inventory-subsection-title {
   padding: 0;
   border: 0;

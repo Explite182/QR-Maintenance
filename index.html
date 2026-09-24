@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260924-key-record-layout-41">
+  <link rel="stylesheet" href="/styles.css?v=20260924-contractor-inventory-tab-42">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -331,6 +331,7 @@
             <div class="sidebar-submenu hidden" data-inventory-submenu>
               <button type="button" class="sidebar-submenu-btn is-active" data-open-inventory-tab="items">Parts & Materials</button>
               <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="keys">Keys</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="contractors">Contractor Logbook</button>
             </div>
           </div>
           <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
@@ -640,7 +641,7 @@
       <details id="contractorDrawer" class="sidebar-section setup-drawer">
         <summary>Contractors &amp; Logbook</summary>
         <section>
-          <details class="sidebar-sub-drawer" open>
+          <details id="contractorLogbookSection" class="sidebar-sub-drawer" open>
             <summary><span>Contractor Logbook</span><span id="contractorOnsiteCount">0 onsite</span></summary>
             <div class="stack compact-form contractor-logbook-controls">
               <label>Location <select id="contractorLogbookLocation"></select></label>
@@ -2267,6 +2268,7 @@
           <div class="asset-subnav inventory-subnav" aria-label="Inventory views">
             <button type="button" class="asset-subnav-tab is-active" data-inventory-tab="items">Parts & Materials</button>
             <button type="button" class="asset-subnav-tab" data-inventory-tab="keys">Keys</button>
+            <button type="button" class="asset-subnav-tab" data-inventory-tab="contractors">Contractor Logbook</button>
           </div>
           <div id="inventoryItemsPane" class="inventory-tab-pane" data-inventory-pane="items">
             <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
@@ -2539,6 +2541,7 @@
             </details>
             <div id="keyList" class="inventory-list"></div>
           </div>
+          <div id="contractorLogbookPane" class="inventory-tab-pane hidden" data-inventory-pane="contractors"></div>
         </div>
       </section>
 
@@ -2878,6 +2881,7 @@
     <div id="mobileInventoryMenu" class="mobile-create-menu hidden" aria-label="Inventory">
       <button type="button" data-mobile-inventory-target="items">Parts & Materials</button>
       <button type="button" data-mobile-inventory-target="keys">Keys</button>
+      <button type="button" data-mobile-inventory-target="contractors">Contractor Logbook</button>
     </div>
   </nav>
 
@@ -2993,7 +2997,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260924-key-record-layout-41"></script>
+  <script src="/app.js?v=20260924-contractor-inventory-tab-42"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

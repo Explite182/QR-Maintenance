@@ -17293,13 +17293,20 @@ async function deleteLightingZone(zoneId) {
 }
 
 function setInventoryTab(tab = "items") {
-  inventoryTab = tab === "keys" ? "keys" : "items";
+  const allowedTabs = new Set(["items", "keys", "contractors"]);
+  inventoryTab = allowedTabs.has(tab) ? tab : "items";
+  const logbookSection = document.getElementById("contractorLogbookSection");
+  const logbookPane = document.getElementById("contractorLogbookPane");
+  if (logbookSection && logbookPane && logbookSection.parentElement !== logbookPane) {
+    logbookPane.appendChild(logbookSection);
+  }
   document.querySelectorAll("[data-inventory-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.inventoryTab === inventoryTab);
   });
   document.querySelectorAll("[data-inventory-pane]").forEach((pane) => {
     pane.classList.toggle("hidden", pane.dataset.inventoryPane !== inventoryTab);
   });
+  if (inventoryTab === "contractors") loadContractorLogbook();
   syncInventorySidebarMenuState();
 }
 
@@ -17355,7 +17362,7 @@ function openMobileTab(targetId) {
     return;
   }
 
-  if (targetId === "inventoryPanel" && inventoryTab !== "keys") setInventoryTab("items");
+  if (targetId === "inventoryPanel" && !["keys", "contractors"].includes(inventoryTab)) setInventoryTab("items");
   if (targetId !== "adminToolsDrawer") closeSidebarTarget("adminToolsDrawer");
   const target = document.getElementById(targetId);
   const isOpen = target?.tagName === "DETAILS"
@@ -33748,12 +33755,22 @@ function renderMobilePmActions() {
 function renderMobileInventoryActions() {
   els.mobileInventoryMenu?.querySelector("[data-mobile-inventory-target='keys']")
     ?.classList.toggle("hidden", !canManageKeys());
+  els.mobileInventoryMenu?.querySelector("[data-mobile-inventory-target='contractors']")
+    ?.classList.toggle("hidden", !canManageContractors());
+  document.querySelectorAll("[data-open-inventory-tab='contractors'], [data-inventory-tab='contractors']").forEach((button) => {
+    button.classList.toggle("hidden", !canManageContractors());
+  });
 }
 
 function openMobileInventoryTab(tab) {
   if (tab === "keys") {
     if (!canManageKeys()) return;
     openInventorySidebarTab("keys");
+    return;
+  }
+  if (tab === "contractors") {
+    if (!canManageContractors()) return;
+    openInventorySidebarTab("contractors");
     return;
   }
   openInventorySidebarTab("items");
