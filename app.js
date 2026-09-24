@@ -7301,6 +7301,7 @@ const els = {
   contractorCustomerHint: document.getElementById("contractorCustomerHint"),
   contractorList: document.getElementById("contractorList"),
   contractorLogbookLocation: document.getElementById("contractorLogbookLocation"),
+  contractorLogbookRefreshBtn: document.getElementById("contractorLogbookRefreshBtn"),
   contractorLogbookCreateBtn: document.getElementById("contractorLogbookCreateBtn"),
   contractorLogbookCopyBtn: document.getElementById("contractorLogbookCopyBtn"),
   contractorLogbookWriteNfcBtn: document.getElementById("contractorLogbookWriteNfcBtn"),
@@ -10734,6 +10735,18 @@ els.contractorLogbookLocation?.addEventListener("change", () => {
 });
 
 els.contractorLogbookRange?.addEventListener("change", loadContractorLogbook);
+
+els.contractorLogbookRefreshBtn?.addEventListener("click", loadContractorLogbook);
+
+window.addEventListener("focus", () => {
+  if (inventoryTab === "contractors" && currentUser) loadContractorLogbook();
+});
+
+window.setInterval(() => {
+  if (document.visibilityState === "visible" && inventoryTab === "contractors" && currentUser && !contractorLogbookState.loading) {
+    loadContractorLogbook();
+  }
+}, 30000);
 
 els.contractorLogbookCreateBtn?.addEventListener("click", async () => {
   try {
@@ -41815,10 +41828,12 @@ function renderContractorLogbook() {
 async function loadContractorLogbook() {
   const locationId = getContractorLogbookLocation();
   if (!locationId || !currentUser) return;
+  if (contractorLogbookState.loading) return;
   if (contractorLogbookState.locationId !== locationId) {
     contractorLogbookState = { locationId, token: "", link: "", visits: [], loading: true };
   }
   contractorLogbookState.loading = true;
+  if (els.contractorLogbookRefreshBtn) els.contractorLogbookRefreshBtn.disabled = true;
   if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "Loading contractor visits...";
   try {
     const [linksResponse, visitsResponse] = await Promise.all([
@@ -41835,6 +41850,7 @@ async function loadContractorLogbook() {
     if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = readableServerError(error?.message || error);
   } finally {
     contractorLogbookState.loading = false;
+    if (els.contractorLogbookRefreshBtn) els.contractorLogbookRefreshBtn.disabled = false;
     renderContractorLogbook();
   }
 }
