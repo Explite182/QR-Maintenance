@@ -1,15 +1,15 @@
-const SITEWORKS_SW_VERSION = "20260924-contractor-refresh-44";
+const SITEWORKS_SW_VERSION = "20260924-contractor-layout-45";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20260924-contractor-refresh-44",
+  "/styles.css?v=20260924-contractor-layout-45",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
   "/monitoring-engine.js?v=20260805-monitoring-engine",
   "/js/panel-hmi-standard-model.js?v=20260901-pm-history-optional-12",
   "/js/panel-hmi-siteworks-adapter.js?v=20260901-pm-history-optional-12",
   "/js/panel-hmi-standard-renderer.js?v=20260901-pm-history-optional-12",
-  "/app.js?v=20260924-contractor-refresh-44",
+  "/app.js?v=20260924-contractor-layout-45",
   "/vendor/pdfjs/pdf.min.js?v=3.11.174",
   "/vendor/pdfjs/pdf.worker.min.js?v=3.11.174",
   "/manifest.webmanifest?v=20260901-pm-history-optional-12",

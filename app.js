@@ -41812,7 +41812,7 @@ function renderContractorLogbook() {
     <div class="metric-card"><span>Currently onsite</span><strong>${onsite.length}</strong></div>
     <div class="metric-card"><span>Visits in report</span><strong>${visits.length}</strong></div>`;
   if (els.contractorLogbookList) els.contractorLogbookList.innerHTML = visits.length ? visits.map((visit) => `
-    <article class="${visit.signedOutAt ? "" : "is-warning"}">
+    <article class="activity-log-item${visit.signedOutAt ? "" : " is-warning"}">
       <strong>${escapeHtml(visit.contractorName)}${visit.company ? ` | ${escapeHtml(visit.company)}` : ""}</strong>
       <small>In ${escapeHtml(formatDateTime(new Date(visit.signedInAt)))}${visit.signedOutAt ? ` | Out ${escapeHtml(formatDateTime(new Date(visit.signedOutAt)))}` : " | Currently onsite"}</small>
       <small>${escapeHtml([visit.hostName && `Visiting ${visit.hostName}`, visit.workOrder && `Job ${visit.workOrder}`].filter(Boolean).join(" | "))}</small>

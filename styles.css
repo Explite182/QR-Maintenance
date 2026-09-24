@@ -14236,6 +14236,47 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   padding: 16px;
 }
 
+#contractorLogbookPane .contractor-logbook-controls .inventory-qr-card {
+  grid-template-columns: 148px minmax(0, 1fr);
+}
+
+#contractorLogbookSummary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 220px));
+  gap: 10px;
+  align-items: stretch;
+}
+
+#contractorLogbookSummary .metric-card {
+  grid-template-rows: auto auto;
+  gap: 4px;
+  width: auto;
+  height: auto;
+  min-height: 76px;
+  padding: 12px 14px;
+}
+
+#contractorLogbookSummary .metric-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+#contractorLogbookSummary .metric-card strong {
+  font-size: 26px;
+  line-height: 1;
+}
+
+#contractorLogbookList {
+  max-height: none;
+  margin-top: 0;
+  overflow: visible;
+}
+
+#contractorLogbookList .activity-log-item {
+  padding: 12px 14px;
+}
+
 .inventory-subsection-title {
   padding: 0;
   border: 0;
