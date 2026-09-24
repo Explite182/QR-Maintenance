@@ -7002,7 +7002,7 @@ let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
 let intentionalLogoutAt = 0;
-let contractorLogbookState = { token: "", link: "", visits: [], loading: false };
+let contractorLogbookState = { locationId: "", token: "", link: "", visits: [], loading: false };
 let lastPublicReportError = "";
 let publicKeyLookupState = {
   uid: "",
@@ -10729,7 +10729,7 @@ els.contractorCustomer?.addEventListener("change", () => {
 els.publicContractorLogbookForm?.addEventListener("submit", submitPublicContractorLogbook);
 
 els.contractorLogbookLocation?.addEventListener("change", () => {
-  contractorLogbookState = { token: "", link: "", visits: [], loading: false };
+  contractorLogbookState = { locationId: "", token: "", link: "", visits: [], loading: false };
   loadContractorLogbook();
 });
 
@@ -41763,7 +41763,9 @@ async function submitPublicContractorLogbook(event) {
 }
 
 function getContractorLogbookLocation() {
-  return els.contractorLogbookLocation?.value || selectedLocationId || "";
+  const selected = els.contractorLogbookLocation?.value || "";
+  if (selected) return selected;
+  return selectedLocationId && selectedLocationId !== ALL_LOCATIONS ? selectedLocationId : "";
 }
 
 function contractorLogbookPublicUrl(token = contractorLogbookState.token) {
@@ -41773,10 +41775,23 @@ function contractorLogbookPublicUrl(token = contractorLogbookState.token) {
 
 function renderContractorLogbook() {
   if (!els.contractorLogbookLocation) return;
-  const locations = visibleLocationsForReportLabels().filter((item) => item.id !== ALL_LOCATIONS);
+  const customerId = selectedCustomerId && selectedCustomerId !== ALL_CUSTOMERS
+    ? selectedCustomerId
+    : currentUser?.customerId || "";
+  let locations = customerId ? locationsForCustomer(customerId) : [];
+  if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS) {
+    locations = locations.filter((item) => item.id === selectedLocationId);
+  }
   const previous = els.contractorLogbookLocation.value || selectedLocationId;
   els.contractorLogbookLocation.innerHTML = locations.map((item) => `<option value="${escapeAttribute(item.id)}">${escapeHtml(item.name)}</option>`).join("");
-  if (locations.some((item) => item.id === previous)) els.contractorLogbookLocation.value = previous;
+  const nextLocationId = locations.some((item) => item.id === previous) ? previous : locations[0]?.id || "";
+  els.contractorLogbookLocation.value = nextLocationId;
+  els.contractorLogbookLocation.disabled = locations.length <= 1;
+  if (contractorLogbookState.locationId && contractorLogbookState.locationId !== nextLocationId) {
+    contractorLogbookState = { locationId: "", token: "", link: "", visits: [], loading: false };
+    els.contractorLogbookLinkCard?.classList.add("hidden");
+    if (els.contractorLogbookLinkCard) els.contractorLogbookLinkCard.innerHTML = "";
+  }
   const visits = contractorLogbookState.visits || [];
   const onsite = visits.filter((visit) => !visit.signedOutAt);
   if (els.contractorOnsiteCount) els.contractorOnsiteCount.textContent = `${onsite.length} onsite`;
@@ -41800,6 +41815,9 @@ function renderContractorLogbook() {
 async function loadContractorLogbook() {
   const locationId = getContractorLogbookLocation();
   if (!locationId || !currentUser) return;
+  if (contractorLogbookState.locationId !== locationId) {
+    contractorLogbookState = { locationId, token: "", link: "", visits: [], loading: true };
+  }
   contractorLogbookState.loading = true;
   if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "Loading contractor visits...";
   try {
@@ -41809,6 +41827,7 @@ async function loadContractorLogbook() {
     ]);
     if (!linksResponse.ok || !visitsResponse.ok) throw new Error("Could not load the contractor logbook.");
     const links = await linksResponse.json(); const visits = await visitsResponse.json();
+    contractorLogbookState.locationId = locationId;
     contractorLogbookState.token = links.links?.[0]?.token || "";
     contractorLogbookState.visits = visits.visits || [];
     if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "";
