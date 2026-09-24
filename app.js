@@ -7307,6 +7307,7 @@ const els = {
   contractorLogbookWriteNfcBtn: document.getElementById("contractorLogbookWriteNfcBtn"),
   contractorLogbookPrintBtn: document.getElementById("contractorLogbookPrintBtn"),
   contractorLogbookRange: document.getElementById("contractorLogbookRange"),
+  contractorLogbookPrintReportBtn: document.getElementById("contractorLogbookPrintReportBtn"),
   contractorLogbookExportBtn: document.getElementById("contractorLogbookExportBtn"),
   contractorLogbookLinkCard: document.getElementById("contractorLogbookLinkCard"),
   contractorLogbookStatus: document.getElementById("contractorLogbookStatus"),
@@ -10788,6 +10789,36 @@ els.contractorLogbookPrintBtn?.addEventListener("click", async () => {
 });
 
 els.contractorLogbookExportBtn?.addEventListener("click", exportContractorLogbookCsv);
+els.contractorLogbookPrintReportBtn?.addEventListener("click", printContractorLogbookReport);
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-contractor-visit-correction]");
+  if (!form) return;
+  event.preventDefault();
+  const visitId = form.dataset.contractorVisitCorrection || "";
+  const formData = new FormData(form);
+  const status = form.querySelector("[data-contractor-correction-status]");
+  const submitButton = form.querySelector("button[type='submit']");
+  if (status) status.textContent = "Saving correction...";
+  if (submitButton) submitButton.disabled = true;
+  try {
+    const response = await siteworksApi.server(`/api/contractor-logbook/visits/${encodeURIComponent(visitId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        signedInAt: parseDateTimeLocalInput(formData.get("signedInAt")),
+        signedOutAt: parseDateTimeLocalInput(formData.get("signedOutAt")),
+        correctionNote: String(formData.get("correctionNote") || "").trim()
+      })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    if (status) status.textContent = "Visit corrected.";
+    await loadContractorLogbook();
+  } catch (error) {
+    if (status) status.textContent = readableServerError(error?.message || error);
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
+});
 
 els.contractorDrawer?.addEventListener("toggle", () => {
   if (els.contractorDrawer.open) loadContractorLogbook();
@@ -41817,6 +41848,16 @@ function renderContractorLogbook() {
       <small>In ${escapeHtml(formatDateTime(new Date(visit.signedInAt)))}${visit.signedOutAt ? ` | Out ${escapeHtml(formatDateTime(new Date(visit.signedOutAt)))}` : " | Currently onsite"}</small>
       <small>${escapeHtml([visit.hostName && `Visiting ${visit.hostName}`, visit.workOrder && `Job ${visit.workOrder}`].filter(Boolean).join(" | "))}</small>
       ${visit.purpose ? `<p>${escapeHtml(visit.purpose)}</p>` : ""}
+      ${visit.correctionNote ? `<small class="contractor-correction-note">Corrected by ${escapeHtml(visit.correctedBy || "SiteWorks user")}: ${escapeHtml(visit.correctionNote)}</small>` : ""}
+      <details class="contractor-correction-drawer">
+        <summary>${visit.signedOutAt ? "Correct visit" : "Sign out / correct visit"}</summary>
+        <form class="form-grid" data-contractor-visit-correction="${escapeAttribute(visit.id)}">
+          <label>Signed in <input name="signedInAt" type="datetime-local" value="${escapeAttribute(formatDateTimeInput(visit.signedInAt))}" required></label>
+          <label>Signed out <input name="signedOutAt" type="datetime-local" value="${escapeAttribute(formatDateTimeInput(visit.signedOutAt || new Date().toISOString()))}"></label>
+          <label class="full-span">Reason for correction <textarea name="correctionNote" rows="2" required placeholder="Forgot to scan out, incorrect time, or other reason"></textarea></label>
+          <div class="record-actions full-span"><button type="submit" class="secondary mini">Save Correction</button><span class="inline-status" data-contractor-correction-status></span></div>
+        </form>
+      </details>
     </article>`).join("") : `<p class="muted">No contractor visits in this report period.</p>`;
   if (contractorLogbookState.token && els.contractorLogbookLinkCard) {
     const url = contractorLogbookPublicUrl();
@@ -41874,6 +41915,30 @@ function exportContractorLogbookCsv() {
   link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   link.download = `siteworks-contractor-logbook-${els.contractorLogbookRange?.value || "day"}.csv`;
   link.click(); URL.revokeObjectURL(link.href);
+}
+
+function printContractorLogbookReport() {
+  const locationRecord = getLocation(getContractorLogbookLocation());
+  const customer = getCustomer(locationRecord?.customerId || selectedCustomerId);
+  const rangeLabel = els.contractorLogbookRange?.selectedOptions?.[0]?.textContent || "Report";
+  const visits = contractorLogbookState.visits || [];
+  const generatedAt = formatDateTime(new Date());
+  const rows = visits.map((visit) => {
+    const signedOut = visit.signedOutAt ? formatDateTime(new Date(visit.signedOutAt)) : "Currently onsite";
+    const durationMs = visit.signedOutAt ? new Date(visit.signedOutAt).getTime() - new Date(visit.signedInAt).getTime() : Date.now() - new Date(visit.signedInAt).getTime();
+    const durationHours = Number.isFinite(durationMs) && durationMs >= 0 ? `${Math.floor(durationMs / 3600000)}h ${Math.floor((durationMs % 3600000) / 60000)}m` : "";
+    return `<tr><td>${escapeHtml(visit.contractorName)}</td><td>${escapeHtml(visit.company || "")}</td><td>${escapeHtml(visit.hostName || "")}</td><td>${escapeHtml(visit.purpose || "")}</td><td>${escapeHtml(formatDateTime(new Date(visit.signedInAt)))}</td><td>${escapeHtml(signedOut)}</td><td>${escapeHtml(durationHours)}</td><td>${escapeHtml(visit.correctionNote || "")}</td></tr>`;
+  }).join("");
+  const reportWindow = window.open("", "_blank");
+  if (!reportWindow) {
+    if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "Allow pop-ups to print this report.";
+    return;
+  }
+  reportWindow.opener = null;
+  reportWindow.document.write(`<!doctype html><html><head><title>Contractor Logbook - ${escapeHtml(locationRecord?.name || "Location")}</title><style>
+    body{font-family:Arial,sans-serif;margin:28px;color:#18242a}h1{margin:0 0 6px;font-size:24px}.meta{color:#607179;font-weight:700;margin-bottom:18px}.summary{display:flex;gap:24px;margin:14px 0 20px}.summary strong{font-size:20px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:7px;border:1px solid #cfdcd8;text-align:left;vertical-align:top}th{background:#eef7f4}.no-print{margin-bottom:16px;padding:9px 13px;border:0;background:#08705f;color:#fff;font-weight:800}@media print{.no-print{display:none}body{margin:0}}
+  </style></head><body><button class="no-print" onclick="window.print()">Print / Save PDF</button><h1>Contractor Logbook</h1><div class="meta">${escapeHtml(customer?.name || "")} | ${escapeHtml(locationRecord?.name || "Location")}<br>${escapeHtml(rangeLabel)} | Generated ${escapeHtml(generatedAt)}</div><div class="summary"><div>Visits<br><strong>${visits.length}</strong></div><div>Currently onsite<br><strong>${visits.filter((visit) => !visit.signedOutAt).length}</strong></div></div><table><thead><tr><th>Name</th><th>Company</th><th>Visiting</th><th>Purpose</th><th>Signed in</th><th>Signed out</th><th>Duration</th><th>Correction</th></tr></thead><tbody>${rows || `<tr><td colspan="8">No visits in this period.</td></tr>`}</tbody></table></body></html>`);
+  reportWindow.document.close();
 }
 
 async function renderPublicKeyScan() {

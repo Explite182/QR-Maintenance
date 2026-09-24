@@ -14277,6 +14277,38 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   padding: 12px 14px;
 }
 
+.contractor-report-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.contractor-correction-note {
+  color: var(--accent-dark);
+  font-weight: 800;
+}
+
+.contractor-correction-drawer {
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.contractor-correction-drawer > summary {
+  width: fit-content;
+  padding: 8px 0 2px;
+  cursor: pointer;
+  color: var(--accent-dark);
+  font-weight: 900;
+}
+
+.contractor-correction-drawer .form-grid {
+  margin-top: 8px;
+}
+
+.contractor-correction-drawer .full-span {
+  grid-column: 1 / -1;
+}
+
 .inventory-subsection-title {
   padding: 0;
   border: 0;
