@@ -7001,6 +7001,7 @@ let offlineStatusPanelOpen = false;
 let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
+let intentionalLogoutAt = 0;
 let lastPublicReportError = "";
 let publicKeyLookupState = {
   uid: "",
@@ -7639,6 +7640,7 @@ async function handleLoginSubmit(event = null) {
   event?.preventDefault();
   if (els.loginSubmitBtn?.disabled) return;
   try {
+    intentionalLogoutAt = 0;
     if (els.loginSubmitBtn) els.loginSubmitBtn.disabled = true;
     suppressStorageFullWarning = true;
     setQrLoginTrace("Signing in...");
@@ -8324,6 +8326,12 @@ function checkInactivityLogout() {
 
 function logoutCurrentUser(reason = "manual") {
   window.clearTimeout(inactivityLogoutTimer);
+
+  if (reason === "manual") {
+    intentionalLogoutAt = Date.now();
+    lastAuthError = "";
+    if (els.loginError) els.loginError.textContent = "";
+  }
 
   if (currentUser) {
     addActivity(
@@ -42092,6 +42100,13 @@ function serverResponseRejectsSession(response, errorText = "") {
 }
 
 function expireRejectedServerSession(message = "Please log in again. Your SiteWorks server session expired.") {
+  const logoutWasIntentional = intentionalLogoutAt > 0 && Date.now() - intentionalLogoutAt < 15000;
+  const hasSessionToExpire = Boolean(currentUser || getSavedAuthSession()?.access_token);
+  if (logoutWasIntentional || !hasSessionToExpire) {
+    lastAuthError = "";
+    if (els.loginError) els.loginError.textContent = "";
+    return;
+  }
   currentUser = null;
   currentRole = "Customer";
   state.currentUserId = "";
