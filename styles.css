@@ -18557,6 +18557,37 @@ button.asset-detail-card {
   display: none;
 }
 
+/* Key records only have an identity block and a status block. The shared
+   inventory drawer uses five columns, which crushes key names into its
+   thumbnail column when no thumbnail or facts block is present. */
+#keyList > .inventory-item-drawer > summary {
+  grid-template-columns: minmax(260px, 1fr) minmax(220px, 340px);
+  gap: 18px;
+  min-height: 82px;
+  padding: 14px 16px;
+}
+
+#keyList > .inventory-item-drawer .inventory-main {
+  align-content: center;
+}
+
+#keyList > .inventory-item-drawer .inventory-main strong {
+  font-size: 16px;
+  line-height: 1.25;
+  overflow-wrap: normal;
+}
+
+#keyList > .inventory-item-drawer .inventory-stock {
+  width: 100%;
+  min-width: 0;
+  justify-items: end;
+}
+
+#keyList > .inventory-item-drawer .inventory-stock strong {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
 .inventory-detail-panel {
   display: grid;
   gap: 14px;
@@ -21356,6 +21387,17 @@ body.panel-schedule-open {
   .inventory-item-drawer > summary {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+
+  #keyList > .inventory-item-drawer > summary {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  #keyList > .inventory-item-drawer .inventory-stock {
+    justify-items: start;
+    text-align: left;
   }
 
   .inventory-thumb {
