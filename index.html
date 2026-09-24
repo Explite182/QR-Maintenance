@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260924-contractor-reports-46">
+  <link rel="stylesheet" href="/styles.css?v=20260924-logbook-safety-48">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -651,6 +651,12 @@
                 <button id="contractorLogbookCopyBtn" type="button" class="secondary">Copy Link</button>
                 <button id="contractorLogbookWriteNfcBtn" type="button" class="secondary">Write NFC</button>
                 <button id="contractorLogbookPrintBtn" type="button" class="secondary">Print QR + NFC</button>
+              </div>
+              <div class="contractor-safety-controls">
+                <label>Overdue after (hours) <input id="contractorLogbookOverdueHours" type="number" min="1" max="168" step="1" value="12"></label>
+                <button id="contractorLogbookSaveThresholdBtn" type="button" class="secondary">Save Threshold</button>
+                <button id="contractorLogbookPrintOnsiteBtn" type="button" class="secondary">Print Emergency Onsite List</button>
+                <button id="contractorLogbookExportOnsiteBtn" type="button" class="secondary">Export Onsite CSV</button>
               </div>
               <div id="contractorLogbookLinkCard" class="inventory-qr-card hidden"></div>
               <div class="form-grid">
@@ -3001,7 +3007,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260924-contractor-reports-46"></script>
+  <script src="/app.js?v=20260924-logbook-safety-48"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

@@ -7002,7 +7002,7 @@ let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
 let intentionalLogoutAt = 0;
-let contractorLogbookState = { locationId: "", token: "", link: "", visits: [], loading: false };
+let contractorLogbookState = { locationId: "", token: "", link: "", visits: [], overdueHours: 12, loading: false };
 let lastPublicReportError = "";
 let publicKeyLookupState = {
   uid: "",
@@ -7302,6 +7302,10 @@ const els = {
   contractorList: document.getElementById("contractorList"),
   contractorLogbookLocation: document.getElementById("contractorLogbookLocation"),
   contractorLogbookRefreshBtn: document.getElementById("contractorLogbookRefreshBtn"),
+  contractorLogbookOverdueHours: document.getElementById("contractorLogbookOverdueHours"),
+  contractorLogbookSaveThresholdBtn: document.getElementById("contractorLogbookSaveThresholdBtn"),
+  contractorLogbookPrintOnsiteBtn: document.getElementById("contractorLogbookPrintOnsiteBtn"),
+  contractorLogbookExportOnsiteBtn: document.getElementById("contractorLogbookExportOnsiteBtn"),
   contractorLogbookCreateBtn: document.getElementById("contractorLogbookCreateBtn"),
   contractorLogbookCopyBtn: document.getElementById("contractorLogbookCopyBtn"),
   contractorLogbookWriteNfcBtn: document.getElementById("contractorLogbookWriteNfcBtn"),
@@ -10731,7 +10735,7 @@ els.contractorCustomer?.addEventListener("change", () => {
 els.publicContractorLogbookForm?.addEventListener("submit", submitPublicContractorLogbook);
 
 els.contractorLogbookLocation?.addEventListener("change", () => {
-  contractorLogbookState = { locationId: "", token: "", link: "", visits: [], loading: false };
+  contractorLogbookState = { locationId: "", token: "", link: "", visits: [], overdueHours: 12, loading: false };
   loadContractorLogbook();
 });
 
@@ -10790,6 +10794,16 @@ els.contractorLogbookPrintBtn?.addEventListener("click", async () => {
 
 els.contractorLogbookExportBtn?.addEventListener("click", exportContractorLogbookCsv);
 els.contractorLogbookPrintReportBtn?.addEventListener("click", printContractorLogbookReport);
+els.contractorLogbookPrintOnsiteBtn?.addEventListener("click", () => printContractorLogbookReport(true));
+els.contractorLogbookExportOnsiteBtn?.addEventListener("click", exportContractorOnsiteCsv);
+els.contractorLogbookSaveThresholdBtn?.addEventListener("click", async () => {
+  try {
+    await createContractorLogbookLink();
+    if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "Overdue threshold saved.";
+  } catch (error) {
+    if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = readableServerError(error?.message || error);
+  }
+});
 
 document.addEventListener("submit", async (event) => {
   const form = event.target.closest("[data-contractor-visit-correction]");
@@ -14678,9 +14692,9 @@ function renderLightingHistory() {
       : source === "schedule"
         ? " | schedule"
         : source === "controller-event-log"
-          ? " | controller log"
+          ? " | relay event confirmation"
         : source === "device-report"
-          ? " | controller reported"
+          ? " | output state confirmation"
         : "";
     const staleText = isLightingCommandStale(command) ? " | waiting on controller" : "";
     return `
@@ -41832,23 +41846,28 @@ function renderContractorLogbook() {
   els.contractorLogbookLocation.value = nextLocationId;
   els.contractorLogbookLocation.disabled = locations.length <= 1;
   if (contractorLogbookState.locationId && contractorLogbookState.locationId !== nextLocationId) {
-    contractorLogbookState = { locationId: "", token: "", link: "", visits: [], loading: false };
+    contractorLogbookState = { locationId: "", token: "", link: "", visits: [], overdueHours: 12, loading: false };
     els.contractorLogbookLinkCard?.classList.add("hidden");
     if (els.contractorLogbookLinkCard) els.contractorLogbookLinkCard.innerHTML = "";
   }
   const visits = contractorLogbookState.visits || [];
   const onsite = visits.filter((visit) => !visit.signedOutAt);
+  const overdue = onsite.filter(isContractorVisitOverdue);
+  if (els.contractorLogbookOverdueHours) els.contractorLogbookOverdueHours.value = String(contractorLogbookState.overdueHours || 12);
   if (els.contractorOnsiteCount) els.contractorOnsiteCount.textContent = `${onsite.length} onsite`;
   if (els.contractorLogbookSummary) els.contractorLogbookSummary.innerHTML = `
     <div class="metric-card"><span>Currently onsite</span><strong>${onsite.length}</strong></div>
+    <div class="metric-card"><span>Overdue onsite</span><strong class="${overdue.length ? "status-danger" : ""}">${overdue.length}</strong></div>
     <div class="metric-card"><span>Visits in report</span><strong>${visits.length}</strong></div>`;
   if (els.contractorLogbookList) els.contractorLogbookList.innerHTML = visits.length ? visits.map((visit) => `
-    <article class="activity-log-item${visit.signedOutAt ? "" : " is-warning"}">
+    <article class="activity-log-item${visit.signedOutAt ? "" : " is-warning"}${isContractorVisitOverdue(visit) ? " is-overdue" : ""}">
       <strong>${escapeHtml(visit.contractorName)}${visit.company ? ` | ${escapeHtml(visit.company)}` : ""}</strong>
-      <small>In ${escapeHtml(formatDateTime(new Date(visit.signedInAt)))}${visit.signedOutAt ? ` | Out ${escapeHtml(formatDateTime(new Date(visit.signedOutAt)))}` : " | Currently onsite"}</small>
+      <small>In ${escapeHtml(formatDateTime(new Date(visit.signedInAt)))}${visit.signedOutAt ? ` | Out ${escapeHtml(formatDateTime(new Date(visit.signedOutAt)))}` : isContractorVisitOverdue(visit) ? " | OVERDUE ONSITE" : " | Currently onsite"}</small>
+      <small>${escapeHtml([visit.email, visit.phone].filter(Boolean).join(" | "))}</small>
       <small>${escapeHtml([visit.hostName && `Visiting ${visit.hostName}`, visit.workOrder && `Job ${visit.workOrder}`].filter(Boolean).join(" | "))}</small>
       ${visit.purpose ? `<p>${escapeHtml(visit.purpose)}</p>` : ""}
       ${visit.correctionNote ? `<small class="contractor-correction-note">Corrected by ${escapeHtml(visit.correctedBy || "SiteWorks user")}: ${escapeHtml(visit.correctionNote)}</small>` : ""}
+      ${visit.corrections?.length ? `<details class="contractor-correction-history"><summary>Correction history (${visit.corrections.length})</summary>${visit.corrections.map((item) => `<div><strong>${escapeHtml(item.correctedBy || "SiteWorks user")}</strong><small>${escapeHtml(formatDateTime(new Date(item.createdAt)))} | ${escapeHtml(item.correctionNote || "")}</small><small>In: ${escapeHtml(formatDateTime(new Date(item.previousSignedInAt)))} → ${escapeHtml(formatDateTime(new Date(item.revisedSignedInAt)))}</small><small>Out: ${escapeHtml(item.previousSignedOutAt ? formatDateTime(new Date(item.previousSignedOutAt)) : "Onsite")} → ${escapeHtml(item.revisedSignedOutAt ? formatDateTime(new Date(item.revisedSignedOutAt)) : "Onsite")}</small></div>`).join("")}</details>` : ""}
       <details class="contractor-correction-drawer">
         <summary>${visit.signedOutAt ? "Correct visit" : "Sign out / correct visit"}</summary>
         <form class="form-grid" data-contractor-visit-correction="${escapeAttribute(visit.id)}">
@@ -41871,7 +41890,7 @@ async function loadContractorLogbook() {
   if (!locationId || !currentUser) return;
   if (contractorLogbookState.loading) return;
   if (contractorLogbookState.locationId !== locationId) {
-    contractorLogbookState = { locationId, token: "", link: "", visits: [], loading: true };
+    contractorLogbookState = { locationId, token: "", link: "", visits: [], overdueHours: 12, loading: true };
   }
   contractorLogbookState.loading = true;
   if (els.contractorLogbookRefreshBtn) els.contractorLogbookRefreshBtn.disabled = true;
@@ -41885,6 +41904,7 @@ async function loadContractorLogbook() {
     const links = await linksResponse.json(); const visits = await visitsResponse.json();
     contractorLogbookState.locationId = locationId;
     contractorLogbookState.token = links.links?.[0]?.token || "";
+    contractorLogbookState.overdueHours = Number(links.links?.[0]?.overdue_hours || links.links?.[0]?.overdueHours || 12) || 12;
     contractorLogbookState.visits = visits.visits || [];
     if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "";
   } catch (error) {
@@ -41900,10 +41920,12 @@ async function createContractorLogbookLink() {
   const locationId = getContractorLogbookLocation();
   const locationRecord = getLocation(locationId);
   if (!locationRecord) return;
-  const response = await siteworksApi.server("/api/contractor-logbook/links", { method: "POST", body: JSON.stringify({ customerId: locationRecord.customerId, locationId }) });
+  const overdueHours = Math.max(1, Math.min(168, Number(els.contractorLogbookOverdueHours?.value || contractorLogbookState.overdueHours || 12) || 12));
+  const response = await siteworksApi.server("/api/contractor-logbook/links", { method: "POST", body: JSON.stringify({ customerId: locationRecord.customerId, locationId, overdueHours }) });
   if (!response.ok) throw new Error(await response.text());
   const data = await response.json();
   contractorLogbookState.token = data.link?.token || "";
+  contractorLogbookState.overdueHours = Number(data.link?.overdue_hours || overdueHours) || overdueHours;
   renderContractorLogbook();
 }
 
@@ -41917,17 +41939,34 @@ function exportContractorLogbookCsv() {
   link.click(); URL.revokeObjectURL(link.href);
 }
 
-function printContractorLogbookReport() {
+function isContractorVisitOverdue(visit) {
+  if (!visit || visit.signedOutAt || !visit.signedInAt) return false;
+  const signedInMs = new Date(visit.signedInAt).getTime();
+  return Number.isFinite(signedInMs) && Date.now() - signedInMs >= (contractorLogbookState.overdueHours || 12) * 3600000;
+}
+
+function exportContractorOnsiteCsv() {
+  const visits = (contractorLogbookState.visits || []).filter((visit) => !visit.signedOutAt);
+  const headers = ["Name", "Company", "Phone", "Email", "Host", "Purpose", "Work order", "Signed in", "Overdue"];
+  const rows = visits.map((visit) => [visit.contractorName, visit.company, visit.phone, visit.email, visit.hostName, visit.purpose, visit.workOrder, visit.signedInAt, isContractorVisitOverdue(visit) ? "Yes" : "No"]);
+  const csv = [headers, ...rows].map((row) => row.map((value) => `"${String(value || "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  link.download = "siteworks-emergency-onsite-list.csv";
+  link.click(); URL.revokeObjectURL(link.href);
+}
+
+function printContractorLogbookReport(onsiteOnly = false) {
   const locationRecord = getLocation(getContractorLogbookLocation());
   const customer = getCustomer(locationRecord?.customerId || selectedCustomerId);
-  const rangeLabel = els.contractorLogbookRange?.selectedOptions?.[0]?.textContent || "Report";
-  const visits = contractorLogbookState.visits || [];
+  const rangeLabel = onsiteOnly ? "Emergency onsite list" : els.contractorLogbookRange?.selectedOptions?.[0]?.textContent || "Report";
+  const visits = onsiteOnly ? (contractorLogbookState.visits || []).filter((visit) => !visit.signedOutAt) : contractorLogbookState.visits || [];
   const generatedAt = formatDateTime(new Date());
   const rows = visits.map((visit) => {
     const signedOut = visit.signedOutAt ? formatDateTime(new Date(visit.signedOutAt)) : "Currently onsite";
     const durationMs = visit.signedOutAt ? new Date(visit.signedOutAt).getTime() - new Date(visit.signedInAt).getTime() : Date.now() - new Date(visit.signedInAt).getTime();
     const durationHours = Number.isFinite(durationMs) && durationMs >= 0 ? `${Math.floor(durationMs / 3600000)}h ${Math.floor((durationMs % 3600000) / 60000)}m` : "";
-    return `<tr><td>${escapeHtml(visit.contractorName)}</td><td>${escapeHtml(visit.company || "")}</td><td>${escapeHtml(visit.hostName || "")}</td><td>${escapeHtml(visit.purpose || "")}</td><td>${escapeHtml(formatDateTime(new Date(visit.signedInAt)))}</td><td>${escapeHtml(signedOut)}</td><td>${escapeHtml(durationHours)}</td><td>${escapeHtml(visit.correctionNote || "")}</td></tr>`;
+    return `<tr class="${isContractorVisitOverdue(visit) ? "overdue" : ""}"><td>${escapeHtml(visit.contractorName)}</td><td>${escapeHtml(visit.company || "")}</td><td>${escapeHtml(visit.phone || "")}</td><td>${escapeHtml(visit.hostName || "")}</td><td>${escapeHtml(visit.purpose || "")}</td><td>${escapeHtml(formatDateTime(new Date(visit.signedInAt)))}</td><td>${escapeHtml(signedOut)}</td><td>${escapeHtml(durationHours)}</td><td>${escapeHtml(visit.correctionNote || "")}</td></tr>`;
   }).join("");
   const reportWindow = window.open("", "_blank");
   if (!reportWindow) {
@@ -41936,8 +41975,8 @@ function printContractorLogbookReport() {
   }
   reportWindow.opener = null;
   reportWindow.document.write(`<!doctype html><html><head><title>Contractor Logbook - ${escapeHtml(locationRecord?.name || "Location")}</title><style>
-    body{font-family:Arial,sans-serif;margin:28px;color:#18242a}h1{margin:0 0 6px;font-size:24px}.meta{color:#607179;font-weight:700;margin-bottom:18px}.summary{display:flex;gap:24px;margin:14px 0 20px}.summary strong{font-size:20px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:7px;border:1px solid #cfdcd8;text-align:left;vertical-align:top}th{background:#eef7f4}.no-print{margin-bottom:16px;padding:9px 13px;border:0;background:#08705f;color:#fff;font-weight:800}@media print{.no-print{display:none}body{margin:0}}
-  </style></head><body><button class="no-print" onclick="window.print()">Print / Save PDF</button><h1>Contractor Logbook</h1><div class="meta">${escapeHtml(customer?.name || "")} | ${escapeHtml(locationRecord?.name || "Location")}<br>${escapeHtml(rangeLabel)} | Generated ${escapeHtml(generatedAt)}</div><div class="summary"><div>Visits<br><strong>${visits.length}</strong></div><div>Currently onsite<br><strong>${visits.filter((visit) => !visit.signedOutAt).length}</strong></div></div><table><thead><tr><th>Name</th><th>Company</th><th>Visiting</th><th>Purpose</th><th>Signed in</th><th>Signed out</th><th>Duration</th><th>Correction</th></tr></thead><tbody>${rows || `<tr><td colspan="8">No visits in this period.</td></tr>`}</tbody></table></body></html>`);
+    body{font-family:Arial,sans-serif;margin:28px;color:#18242a}h1{margin:0 0 6px;font-size:24px}.meta{color:#607179;font-weight:700;margin-bottom:18px}.summary{display:flex;gap:24px;margin:14px 0 20px}.summary strong{font-size:20px}table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px;border:1px solid #cfdcd8;text-align:left;vertical-align:top}th{background:#eef7f4}.overdue{background:#fff0ed;color:#9f281f}.no-print{margin-bottom:16px;padding:9px 13px;border:0;background:#08705f;color:#fff;font-weight:800}@media print{.no-print{display:none}body{margin:0}}
+  </style></head><body><button class="no-print" onclick="window.print()">Print / Save PDF</button><h1>${onsiteOnly ? "Emergency Onsite List" : "Contractor Logbook"}</h1><div class="meta">${escapeHtml(customer?.name || "")} | ${escapeHtml(locationRecord?.name || "Location")}<br>${escapeHtml(rangeLabel)} | Generated ${escapeHtml(generatedAt)}</div><div class="summary"><div>Visits<br><strong>${visits.length}</strong></div><div>Currently onsite<br><strong>${visits.filter((visit) => !visit.signedOutAt).length}</strong></div><div>Overdue<br><strong>${visits.filter(isContractorVisitOverdue).length}</strong></div></div><table><thead><tr><th>Name</th><th>Company</th><th>Phone</th><th>Visiting</th><th>Purpose</th><th>Signed in</th><th>Signed out</th><th>Duration</th><th>Correction</th></tr></thead><tbody>${rows || `<tr><td colspan="9">No visits in this period.</td></tr>`}</tbody></table></body></html>`);
   reportWindow.document.close();
 }
 
