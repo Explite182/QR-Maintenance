@@ -7004,6 +7004,7 @@ let lastAuthError = "";
 let intentionalLogoutAt = 0;
 let contractorLogbookState = { locationId: "", token: "", link: "", visits: [], overdueHours: 12, notifyOnArrival: false, notificationEmail: "", reportFrequency: "none", reportEmail: "", reportWeekday: 1, reportHour: 7, loading: false };
 let siteLogbookState = { locationId: "", entries: [], loading: false };
+let publicSiteLogbookAssets = [];
 let lastPublicReportError = "";
 let publicKeyLookupState = {
   uid: "",
@@ -7359,6 +7360,28 @@ const els = {
   publicContractorLogbookTitle: document.getElementById("publicContractorLogbookTitle"),
   publicContractorLogbookContext: document.getElementById("publicContractorLogbookContext"),
   publicContractorLogbookForm: document.getElementById("publicContractorLogbookForm"),
+  publicContractorTaskMenu: document.getElementById("publicContractorTaskMenu"),
+  publicContractorVisitModeBtn: document.getElementById("publicContractorVisitModeBtn"),
+  publicContractorLogModeBtn: document.getElementById("publicContractorLogModeBtn"),
+  publicContractorVisitBackBtn: document.getElementById("publicContractorVisitBackBtn"),
+  publicSiteLogbookBackBtn: document.getElementById("publicSiteLogbookBackBtn"),
+  publicSiteLogbookForm: document.getElementById("publicSiteLogbookForm"),
+  publicSiteLogbookType: document.getElementById("publicSiteLogbookType"),
+  publicSiteLogbookAsset: document.getElementById("publicSiteLogbookAsset"),
+  publicSiteLogbookName: document.getElementById("publicSiteLogbookName"),
+  publicSiteLogbookCompany: document.getElementById("publicSiteLogbookCompany"),
+  publicSiteLogbookEmail: document.getElementById("publicSiteLogbookEmail"),
+  publicSiteLogbookPhone: document.getElementById("publicSiteLogbookPhone"),
+  publicSiteLogbookSpecialLabel: document.getElementById("publicSiteLogbookSpecialLabel"),
+  publicSiteLogbookSpecialValue: document.getElementById("publicSiteLogbookSpecialValue"),
+  publicSiteLogbookReference: document.getElementById("publicSiteLogbookReference"),
+  publicSiteLogbookWorkPerformed: document.getElementById("publicSiteLogbookWorkPerformed"),
+  publicSiteLogbookDeficiencies: document.getElementById("publicSiteLogbookDeficiencies"),
+  publicSiteLogbookCorrectiveAction: document.getElementById("publicSiteLogbookCorrectiveAction"),
+  publicSiteLogbookFollowup: document.getElementById("publicSiteLogbookFollowup"),
+  publicSiteLogbookFollowupDue: document.getElementById("publicSiteLogbookFollowupDue"),
+  publicSiteLogbookConfirm: document.getElementById("publicSiteLogbookConfirm"),
+  publicSiteLogbookMessage: document.getElementById("publicSiteLogbookMessage"),
   publicContractorName: document.getElementById("publicContractorName"),
   publicContractorCompany: document.getElementById("publicContractorCompany"),
   publicContractorEmail: document.getElementById("publicContractorEmail"),
@@ -10775,6 +10798,15 @@ els.contractorCustomer?.addEventListener("change", () => {
 });
 
 els.publicContractorLogbookForm?.addEventListener("submit", submitPublicContractorLogbook);
+els.publicSiteLogbookForm?.addEventListener("submit", submitPublicSiteLogbook);
+els.publicContractorVisitModeBtn?.addEventListener("click", () => showPublicContractorTask("visit"));
+els.publicContractorLogModeBtn?.addEventListener("click", () => { updatePublicSiteLogbookSpecialField(); showPublicContractorTask("logbook"); });
+els.publicContractorVisitBackBtn?.addEventListener("click", () => showPublicContractorTask("menu"));
+els.publicSiteLogbookBackBtn?.addEventListener("click", () => showPublicContractorTask("menu"));
+els.publicSiteLogbookType?.addEventListener("change", updatePublicSiteLogbookSpecialField);
+els.publicSiteLogbookFollowup?.addEventListener("change", () => {
+  if (els.publicSiteLogbookFollowupDue) els.publicSiteLogbookFollowupDue.disabled = !els.publicSiteLogbookFollowup.checked;
+});
 
 els.contractorLogbookLocation?.addEventListener("change", () => {
   contractorLogbookState = { locationId: "", token: "", link: "", visits: [], overdueHours: 12, loading: false };
@@ -41871,15 +41903,58 @@ async function renderPublicContractorLogbook() {
     const response = await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}`), { cache: "no-store" });
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
-    els.publicContractorLogbookTitle.textContent = `Contractor logbook | ${data.locationName || "SiteWorks"}`;
+    els.publicContractorLogbookTitle.textContent = data.locationName || "SiteWorks";
     els.publicContractorLogbookContext.textContent = [data.customerName, data.locationAddress].filter(Boolean).join(" | ");
-    els.publicContractorLogbookForm.classList.remove("hidden");
+    publicSiteLogbookAssets = Array.isArray(data.assets) ? data.assets : [];
+    if (els.publicSiteLogbookAsset) els.publicSiteLogbookAsset.innerHTML = `<option value="">Location-wide / equipment not listed</option>${publicSiteLogbookAssets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name)}${asset.type ? ` | ${escapeHtml(asset.type)}` : ""}</option>`).join("")}`;
+    els.publicContractorTaskMenu?.classList.remove("hidden");
+    els.publicContractorLogbookForm.classList.add("hidden");
+    els.publicSiteLogbookForm?.classList.add("hidden");
     els.publicContractorLogbookForm.dataset.loaded = token;
   } catch (error) {
     els.publicContractorLogbookTitle.textContent = "Logbook unavailable";
     els.publicContractorLogbookContext.textContent = readableServerError(error?.message || error);
     els.publicContractorLogbookForm.classList.add("hidden");
   }
+}
+
+function showPublicContractorTask(mode = "menu") {
+  els.publicContractorTaskMenu?.classList.toggle("hidden", mode !== "menu");
+  els.publicContractorLogbookForm?.classList.toggle("hidden", mode !== "visit");
+  els.publicSiteLogbookForm?.classList.toggle("hidden", mode !== "logbook");
+  if (mode === "visit") window.setTimeout(() => els.publicContractorName?.focus(), 60);
+  if (mode === "logbook") window.setTimeout(() => els.publicSiteLogbookName?.focus(), 60);
+}
+
+function updatePublicSiteLogbookSpecialField() {
+  const type = els.publicSiteLogbookType?.value || "maintenance";
+  const labels = { electrical: "Panel, circuit, voltage, or equipment identifier", elevator: "Elevator unit, service type, or certificate", maintenance: "System / equipment identifier" };
+  if (els.publicSiteLogbookSpecialLabel) els.publicSiteLogbookSpecialLabel.childNodes[0].textContent = `${labels[type]} `;
+}
+
+async function submitPublicSiteLogbook(event) {
+  event.preventDefault();
+  const token = getPublicContractorLogbookToken();
+  const payload = {
+    logbookType: els.publicSiteLogbookType.value, assetId: els.publicSiteLogbookAsset.value,
+    technician: els.publicSiteLogbookName.value.trim(), company: els.publicSiteLogbookCompany.value.trim(),
+    email: els.publicSiteLogbookEmail.value.trim(), phone: els.publicSiteLogbookPhone.value.trim(),
+    specialValue: els.publicSiteLogbookSpecialValue.value.trim(), referenceNumber: els.publicSiteLogbookReference.value.trim(),
+    workPerformed: els.publicSiteLogbookWorkPerformed.value.trim(), deficiencies: els.publicSiteLogbookDeficiencies.value.trim(),
+    correctiveAction: els.publicSiteLogbookCorrectiveAction.value.trim(), followupRequired: els.publicSiteLogbookFollowup.checked,
+    followupDue: els.publicSiteLogbookFollowupDue.value
+  };
+  if (!payload.email && !payload.phone) { els.publicSiteLogbookMessage.textContent = "Enter an email or phone number with your service record."; return; }
+  const buttons = [...els.publicSiteLogbookForm.querySelectorAll("button")]; buttons.forEach((button) => { button.disabled = true; });
+  els.publicSiteLogbookMessage.textContent = "Submitting logbook entry...";
+  try {
+    const response = await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}/site-log`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const text = await response.text(); if (!response.ok) throw new Error(text);
+    const data = JSON.parse(text);
+    els.publicSiteLogbookForm.reset(); updatePublicSiteLogbookSpecialField();
+    els.publicSiteLogbookMessage.textContent = `Submitted successfully. Record ${String(data.entryId || "").slice(0, 8).toUpperCase()} was received by SiteWorks.`;
+  } catch (error) { els.publicSiteLogbookMessage.textContent = readableServerError(error?.message || error) || "The logbook entry was not submitted."; }
+  finally { buttons.forEach((button) => { button.disabled = false; }); }
 }
 
 async function submitPublicContractorLogbook(event) {

@@ -9512,8 +9512,18 @@ textarea:disabled {
 }
 
 .contractor-checkin-card {
-  width: min(680px, calc(100vw - 28px));
+  width: min(760px, calc(100vw - 28px));
 }
+
+.public-contractor-task-menu { display: grid; gap: 10px; }
+.public-contractor-task-menu h2 { margin: 2px 0 6px; font-size: 19px; }
+.public-contractor-task-menu button { display: grid; gap: 3px; min-height: 76px; padding: 14px 16px; text-align: left; }
+.public-contractor-task-menu button strong { font-size: 16px; }
+.public-contractor-task-menu button span { font-size: 13px; font-weight: 650; opacity: .8; }
+.public-contractor-back { width: fit-content; padding: 8px 12px; }
+#publicSiteLogbookForm > h2 { margin: 4px 0 2px; font-size: 20px; }
+#publicSiteLogbookForm textarea { resize: vertical; }
+@media (max-width: 620px) { .contractor-checkin-card { padding: 20px 16px; } #publicSiteLogbookForm .form-grid { grid-template-columns: 1fr; } }
 
 .contractor-logbook-controls .inventory-qr-card {
   align-items: center;

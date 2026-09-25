@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260925-site-logbooks-54">
+  <link rel="stylesheet" href="/styles.css?v=20260925-public-logbooks-55">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -21,10 +21,16 @@
     <div class="report-card contractor-checkin-card">
       <div>
         <p class="eyebrow">SiteWorks contractor logbook</p>
-        <h1 id="publicContractorLogbookTitle">Contractor sign in</h1>
+        <h1 id="publicContractorLogbookTitle">Site access</h1>
         <p id="publicContractorLogbookContext" class="report-context">Loading location...</p>
       </div>
+      <div id="publicContractorTaskMenu" class="public-contractor-task-menu hidden">
+        <h2>What are you here to do?</h2>
+        <button id="publicContractorVisitModeBtn" type="button"><strong>Sign In or Sign Out</strong><span>Record your arrival or departure</span></button>
+        <button id="publicContractorLogModeBtn" type="button" class="secondary"><strong>Complete a Site Logbook</strong><span>Electrical, elevator, or maintenance work</span></button>
+      </div>
       <form id="publicContractorLogbookForm" class="stack hidden">
+        <button id="publicContractorVisitBackBtn" type="button" class="public-contractor-back secondary">Back to options</button>
         <details class="contractor-returning-visitor">
           <summary>Returning contractor? Fill my saved details</summary>
           <div class="stack">
@@ -53,7 +59,25 @@
         </div>
         <p id="publicContractorLogbookMessage" class="login-message"></p>
       </form>
-      <small class="report-note">No SiteWorks account is required. Visit times are recorded by the SiteWorks server.</small>
+      <form id="publicSiteLogbookForm" class="stack hidden">
+        <button id="publicSiteLogbookBackBtn" type="button" class="public-contractor-back secondary">Back to options</button>
+        <h2>Complete a Site Logbook</h2>
+        <label>Logbook type <select id="publicSiteLogbookType" required><option value="maintenance">General Maintenance</option><option value="electrical">Electrical</option><option value="elevator">Elevator</option></select></label>
+        <label>Equipment serviced <select id="publicSiteLogbookAsset"><option value="">Location-wide / equipment not listed</option></select></label>
+        <div class="form-grid"><label>Your name <input id="publicSiteLogbookName" required autocomplete="name"></label><label>Company <input id="publicSiteLogbookCompany" autocomplete="organization"></label></div>
+        <div class="form-grid"><label>Email <input id="publicSiteLogbookEmail" type="email" autocomplete="email"></label><label>Phone <input id="publicSiteLogbookPhone" type="tel" autocomplete="tel"></label></div>
+        <label id="publicSiteLogbookSpecialLabel">System / equipment identifier <input id="publicSiteLogbookSpecialValue"></label>
+        <label>Permit, certificate, or licence number <input id="publicSiteLogbookReference"></label>
+        <label>Work performed / inspection results <textarea id="publicSiteLogbookWorkPerformed" rows="4" required></textarea></label>
+        <label>Deficiencies found <textarea id="publicSiteLogbookDeficiencies" rows="3"></textarea></label>
+        <label>Corrective action taken <textarea id="publicSiteLogbookCorrectiveAction" rows="3"></textarea></label>
+        <label class="check-row"><input id="publicSiteLogbookFollowup" type="checkbox"> Follow-up work is required</label>
+        <label>Recommended follow-up date <input id="publicSiteLogbookFollowupDue" type="date"></label>
+        <label class="check-row"><input id="publicSiteLogbookConfirm" type="checkbox" required> I confirm this record is accurate and complete.</label>
+        <button type="submit">Submit Logbook Entry</button>
+        <p id="publicSiteLogbookMessage" class="login-message"></p>
+      </form>
+      <small class="report-note">No SiteWorks account is required. Submissions are time-stamped and recorded by the SiteWorks server.</small>
     </div>
   </section>
 
@@ -3079,7 +3103,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260925-site-logbooks-54"></script>
+  <script src="/app.js?v=20260925-public-logbooks-55"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
