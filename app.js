@@ -7335,6 +7335,9 @@ const els = {
   siteLogbookFollowupRequired: document.getElementById("siteLogbookFollowupRequired"),
   siteLogbookFollowupDue: document.getElementById("siteLogbookFollowupDue"),
   siteLogbookCancelBtn: document.getElementById("siteLogbookCancelBtn"),
+  siteLogbookCopyAssetLinkBtn: document.getElementById("siteLogbookCopyAssetLinkBtn"),
+  siteLogbookPrintAssetQrBtn: document.getElementById("siteLogbookPrintAssetQrBtn"),
+  siteLogbookWriteAssetNfcBtn: document.getElementById("siteLogbookWriteAssetNfcBtn"),
   siteLogbookFormStatus: document.getElementById("siteLogbookFormStatus"),
   siteLogbookStatus: document.getElementById("siteLogbookStatus"),
   siteLogbookList: document.getElementById("siteLogbookList"),
@@ -7378,9 +7381,12 @@ const els = {
   publicSiteLogbookWorkPerformed: document.getElementById("publicSiteLogbookWorkPerformed"),
   publicSiteLogbookDeficiencies: document.getElementById("publicSiteLogbookDeficiencies"),
   publicSiteLogbookCorrectiveAction: document.getElementById("publicSiteLogbookCorrectiveAction"),
+  publicSiteLogbookFiles: document.getElementById("publicSiteLogbookFiles"),
+  publicSiteLogbookFilesStatus: document.getElementById("publicSiteLogbookFilesStatus"),
   publicSiteLogbookFollowup: document.getElementById("publicSiteLogbookFollowup"),
   publicSiteLogbookFollowupDue: document.getElementById("publicSiteLogbookFollowupDue"),
   publicSiteLogbookConfirm: document.getElementById("publicSiteLogbookConfirm"),
+  publicSiteLogbookSignature: document.getElementById("publicSiteLogbookSignature"),
   publicSiteLogbookMessage: document.getElementById("publicSiteLogbookMessage"),
   publicContractorName: document.getElementById("publicContractorName"),
   publicContractorCompany: document.getElementById("publicContractorCompany"),
@@ -10804,6 +10810,9 @@ els.publicContractorLogModeBtn?.addEventListener("click", () => { updatePublicSi
 els.publicContractorVisitBackBtn?.addEventListener("click", () => showPublicContractorTask("menu"));
 els.publicSiteLogbookBackBtn?.addEventListener("click", () => showPublicContractorTask("menu"));
 els.publicSiteLogbookType?.addEventListener("change", updatePublicSiteLogbookSpecialField);
+els.publicSiteLogbookName?.addEventListener("change", () => {
+  if (els.publicSiteLogbookSignature && !els.publicSiteLogbookSignature.value.trim()) els.publicSiteLogbookSignature.value = els.publicSiteLogbookName.value.trim();
+});
 els.publicSiteLogbookFollowup?.addEventListener("change", () => {
   if (els.publicSiteLogbookFollowupDue) els.publicSiteLogbookFollowupDue.disabled = !els.publicSiteLogbookFollowup.checked;
 });
@@ -10909,6 +10918,35 @@ els.siteLogbookLocation?.addEventListener("change", loadSiteLogbooks);
 els.siteLogbookTypeFilter?.addEventListener("change", loadSiteLogbooks);
 els.siteLogbookStatusFilter?.addEventListener("change", loadSiteLogbooks);
 els.siteLogbookExportBtn?.addEventListener("click", exportSiteLogbooksCsv);
+async function getSelectedAssetPublicLogUrl() {
+  const locationId = getSiteLogbookLocation();
+  const assetId = els.siteLogbookAsset?.value || "";
+  if (!assetId) throw new Error("Choose an equipment asset first.");
+  const response = await siteworksApi.server(`/api/contractor-logbook/links?location_id=${encodeURIComponent(locationId)}`);
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json(); const token = data.links?.[0]?.token || "";
+  if (!token) throw new Error("Create the location scan link in Contractor Logbook first.");
+  return `${contractorLogbookPublicUrl(token)}&logAsset=${encodeURIComponent(assetId)}`;
+}
+els.siteLogbookCopyAssetLinkBtn?.addEventListener("click", async () => {
+  try { await copyText(await getSelectedAssetPublicLogUrl()); els.siteLogbookFormStatus.textContent = "Asset log link copied."; }
+  catch (error) { els.siteLogbookFormStatus.textContent = readableServerError(error?.message || error); }
+});
+els.siteLogbookPrintAssetQrBtn?.addEventListener("click", async () => {
+  try {
+    const url = await getSelectedAssetPublicLogUrl(); const asset = getAsset(els.siteLogbookAsset.value);
+    const printWindow = window.open("", "_blank", "width=720,height=820");
+    printWindow.document.write(`<html><head><title>Site Logbook QR</title><style>body{font-family:Arial;text-align:center;padding:48px}img{width:320px;height:320px}h1{font-size:28px}p{font-size:16px}</style></head><body><h1>${escapeHtml(asset?.name || "Equipment Logbook")}</h1><p>Scan to complete the SiteWorks maintenance log.</p><img src="${qrUrl(url)}"><p>${escapeHtml(url)}</p><script>setTimeout(()=>window.print(),500)<\/script></body></html>`); printWindow.document.close();
+  } catch (error) { els.siteLogbookFormStatus.textContent = readableServerError(error?.message || error); }
+});
+els.siteLogbookWriteAssetNfcBtn?.addEventListener("click", async () => {
+  try {
+    if (!canUseLocalNfcBridge()) throw new Error("NFC writing requires the local PC NFC writer.");
+    const url = await getSelectedAssetPublicLogUrl(); const asset = getAsset(els.siteLogbookAsset.value);
+    await callNfcBridgeWithFallback(["/nfc/write", "/write", "/api/nfc/write"], { url, fallbackUrl: url, recordType: "site-logbook", recordId: asset?.id || "", name: asset?.name || "Equipment logbook" });
+    els.siteLogbookFormStatus.textContent = "Asset logbook NFC tag written.";
+  } catch (error) { els.siteLogbookFormStatus.textContent = readableServerError(error?.message || error); }
+});
 els.siteLogbookList?.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-complete-logbook-entry]");
   if (!button) return;
@@ -41907,9 +41945,14 @@ async function renderPublicContractorLogbook() {
     els.publicContractorLogbookContext.textContent = [data.customerName, data.locationAddress].filter(Boolean).join(" | ");
     publicSiteLogbookAssets = Array.isArray(data.assets) ? data.assets : [];
     if (els.publicSiteLogbookAsset) els.publicSiteLogbookAsset.innerHTML = `<option value="">Location-wide / equipment not listed</option>${publicSiteLogbookAssets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name)}${asset.type ? ` | ${escapeHtml(asset.type)}` : ""}</option>`).join("")}`;
-    els.publicContractorTaskMenu?.classList.remove("hidden");
-    els.publicContractorLogbookForm.classList.add("hidden");
-    els.publicSiteLogbookForm?.classList.add("hidden");
+    const requestedAssetId = new URLSearchParams(location.search).get("logAsset") || "";
+    if (requestedAssetId && publicSiteLogbookAssets.some((asset) => String(asset.id) === requestedAssetId)) {
+      els.publicSiteLogbookAsset.value = requestedAssetId;
+      updatePublicSiteLogbookSpecialField();
+      showPublicContractorTask("logbook");
+    } else {
+      showPublicContractorTask("menu");
+    }
     els.publicContractorLogbookForm.dataset.loaded = token;
   } catch (error) {
     els.publicContractorLogbookTitle.textContent = "Logbook unavailable";
@@ -41942,16 +41985,26 @@ async function submitPublicSiteLogbook(event) {
     specialValue: els.publicSiteLogbookSpecialValue.value.trim(), referenceNumber: els.publicSiteLogbookReference.value.trim(),
     workPerformed: els.publicSiteLogbookWorkPerformed.value.trim(), deficiencies: els.publicSiteLogbookDeficiencies.value.trim(),
     correctiveAction: els.publicSiteLogbookCorrectiveAction.value.trim(), followupRequired: els.publicSiteLogbookFollowup.checked,
-    followupDue: els.publicSiteLogbookFollowupDue.value
+    followupDue: els.publicSiteLogbookFollowupDue.value,
+    signatureName: els.publicSiteLogbookSignature.value.trim(), attachments: []
   };
   if (!payload.email && !payload.phone) { els.publicSiteLogbookMessage.textContent = "Enter an email or phone number with your service record."; return; }
   const buttons = [...els.publicSiteLogbookForm.querySelectorAll("button")]; buttons.forEach((button) => { button.disabled = true; });
   els.publicSiteLogbookMessage.textContent = "Submitting logbook entry...";
   try {
+    const files = [...(els.publicSiteLogbookFiles?.files || [])].slice(0, 5);
+    for (let index = 0; index < files.length; index += 1) {
+      if (els.publicSiteLogbookFilesStatus) els.publicSiteLogbookFilesStatus.textContent = `Uploading attachment ${index + 1} of ${files.length}...`;
+      const formData = new FormData(); formData.append("file", files[index], files[index].name);
+      const upload = await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}/site-log-file`), { method: "POST", body: formData });
+      if (!upload.ok) throw new Error(await upload.text());
+      payload.attachments.push(await upload.json());
+    }
     const response = await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}/site-log`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const text = await response.text(); if (!response.ok) throw new Error(text);
     const data = JSON.parse(text);
     els.publicSiteLogbookForm.reset(); updatePublicSiteLogbookSpecialField();
+    if (els.publicSiteLogbookFilesStatus) els.publicSiteLogbookFilesStatus.textContent = "Up to 5 photos or PDF documents.";
     els.publicSiteLogbookMessage.textContent = `Submitted successfully. Record ${String(data.entryId || "").slice(0, 8).toUpperCase()} was received by SiteWorks.`;
   } catch (error) { els.publicSiteLogbookMessage.textContent = readableServerError(error?.message || error) || "The logbook entry was not submitted."; }
   finally { buttons.forEach((button) => { button.disabled = false; }); }
@@ -42041,11 +42094,13 @@ function renderSiteLogbooks() {
     const isOverdue = entry.followupRequired && entry.followupStatus === "open" && entry.followupDue && new Date(`${entry.followupDue}T23:59:59`) < new Date();
     const status = isOverdue ? "Overdue" : entry.followupStatus === "open" ? "Follow-up open" : "Complete";
     return `<article class="site-logbook-entry${isOverdue ? " is-overdue" : ""}">
-      <div class="site-logbook-entry-head"><div><span class="site-logbook-type is-${escapeAttribute(entry.logbookType)}">${escapeHtml(siteLogbookTypeLabel(entry.logbookType))}</span><h3>${escapeHtml(assetMap.get(entry.assetId) || entry.specialValue || "Location record")}</h3></div><span class="contractor-visit-status ${isOverdue ? "is-overdue" : entry.followupStatus === "open" ? "is-onsite" : "is-complete"}">${status}</span></div>
+      <div class="site-logbook-entry-head"><div><span class="site-logbook-type is-${escapeAttribute(entry.logbookType)}">${escapeHtml(siteLogbookTypeLabel(entry.logbookType))}</span>${entry.source === "contractor-qr" ? `<span class="site-logbook-source">Contractor submitted</span>` : ""}<h3>${escapeHtml(assetMap.get(entry.assetId) || entry.specialValue || "Location record")}</h3></div><span class="contractor-visit-status ${isOverdue ? "is-overdue" : entry.followupStatus === "open" ? "is-onsite" : "is-complete"}">${status}</span></div>
       <div class="site-logbook-meta"><span>${escapeHtml(formatDateTime(new Date(entry.occurredAt)))}</span><span>${escapeHtml(entry.technician)}${entry.company ? ` | ${escapeHtml(entry.company)}` : ""}</span>${entry.referenceNumber ? `<span>Reference: ${escapeHtml(entry.referenceNumber)}</span>` : ""}</div>
       <p><strong>Work performed</strong>${escapeHtml(entry.workPerformed)}</p>
       ${entry.deficiencies ? `<p class="site-logbook-deficiency"><strong>Deficiencies</strong>${escapeHtml(entry.deficiencies)}</p>` : ""}
       ${entry.correctiveAction ? `<p><strong>Corrective action</strong>${escapeHtml(entry.correctiveAction)}</p>` : ""}
+      ${entry.signatureName ? `<p class="site-logbook-signature"><strong>Contractor signature</strong>${escapeHtml(entry.signatureName)}</p>` : ""}
+      ${entry.attachments?.length ? `<div class="site-logbook-attachments"><strong>Attachments</strong>${entry.attachments.map((item) => `<a href="${escapeAttribute(item.url)}" target="_blank" rel="noopener">${escapeHtml(item.name || "Attachment")}</a>`).join("")}</div>` : ""}
       ${entry.followupStatus === "open" ? `<div class="site-logbook-followup"><span>Due ${escapeHtml(entry.followupDue || "not set")}</span><button type="button" class="secondary mini" data-complete-logbook-entry="${escapeAttribute(entry.id)}">Complete Follow-up</button></div>` : ""}
       ${entry.amendments?.length ? `<details class="contractor-correction-history"><summary>Record history (${entry.amendments.length})</summary>${entry.amendments.map((item) => `<div><strong>${escapeHtml(item.actorName || "SiteWorks user")}</strong><small>${escapeHtml(formatDateTime(new Date(item.createdAt)))} | ${escapeHtml(item.note || item.action)}</small></div>`).join("")}</details>` : ""}
     </article>`;

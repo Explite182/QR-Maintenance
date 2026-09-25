@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260925-public-logbooks-55">
+  <link rel="stylesheet" href="/styles.css?v=20260925-logbook-easy-use-56">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -71,9 +71,12 @@
         <label>Work performed / inspection results <textarea id="publicSiteLogbookWorkPerformed" rows="4" required></textarea></label>
         <label>Deficiencies found <textarea id="publicSiteLogbookDeficiencies" rows="3"></textarea></label>
         <label>Corrective action taken <textarea id="publicSiteLogbookCorrectiveAction" rows="3"></textarea></label>
+        <label>Photos or service documents <input id="publicSiteLogbookFiles" type="file" accept="image/*,.pdf,application/pdf" multiple></label>
+        <p id="publicSiteLogbookFilesStatus" class="muted">Up to 5 photos or PDF documents.</p>
         <label class="check-row"><input id="publicSiteLogbookFollowup" type="checkbox"> Follow-up work is required</label>
         <label>Recommended follow-up date <input id="publicSiteLogbookFollowupDue" type="date"></label>
         <label class="check-row"><input id="publicSiteLogbookConfirm" type="checkbox" required> I confirm this record is accurate and complete.</label>
+        <label>Contractor signature <input id="publicSiteLogbookSignature" required placeholder="Type your full name"></label>
         <button type="submit">Submit Logbook Entry</button>
         <p id="publicSiteLogbookMessage" class="login-message"></p>
       </form>
@@ -2640,7 +2643,7 @@
                   <label class="full-span">Corrective action <textarea id="siteLogbookCorrectiveAction" rows="2"></textarea></label>
                   <label class="check-row"><input id="siteLogbookFollowupRequired" type="checkbox"> Follow-up required</label>
                   <label>Follow-up due <input id="siteLogbookFollowupDue" type="date"></label>
-                  <div class="record-actions full-span"><button type="submit">Save Log Entry</button><button id="siteLogbookCancelBtn" type="button" class="secondary">Cancel</button><span id="siteLogbookFormStatus" class="inline-status"></span></div>
+                  <div class="record-actions full-span"><button type="submit">Save Log Entry</button><button id="siteLogbookCopyAssetLinkBtn" type="button" class="secondary">Copy Asset Log Link</button><button id="siteLogbookPrintAssetQrBtn" type="button" class="secondary">Print Asset QR</button><button id="siteLogbookWriteAssetNfcBtn" type="button" class="secondary">Write Asset NFC</button><button id="siteLogbookCancelBtn" type="button" class="secondary">Cancel</button><span id="siteLogbookFormStatus" class="inline-status"></span></div>
                 </form>
               </details>
               <p id="siteLogbookStatus" class="inline-status"></p>
@@ -3103,7 +3106,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260925-public-logbooks-55"></script>
+  <script src="/app.js?v=20260925-logbook-easy-use-56"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
