@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260924-logbook-notify-directory-49">
+  <link rel="stylesheet" href="/styles.css?v=20260924-logbook-dashboard-50">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -654,8 +654,8 @@
           <details id="contractorLogbookSection" class="sidebar-sub-drawer" open>
             <summary><span>Contractor Logbook</span><span id="contractorOnsiteCount">0 onsite</span></summary>
             <div class="stack compact-form contractor-logbook-controls">
-              <label>Location <select id="contractorLogbookLocation"></select></label>
-              <div class="record-actions">
+              <label class="contractor-location-control">Location <select id="contractorLogbookLocation"></select></label>
+              <div class="record-actions contractor-scan-actions">
                 <button id="contractorLogbookRefreshBtn" type="button" class="secondary">Refresh Visits</button>
                 <button id="contractorLogbookCreateBtn" type="button">Create / Show Scan Link</button>
                 <button id="contractorLogbookCopyBtn" type="button" class="secondary">Copy Link</button>
@@ -674,7 +674,7 @@
                 <button id="contractorLogbookSaveNotificationBtn" type="button" class="secondary">Save Notification</button>
               </div>
               <div id="contractorLogbookLinkCard" class="inventory-qr-card hidden"></div>
-              <div class="form-grid">
+              <div class="form-grid contractor-report-controls">
                 <label>Report period
                   <select id="contractorLogbookRange">
                     <option value="day">Today</option><option value="week">This week</option><option value="month">This month</option><option value="all">All visits</option>
@@ -3022,7 +3022,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260924-logbook-notify-directory-49"></script>
+  <script src="/app.js?v=20260924-logbook-dashboard-50"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

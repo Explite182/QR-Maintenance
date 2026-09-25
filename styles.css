@@ -14233,16 +14233,61 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 }
 
 #contractorLogbookPane .contractor-logbook-controls {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
   padding: 16px;
+  background: #f7faf9;
 }
 
 #contractorLogbookPane .contractor-logbook-controls .inventory-qr-card {
-  grid-template-columns: 148px minmax(0, 1fr);
+  grid-column: span 4;
+  grid-template-columns: 112px minmax(0, 1fr);
+  min-height: 150px;
+  padding: 16px;
+  background: #fff;
+}
+
+#contractorLogbookPane .contractor-logbook-controls .inventory-qr-card img {
+  width: 112px;
+  height: 112px;
+}
+
+.contractor-location-control,
+.contractor-scan-actions,
+#contractorLogbookSummary,
+.contractor-notification-controls,
+.contractor-report-controls,
+#contractorLogbookStatus,
+#contractorLogbookList {
+  grid-column: 1 / -1;
+}
+
+.contractor-location-control {
+  max-width: 520px;
+  order: 1;
+}
+
+#contractorLogbookSummary { order: 2; }
+.contractor-scan-actions { order: 3; }
+#contractorLogbookLinkCard,
+.contractor-safety-controls { order: 4; }
+.contractor-notification-controls { order: 5; }
+.contractor-report-controls { order: 6; }
+#contractorLogbookStatus { order: 7; }
+#contractorLogbookList { order: 8; }
+
+.contractor-scan-actions {
+  justify-content: flex-start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
 }
 
 #contractorLogbookSummary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(150px, 220px));
+  grid-template-columns: repeat(3, minmax(150px, 220px));
   gap: 10px;
   align-items: stretch;
 }
@@ -14284,10 +14329,22 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 }
 
 .contractor-safety-controls {
+  grid-column: span 8;
   display: grid;
-  grid-template-columns: minmax(180px, 240px) repeat(3, auto);
+  grid-template-columns: minmax(150px, 190px) repeat(3, minmax(150px, 1fr));
   gap: 8px;
   align-items: end;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.contractor-safety-controls::before {
+  content: "Site safety";
+  grid-column: 1 / -1;
+  font-size: 15px;
+  font-weight: 900;
 }
 
 .contractor-safety-controls label {
@@ -14299,6 +14356,17 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   grid-template-columns: minmax(280px, 1fr) minmax(240px, 1fr) auto;
   gap: 8px;
   align-items: end;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.contractor-report-controls {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
 }
 
 .contractor-returning-visitor {
@@ -14342,6 +14410,36 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   background: #fff3f1;
 }
 
+#contractorLogbookList .activity-log-item {
+  gap: 6px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(23, 33, 38, 0.04);
+}
+
+.contractor-visit-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contractor-visit-heading strong span {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.contractor-visit-status {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.contractor-visit-status.is-onsite { color: #08705f; background: #dff4ed; }
+.contractor-visit-status.is-complete { color: #52646c; background: #edf2f1; }
+.contractor-visit-status.is-overdue { color: #a42c22; background: #ffe2de; }
+
 .contractor-correction-history {
   margin-top: 6px;
   border-top: 1px solid var(--line);
@@ -14366,6 +14464,11 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 }
 
 @media (max-width: 760px) {
+  #contractorLogbookPane .contractor-logbook-controls { grid-template-columns: 1fr; padding: 10px; }
+  #contractorLogbookPane .contractor-logbook-controls > * { grid-column: 1; }
+  #contractorLogbookSummary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #contractorLogbookPane .contractor-logbook-controls .inventory-qr-card { grid-template-columns: 92px minmax(0, 1fr); min-height: 0; }
+  #contractorLogbookPane .contractor-logbook-controls .inventory-qr-card img { width: 92px; height: 92px; }
   .contractor-safety-controls {
     grid-template-columns: 1fr;
   }
@@ -14375,6 +14478,11 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   .contractor-report-actions {
     grid-template-columns: 1fr;
   }
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  #contractorLogbookPane .contractor-logbook-controls .inventory-qr-card,
+  .contractor-safety-controls { grid-column: 1 / -1; }
 }
 
 .inventory-subsection-title {

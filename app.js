@@ -41894,7 +41894,7 @@ function renderContractorLogbook() {
     <div class="metric-card"><span>Visits in report</span><strong>${visits.length}</strong></div>`;
   if (els.contractorLogbookList) els.contractorLogbookList.innerHTML = visits.length ? visits.map((visit) => `
     <article class="activity-log-item${visit.signedOutAt ? "" : " is-warning"}${isContractorVisitOverdue(visit) ? " is-overdue" : ""}">
-      <strong>${escapeHtml(visit.contractorName)}${visit.company ? ` | ${escapeHtml(visit.company)}` : ""}</strong>
+      <div class="contractor-visit-heading"><strong>${escapeHtml(visit.contractorName)}${visit.company ? ` <span>${escapeHtml(visit.company)}</span>` : ""}</strong><span class="contractor-visit-status ${isContractorVisitOverdue(visit) ? "is-overdue" : visit.signedOutAt ? "is-complete" : "is-onsite"}">${isContractorVisitOverdue(visit) ? "Overdue" : visit.signedOutAt ? "Completed" : "Onsite"}</span></div>
       <small>In ${escapeHtml(formatDateTime(new Date(visit.signedInAt)))}${visit.signedOutAt ? ` | Out ${escapeHtml(formatDateTime(new Date(visit.signedOutAt)))}` : isContractorVisitOverdue(visit) ? " | OVERDUE ONSITE" : " | Currently onsite"}</small>
       <small>${escapeHtml([visit.email, visit.phone].filter(Boolean).join(" | "))}</small>
       <small>${escapeHtml([visit.hostName && `Visiting ${visit.hostName}`, visit.workOrder && `Job ${visit.workOrder}`].filter(Boolean).join(" | "))}</small>
