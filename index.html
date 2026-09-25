@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260925-logbook-fetch-53">
+  <link rel="stylesheet" href="/styles.css?v=20260925-site-logbooks-54">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -342,6 +342,7 @@
               <button type="button" class="sidebar-submenu-btn is-active" data-open-inventory-tab="items">Parts & Materials</button>
               <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="keys">Keys</button>
               <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="contractors">Contractor Logbook</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="logbooks">Site Logbooks</button>
             </div>
           </div>
           <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
@@ -2312,6 +2313,7 @@
             <button type="button" class="asset-subnav-tab is-active" data-inventory-tab="items">Parts & Materials</button>
             <button type="button" class="asset-subnav-tab" data-inventory-tab="keys">Keys</button>
             <button type="button" class="asset-subnav-tab" data-inventory-tab="contractors">Contractor Logbook</button>
+            <button type="button" class="asset-subnav-tab" data-inventory-tab="logbooks">Site Logbooks</button>
           </div>
           <div id="inventoryItemsPane" class="inventory-tab-pane" data-inventory-pane="items">
             <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
@@ -2585,6 +2587,42 @@
             <div id="keyList" class="inventory-list"></div>
           </div>
           <div id="contractorLogbookPane" class="inventory-tab-pane hidden" data-inventory-pane="contractors"></div>
+          <div id="siteLogbooksPane" class="inventory-tab-pane hidden" data-inventory-pane="logbooks">
+            <div class="site-logbooks-shell">
+              <header class="site-logbooks-header">
+                <div><span class="section-kicker">Location records</span><h2>Site Logbooks</h2><p class="muted">Inspection, service, and maintenance records linked to the equipment they belong to.</p></div>
+                <button id="siteLogbookAddBtn" type="button">Add Log Entry</button>
+              </header>
+              <div id="siteLogbookSummary" class="site-logbook-summary"></div>
+              <div class="site-logbook-filters">
+                <label>Location <select id="siteLogbookLocation"></select></label>
+                <label>Logbook <select id="siteLogbookTypeFilter"><option value="all">All logbooks</option><option value="electrical">Electrical</option><option value="elevator">Elevator</option><option value="maintenance">General Maintenance</option></select></label>
+                <label>Status <select id="siteLogbookStatusFilter"><option value="all">All statuses</option><option value="open">Open follow-ups</option><option value="overdue">Overdue</option><option value="complete">Complete</option></select></label>
+                <button id="siteLogbookExportBtn" type="button" class="secondary">Export CSV</button>
+              </div>
+              <details id="siteLogbookEntryDrawer" class="site-logbook-entry-drawer">
+                <summary>New logbook entry</summary>
+                <form id="siteLogbookForm" class="site-logbook-form">
+                  <label>Logbook type <select id="siteLogbookType" required><option value="maintenance">General Maintenance</option><option value="electrical">Electrical</option><option value="elevator">Elevator</option></select></label>
+                  <label>Entry date and time <input id="siteLogbookOccurredAt" type="datetime-local" required></label>
+                  <label>Equipment / asset <select id="siteLogbookAsset"><option value="">Location-wide / no asset</option></select></label>
+                  <label>Work order <select id="siteLogbookWorkOrder"><option value="">No linked work order</option></select></label>
+                  <label>Technician / contractor <input id="siteLogbookTechnician" required></label>
+                  <label>Company <input id="siteLogbookCompany"></label>
+                  <label id="siteLogbookSpecialLabel">System / equipment identifier <input id="siteLogbookSpecialValue"></label>
+                  <label>Permit, certificate, or licence <input id="siteLogbookReference"></label>
+                  <label class="full-span">Work performed / inspection results <textarea id="siteLogbookWorkPerformed" rows="3" required></textarea></label>
+                  <label class="full-span">Deficiencies found <textarea id="siteLogbookDeficiencies" rows="2"></textarea></label>
+                  <label class="full-span">Corrective action <textarea id="siteLogbookCorrectiveAction" rows="2"></textarea></label>
+                  <label class="check-row"><input id="siteLogbookFollowupRequired" type="checkbox"> Follow-up required</label>
+                  <label>Follow-up due <input id="siteLogbookFollowupDue" type="date"></label>
+                  <div class="record-actions full-span"><button type="submit">Save Log Entry</button><button id="siteLogbookCancelBtn" type="button" class="secondary">Cancel</button><span id="siteLogbookFormStatus" class="inline-status"></span></div>
+                </form>
+              </details>
+              <p id="siteLogbookStatus" class="inline-status"></p>
+              <div id="siteLogbookList" class="site-logbook-list"></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -2925,6 +2963,7 @@
       <button type="button" data-mobile-inventory-target="items">Parts & Materials</button>
       <button type="button" data-mobile-inventory-target="keys">Keys</button>
       <button type="button" data-mobile-inventory-target="contractors">Contractor Logbook</button>
+      <button type="button" data-mobile-inventory-target="logbooks">Site Logbooks</button>
     </div>
   </nav>
 
@@ -3040,7 +3079,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260925-logbook-fetch-53"></script>
+  <script src="/app.js?v=20260925-site-logbooks-54"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

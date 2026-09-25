@@ -7003,6 +7003,7 @@ let authProfilesLoading = false;
 let lastAuthError = "";
 let intentionalLogoutAt = 0;
 let contractorLogbookState = { locationId: "", token: "", link: "", visits: [], overdueHours: 12, notifyOnArrival: false, notificationEmail: "", reportFrequency: "none", reportEmail: "", reportWeekday: 1, reportHour: 7, loading: false };
+let siteLogbookState = { locationId: "", entries: [], loading: false };
 let lastPublicReportError = "";
 let publicKeyLookupState = {
   uid: "",
@@ -7309,6 +7310,33 @@ const els = {
   contractorLogbookNotifyArrival: document.getElementById("contractorLogbookNotifyArrival"),
   contractorLogbookNotificationEmail: document.getElementById("contractorLogbookNotificationEmail"),
   contractorLogbookSaveNotificationBtn: document.getElementById("contractorLogbookSaveNotificationBtn"),
+  siteLogbooksPane: document.getElementById("siteLogbooksPane"),
+  siteLogbookAddBtn: document.getElementById("siteLogbookAddBtn"),
+  siteLogbookSummary: document.getElementById("siteLogbookSummary"),
+  siteLogbookLocation: document.getElementById("siteLogbookLocation"),
+  siteLogbookTypeFilter: document.getElementById("siteLogbookTypeFilter"),
+  siteLogbookStatusFilter: document.getElementById("siteLogbookStatusFilter"),
+  siteLogbookExportBtn: document.getElementById("siteLogbookExportBtn"),
+  siteLogbookEntryDrawer: document.getElementById("siteLogbookEntryDrawer"),
+  siteLogbookForm: document.getElementById("siteLogbookForm"),
+  siteLogbookType: document.getElementById("siteLogbookType"),
+  siteLogbookOccurredAt: document.getElementById("siteLogbookOccurredAt"),
+  siteLogbookAsset: document.getElementById("siteLogbookAsset"),
+  siteLogbookWorkOrder: document.getElementById("siteLogbookWorkOrder"),
+  siteLogbookTechnician: document.getElementById("siteLogbookTechnician"),
+  siteLogbookCompany: document.getElementById("siteLogbookCompany"),
+  siteLogbookSpecialLabel: document.getElementById("siteLogbookSpecialLabel"),
+  siteLogbookSpecialValue: document.getElementById("siteLogbookSpecialValue"),
+  siteLogbookReference: document.getElementById("siteLogbookReference"),
+  siteLogbookWorkPerformed: document.getElementById("siteLogbookWorkPerformed"),
+  siteLogbookDeficiencies: document.getElementById("siteLogbookDeficiencies"),
+  siteLogbookCorrectiveAction: document.getElementById("siteLogbookCorrectiveAction"),
+  siteLogbookFollowupRequired: document.getElementById("siteLogbookFollowupRequired"),
+  siteLogbookFollowupDue: document.getElementById("siteLogbookFollowupDue"),
+  siteLogbookCancelBtn: document.getElementById("siteLogbookCancelBtn"),
+  siteLogbookFormStatus: document.getElementById("siteLogbookFormStatus"),
+  siteLogbookStatus: document.getElementById("siteLogbookStatus"),
+  siteLogbookList: document.getElementById("siteLogbookList"),
   contractorLogbookReportFrequency: document.getElementById("contractorLogbookReportFrequency"),
   contractorLogbookReportEmail: document.getElementById("contractorLogbookReportEmail"),
   contractorLogbookReportWeekday: document.getElementById("contractorLogbookReportWeekday"),
@@ -10834,6 +10862,30 @@ els.contractorLogbookReportFrequency?.addEventListener("change", updateContracto
 els.contractorLogbookSaveReportScheduleBtn?.addEventListener("click", async () => {
   try { await createContractorLogbookLink(); els.contractorLogbookStatus.textContent = "Email report schedule saved."; }
   catch (error) { els.contractorLogbookStatus.textContent = readableServerError(error?.message || error); }
+});
+
+els.siteLogbookAddBtn?.addEventListener("click", () => {
+  if (els.siteLogbookOccurredAt) els.siteLogbookOccurredAt.value = formatDateTimeInput(new Date().toISOString());
+  if (els.siteLogbookEntryDrawer) els.siteLogbookEntryDrawer.open = true;
+  updateSiteLogbookSpecialField();
+  window.setTimeout(() => els.siteLogbookTechnician?.focus(), 80);
+});
+els.siteLogbookCancelBtn?.addEventListener("click", () => { if (els.siteLogbookEntryDrawer) els.siteLogbookEntryDrawer.open = false; });
+els.siteLogbookForm?.addEventListener("submit", saveSiteLogbookEntry);
+els.siteLogbookType?.addEventListener("change", updateSiteLogbookSpecialField);
+els.siteLogbookLocation?.addEventListener("change", loadSiteLogbooks);
+els.siteLogbookTypeFilter?.addEventListener("change", loadSiteLogbooks);
+els.siteLogbookStatusFilter?.addEventListener("change", loadSiteLogbooks);
+els.siteLogbookExportBtn?.addEventListener("click", exportSiteLogbooksCsv);
+els.siteLogbookList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-complete-logbook-entry]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    const response = await siteworksApi.server(`/api/site-logbooks/entries/${encodeURIComponent(button.dataset.completeLogbookEntry)}`, { method: "PATCH", body: JSON.stringify({ note: "Follow-up completed" }) });
+    if (!response.ok) throw new Error(await response.text());
+    await loadSiteLogbooks();
+  } catch (error) { if (els.siteLogbookStatus) els.siteLogbookStatus.textContent = readableServerError(error?.message || error); button.disabled = false; }
 });
 
 els.publicContractorSendCodeBtn?.addEventListener("click", async () => {
@@ -17401,7 +17453,7 @@ async function deleteLightingZone(zoneId) {
 }
 
 function setInventoryTab(tab = "items") {
-  const allowedTabs = new Set(["items", "keys", "contractors"]);
+  const allowedTabs = new Set(["items", "keys", "contractors", "logbooks"]);
   inventoryTab = allowedTabs.has(tab) ? tab : "items";
   const logbookSection = document.getElementById("contractorLogbookSection");
   const logbookPane = document.getElementById("contractorLogbookPane");
@@ -17415,6 +17467,7 @@ function setInventoryTab(tab = "items") {
     pane.classList.toggle("hidden", pane.dataset.inventoryPane !== inventoryTab);
   });
   if (inventoryTab === "contractors") loadContractorLogbook();
+  if (inventoryTab === "logbooks") { renderSiteLogbooks(); loadSiteLogbooks(); }
   syncInventorySidebarMenuState();
 }
 
@@ -17470,7 +17523,7 @@ function openMobileTab(targetId) {
     return;
   }
 
-  if (targetId === "inventoryPanel" && !["keys", "contractors"].includes(inventoryTab)) setInventoryTab("items");
+  if (targetId === "inventoryPanel" && !["keys", "contractors", "logbooks"].includes(inventoryTab)) setInventoryTab("items");
   if (targetId !== "adminToolsDrawer") closeSidebarTarget("adminToolsDrawer");
   const target = document.getElementById(targetId);
   const isOpen = target?.tagName === "DETAILS"
@@ -41874,6 +41927,94 @@ function getContractorLogbookLocation() {
   const selected = els.contractorLogbookLocation?.value || "";
   if (selected) return selected;
   return selectedLocationId && selectedLocationId !== ALL_LOCATIONS ? selectedLocationId : "";
+}
+
+function siteLogbookTypeLabel(type) {
+  return type === "electrical" ? "Electrical" : type === "elevator" ? "Elevator" : "General Maintenance";
+}
+
+function getSiteLogbookLocation() {
+  return els.siteLogbookLocation?.value || (selectedLocationId !== ALL_LOCATIONS ? selectedLocationId : "");
+}
+
+function updateSiteLogbookSpecialField() {
+  const type = els.siteLogbookType?.value || "maintenance";
+  const labels = { electrical: "Panel, circuit, voltage, or equipment identifier", elevator: "Elevator unit, service type, or certificate", maintenance: "System / equipment identifier" };
+  if (els.siteLogbookSpecialLabel) els.siteLogbookSpecialLabel.childNodes[0].textContent = `${labels[type]} `;
+}
+
+function renderSiteLogbooks() {
+  if (!els.siteLogbookLocation) return;
+  const customerId = selectedCustomerId !== ALL_CUSTOMERS ? selectedCustomerId : currentUser?.customerId || "";
+  let locations = customerId ? locationsForCustomer(customerId) : [];
+  if (selectedLocationId && selectedLocationId !== ALL_LOCATIONS) locations = locations.filter((item) => item.id === selectedLocationId);
+  const selected = els.siteLogbookLocation.value || selectedLocationId;
+  els.siteLogbookLocation.innerHTML = locations.map((item) => `<option value="${escapeAttribute(item.id)}">${escapeHtml(item.name)}</option>`).join("");
+  els.siteLogbookLocation.value = locations.some((item) => item.id === selected) ? selected : locations[0]?.id || "";
+  els.siteLogbookLocation.disabled = locations.length <= 1;
+  const locationId = getSiteLogbookLocation();
+  const assets = (state.assets || []).filter((item) => item.locationId === locationId);
+  if (els.siteLogbookAsset) els.siteLogbookAsset.innerHTML = `<option value="">Location-wide / no asset</option>${assets.map((item) => `<option value="${escapeAttribute(item.id)}">${escapeHtml(item.name || item.assetName || item.id)}</option>`).join("")}`;
+  const workOrders = (state.workOrders || []).filter((item) => item.locationId === locationId && !["Completed", "Closed"].includes(item.status));
+  if (els.siteLogbookWorkOrder) els.siteLogbookWorkOrder.innerHTML = `<option value="">No linked work order</option>${workOrders.map((item) => `<option value="${escapeAttribute(item.id)}">${escapeHtml(item.number || item.ticketNumber || item.title || item.id)}</option>`).join("")}`;
+  const entries = siteLogbookState.entries || [];
+  const open = entries.filter((item) => item.followupRequired && item.followupStatus === "open");
+  const overdue = open.filter((item) => item.followupDue && new Date(`${item.followupDue}T23:59:59`) < new Date());
+  if (els.siteLogbookSummary) els.siteLogbookSummary.innerHTML = `<div class="metric-card"><span>Entries shown</span><strong>${entries.length}</strong></div><div class="metric-card"><span>Open follow-ups</span><strong>${open.length}</strong></div><div class="metric-card"><span>Overdue</span><strong class="${overdue.length ? "status-danger" : ""}">${overdue.length}</strong></div>`;
+  const assetMap = new Map((state.assets || []).map((item) => [item.id, item.name || item.assetName || "Equipment"]));
+  if (els.siteLogbookList) els.siteLogbookList.innerHTML = entries.length ? entries.map((entry) => {
+    const isOverdue = entry.followupRequired && entry.followupStatus === "open" && entry.followupDue && new Date(`${entry.followupDue}T23:59:59`) < new Date();
+    const status = isOverdue ? "Overdue" : entry.followupStatus === "open" ? "Follow-up open" : "Complete";
+    return `<article class="site-logbook-entry${isOverdue ? " is-overdue" : ""}">
+      <div class="site-logbook-entry-head"><div><span class="site-logbook-type is-${escapeAttribute(entry.logbookType)}">${escapeHtml(siteLogbookTypeLabel(entry.logbookType))}</span><h3>${escapeHtml(assetMap.get(entry.assetId) || entry.specialValue || "Location record")}</h3></div><span class="contractor-visit-status ${isOverdue ? "is-overdue" : entry.followupStatus === "open" ? "is-onsite" : "is-complete"}">${status}</span></div>
+      <div class="site-logbook-meta"><span>${escapeHtml(formatDateTime(new Date(entry.occurredAt)))}</span><span>${escapeHtml(entry.technician)}${entry.company ? ` | ${escapeHtml(entry.company)}` : ""}</span>${entry.referenceNumber ? `<span>Reference: ${escapeHtml(entry.referenceNumber)}</span>` : ""}</div>
+      <p><strong>Work performed</strong>${escapeHtml(entry.workPerformed)}</p>
+      ${entry.deficiencies ? `<p class="site-logbook-deficiency"><strong>Deficiencies</strong>${escapeHtml(entry.deficiencies)}</p>` : ""}
+      ${entry.correctiveAction ? `<p><strong>Corrective action</strong>${escapeHtml(entry.correctiveAction)}</p>` : ""}
+      ${entry.followupStatus === "open" ? `<div class="site-logbook-followup"><span>Due ${escapeHtml(entry.followupDue || "not set")}</span><button type="button" class="secondary mini" data-complete-logbook-entry="${escapeAttribute(entry.id)}">Complete Follow-up</button></div>` : ""}
+      ${entry.amendments?.length ? `<details class="contractor-correction-history"><summary>Record history (${entry.amendments.length})</summary>${entry.amendments.map((item) => `<div><strong>${escapeHtml(item.actorName || "SiteWorks user")}</strong><small>${escapeHtml(formatDateTime(new Date(item.createdAt)))} | ${escapeHtml(item.note || item.action)}</small></div>`).join("")}</details>` : ""}
+    </article>`;
+  }).join("") : `<div class="empty-state"><strong>No logbook entries found</strong><p>Add the first electrical, elevator, or maintenance record for this location.</p></div>`;
+}
+
+async function loadSiteLogbooks() {
+  const locationId = getSiteLogbookLocation();
+  const location = getLocation(locationId);
+  if (!location || siteLogbookState.loading) return;
+  siteLogbookState.loading = true;
+  if (els.siteLogbookStatus) els.siteLogbookStatus.textContent = "Loading site logbooks...";
+  try {
+    const type = els.siteLogbookTypeFilter?.value || "all";
+    const status = els.siteLogbookStatusFilter?.value || "all";
+    const response = await siteworksApi.server(`/api/site-logbooks/entries?customer_id=${encodeURIComponent(location.customerId)}&location_id=${encodeURIComponent(locationId)}&type=${encodeURIComponent(type)}&status=${encodeURIComponent(status)}`);
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json();
+    siteLogbookState = { locationId, entries: data.entries || [], loading: false };
+    if (els.siteLogbookStatus) els.siteLogbookStatus.textContent = "";
+  } catch (error) {
+    if (els.siteLogbookStatus) els.siteLogbookStatus.textContent = readableServerError(error?.message || error);
+  } finally { siteLogbookState.loading = false; renderSiteLogbooks(); }
+}
+
+async function saveSiteLogbookEntry(event) {
+  event.preventDefault();
+  const locationId = getSiteLogbookLocation(); const location = getLocation(locationId);
+  if (!location) return;
+  if (els.siteLogbookFormStatus) els.siteLogbookFormStatus.textContent = "Saving...";
+  try {
+    const response = await siteworksApi.server("/api/site-logbooks/entries", { method: "POST", body: JSON.stringify({
+      customerId: location.customerId, locationId, logbookType: els.siteLogbookType.value, occurredAt: parseDateTimeLocalInput(els.siteLogbookOccurredAt.value), assetId: els.siteLogbookAsset.value, workOrderId: els.siteLogbookWorkOrder.value,
+      technician: els.siteLogbookTechnician.value.trim(), company: els.siteLogbookCompany.value.trim(), specialValue: els.siteLogbookSpecialValue.value.trim(), referenceNumber: els.siteLogbookReference.value.trim(), workPerformed: els.siteLogbookWorkPerformed.value.trim(), deficiencies: els.siteLogbookDeficiencies.value.trim(), correctiveAction: els.siteLogbookCorrectiveAction.value.trim(), followupRequired: els.siteLogbookFollowupRequired.checked, followupDue: els.siteLogbookFollowupDue.value
+    }) });
+    if (!response.ok) throw new Error(await response.text());
+    els.siteLogbookForm.reset(); els.siteLogbookEntryDrawer.open = false; await loadSiteLogbooks();
+  } catch (error) { if (els.siteLogbookFormStatus) els.siteLogbookFormStatus.textContent = readableServerError(error?.message || error); }
+}
+
+function exportSiteLogbooksCsv() {
+  const rows = [["Logbook","Date","Asset","Technician","Company","Work performed","Deficiencies","Corrective action","Follow-up status","Follow-up due"], ...(siteLogbookState.entries || []).map((e) => [siteLogbookTypeLabel(e.logbookType),e.occurredAt,e.assetId,e.technician,e.company,e.workPerformed,e.deficiencies,e.correctiveAction,e.followupStatus,e.followupDue])];
+  const csv = rows.map((row) => row.map((value) => `"${String(value || "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); link.download = "siteworks-site-logbooks.csv"; link.click(); URL.revokeObjectURL(link.href);
 }
 
 function contractorLogbookPublicUrl(token = contractorLogbookState.token) {

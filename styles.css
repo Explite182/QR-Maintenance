@@ -14875,6 +14875,36 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   background: #f4f7f6;
 }
 
+/* Shared site logbooks */
+.site-logbooks-shell { display: grid; gap: 16px; padding: 18px; background: #f4f7f6; }
+.site-logbooks-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.site-logbooks-header h2 { margin: 0; font-size: 23px; }
+.site-logbooks-header p { margin: 5px 0 0; }
+.site-logbook-summary { display: grid; grid-template-columns: repeat(3, minmax(150px, 220px)); gap: 10px; }
+.site-logbook-summary .metric-card { min-height: 80px; padding: 14px 16px; border: 1px solid #dbe6e3; background: #fff; box-shadow: 0 2px 8px rgba(24,46,43,.04); }
+.site-logbook-summary .metric-card span { color: var(--muted); font-size: 12px; }
+.site-logbook-summary .metric-card strong { font-size: 26px; }
+.site-logbook-filters { display: grid; grid-template-columns: minmax(220px,1.2fr) minmax(170px,.7fr) minmax(170px,.7fr) auto; gap: 10px; align-items: end; padding: 14px; border: 1px solid #dbe6e3; border-radius: 8px; background: #fff; }
+.site-logbook-entry-drawer { border: 1px solid #cddbd8; border-radius: 8px; background: #fff; overflow: hidden; }
+.site-logbook-entry-drawer > summary { padding: 14px 16px; cursor: pointer; font-weight: 900; }
+.site-logbook-form { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; padding: 0 16px 16px; }
+.site-logbook-form .full-span { grid-column: 1 / -1; }
+.site-logbook-list { display: grid; gap: 10px; }
+.site-logbook-entry { padding: 16px 18px; border: 1px solid #dbe4e2; border-left: 4px solid #608b84; border-radius: 8px; background: #fff; }
+.site-logbook-entry.is-overdue { border-left-color: #bd392e; background: #fff9f8; }
+.site-logbook-entry-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.site-logbook-entry-head h3 { margin: 5px 0 0; font-size: 17px; }
+.site-logbook-type { display: inline-block; padding: 3px 7px; border-radius: 4px; background: #e8f3f0; color: #176b5f; font-size: 11px; font-weight: 900; }
+.site-logbook-type.is-electrical { background: #fff3cf; color: #775800; }
+.site-logbook-type.is-elevator { background: #e8eef6; color: #365675; }
+.site-logbook-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0; color: var(--muted); font-size: 12px; }
+.site-logbook-entry p { display: grid; gap: 3px; margin: 9px 0 0; white-space: pre-wrap; }
+.site-logbook-entry p strong { font-size: 12px; }
+.site-logbook-deficiency { padding: 10px; border-radius: 6px; background: #fff4e6; }
+.site-logbook-followup { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 800; }
+@media (max-width: 900px) { .site-logbook-form { grid-template-columns: 1fr 1fr; } .site-logbook-filters { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 620px) { .site-logbooks-shell { padding: 10px; } .site-logbooks-header { align-items: stretch; flex-direction: column; } .site-logbook-summary { grid-template-columns: repeat(3,minmax(0,1fr)); } .site-logbook-filters,.site-logbook-form { grid-template-columns: 1fr; } .site-logbook-form .full-span { grid-column: 1; } .site-logbook-entry-head,.site-logbook-followup { align-items: flex-start; flex-direction: column; } }
+
 .contractor-logbook-toolbar {
   display: flex;
   align-items: end;
