@@ -14257,6 +14257,7 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 .contractor-scan-actions,
 #contractorLogbookSummary,
 .contractor-notification-controls,
+.contractor-email-report-controls,
 .contractor-report-controls,
 #contractorLogbookStatus,
 #contractorLogbookList {
@@ -14273,9 +14274,10 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 #contractorLogbookLinkCard,
 .contractor-safety-controls { order: 4; }
 .contractor-notification-controls { order: 5; }
-.contractor-report-controls { order: 6; }
-#contractorLogbookStatus { order: 7; }
-#contractorLogbookList { order: 8; }
+.contractor-email-report-controls { order: 6; }
+.contractor-report-controls { order: 7; }
+#contractorLogbookStatus { order: 8; }
+#contractorLogbookList { order: 9; }
 
 .contractor-scan-actions {
   justify-content: flex-start;
@@ -14361,6 +14363,24 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   border-radius: 8px;
   background: #fff;
 }
+
+.contractor-email-report-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, .55fr) minmax(260px, 1.2fr) minmax(150px, .6fr) minmax(140px, .55fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid var(--line, #d9e5e2);
+  border-radius: 8px;
+  background: #f7fbfa;
+}
+
+.contractor-email-report-controls > strong,
+.contractor-email-report-controls > small {
+  grid-column: 1 / -1;
+}
+
+.contractor-email-report-controls > small { color: var(--muted, #5f716f); }
 
 .contractor-report-controls {
   padding: 14px 16px;
@@ -14474,6 +14494,7 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   }
 
   .contractor-notification-controls { grid-template-columns: 1fr; }
+  .contractor-email-report-controls { grid-template-columns: 1fr; }
 
   .contractor-report-actions {
     grid-template-columns: 1fr;
@@ -14843,6 +14864,195 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel);
+}
+
+/* Contractor logbook operational layout */
+#contractorLogbookPane .contractor-logbook-controls {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding: 18px;
+  background: #f4f7f6;
+}
+
+.contractor-logbook-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
+.contractor-logbook-toolbar .contractor-location-control {
+  flex: 1 1 360px;
+  max-width: 560px;
+}
+
+#contractorLogbookSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 220px));
+  gap: 10px;
+}
+
+#contractorLogbookSummary .metric-card {
+  min-height: 82px;
+  padding: 14px 16px;
+  border: 1px solid #dbe6e3;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(24, 46, 43, .04);
+}
+
+.contractor-logbook-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 16px;
+  align-items: start;
+}
+
+.contractor-visits-panel,
+.contractor-scan-module {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #dbe6e3;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(24, 46, 43, .045);
+}
+
+.contractor-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.section-kicker {
+  display: block;
+  margin-bottom: 3px;
+  color: #55706c;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.contractor-section-heading h3,
+.contractor-scan-module h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.contractor-report-controls {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.contractor-report-controls label { min-width: 150px; margin: 0; }
+.contractor-report-actions { display: flex; gap: 6px; }
+.contractor-report-actions button { white-space: nowrap; }
+
+.contractor-scan-module > .muted { margin: 6px 0 14px; }
+
+#contractorLogbookPane .contractor-scan-module .inventory-qr-card {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid #cfe0dc;
+  background: #f5faf8;
+}
+
+#contractorLogbookPane .contractor-scan-module .inventory-qr-card.hidden { display: none; }
+#contractorLogbookPane .contractor-scan-module .inventory-qr-card img { width: 132px; height: 132px; }
+#contractorLogbookPane .contractor-scan-module .inventory-qr-card small { overflow-wrap: anywhere; }
+
+.contractor-scan-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.contractor-scan-actions button:first-child { grid-column: 1 / -1; }
+
+.contractor-logbook-settings {
+  border: 1px solid #d5e1de;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.contractor-logbook-settings > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 17px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.contractor-logbook-settings > summary small { color: var(--muted); font-weight: 650; }
+.contractor-settings-content { display: grid; gap: 12px; padding: 0 16px 16px; }
+.contractor-setting-section { padding: 14px; border: 1px solid #e0e8e6; border-radius: 8px; background: #fafcfc; }
+.contractor-setting-section h4 { margin: 0 0 10px; font-size: 14px; }
+
+.contractor-setting-section .contractor-safety-controls,
+.contractor-setting-section .contractor-notification-controls,
+.contractor-setting-section .contractor-email-report-controls {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.contractor-setting-section .contractor-safety-controls { grid-template-columns: minmax(160px, 190px) repeat(3, minmax(150px, 1fr)); }
+.contractor-setting-section .contractor-safety-controls::before { display: none; }
+.contractor-setting-section .contractor-email-report-controls { grid-template-columns: minmax(140px, .55fr) minmax(220px, 1fr) minmax(140px, .55fr) minmax(130px, .5fr) auto; }
+.contractor-setting-section .contractor-email-report-controls > small { grid-column: 1 / -1; }
+
+#contractorLogbookList { display: grid; gap: 9px; }
+#contractorLogbookList .activity-log-item { padding: 14px 16px; border-left: 4px solid #c8d4d2; box-shadow: none; }
+#contractorLogbookList .activity-log-item.is-warning { border-left-color: #11947c; }
+#contractorLogbookList .activity-log-item.is-overdue { border-left-color: #bd392e; }
+
+.contractor-visit-status { display: inline-flex; align-items: center; gap: 6px; }
+.contractor-visit-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+@media (max-width: 1050px) {
+  .contractor-logbook-main { grid-template-columns: 1fr; }
+  .contractor-scan-module { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .8fr); column-gap: 16px; }
+  .contractor-scan-module > .section-kicker,
+  .contractor-scan-module > h3,
+  .contractor-scan-module > .muted { grid-column: 1 / -1; }
+  .contractor-setting-section .contractor-safety-controls,
+  .contractor-setting-section .contractor-email-report-controls { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 700px) {
+  #contractorLogbookPane .contractor-logbook-controls { padding: 10px; gap: 12px; }
+  .contractor-logbook-toolbar,
+  .contractor-section-heading { align-items: stretch; flex-direction: column; }
+  .contractor-logbook-toolbar .contractor-location-control { width: 100%; max-width: none; flex-basis: auto; }
+  #contractorLogbookSummary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #contractorLogbookSummary .metric-card { min-width: 0; padding: 11px; }
+  #contractorLogbookSummary .metric-card strong { font-size: 23px; }
+  .contractor-report-controls { align-items: stretch; flex-direction: column; }
+  .contractor-report-controls label { min-width: 0; }
+  .contractor-scan-module { display: block; }
+  #contractorLogbookPane .contractor-scan-module .inventory-qr-card { grid-template-columns: 104px minmax(0, 1fr); }
+  #contractorLogbookPane .contractor-scan-module .inventory-qr-card img { width: 104px; height: 104px; }
+  .contractor-setting-section .contractor-safety-controls,
+  .contractor-setting-section .contractor-notification-controls,
+  .contractor-setting-section .contractor-email-report-controls { grid-template-columns: 1fr; }
+  .contractor-logbook-settings > summary { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .contractor-visit-heading { align-items: flex-start; }
 }
 
 .asset-nfc-card > summary {

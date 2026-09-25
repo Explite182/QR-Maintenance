@@ -7002,7 +7002,7 @@ let authProfilesLoaded = false;
 let authProfilesLoading = false;
 let lastAuthError = "";
 let intentionalLogoutAt = 0;
-let contractorLogbookState = { locationId: "", token: "", link: "", visits: [], overdueHours: 12, loading: false };
+let contractorLogbookState = { locationId: "", token: "", link: "", visits: [], overdueHours: 12, notifyOnArrival: false, notificationEmail: "", reportFrequency: "none", reportEmail: "", reportWeekday: 1, reportHour: 7, loading: false };
 let lastPublicReportError = "";
 let publicKeyLookupState = {
   uid: "",
@@ -7309,6 +7309,12 @@ const els = {
   contractorLogbookNotifyArrival: document.getElementById("contractorLogbookNotifyArrival"),
   contractorLogbookNotificationEmail: document.getElementById("contractorLogbookNotificationEmail"),
   contractorLogbookSaveNotificationBtn: document.getElementById("contractorLogbookSaveNotificationBtn"),
+  contractorLogbookReportFrequency: document.getElementById("contractorLogbookReportFrequency"),
+  contractorLogbookReportEmail: document.getElementById("contractorLogbookReportEmail"),
+  contractorLogbookReportWeekday: document.getElementById("contractorLogbookReportWeekday"),
+  contractorLogbookReportWeekdayLabel: document.getElementById("contractorLogbookReportWeekdayLabel"),
+  contractorLogbookReportHour: document.getElementById("contractorLogbookReportHour"),
+  contractorLogbookSaveReportScheduleBtn: document.getElementById("contractorLogbookSaveReportScheduleBtn"),
   contractorLogbookCreateBtn: document.getElementById("contractorLogbookCreateBtn"),
   contractorLogbookCopyBtn: document.getElementById("contractorLogbookCopyBtn"),
   contractorLogbookWriteNfcBtn: document.getElementById("contractorLogbookWriteNfcBtn"),
@@ -10814,6 +10820,19 @@ els.contractorLogbookSaveThresholdBtn?.addEventListener("click", async () => {
 });
 els.contractorLogbookSaveNotificationBtn?.addEventListener("click", async () => {
   try { await createContractorLogbookLink(); els.contractorLogbookStatus.textContent = "Arrival notification saved."; }
+  catch (error) { els.contractorLogbookStatus.textContent = readableServerError(error?.message || error); }
+});
+
+function updateContractorReportScheduleFields() {
+  const frequency = els.contractorLogbookReportFrequency?.value || "none";
+  if (els.contractorLogbookReportWeekdayLabel) els.contractorLogbookReportWeekdayLabel.classList.toggle("hidden", frequency !== "weekly");
+  if (els.contractorLogbookReportEmail) els.contractorLogbookReportEmail.disabled = frequency === "none";
+  if (els.contractorLogbookReportHour) els.contractorLogbookReportHour.disabled = frequency === "none";
+}
+
+els.contractorLogbookReportFrequency?.addEventListener("change", updateContractorReportScheduleFields);
+els.contractorLogbookSaveReportScheduleBtn?.addEventListener("click", async () => {
+  try { await createContractorLogbookLink(); els.contractorLogbookStatus.textContent = "Email report schedule saved."; }
   catch (error) { els.contractorLogbookStatus.textContent = readableServerError(error?.message || error); }
 });
 
@@ -41887,6 +41906,11 @@ function renderContractorLogbook() {
   if (els.contractorLogbookOverdueHours) els.contractorLogbookOverdueHours.value = String(contractorLogbookState.overdueHours || 12);
   if (els.contractorLogbookNotifyArrival) els.contractorLogbookNotifyArrival.checked = contractorLogbookState.notifyOnArrival === true;
   if (els.contractorLogbookNotificationEmail) els.contractorLogbookNotificationEmail.value = contractorLogbookState.notificationEmail || "";
+  if (els.contractorLogbookReportFrequency) els.contractorLogbookReportFrequency.value = contractorLogbookState.reportFrequency || "none";
+  if (els.contractorLogbookReportEmail) els.contractorLogbookReportEmail.value = contractorLogbookState.reportEmail || "";
+  if (els.contractorLogbookReportWeekday) els.contractorLogbookReportWeekday.value = String(contractorLogbookState.reportWeekday ?? 1);
+  if (els.contractorLogbookReportHour) els.contractorLogbookReportHour.value = String(contractorLogbookState.reportHour ?? 7);
+  updateContractorReportScheduleFields();
   if (els.contractorOnsiteCount) els.contractorOnsiteCount.textContent = `${onsite.length} onsite`;
   if (els.contractorLogbookSummary) els.contractorLogbookSummary.innerHTML = `
     <div class="metric-card"><span>Currently onsite</span><strong>${onsite.length}</strong></div>
@@ -41940,6 +41964,10 @@ async function loadContractorLogbook() {
     contractorLogbookState.overdueHours = Number(links.links?.[0]?.overdue_hours || links.links?.[0]?.overdueHours || 12) || 12;
     contractorLogbookState.notifyOnArrival = links.links?.[0]?.notify_on_arrival === true;
     contractorLogbookState.notificationEmail = links.links?.[0]?.notification_email || "";
+    contractorLogbookState.reportFrequency = links.links?.[0]?.report_frequency || "none";
+    contractorLogbookState.reportEmail = links.links?.[0]?.report_email || "";
+    contractorLogbookState.reportWeekday = Number(links.links?.[0]?.report_weekday ?? 1);
+    contractorLogbookState.reportHour = Number(links.links?.[0]?.report_hour ?? 7);
     contractorLogbookState.visits = visits.visits || [];
     if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "";
   } catch (error) {
@@ -41958,11 +41986,19 @@ async function createContractorLogbookLink() {
   const overdueHours = Math.max(1, Math.min(168, Number(els.contractorLogbookOverdueHours?.value || contractorLogbookState.overdueHours || 12) || 12));
   const notifyOnArrival = els.contractorLogbookNotifyArrival?.checked === true;
   const notificationEmail = els.contractorLogbookNotificationEmail?.value.trim() || locationRecord.contactEmail || "";
-  const response = await siteworksApi.server("/api/contractor-logbook/links", { method: "POST", body: JSON.stringify({ customerId: locationRecord.customerId, locationId, overdueHours, notifyOnArrival, notificationEmail }) });
+  const reportFrequency = els.contractorLogbookReportFrequency?.value || contractorLogbookState.reportFrequency || "none";
+  const reportEmail = els.contractorLogbookReportEmail?.value.trim() || "";
+  const reportWeekday = Number(els.contractorLogbookReportWeekday?.value ?? contractorLogbookState.reportWeekday ?? 1);
+  const reportHour = Number(els.contractorLogbookReportHour?.value ?? contractorLogbookState.reportHour ?? 7);
+  const response = await siteworksApi.server("/api/contractor-logbook/links", { method: "POST", body: JSON.stringify({ customerId: locationRecord.customerId, locationId, overdueHours, notifyOnArrival, notificationEmail, reportFrequency, reportEmail, reportWeekday, reportHour }) });
   if (!response.ok) throw new Error(await response.text());
   const data = await response.json();
   contractorLogbookState.token = data.link?.token || "";
   contractorLogbookState.overdueHours = Number(data.link?.overdue_hours || overdueHours) || overdueHours;
+  contractorLogbookState.reportFrequency = data.link?.report_frequency || reportFrequency;
+  contractorLogbookState.reportEmail = data.link?.report_email || reportEmail;
+  contractorLogbookState.reportWeekday = Number(data.link?.report_weekday ?? reportWeekday);
+  contractorLogbookState.reportHour = Number(data.link?.report_hour ?? reportHour);
   renderContractorLogbook();
 }
 
