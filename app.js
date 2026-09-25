@@ -41971,7 +41971,10 @@ async function loadContractorLogbook() {
     contractorLogbookState.visits = visits.visits || [];
     if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = "";
   } catch (error) {
-    if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = readableServerError(error?.message || error);
+    const message = String(error?.message || error || "");
+    if (els.contractorLogbookStatus) els.contractorLogbookStatus.textContent = /failed to fetch|networkerror|load failed/i.test(message)
+      ? "Could not reach the SiteWorks server. Check the connection, then tap Refresh Visits."
+      : readableServerError(message);
   } finally {
     contractorLogbookState.loading = false;
     if (els.contractorLogbookRefreshBtn) els.contractorLogbookRefreshBtn.disabled = false;
@@ -42596,7 +42599,15 @@ async function siteworksServerFetch(path, options = {}) {
   };
   const fetchOptions = { ...options, headers };
   if (!fetchOptions.cache) fetchOptions.cache = "no-store";
-  const response = await fetch(siteworksServerUrl(path), fetchOptions);
+  let response;
+  try {
+    response = await fetch(siteworksServerUrl(path), fetchOptions);
+  } catch (error) {
+    const method = String(fetchOptions.method || "GET").toUpperCase();
+    if (method !== "GET") throw error;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    response = await fetch(siteworksServerUrl(path), fetchOptions);
+  }
   if (response.status === 401 || response.status === 403) {
     const errorText = await response.clone().text().catch(() => "");
     if (serverResponseRejectsSession(response, errorText)) expireRejectedServerSession();
