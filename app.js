@@ -42120,10 +42120,15 @@ async function renderPublicContractorLogbook() {
 }
 
 function showPublicContractorTask(mode = "menu") {
+  const params = new URLSearchParams(location.search);
+  const isDirectTask = ["visit", "logbook", "permit"].includes(params.get("task") || "") || Boolean(params.get("logAsset"));
   els.publicContractorTaskMenu?.classList.toggle("hidden", mode !== "menu");
   els.publicContractorLogbookForm?.classList.toggle("hidden", mode !== "visit");
   els.publicSiteLogbookForm?.classList.toggle("hidden", mode !== "logbook");
   els.publicPermitForm?.classList.toggle("hidden", mode !== "permit");
+  els.publicContractorVisitBackBtn?.classList.toggle("hidden", isDirectTask);
+  els.publicSiteLogbookBackBtn?.classList.toggle("hidden", isDirectTask);
+  els.publicPermitBackBtn?.classList.toggle("hidden", isDirectTask);
   if (mode === "visit") window.setTimeout(() => els.publicContractorName?.focus(), 60);
   if (mode === "logbook") window.setTimeout(() => els.publicSiteLogbookName?.focus(), 60);
 }
