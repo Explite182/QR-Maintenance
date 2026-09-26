@@ -10980,7 +10980,9 @@ els.publicContractorSendCodeBtn?.addEventListener("click", async () => {
   const token = getPublicContractorLogbookToken();
   const email = els.publicContractorLookupEmail?.value.trim() || "";
   const response = await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}/verification-request`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
-  els.publicContractorVerificationMessage.textContent = response.ok ? "Check your email for a 6-digit code." : readableServerError(await response.text());
+  if (!response.ok) { els.publicContractorVerificationMessage.textContent = readableServerError(await response.text()); return; }
+  const result = await response.json();
+  els.publicContractorVerificationMessage.textContent = result.sent ? "Check your email for a 6-digit code." : result.message || "No saved details were found for this location.";
 });
 
 els.publicContractorVerifyBtn?.addEventListener("click", async () => {
