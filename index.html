@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260925-permit-qr-59">
+  <link rel="stylesheet" href="/styles.css?v=20260925-contractor-dashboard-60">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -700,37 +700,15 @@
           <details id="contractorLogbookSection" class="sidebar-sub-drawer" open>
             <summary><span>Contractor Logbook</span><span id="contractorOnsiteCount">0 onsite</span></summary>
             <div class="stack compact-form contractor-logbook-controls">
-              <div class="contractor-logbook-toolbar">
-                <label class="contractor-location-control">Location <select id="contractorLogbookLocation"></select></label>
-                <button id="contractorLogbookRefreshBtn" type="button" class="secondary">Refresh Visits</button>
-              </div>
-              <div id="contractorLogbookSummary" class="dashboard-grid"></div>
-              <div class="contractor-logbook-main">
-                <section class="contractor-visits-panel" aria-labelledby="contractorVisitsHeading">
-                  <div class="contractor-section-heading">
-                    <div><span class="section-kicker">Visit activity</span><h3 id="contractorVisitsHeading">Contractor visits</h3></div>
-                    <div class="contractor-report-controls">
-                      <label>Period <select id="contractorLogbookRange"><option value="day">Today</option><option value="week">This week</option><option value="month">This month</option><option value="all">All visits</option></select></label>
-                      <div class="contractor-report-actions"><button id="contractorLogbookPrintReportBtn" type="button" class="secondary">Print</button><button id="contractorLogbookExportBtn" type="button" class="secondary">Export CSV</button></div>
-                    </div>
-                  </div>
-                  <p id="contractorLogbookStatus" class="inline-status"></p>
-                  <div id="contractorLogbookList" class="activity-log-list"></div>
-                </section>
-                <aside class="contractor-scan-module" aria-labelledby="contractorScanHeading">
-                  <span class="section-kicker">QR + NFC access</span>
-                  <h3 id="contractorScanHeading">Scan to Sign In</h3>
-                  <p class="muted">Contractors scan at the site to sign in or out.</p>
-                  <div id="contractorLogbookLinkCard" class="inventory-qr-card hidden"></div>
-                  <div class="contractor-scan-actions">
-                    <button id="contractorLogbookCreateBtn" type="button">Create / Show Link</button>
-                    <button id="contractorLogbookCopyBtn" type="button" class="secondary">Copy Link</button>
-                    <button id="contractorLogbookWriteNfcBtn" type="button" class="secondary">Write NFC</button>
-                    <button id="contractorLogbookPrintBtn" type="button" class="secondary">Print QR + NFC</button>
-                  </div>
-                </aside>
-              </div>
-              <details class="contractor-logbook-settings">
+              <header class="contractor-dashboard-header"><div><span class="section-kicker">Site access</span><h2>Contractor Logbook</h2><p>Track contractor visits, safety, and sign in/out activity.</p></div><div class="contractor-logbook-toolbar"><label class="contractor-location-control">Location <select id="contractorLogbookLocation"></select></label><button id="contractorLogbookRefreshBtn" type="button">Refresh Visits</button></div></header>
+              <div class="contractor-dashboard-grid">
+                <main class="contractor-dashboard-primary">
+                  <div class="contractor-overview-row"><div id="contractorLogbookSummary" class="dashboard-grid"></div><label class="contractor-period-card">Period<select id="contractorLogbookRange"><option value="day">Today</option><option value="week">This week</option><option value="month">This month</option><option value="all">All visits</option></select></label></div>
+                  <section class="contractor-visits-panel" aria-labelledby="contractorVisitsHeading">
+                    <div class="contractor-section-heading"><div><span class="section-kicker">Visit activity</span><h3 id="contractorVisitsHeading">Contractor Visits</h3><p>All contractor sign in/out activity for the selected period.</p></div><div class="contractor-report-controls"><input id="contractorLogbookSearch" type="search" placeholder="Search contractors..." aria-label="Search contractor visits"><div class="contractor-report-actions"><button id="contractorLogbookPrintReportBtn" type="button" class="secondary">Print</button><button id="contractorLogbookExportBtn" type="button" class="secondary">Export CSV</button></div></div></div>
+                    <p id="contractorLogbookStatus" class="inline-status"></p><div id="contractorLogbookList" class="activity-log-list"></div>
+                  </section>
+                  <details class="contractor-logbook-settings">
                 <summary><span>Logbook Settings</span><small>Safety, notifications, reports, and emergency lists</small></summary>
                 <div class="contractor-settings-content">
                   <section class="contractor-setting-section"><h4>Site safety</h4><div class="contractor-safety-controls">
@@ -754,6 +732,12 @@
                   </div></section>
                 </div>
               </details>
+                </main>
+                <aside class="contractor-dashboard-sidebar">
+                  <section class="contractor-scan-module" aria-labelledby="contractorScanHeading"><span class="section-kicker">QR + NFC access</span><h3 id="contractorScanHeading">Scan to Sign In</h3><p class="muted">Contractors scan at the site to sign in or out.</p><div id="contractorLogbookLinkCard" class="inventory-qr-card hidden"></div><div class="contractor-scan-actions"><button id="contractorLogbookCreateBtn" type="button">Create / Show Link</button><button id="contractorLogbookCopyBtn" type="button" class="secondary">Copy Link</button><button id="contractorLogbookWriteNfcBtn" type="button" class="secondary">Write NFC</button><button id="contractorLogbookPrintBtn" type="button" class="secondary">Print QR + NFC</button></div></section>
+                  <section class="contractor-onsite-info"><div><span class="section-kicker">Quick reference</span><h3>Onsite Information</h3></div><dl><div><dt>Location</dt><dd id="contractorInfoLocation">--</dd></div><div><dt>Currently onsite</dt><dd id="contractorInfoOnsite">0</dd></div><div><dt>Overdue onsite</dt><dd id="contractorInfoOverdue">0</dd></div><div><dt>Visits in period</dt><dd id="contractorInfoVisits">0</dd></div></dl></section>
+                </aside>
+              </div>
             </div>
           </details>
           <details class="sidebar-sub-drawer">
@@ -3138,7 +3122,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260925-permit-qr-59"></script>
+  <script src="/app.js?v=20260925-contractor-dashboard-60"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
