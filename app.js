@@ -7013,6 +7013,7 @@ let siteLogbookState = { locationId: "", entries: [], loading: false };
 let publicSiteLogbookAssets = [];
 let annualPermitState = { permits: [], loading: false };
 let annualPermitQrState = { locationId: "", token: "", loading: false };
+let siteLogbookQrState = { locationId: "", token: "", loading: false };
 let lastPublicReportError = "";
 let publicKeyLookupState = {
   uid: "",
@@ -7345,6 +7346,7 @@ const els = {
   siteLogbookCancelBtn: document.getElementById("siteLogbookCancelBtn"),
   siteLogbookCopyAssetLinkBtn: document.getElementById("siteLogbookCopyAssetLinkBtn"),
   siteLogbookPrintAssetQrBtn: document.getElementById("siteLogbookPrintAssetQrBtn"),
+  siteLogbookQrCreateBtn: document.getElementById("siteLogbookQrCreateBtn"), siteLogbookQrCopyBtn: document.getElementById("siteLogbookQrCopyBtn"), siteLogbookQrPrintBtn: document.getElementById("siteLogbookQrPrintBtn"), siteLogbookQrCard: document.getElementById("siteLogbookQrCard"), siteLogbookQrStatus: document.getElementById("siteLogbookQrStatus"),
   siteLogbookWriteAssetNfcBtn: document.getElementById("siteLogbookWriteAssetNfcBtn"),
   siteLogbookFormStatus: document.getElementById("siteLogbookFormStatus"),
   siteLogbookStatus: document.getElementById("siteLogbookStatus"),
@@ -10862,20 +10864,20 @@ els.contractorLogbookCreateBtn?.addEventListener("click", async () => {
 
 els.contractorLogbookCopyBtn?.addEventListener("click", async () => {
   if (!contractorLogbookState.token) await createContractorLogbookLink();
-  await copyText(contractorLogbookPublicUrl());
-  els.contractorLogbookStatus.textContent = "Contractor scan link copied.";
+  await copyText(contractorLogbookPublicUrl(contractorLogbookState.token, "visit"));
+  els.contractorLogbookStatus.textContent = "Contractor sign-in link copied.";
 });
 
 els.contractorLogbookWriteNfcBtn?.addEventListener("click", async () => {
   try {
     if (!contractorLogbookState.token) await createContractorLogbookLink();
     els.contractorLogbookStatus.textContent = "Hold an NFC tag on the ACR122U reader...";
-    const url = contractorLogbookPublicUrl();
+    const url = contractorLogbookPublicUrl(contractorLogbookState.token, "visit");
     await callNfcBridgeWithFallback(["/nfc/write", "/write", "/api/nfc/write"], {
       url, fallbackUrl: url, recordType: "contractor-logbook",
-      recordId: getContractorLogbookLocation(), name: "SiteWorks Contractor Logbook"
+      recordId: getContractorLogbookLocation(), name: "SiteWorks Contractor Sign In"
     });
-    els.contractorLogbookStatus.textContent = "Contractor logbook NFC tag written.";
+    els.contractorLogbookStatus.textContent = "Contractor sign-in NFC tag written.";
   } catch (error) {
     els.contractorLogbookStatus.textContent = `NFC write failed: ${error.message || "Bridge unavailable."}`;
   }
@@ -10884,11 +10886,7 @@ els.contractorLogbookWriteNfcBtn?.addEventListener("click", async () => {
 els.contractorLogbookPrintBtn?.addEventListener("click", async () => {
   if (!contractorLogbookState.token) await createContractorLogbookLink();
   const locationRecord = getLocation(getContractorLogbookLocation());
-  const labels = [
-    ["visit", "Contractor Sign In / Out", "Record arrival or departure"],
-    ["logbook", "Site Logbook", "Add an electrical, elevator, or maintenance record"],
-    ["permit", "Annual Permits & Records", "Submit a permit or annual certificate"]
-  ];
+  const labels = [["visit", "Contractor Sign In / Out", "Record arrival or departure"]];
   els.labelSheet.innerHTML = labels.map(([mode, title, instruction]) => {
     const url = contractorLogbookPublicUrl(contractorLogbookState.token, mode);
     return `<div class="print-label print-label-nfc"><img alt="" src="${qrUrl(url)}"><div class="print-label-copy"><span class="label-brand">SiteWorks</span><strong>${escapeHtml(title)}</strong><span>${escapeHtml(locationRecord?.name || "Location")}</span><span>${escapeHtml(instruction)}</span></div></div>`;
@@ -10935,10 +10933,13 @@ els.siteLogbookAddBtn?.addEventListener("click", () => {
 els.siteLogbookCancelBtn?.addEventListener("click", () => { if (els.siteLogbookEntryDrawer) els.siteLogbookEntryDrawer.open = false; });
 els.siteLogbookForm?.addEventListener("submit", saveSiteLogbookEntry);
 els.siteLogbookType?.addEventListener("change", updateSiteLogbookSpecialField);
-els.siteLogbookLocation?.addEventListener("change", loadSiteLogbooks);
+els.siteLogbookLocation?.addEventListener("change", () => { siteLogbookQrState = { locationId: "", token: "", loading: false }; loadSiteLogbooks(); loadSiteLogbookQrLink(); });
 els.siteLogbookTypeFilter?.addEventListener("change", loadSiteLogbooks);
 els.siteLogbookStatusFilter?.addEventListener("change", loadSiteLogbooks);
 els.siteLogbookExportBtn?.addEventListener("click", exportSiteLogbooksCsv);
+els.siteLogbookQrCreateBtn?.addEventListener("click", async () => { try { await createSiteLogbookQrLink(); els.siteLogbookQrStatus.textContent = "Site Logbook QR is ready."; } catch (error) { els.siteLogbookQrStatus.textContent = readableServerError(error?.message || error); } });
+els.siteLogbookQrCopyBtn?.addEventListener("click", async () => { try { if (!siteLogbookQrState.token) await createSiteLogbookQrLink(); await copyText(contractorLogbookPublicUrl(siteLogbookQrState.token, "logbook")); els.siteLogbookQrStatus.textContent = "Site Logbook link copied."; } catch (error) { els.siteLogbookQrStatus.textContent = readableServerError(error?.message || error); } });
+els.siteLogbookQrPrintBtn?.addEventListener("click", async () => { try { if (!siteLogbookQrState.token) await createSiteLogbookQrLink(); const locationRecord = getLocation(getSiteLogbookLocation()); const url = contractorLogbookPublicUrl(siteLogbookQrState.token, "logbook"); els.labelSheet.innerHTML = `<div class="print-label print-label-nfc"><img alt="" src="${qrUrl(url)}"><div class="print-label-copy"><span class="label-brand">SiteWorks Site Logbook</span><strong>${escapeHtml(locationRecord?.name || "Location")}</strong><span>${escapeHtml(locationRecord?.address || "")}</span><span>Scan to add an electrical, elevator, or maintenance record</span></div></div>`; window.print(); } catch (error) { els.siteLogbookQrStatus.textContent = readableServerError(error?.message || error); } });
 async function getSelectedAssetPublicLogUrl() {
   const locationId = getSiteLogbookLocation();
   const assetId = els.siteLogbookAsset?.value || "";
@@ -17575,7 +17576,7 @@ function setInventoryTab(tab = "items") {
     pane.classList.toggle("hidden", pane.dataset.inventoryPane !== inventoryTab);
   });
   if (inventoryTab === "contractors") loadContractorLogbook();
-  if (inventoryTab === "logbooks") { renderSiteLogbooks(); loadSiteLogbooks(); }
+  if (inventoryTab === "logbooks") { renderSiteLogbooks(); loadSiteLogbooks(); loadSiteLogbookQrLink(); }
   if (inventoryTab === "permits") { renderAnnualPermits(); loadAnnualPermits(); loadAnnualPermitQrLink(); }
   syncInventorySidebarMenuState();
 }
@@ -42309,6 +42310,9 @@ function exportSiteLogbooksCsv() {
 }
 function annualPermitComputedStatus(p){if(p.reviewStatus==="pending")return "pending";if(p.reviewStatus==="replaced")return "replaced";const days=(new Date(`${p.expiryDate}T23:59:59`)-new Date())/86400000;if(days<0)return "expired";if(days<=90)return "expiring";return "current";}
 function renderAnnualPermitQrLink(){if(!els.annualPermitQrCard)return;if(!annualPermitQrState.token){els.annualPermitQrCard.classList.add("hidden");els.annualPermitQrCard.innerHTML="";return;}const url=contractorLogbookPublicUrl(annualPermitQrState.token,"permit");els.annualPermitQrCard.classList.remove("hidden");els.annualPermitQrCard.innerHTML=`<img alt="Annual permit QR code" src="${qrUrl(url)}"><div><strong>Annual permits &amp; records</strong><small>${escapeHtml(url)}</small><span>Scan to submit without logging in</span></div>`;}
+function renderSiteLogbookQrLink(){if(!els.siteLogbookQrCard)return;if(!siteLogbookQrState.token){els.siteLogbookQrCard.classList.add("hidden");els.siteLogbookQrCard.innerHTML="";return;}const url=contractorLogbookPublicUrl(siteLogbookQrState.token,"logbook");els.siteLogbookQrCard.classList.remove("hidden");els.siteLogbookQrCard.innerHTML=`<img alt="Site Logbook QR code" src="${qrUrl(url)}"><div><strong>Site Logbook</strong><small>${escapeHtml(url)}</small><span>Scan to submit without logging in</span></div>`;}
+async function loadSiteLogbookQrLink({force=false}={}){const locationId=getSiteLogbookLocation();if(!locationId||locationId===ALL_LOCATIONS||siteLogbookQrState.loading)return;if(!force&&siteLogbookQrState.locationId===locationId)return;siteLogbookQrState.loading=true;if(els.siteLogbookQrStatus)els.siteLogbookQrStatus.textContent="Loading Site Logbook QR...";try{const response=await siteworksApi.server(`/api/contractor-logbook/links?location_id=${encodeURIComponent(locationId)}`);if(!response.ok)throw new Error(await response.text());const data=await response.json();siteLogbookQrState={locationId,token:data.links?.[0]?.token||"",loading:false};if(els.siteLogbookQrStatus)els.siteLogbookQrStatus.textContent=siteLogbookQrState.token?"Site Logbook QR is ready.":"Create a QR for contractor logbook entries.";}catch(error){siteLogbookQrState={locationId,token:"",loading:false};if(els.siteLogbookQrStatus)els.siteLogbookQrStatus.textContent=readableServerError(error?.message||error);}renderSiteLogbookQrLink();}
+async function createSiteLogbookQrLink(){const locationId=getSiteLogbookLocation();const locationRecord=getLocation(locationId);if(!locationRecord)throw new Error("Choose a location first.");if(siteLogbookQrState.locationId!==locationId||!siteLogbookQrState.token)await loadSiteLogbookQrLink({force:true});if(siteLogbookQrState.token){renderSiteLogbookQrLink();return siteLogbookQrState.token;}const response=await siteworksApi.server("/api/contractor-logbook/links",{method:"POST",body:JSON.stringify({customerId:locationRecord.customerId,locationId:locationRecord.id,overdueHours:12})});if(!response.ok)throw new Error(await response.text());const data=await response.json();siteLogbookQrState={locationId,token:data.link?.token||"",loading:false};renderSiteLogbookQrLink();return siteLogbookQrState.token;}
 async function loadAnnualPermitQrLink({force=false}={}){const locationId=els.annualPermitLocation?.value||selectedLocationId;if(!locationId||locationId===ALL_LOCATIONS||annualPermitQrState.loading)return;if(!force&&annualPermitQrState.locationId===locationId)return;annualPermitQrState.loading=true;if(els.annualPermitQrStatus)els.annualPermitQrStatus.textContent="Loading contractor QR...";try{const response=await siteworksApi.server(`/api/contractor-logbook/links?location_id=${encodeURIComponent(locationId)}`);if(!response.ok)throw new Error(await response.text());const data=await response.json();annualPermitQrState={locationId,token:data.links?.[0]?.token||"",loading:false};if(els.annualPermitQrStatus)els.annualPermitQrStatus.textContent=annualPermitQrState.token?"Location QR is ready.":"Create a QR for contractor submissions.";}catch(error){annualPermitQrState={locationId,token:"",loading:false};if(els.annualPermitQrStatus)els.annualPermitQrStatus.textContent=readableServerError(error?.message||error);}renderAnnualPermitQrLink();}
 async function createAnnualPermitQrLink(){const locationId=els.annualPermitLocation?.value||selectedLocationId;const location=getLocation(locationId);if(!location)throw new Error("Choose a location first.");if(annualPermitQrState.locationId!==locationId||!annualPermitQrState.token)await loadAnnualPermitQrLink({force:true});if(annualPermitQrState.token){renderAnnualPermitQrLink();return annualPermitQrState.token;}const response=await siteworksApi.server("/api/contractor-logbook/links",{method:"POST",body:JSON.stringify({customerId:location.customerId,locationId:location.id,overdueHours:12})});if(!response.ok)throw new Error(await response.text());const data=await response.json();annualPermitQrState={locationId,token:data.link?.token||"",loading:false};renderAnnualPermitQrLink();return annualPermitQrState.token;}
 function renderAnnualPermits(){if(!els.annualPermitLocation)return;const customerId=selectedCustomerId!==ALL_CUSTOMERS?selectedCustomerId:currentUser?.customerId||"";let locations=customerId?locationsForCustomer(customerId):[];if(selectedLocationId&&selectedLocationId!==ALL_LOCATIONS)locations=locations.filter(x=>x.id===selectedLocationId);const previous=els.annualPermitLocation.value||selectedLocationId;els.annualPermitLocation.innerHTML=locations.map(x=>`<option value="${escapeAttribute(x.id)}">${escapeHtml(x.name)}</option>`).join("");els.annualPermitLocation.value=locations.some(x=>x.id===previous)?previous:locations[0]?.id||"";const locationId=els.annualPermitLocation.value;const assets=(state.assets||[]).filter(x=>x.locationId===locationId);if(els.annualPermitAsset)els.annualPermitAsset.innerHTML=`<option value="">Location-wide</option>${assets.map(x=>`<option value="${escapeAttribute(x.id)}">${escapeHtml(x.name)}</option>`).join("")}`;let permits=annualPermitState.permits||[];const filter=els.annualPermitStatusFilter?.value||"all";if(filter!=="all")permits=permits.filter(p=>annualPermitComputedStatus(p)===filter);const counts={current:0,expiring:0,expired:0,pending:0};(annualPermitState.permits||[]).forEach(p=>{const s=annualPermitComputedStatus(p);if(counts[s]!==undefined)counts[s]++;});els.annualPermitSummary.innerHTML=`<div class="metric-card"><span>Current</span><strong>${counts.current}</strong></div><div class="metric-card"><span>Expiring within 90 days</span><strong>${counts.expiring}</strong></div><div class="metric-card"><span>Expired</span><strong class="${counts.expired?'status-danger':''}">${counts.expired}</strong></div><div class="metric-card"><span>Pending review</span><strong>${counts.pending}</strong></div>`;els.annualPermitList.innerHTML=permits.length?permits.map(p=>{const s=annualPermitComputedStatus(p);return `<article class="site-logbook-entry ${s==='expired'?'is-overdue':''}"><div class="site-logbook-entry-head"><div><span class="site-logbook-type">${escapeHtml(p.permitType)}</span><h3>${escapeHtml(p.permitNumber)}</h3></div><span class="contractor-visit-status ${s==='expired'?'is-overdue':s==='current'?'is-onsite':'is-complete'}">${escapeHtml(s.replace(/^./,c=>c.toUpperCase()))}</span></div><div class="site-logbook-meta"><span>${escapeHtml(p.holderType==='contractor'?'Contractor held':'Client held')} | ${escapeHtml(p.holderName)}</span><span>Effective ${escapeHtml(String(p.effectiveDate).slice(0,10))}</span><span>Expires ${escapeHtml(String(p.expiryDate).slice(0,10))}</span><span>${escapeHtml(p.issuingAuthority)}</span></div>${p.document?.url?`<a class="secondary mini" href="${escapeAttribute(p.document.url)}" target="_blank" rel="noopener">View Permit Document</a>`:""}${p.reviewStatus==='pending'?`<button type="button" data-approve-permit="${escapeAttribute(p.id)}">Approve as Current</button>`:""}</article>`;}).join(""):`<div class="empty-state"><strong>No permit records found</strong><p>Add a permit or use the location QR for contractor submission.</p></div>`;}
@@ -42378,7 +42382,7 @@ function renderContractorLogbook() {
       </details>
     </article>`).join("") : `<div class="contractor-empty-state"><strong>${contractorLogbookSearch ? "No matching contractors" : "No contractor visits in this report period."}</strong><p>${contractorLogbookSearch ? "Try a different name, company, purpose, or job number." : "Select a different period or use the QR code for contractors to sign in onsite."}</p></div>`;
   if (contractorLogbookState.token && els.contractorLogbookLinkCard) {
-    const urls = [["visit", "Sign In / Out"], ["logbook", "Site Logbook"], ["permit", "Annual Permit"]];
+    const urls = [["visit", "Sign In / Out"]];
     els.contractorLogbookLinkCard.classList.remove("hidden");
     els.contractorLogbookLinkCard.innerHTML = urls.map(([mode, label]) => {
       const url = contractorLogbookPublicUrl(contractorLogbookState.token, mode);
