@@ -14891,6 +14891,8 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 .site-logbooks-header h2 { margin: 0; font-size: 23px; }
 .site-logbooks-header p { margin: 5px 0 0; }
 .site-logbook-summary { display: grid; grid-template-columns: repeat(3, minmax(150px, 220px)); gap: 10px; }
+.annual-permits-shell { display:grid; gap:16px; padding:18px; background:#f4f7f6; }
+.annual-permits-shell .site-logbook-summary { grid-template-columns:repeat(4,minmax(150px,220px)); }
 .site-logbook-summary .metric-card { min-height: 80px; padding: 14px 16px; border: 1px solid #dbe6e3; background: #fff; box-shadow: 0 2px 8px rgba(24,46,43,.04); }
 .site-logbook-summary .metric-card span { color: var(--muted); font-size: 12px; }
 .site-logbook-summary .metric-card strong { font-size: 26px; }

@@ -7005,6 +7005,7 @@ let intentionalLogoutAt = 0;
 let contractorLogbookState = { locationId: "", token: "", link: "", visits: [], overdueHours: 12, notifyOnArrival: false, notificationEmail: "", reportFrequency: "none", reportEmail: "", reportWeekday: 1, reportHour: 7, loading: false };
 let siteLogbookState = { locationId: "", entries: [], loading: false };
 let publicSiteLogbookAssets = [];
+let annualPermitState = { permits: [], loading: false };
 let lastPublicReportError = "";
 let publicKeyLookupState = {
   uid: "",
@@ -7366,6 +7367,9 @@ const els = {
   publicContractorTaskMenu: document.getElementById("publicContractorTaskMenu"),
   publicContractorVisitModeBtn: document.getElementById("publicContractorVisitModeBtn"),
   publicContractorLogModeBtn: document.getElementById("publicContractorLogModeBtn"),
+  publicPermitModeBtn: document.getElementById("publicPermitModeBtn"), publicPermitForm: document.getElementById("publicPermitForm"), publicPermitBackBtn: document.getElementById("publicPermitBackBtn"),
+  publicPermitType: document.getElementById("publicPermitType"), publicPermitAsset: document.getElementById("publicPermitAsset"), publicPermitHolderType: document.getElementById("publicPermitHolderType"), publicPermitHolderName: document.getElementById("publicPermitHolderName"), publicPermitNumber: document.getElementById("publicPermitNumber"), publicPermitAuthority: document.getElementById("publicPermitAuthority"), publicPermitEffectiveDate: document.getElementById("publicPermitEffectiveDate"), publicPermitExpiryDate: document.getElementById("publicPermitExpiryDate"), publicPermitSubmitter: document.getElementById("publicPermitSubmitter"), publicPermitCompany: document.getElementById("publicPermitCompany"), publicPermitEmail: document.getElementById("publicPermitEmail"), publicPermitPhone: document.getElementById("publicPermitPhone"), publicPermitFile: document.getElementById("publicPermitFile"), publicPermitNotes: document.getElementById("publicPermitNotes"), publicPermitSignature: document.getElementById("publicPermitSignature"), publicPermitMessage: document.getElementById("publicPermitMessage"),
+  annualPermitAddBtn: document.getElementById("annualPermitAddBtn"), annualPermitSummary: document.getElementById("annualPermitSummary"), annualPermitLocation: document.getElementById("annualPermitLocation"), annualPermitStatusFilter: document.getElementById("annualPermitStatusFilter"), annualPermitRefreshBtn: document.getElementById("annualPermitRefreshBtn"), annualPermitDrawer: document.getElementById("annualPermitDrawer"), annualPermitForm: document.getElementById("annualPermitForm"), annualPermitType: document.getElementById("annualPermitType"), annualPermitAsset: document.getElementById("annualPermitAsset"), annualPermitHolderType: document.getElementById("annualPermitHolderType"), annualPermitHolderName: document.getElementById("annualPermitHolderName"), annualPermitNumber: document.getElementById("annualPermitNumber"), annualPermitAuthority: document.getElementById("annualPermitAuthority"), annualPermitEffectiveDate: document.getElementById("annualPermitEffectiveDate"), annualPermitExpiryDate: document.getElementById("annualPermitExpiryDate"), annualPermitNotes: document.getElementById("annualPermitNotes"), annualPermitCancelBtn: document.getElementById("annualPermitCancelBtn"), annualPermitFormStatus: document.getElementById("annualPermitFormStatus"), annualPermitStatus: document.getElementById("annualPermitStatus"), annualPermitList: document.getElementById("annualPermitList"),
   publicContractorVisitBackBtn: document.getElementById("publicContractorVisitBackBtn"),
   publicSiteLogbookBackBtn: document.getElementById("publicSiteLogbookBackBtn"),
   publicSiteLogbookForm: document.getElementById("publicSiteLogbookForm"),
@@ -10807,6 +10811,7 @@ els.publicContractorLogbookForm?.addEventListener("submit", submitPublicContract
 els.publicSiteLogbookForm?.addEventListener("submit", submitPublicSiteLogbook);
 els.publicContractorVisitModeBtn?.addEventListener("click", () => showPublicContractorTask("visit"));
 els.publicContractorLogModeBtn?.addEventListener("click", () => { updatePublicSiteLogbookSpecialField(); showPublicContractorTask("logbook"); });
+els.publicPermitModeBtn?.addEventListener("click",()=>showPublicContractorTask("permit")); els.publicPermitBackBtn?.addEventListener("click",()=>showPublicContractorTask("menu")); els.publicPermitForm?.addEventListener("submit",submitPublicPermit); els.publicPermitEffectiveDate?.addEventListener("change",()=>{if(!els.publicPermitExpiryDate.value)els.publicPermitExpiryDate.value=defaultAnnualExpiry(els.publicPermitEffectiveDate.value);}); els.publicPermitSubmitter?.addEventListener("change",()=>{if(!els.publicPermitSignature.value)els.publicPermitSignature.value=els.publicPermitSubmitter.value;});
 els.publicContractorVisitBackBtn?.addEventListener("click", () => showPublicContractorTask("menu"));
 els.publicSiteLogbookBackBtn?.addEventListener("click", () => showPublicContractorTask("menu"));
 els.publicSiteLogbookType?.addEventListener("change", updatePublicSiteLogbookSpecialField);
@@ -10957,6 +10962,7 @@ els.siteLogbookList?.addEventListener("click", async (event) => {
     await loadSiteLogbooks();
   } catch (error) { if (els.siteLogbookStatus) els.siteLogbookStatus.textContent = readableServerError(error?.message || error); button.disabled = false; }
 });
+els.annualPermitAddBtn?.addEventListener("click",()=>{els.annualPermitDrawer.open=true;const today=new Date().toISOString().slice(0,10);els.annualPermitEffectiveDate.value=today;els.annualPermitExpiryDate.value=defaultAnnualExpiry(today);}); els.annualPermitCancelBtn?.addEventListener("click",()=>{els.annualPermitDrawer.open=false;}); els.annualPermitForm?.addEventListener("submit",saveAnnualPermit); els.annualPermitEffectiveDate?.addEventListener("change",()=>{els.annualPermitExpiryDate.value=defaultAnnualExpiry(els.annualPermitEffectiveDate.value);}); els.annualPermitLocation?.addEventListener("change",loadAnnualPermits); els.annualPermitStatusFilter?.addEventListener("change",renderAnnualPermits); els.annualPermitRefreshBtn?.addEventListener("click",loadAnnualPermits); els.annualPermitList?.addEventListener("click",async(event)=>{const button=event.target.closest("[data-approve-permit]");if(!button)return;const response=await siteworksApi.server(`/api/annual-permits/${encodeURIComponent(button.dataset.approvePermit)}`,{method:"PATCH",body:"{}"});if(response.ok)await loadAnnualPermits();else els.annualPermitStatus.textContent=readableServerError(await response.text());});
 
 els.publicContractorSendCodeBtn?.addEventListener("click", async () => {
   const token = getPublicContractorLogbookToken();
@@ -17523,7 +17529,7 @@ async function deleteLightingZone(zoneId) {
 }
 
 function setInventoryTab(tab = "items") {
-  const allowedTabs = new Set(["items", "keys", "contractors", "logbooks"]);
+  const allowedTabs = new Set(["items", "keys", "contractors", "logbooks", "permits"]);
   inventoryTab = allowedTabs.has(tab) ? tab : "items";
   const logbookSection = document.getElementById("contractorLogbookSection");
   const logbookPane = document.getElementById("contractorLogbookPane");
@@ -17538,6 +17544,7 @@ function setInventoryTab(tab = "items") {
   });
   if (inventoryTab === "contractors") loadContractorLogbook();
   if (inventoryTab === "logbooks") { renderSiteLogbooks(); loadSiteLogbooks(); }
+  if (inventoryTab === "permits") { renderAnnualPermits(); loadAnnualPermits(); }
   syncInventorySidebarMenuState();
 }
 
@@ -17593,7 +17600,7 @@ function openMobileTab(targetId) {
     return;
   }
 
-  if (targetId === "inventoryPanel" && !["keys", "contractors", "logbooks"].includes(inventoryTab)) setInventoryTab("items");
+  if (targetId === "inventoryPanel" && !["keys", "contractors", "logbooks", "permits"].includes(inventoryTab)) setInventoryTab("items");
   if (targetId !== "adminToolsDrawer") closeSidebarTarget("adminToolsDrawer");
   const target = document.getElementById(targetId);
   const isOpen = target?.tagName === "DETAILS"
@@ -41945,6 +41952,7 @@ async function renderPublicContractorLogbook() {
     els.publicContractorLogbookContext.textContent = [data.customerName, data.locationAddress].filter(Boolean).join(" | ");
     publicSiteLogbookAssets = Array.isArray(data.assets) ? data.assets : [];
     if (els.publicSiteLogbookAsset) els.publicSiteLogbookAsset.innerHTML = `<option value="">Location-wide / equipment not listed</option>${publicSiteLogbookAssets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name)}${asset.type ? ` | ${escapeHtml(asset.type)}` : ""}</option>`).join("")}`;
+    if (els.publicPermitAsset) els.publicPermitAsset.innerHTML = `<option value="">Location-wide / no specific equipment</option>${publicSiteLogbookAssets.map((asset) => `<option value="${escapeAttribute(asset.id)}">${escapeHtml(asset.name)}</option>`).join("")}`;
     const requestedAssetId = new URLSearchParams(location.search).get("logAsset") || "";
     if (requestedAssetId && publicSiteLogbookAssets.some((asset) => String(asset.id) === requestedAssetId)) {
       els.publicSiteLogbookAsset.value = requestedAssetId;
@@ -41965,9 +41973,13 @@ function showPublicContractorTask(mode = "menu") {
   els.publicContractorTaskMenu?.classList.toggle("hidden", mode !== "menu");
   els.publicContractorLogbookForm?.classList.toggle("hidden", mode !== "visit");
   els.publicSiteLogbookForm?.classList.toggle("hidden", mode !== "logbook");
+  els.publicPermitForm?.classList.toggle("hidden", mode !== "permit");
   if (mode === "visit") window.setTimeout(() => els.publicContractorName?.focus(), 60);
   if (mode === "logbook") window.setTimeout(() => els.publicSiteLogbookName?.focus(), 60);
 }
+
+function defaultAnnualExpiry(effective) { const date=new Date(`${effective}T12:00:00`); if(Number.isNaN(date.getTime()))return ""; date.setFullYear(date.getFullYear()+1); return date.toISOString().slice(0,10); }
+async function submitPublicPermit(event) { event.preventDefault(); const token=getPublicContractorLogbookToken(); const file=els.publicPermitFile.files?.[0]; if(!file)return; els.publicPermitMessage.textContent="Uploading permit..."; try { const fd=new FormData();fd.append("file",file,file.name);const up=await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}/site-log-file`),{method:"POST",body:fd});if(!up.ok)throw new Error(await up.text());const document=await up.json();const payload={permitType:els.publicPermitType.value,assetId:els.publicPermitAsset.value,holderType:els.publicPermitHolderType.value,holderName:els.publicPermitHolderName.value.trim(),permitNumber:els.publicPermitNumber.value.trim(),issuingAuthority:els.publicPermitAuthority.value.trim(),effectiveDate:els.publicPermitEffectiveDate.value,expiryDate:els.publicPermitExpiryDate.value,submitterName:els.publicPermitSubmitter.value.trim(),company:els.publicPermitCompany.value.trim(),email:els.publicPermitEmail.value.trim(),phone:els.publicPermitPhone.value.trim(),notes:els.publicPermitNotes.value.trim(),signatureName:els.publicPermitSignature.value.trim(),document};const response=await fetch(siteworksServerUrl(`/api/public/contractor-logbook/${encodeURIComponent(token)}/annual-permit`),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(!response.ok)throw new Error(await response.text());const data=await response.json();els.publicPermitForm.reset();els.publicPermitMessage.textContent=`Permit submitted for review. Reference ${String(data.permitId).slice(0,8).toUpperCase()}.`;}catch(error){els.publicPermitMessage.textContent=readableServerError(error?.message||error);} }
 
 function updatePublicSiteLogbookSpecialField() {
   const type = els.publicSiteLogbookType?.value || "maintenance";
@@ -42146,6 +42158,10 @@ function exportSiteLogbooksCsv() {
   const csv = rows.map((row) => row.map((value) => `"${String(value || "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
   const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); link.download = "siteworks-site-logbooks.csv"; link.click(); URL.revokeObjectURL(link.href);
 }
+function annualPermitComputedStatus(p){if(p.reviewStatus==="pending")return "pending";if(p.reviewStatus==="replaced")return "replaced";const days=(new Date(`${p.expiryDate}T23:59:59`)-new Date())/86400000;if(days<0)return "expired";if(days<=90)return "expiring";return "current";}
+function renderAnnualPermits(){if(!els.annualPermitLocation)return;const customerId=selectedCustomerId!==ALL_CUSTOMERS?selectedCustomerId:currentUser?.customerId||"";let locations=customerId?locationsForCustomer(customerId):[];if(selectedLocationId&&selectedLocationId!==ALL_LOCATIONS)locations=locations.filter(x=>x.id===selectedLocationId);const previous=els.annualPermitLocation.value||selectedLocationId;els.annualPermitLocation.innerHTML=locations.map(x=>`<option value="${escapeAttribute(x.id)}">${escapeHtml(x.name)}</option>`).join("");els.annualPermitLocation.value=locations.some(x=>x.id===previous)?previous:locations[0]?.id||"";const locationId=els.annualPermitLocation.value;const assets=(state.assets||[]).filter(x=>x.locationId===locationId);if(els.annualPermitAsset)els.annualPermitAsset.innerHTML=`<option value="">Location-wide</option>${assets.map(x=>`<option value="${escapeAttribute(x.id)}">${escapeHtml(x.name)}</option>`).join("")}`;let permits=annualPermitState.permits||[];const filter=els.annualPermitStatusFilter?.value||"all";if(filter!=="all")permits=permits.filter(p=>annualPermitComputedStatus(p)===filter);const counts={current:0,expiring:0,expired:0,pending:0};(annualPermitState.permits||[]).forEach(p=>{const s=annualPermitComputedStatus(p);if(counts[s]!==undefined)counts[s]++;});els.annualPermitSummary.innerHTML=`<div class="metric-card"><span>Current</span><strong>${counts.current}</strong></div><div class="metric-card"><span>Expiring within 90 days</span><strong>${counts.expiring}</strong></div><div class="metric-card"><span>Expired</span><strong class="${counts.expired?'status-danger':''}">${counts.expired}</strong></div><div class="metric-card"><span>Pending review</span><strong>${counts.pending}</strong></div>`;els.annualPermitList.innerHTML=permits.length?permits.map(p=>{const s=annualPermitComputedStatus(p);return `<article class="site-logbook-entry ${s==='expired'?'is-overdue':''}"><div class="site-logbook-entry-head"><div><span class="site-logbook-type">${escapeHtml(p.permitType)}</span><h3>${escapeHtml(p.permitNumber)}</h3></div><span class="contractor-visit-status ${s==='expired'?'is-overdue':s==='current'?'is-onsite':'is-complete'}">${escapeHtml(s.replace(/^./,c=>c.toUpperCase()))}</span></div><div class="site-logbook-meta"><span>${escapeHtml(p.holderType==='contractor'?'Contractor held':'Client held')} | ${escapeHtml(p.holderName)}</span><span>Effective ${escapeHtml(String(p.effectiveDate).slice(0,10))}</span><span>Expires ${escapeHtml(String(p.expiryDate).slice(0,10))}</span><span>${escapeHtml(p.issuingAuthority)}</span></div>${p.document?.url?`<a class="secondary mini" href="${escapeAttribute(p.document.url)}" target="_blank" rel="noopener">View Permit Document</a>`:""}${p.reviewStatus==='pending'?`<button type="button" data-approve-permit="${escapeAttribute(p.id)}">Approve as Current</button>`:""}</article>`;}).join(""):`<div class="empty-state"><strong>No permit records found</strong><p>Add a permit or use the location QR for contractor submission.</p></div>`;}
+async function loadAnnualPermits(){const locationId=els.annualPermitLocation?.value||selectedLocationId;const location=getLocation(locationId);if(!location||annualPermitState.loading)return;annualPermitState.loading=true;try{const response=await siteworksApi.server(`/api/annual-permits?customer_id=${encodeURIComponent(location.customerId)}&location_id=${encodeURIComponent(locationId)}`);if(!response.ok)throw new Error(await response.text());annualPermitState.permits=(await response.json()).permits||[];els.annualPermitStatus.textContent="";}catch(error){els.annualPermitStatus.textContent=readableServerError(error?.message||error);}finally{annualPermitState.loading=false;renderAnnualPermits();}}
+async function saveAnnualPermit(event){event.preventDefault();const location=getLocation(els.annualPermitLocation.value);try{const response=await siteworksApi.server("/api/annual-permits",{method:"POST",body:JSON.stringify({customerId:location.customerId,locationId:location.id,assetId:els.annualPermitAsset.value,permitType:els.annualPermitType.value,holderType:els.annualPermitHolderType.value,holderName:els.annualPermitHolderName.value.trim(),permitNumber:els.annualPermitNumber.value.trim(),issuingAuthority:els.annualPermitAuthority.value.trim(),effectiveDate:els.annualPermitEffectiveDate.value,expiryDate:els.annualPermitExpiryDate.value,notes:els.annualPermitNotes.value.trim()})});if(!response.ok)throw new Error(await response.text());els.annualPermitForm.reset();els.annualPermitDrawer.open=false;await loadAnnualPermits();}catch(error){els.annualPermitFormStatus.textContent=readableServerError(error?.message||error);}}
 
 function contractorLogbookPublicUrl(token = contractorLogbookState.token) {
   const base = normalizeBaseUrl(getQrBaseUrl() || PRODUCTION_SITE_URL);

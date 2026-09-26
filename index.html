@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260925-logbook-easy-use-56">
+  <link rel="stylesheet" href="/styles.css?v=20260925-annual-permits-57">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -28,6 +28,7 @@
         <h2>What are you here to do?</h2>
         <button id="publicContractorVisitModeBtn" type="button"><strong>Sign In or Sign Out</strong><span>Record your arrival or departure</span></button>
         <button id="publicContractorLogModeBtn" type="button" class="secondary"><strong>Complete a Site Logbook</strong><span>Electrical, elevator, or maintenance work</span></button>
+        <button id="publicPermitModeBtn" type="button" class="secondary"><strong>Submit an Annual Permit</strong><span>Upload a permit or annual certificate for this site</span></button>
       </div>
       <form id="publicContractorLogbookForm" class="stack hidden">
         <button id="publicContractorVisitBackBtn" type="button" class="public-contractor-back secondary">Back to options</button>
@@ -58,6 +59,22 @@
           <button type="submit" name="contractorAction" value="sign-out" class="secondary" formnovalidate>Sign Out</button>
         </div>
         <p id="publicContractorLogbookMessage" class="login-message"></p>
+      </form>
+      <form id="publicPermitForm" class="stack hidden">
+        <button id="publicPermitBackBtn" type="button" class="public-contractor-back secondary">Back to options</button>
+        <h2>Submit Annual Permit</h2>
+        <label>Permit type <select id="publicPermitType" required><option>Electrical operating permit</option><option>Elevator operating permit</option><option>Fire and life safety certificate</option><option>Backflow test certificate</option><option>Boiler or pressure vessel permit</option><option>Emergency lighting inspection</option><option>Generator inspection</option><option>Other annual permit</option></select></label>
+        <label>Related equipment <select id="publicPermitAsset"><option value="">Location-wide / no specific equipment</option></select></label>
+        <div class="form-grid"><label>Permit holder <select id="publicPermitHolderType"><option value="client">Client</option><option value="contractor">Contractor</option></select></label><label>Holder legal name <input id="publicPermitHolderName" required></label></div>
+        <div class="form-grid"><label>Permit number <input id="publicPermitNumber" required></label><label>Issuing authority <input id="publicPermitAuthority" required></label></div>
+        <div class="form-grid"><label>Effective date <input id="publicPermitEffectiveDate" type="date" required></label><label>Expiry date <input id="publicPermitExpiryDate" type="date" required></label></div>
+        <div class="form-grid"><label>Submitted by <input id="publicPermitSubmitter" required></label><label>Company <input id="publicPermitCompany"></label></div>
+        <div class="form-grid"><label>Email <input id="publicPermitEmail" type="email"></label><label>Phone <input id="publicPermitPhone" type="tel"></label></div>
+        <label>Permit document <input id="publicPermitFile" type="file" accept="image/*,.pdf,application/pdf" required></label>
+        <label>Conditions or notes <textarea id="publicPermitNotes" rows="3"></textarea></label>
+        <label class="check-row"><input id="publicPermitConfirm" type="checkbox" required> I confirm this permit information is accurate.</label>
+        <label>Signature <input id="publicPermitSignature" required placeholder="Type your full name"></label>
+        <button type="submit">Submit Permit for Review</button><p id="publicPermitMessage" class="login-message"></p>
       </form>
       <form id="publicSiteLogbookForm" class="stack hidden">
         <button id="publicSiteLogbookBackBtn" type="button" class="public-contractor-back secondary">Back to options</button>
@@ -370,6 +387,7 @@
               <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="keys">Keys</button>
               <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="contractors">Contractor Logbook</button>
               <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="logbooks">Site Logbooks</button>
+              <button type="button" class="sidebar-submenu-btn" data-open-inventory-tab="permits">Permits &amp; Records</button>
             </div>
           </div>
           <button type="button" class="sidebar-nav-btn" data-open-target="completedPmPanel" aria-expanded="false">
@@ -2341,6 +2359,7 @@
             <button type="button" class="asset-subnav-tab" data-inventory-tab="keys">Keys</button>
             <button type="button" class="asset-subnav-tab" data-inventory-tab="contractors">Contractor Logbook</button>
             <button type="button" class="asset-subnav-tab" data-inventory-tab="logbooks">Site Logbooks</button>
+            <button type="button" class="asset-subnav-tab" data-inventory-tab="permits">Permits &amp; Records</button>
           </div>
           <div id="inventoryItemsPane" class="inventory-tab-pane" data-inventory-pane="items">
             <details id="inventoryCreateDrawer" class="service-request-create-drawer work-create-drawer">
@@ -2612,6 +2631,17 @@
               </form>
             </details>
             <div id="keyList" class="inventory-list"></div>
+          </div>
+          <div id="annualPermitsPane" class="inventory-tab-pane hidden" data-inventory-pane="permits">
+            <div class="annual-permits-shell"><header class="site-logbooks-header"><div><span class="section-kicker">Onsite compliance records</span><h2>Annual Permits &amp; Records</h2><p class="muted">Current permits, renewal documents, and annual certificates for this location.</p></div><button id="annualPermitAddBtn" type="button">Add Permit</button></header>
+            <div id="annualPermitSummary" class="site-logbook-summary"></div>
+            <div class="site-logbook-filters"><label>Location <select id="annualPermitLocation"></select></label><label>Status <select id="annualPermitStatusFilter"><option value="all">All records</option><option value="pending">Pending review</option><option value="current">Current</option><option value="expiring">Expiring soon</option><option value="expired">Expired</option></select></label><button id="annualPermitRefreshBtn" type="button" class="secondary">Refresh</button></div>
+            <details id="annualPermitDrawer" class="site-logbook-entry-drawer"><summary>New annual permit</summary><form id="annualPermitForm" class="site-logbook-form">
+              <label>Permit type <select id="annualPermitType"><option>Electrical operating permit</option><option>Elevator operating permit</option><option>Fire and life safety certificate</option><option>Backflow test certificate</option><option>Boiler or pressure vessel permit</option><option>Emergency lighting inspection</option><option>Generator inspection</option><option>Other annual permit</option></select></label><label>Equipment <select id="annualPermitAsset"><option value="">Location-wide</option></select></label>
+              <label>Permit holder <select id="annualPermitHolderType"><option value="client">Client</option><option value="contractor">Contractor</option></select></label><label>Holder legal name <input id="annualPermitHolderName" required></label>
+              <label>Permit number <input id="annualPermitNumber" required></label><label>Issuing authority <input id="annualPermitAuthority" required></label><label>Effective date <input id="annualPermitEffectiveDate" type="date" required></label><label>Expiry date <input id="annualPermitExpiryDate" type="date" required></label>
+              <label class="full-span">Notes or conditions <textarea id="annualPermitNotes" rows="3"></textarea></label><div class="record-actions full-span"><button type="submit">Save Permit</button><button id="annualPermitCancelBtn" type="button" class="secondary">Cancel</button><span id="annualPermitFormStatus" class="inline-status"></span></div>
+            </form></details><p id="annualPermitStatus" class="inline-status"></p><div id="annualPermitList" class="site-logbook-list"></div></div>
           </div>
           <div id="contractorLogbookPane" class="inventory-tab-pane hidden" data-inventory-pane="contractors"></div>
           <div id="siteLogbooksPane" class="inventory-tab-pane hidden" data-inventory-pane="logbooks">
@@ -2991,6 +3021,7 @@
       <button type="button" data-mobile-inventory-target="keys">Keys</button>
       <button type="button" data-mobile-inventory-target="contractors">Contractor Logbook</button>
       <button type="button" data-mobile-inventory-target="logbooks">Site Logbooks</button>
+      <button type="button" data-mobile-inventory-target="permits">Permits &amp; Records</button>
     </div>
   </nav>
 
@@ -3106,7 +3137,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260925-logbook-easy-use-56"></script>
+  <script src="/app.js?v=20260925-annual-permits-57"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
