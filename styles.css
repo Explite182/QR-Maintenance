@@ -14893,6 +14893,15 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 .site-logbook-summary { display: grid; grid-template-columns: repeat(3, minmax(150px, 220px)); gap: 10px; }
 .annual-permits-shell { display:grid; gap:16px; padding:18px; background:#f4f7f6; }
 .annual-permits-shell .site-logbook-summary { grid-template-columns:repeat(4,minmax(150px,220px)); }
+.annual-permit-scan-module { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,0.65fr); gap:20px; align-items:center; padding:18px; border:1px solid #d5e3df; border-radius:8px; background:#fff; }
+.annual-permit-scan-module > div:first-child { display:grid; gap:8px; align-content:center; }
+.annual-permit-scan-module h3 { margin:0; font-size:1.05rem; }
+.annual-permit-scan-module p { margin:0; }
+.annual-permit-scan-module .record-actions { margin-top:4px; }
+.annual-permit-scan-module .inventory-qr-card { min-height:148px; grid-template-columns:132px minmax(0,1fr); }
+.annual-permit-scan-module .inventory-qr-card img { width:132px; height:132px; }
+.annual-permit-scan-module .inventory-qr-card small { overflow-wrap:anywhere; }
+@media (max-width:900px) { .annual-permit-scan-module { grid-template-columns:1fr; } }
 .site-logbook-summary .metric-card { min-height: 80px; padding: 14px 16px; border: 1px solid #dbe6e3; background: #fff; box-shadow: 0 2px 8px rgba(24,46,43,.04); }
 .site-logbook-summary .metric-card span { color: var(--muted); font-size: 12px; }
 .site-logbook-summary .metric-card strong { font-size: 26px; }
