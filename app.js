@@ -7363,7 +7363,7 @@ const els = {
   contractorLogbookPrintReportBtn: document.getElementById("contractorLogbookPrintReportBtn"),
   contractorLogbookExportBtn: document.getElementById("contractorLogbookExportBtn"),
   contractorLogbookLinkCard: document.getElementById("contractorLogbookLinkCard"),
-  contractorLogbookSearch: document.getElementById("contractorLogbookSearch"), contractorInfoLocation: document.getElementById("contractorInfoLocation"), contractorInfoOnsite: document.getElementById("contractorInfoOnsite"), contractorInfoOverdue: document.getElementById("contractorInfoOverdue"), contractorInfoVisits: document.getElementById("contractorInfoVisits"),
+  contractorLogbookSearch: document.getElementById("contractorLogbookSearch"),
   contractorLogbookStatus: document.getElementById("contractorLogbookStatus"),
   contractorLogbookSummary: document.getElementById("contractorLogbookSummary"),
   contractorLogbookList: document.getElementById("contractorLogbookList"),
@@ -42358,10 +42358,6 @@ function renderContractorLogbook() {
     <div class="metric-card"><span>Currently onsite</span><strong>${onsite.length}</strong></div>
     <div class="metric-card"><span>Overdue onsite</span><strong class="${overdue.length ? "status-danger" : ""}">${overdue.length}</strong></div>
     <div class="metric-card"><span>Visits in report period</span><strong>${allVisits.length}</strong></div>`;
-  if (els.contractorInfoLocation) els.contractorInfoLocation.textContent = getLocation(nextLocationId)?.name || "--";
-  if (els.contractorInfoOnsite) els.contractorInfoOnsite.textContent = String(onsite.length);
-  if (els.contractorInfoOverdue) els.contractorInfoOverdue.textContent = String(overdue.length);
-  if (els.contractorInfoVisits) els.contractorInfoVisits.textContent = String(allVisits.length);
   if (els.contractorLogbookList) els.contractorLogbookList.innerHTML = visits.length ? visits.map((visit) => `
     <article class="activity-log-item${visit.signedOutAt ? "" : " is-warning"}${isContractorVisitOverdue(visit) ? " is-overdue" : ""}">
       <div class="contractor-visit-heading"><strong>${escapeHtml(visit.contractorName)}${visit.company ? ` <span>${escapeHtml(visit.company)}</span>` : ""}</strong><span class="contractor-visit-status ${isContractorVisitOverdue(visit) ? "is-overdue" : visit.signedOutAt ? "is-complete" : "is-onsite"}">${isContractorVisitOverdue(visit) ? "Overdue" : visit.signedOutAt ? "Completed" : "Onsite"}</span></div>
