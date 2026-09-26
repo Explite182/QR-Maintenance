@@ -26531,6 +26531,14 @@ body.site-map-fullscreen-active:not(.site-map-monitor-active) .app-shell.site-ma
   vector-effect: non-scaling-stroke;
 }
 
+.hvac-trend-lines path.is-setpoint { stroke-dasharray:7 6; stroke-width:2; }
+.hvac-trend-state-legend { display:flex; flex-wrap:wrap; gap:8px; }
+.hvac-trend-state-legend span { padding:5px 9px; border-radius:999px; color:#aebbc7; background:#162127; font-size:.72rem; font-weight:850; }
+.hvac-trend-state-legend .is-heat { border-left:4px solid #fb7185; }
+.hvac-trend-state-legend .is-cool { border-left:4px solid #38bdf8; }
+.hvac-trend-state-legend .is-fan { border-left:4px solid #a78bfa; }
+.hvac-trend-state-legend .is-proof { border-left:4px solid #2dd4bf; }
+
 .hvac-trend-empty {
   display: grid;
   place-items: center;

@@ -25744,7 +25744,9 @@ function renderHvacTemperatureTrendChart(controller = null) {
     { key: "roomTempF", label: "Room", color: "#34d399" },
     { key: "supplyTempF", label: "Supply", color: "#38bdf8" },
     { key: "returnTempF", label: "Return", color: "#fbbf24" },
-    { key: "outsideTempF", label: "Outside", color: "#f472b6" }
+    { key: "outsideTempF", label: "Outside", color: "#f472b6" },
+    { key: "heatSetpointF", label: "Heat setpoint", color: "#fb7185", dashed: true },
+    { key: "coolSetpointF", label: "Cool setpoint", color: "#60a5fa", dashed: true }
   ].map((item) => ({
     ...item,
     points: readings.map((reading) => ({
@@ -25782,19 +25784,37 @@ function renderHvacTemperatureTrendChart(controller = null) {
   const fahrenheitToCelsius = (value) => (value - 32) * 5 / 9;
   const paths = series.map((item) => {
     const lastPoint = item.points[item.points.length - 1];
-    return `<path d="${item.points.map((point, index) => `${index ? "L" : "M"}${x(point.time).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ")}" stroke="${item.color}" /><circle cx="${x(lastPoint.time).toFixed(1)}" cy="${y(lastPoint.value).toFixed(1)}" r="4" fill="${item.color}" />`;
+    return `<path class="${item.dashed ? "is-setpoint" : ""}" d="${item.points.map((point, index) => `${index ? "L" : "M"}${x(point.time).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ")}" stroke="${item.color}" /><circle cx="${x(lastPoint.time).toFixed(1)}" cy="${y(lastPoint.value).toFixed(1)}" r="${item.dashed ? 3 : 4}" fill="${item.color}" />`;
   }).join("");
   const latestCards = series.map((item) => {
     const values = item.points.map((point) => point.value);
     const latest = values[values.length - 1];
     return `<span><i style="background:${item.color}"></i><b>${item.label}</b><strong>${fahrenheitToCelsius(latest).toFixed(1)} C</strong><em>${Math.min(...values).toFixed(1)}-${Math.max(...values).toFixed(1)} F</em></span>`;
   }).join("");
+  const stateBands = readings.map((reading, index) => {
+    const time = Date.parse(reading.recordedAt || "");
+    if (!Number.isFinite(time)) return "";
+    const nextTime = Date.parse(readings[index + 1]?.recordedAt || "");
+    const startX = x(time);
+    const endX = Number.isFinite(nextTime) ? x(nextTime) : Math.min(width - chart.right, startX + Math.max(5, plotWidth / Math.max(1, readings.length)));
+    const bandWidth = Math.max(2, endX - startX);
+    return [
+      reading.heatingCall ? `<rect x="${startX}" y="${chart.top}" width="${bandWidth}" height="${plotHeight}" fill="rgba(251,113,133,.09)" />` : "",
+      reading.coolingCall ? `<rect x="${startX}" y="${chart.top}" width="${bandWidth}" height="${plotHeight}" fill="rgba(56,189,248,.09)" />` : "",
+      reading.fanCommand ? `<rect x="${startX}" y="${height - 35}" width="${bandWidth}" height="5" fill="#a78bfa" />` : "",
+      reading.fanProof ? `<rect x="${startX}" y="${height - 27}" width="${bandWidth}" height="5" fill="#2dd4bf" />` : ""
+    ].join("");
+  }).join("");
+  const latestReading = readings[readings.length - 1] || {};
+  const equipmentState = `<div class="hvac-trend-state-legend"><span class="is-heat">Heat ${latestReading.heatingCall ? "On" : "Off"}</span><span class="is-cool">Cool ${latestReading.coolingCall ? "On" : "Off"}</span><span class="is-fan">Fan ${latestReading.fanCommand ? "On" : "Off"}</span><span class="is-proof">Proof ${latestReading.fanProof ? "Made" : "Open"}</span></div>`;
   return `
     <section class="hvac-trend-card">
       <header><div><span>Temperature History</span><strong>${readings.length} readings</strong></div><nav>${rangeButtons}</nav></header>
       <div class="hvac-trend-legend">${latestCards}</div>
+      ${equipmentState}
       <div class="hvac-trend-chart" role="img" aria-label="HVAC temperature history graph">
         <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+          ${stateBands}
           ${yTicks.map((value) => `<g><line x1="${chart.left}" y1="${y(value)}" x2="${width - chart.right}" y2="${y(value)}"/><text x="${chart.left - 10}" y="${y(value) + 4}" text-anchor="end">${fahrenheitToCelsius(value).toFixed(0)} C</text></g>`).join("")}
           ${xTicks.map((time) => `<text x="${x(time)}" y="${height - 10}" text-anchor="middle">${escapeHtml(tickDate(time))}</text>`).join("")}
           <g class="hvac-trend-lines">${paths}</g>
