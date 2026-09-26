@@ -6543,6 +6543,11 @@ let hvacControllerEmptyRetryTimer = 0;
 let hvacCommandsCache = [];
 let hvacCommandsLoadedScope = "";
 let hvacCommandsLoading = false;
+let hvacTemperatureHistoryCache = [];
+let hvacTemperatureHistoryLoadedKey = "";
+let hvacTemperatureHistoryLoading = false;
+let hvacTemperatureHistoryError = "";
+let selectedHvacTrendRange = "24h";
 let hvacFirmwareCache = { firmware: [], assignments: [] };
 let hvacFirmwareLoadedScope = "";
 let hvacFirmwareLoading = false;
@@ -11778,6 +11783,17 @@ document.addEventListener("click", async (event) => {
     event.preventDefault();
     selectedHvacCustomerTab = hvacCustomerTabButton.dataset.hvacCustomerTab || "overview";
     renderAutomationHvac();
+    if (selectedHvacCustomerTab === "trends") loadHvacTemperatureHistoryForCurrentController();
+    return;
+  }
+
+  const hvacTrendRangeButton = event.target.closest("[data-hvac-trend-range]");
+  if (hvacTrendRangeButton) {
+    event.preventDefault();
+    selectedHvacTrendRange = hvacTrendRangeButton.dataset.hvacTrendRange || "24h";
+    hvacTemperatureHistoryLoadedKey = "";
+    renderAutomationHvac();
+    loadHvacTemperatureHistoryForCurrentController({ force: true });
     return;
   }
 
@@ -25690,6 +25706,96 @@ function hvacStageTimerStatus(controller = {}, family = "heat", timerType = "min
   return hvacCountdownFromCommand(latestCommand, setSeconds, now);
 }
 
+async function loadHvacTemperatureHistoryForCurrentController({ force = false } = {}) {
+  const controller = hvacControllersForCurrentView()[0];
+  if (!controller?.id || hvacTemperatureHistoryLoading) return;
+  const key = `${controller.id}:${selectedHvacTrendRange}`;
+  if (!force && hvacTemperatureHistoryLoadedKey === key) return;
+  hvacTemperatureHistoryLoading = true;
+  hvacTemperatureHistoryError = "";
+  try {
+    const response = await siteworksApi.loadHvacTemperatureHistory(controller.id, selectedHvacTrendRange);
+    if (!response.ok) throw new Error(`Temperature history load failed: ${response.status}`);
+    const payload = await response.json();
+    hvacTemperatureHistoryCache = Array.isArray(payload.readings) ? payload.readings : [];
+    hvacTemperatureHistoryLoadedKey = key;
+  } catch (error) {
+    console.warn("HVAC temperature history could not be loaded.", error);
+    hvacTemperatureHistoryCache = [];
+    hvacTemperatureHistoryLoadedKey = key;
+    hvacTemperatureHistoryError = "Temperature history is unavailable.";
+  } finally {
+    hvacTemperatureHistoryLoading = false;
+    if (selectedHvacCustomerTab === "trends") renderAutomationHvac();
+  }
+}
+
+function renderHvacTemperatureTrendChart(controller = null) {
+  const expectedKey = controller?.id ? `${controller.id}:${selectedHvacTrendRange}` : "";
+  const readings = hvacTemperatureHistoryLoadedKey === expectedKey ? hvacTemperatureHistoryCache : [];
+  const series = [
+    { key: "roomTempF", label: "Room", color: "#34d399" },
+    { key: "supplyTempF", label: "Supply", color: "#38bdf8" },
+    { key: "returnTempF", label: "Return", color: "#fbbf24" },
+    { key: "outsideTempF", label: "Outside", color: "#f472b6" }
+  ].map((item) => ({
+    ...item,
+    points: readings.map((reading) => ({
+      time: Date.parse(reading.recordedAt || ""),
+      value: numberOrNull(reading[item.key])
+    })).filter((point) => Number.isFinite(point.time) && point.value !== null)
+  })).filter((item) => item.points.length);
+  const rangeButtons = [["24h", "24 Hours"], ["7d", "7 Days"], ["30d", "30 Days"]]
+    .map(([value, label]) => `<button type="button" class="${selectedHvacTrendRange === value ? "is-active" : ""}" data-hvac-trend-range="${value}">${label}</button>`).join("");
+  if (hvacTemperatureHistoryLoading && hvacTemperatureHistoryLoadedKey !== expectedKey) {
+    return `<section class="hvac-trend-card"><header><div><span>Temperature History</span><strong>Loading readings...</strong></div><nav>${rangeButtons}</nav></header><div class="hvac-trend-empty">Loading temperature history...</div></section>`;
+  }
+  if (!series.length) {
+    const message = hvacTemperatureHistoryError || "Waiting for temperature history. The graph will fill in as the controller reports readings.";
+    return `<section class="hvac-trend-card"><header><div><span>Temperature History</span><strong>${escapeHtml(selectedHvacTrendRange === "24h" ? "Last 24 hours" : selectedHvacTrendRange === "7d" ? "Last 7 days" : "Last 30 days")}</strong></div><nav>${rangeButtons}</nav></header><div class="hvac-trend-empty">${escapeHtml(message)}</div></section>`;
+  }
+  const allPoints = series.flatMap((item) => item.points);
+  const minTime = Math.min(...allPoints.map((point) => point.time));
+  const maxTime = Math.max(...allPoints.map((point) => point.time));
+  const rawMin = Math.min(...allPoints.map((point) => point.value));
+  const rawMax = Math.max(...allPoints.map((point) => point.value));
+  const padding = Math.max(2, (rawMax - rawMin) * 0.12);
+  const minValue = Math.floor(rawMin - padding);
+  const maxValue = Math.ceil(rawMax + padding);
+  const width = 900;
+  const height = 320;
+  const chart = { left: 58, top: 20, right: 24, bottom: 42 };
+  const plotWidth = width - chart.left - chart.right;
+  const plotHeight = height - chart.top - chart.bottom;
+  const x = (time) => chart.left + ((time - minTime) / Math.max(1, maxTime - minTime)) * plotWidth;
+  const y = (value) => chart.top + (1 - ((value - minValue) / Math.max(1, maxValue - minValue))) * plotHeight;
+  const yTicks = Array.from({ length: 5 }, (_, index) => minValue + ((maxValue - minValue) * index / 4));
+  const xTicks = Array.from({ length: 5 }, (_, index) => minTime + ((maxTime - minTime) * index / 4));
+  const tickDate = (time) => new Intl.DateTimeFormat(undefined, selectedHvacTrendRange === "24h" ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric" }).format(new Date(time));
+  const fahrenheitToCelsius = (value) => (value - 32) * 5 / 9;
+  const paths = series.map((item) => {
+    const lastPoint = item.points[item.points.length - 1];
+    return `<path d="${item.points.map((point, index) => `${index ? "L" : "M"}${x(point.time).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ")}" stroke="${item.color}" /><circle cx="${x(lastPoint.time).toFixed(1)}" cy="${y(lastPoint.value).toFixed(1)}" r="4" fill="${item.color}" />`;
+  }).join("");
+  const latestCards = series.map((item) => {
+    const values = item.points.map((point) => point.value);
+    const latest = values[values.length - 1];
+    return `<span><i style="background:${item.color}"></i><b>${item.label}</b><strong>${fahrenheitToCelsius(latest).toFixed(1)} C</strong><em>${Math.min(...values).toFixed(1)}-${Math.max(...values).toFixed(1)} F</em></span>`;
+  }).join("");
+  return `
+    <section class="hvac-trend-card">
+      <header><div><span>Temperature History</span><strong>${readings.length} readings</strong></div><nav>${rangeButtons}</nav></header>
+      <div class="hvac-trend-legend">${latestCards}</div>
+      <div class="hvac-trend-chart" role="img" aria-label="HVAC temperature history graph">
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+          ${yTicks.map((value) => `<g><line x1="${chart.left}" y1="${y(value)}" x2="${width - chart.right}" y2="${y(value)}"/><text x="${chart.left - 10}" y="${y(value) + 4}" text-anchor="end">${fahrenheitToCelsius(value).toFixed(0)} C</text></g>`).join("")}
+          ${xTicks.map((time) => `<text x="${x(time)}" y="${height - 10}" text-anchor="middle">${escapeHtml(tickDate(time))}</text>`).join("")}
+          <g class="hvac-trend-lines">${paths}</g>
+        </svg>
+      </div>
+    </section>`;
+}
+
 function hvacStageStepTimerStatus(controller = {}, family = "heat", direction = "up", timing = {}, demand = {}, now = Date.now()) {
   const timingSource = timing && typeof timing === "object" ? timing : {};
   const prefix = family === "cool" ? "cooling" : "heating";
@@ -27701,6 +27807,7 @@ function renderAutomationHvac() {
   `;
   const hvacTrendsTabHtml = `
     <section class="hvac-customer-tab-panel" aria-label="HVAC trends">
+      ${renderHvacTemperatureTrendChart(primaryController)}
       <section class="hvac-customer-tab-grid">
         ${hvacStatusDrawer("Recent Events", hvacCommandsCache.length ? String(hvacCommandsCache.length) : "None", [
           hvacStatusRow("Last Event", latestHvacEvent ? hvacCommandEventMessage(latestHvacEvent) : "No events"),
@@ -27833,6 +27940,7 @@ function renderAutomationHvac() {
   restorePendingHvacApiKeyForms();
   renderHvacFirmwareOptions();
   updateHvacFirmwareAutoRefresh();
+  if (selectedHvacCustomerTab === "trends" && primaryController?.id) loadHvacTemperatureHistoryForCurrentController();
 }
 
 function renderAutomationPumps() {
@@ -43250,6 +43358,11 @@ const siteworksApi = {
       live: String(Date.now())
     });
     return this.server(`/api/automation/hvac/commands?${params.toString()}`);
+  },
+  loadHvacTemperatureHistory(controllerId, range = "24h") {
+    if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ readings: [] }), { status: 200 }));
+    const params = new URLSearchParams({ controller_id: controllerId || "", range, live: String(Date.now()) });
+    return this.server(`/api/automation/hvac/temperature-history?${params.toString()}`);
   },
   saveHvacController(controller) {
     if (!siteworksServerEnabled()) return Promise.resolve(new Response(JSON.stringify({ ok: true, controller }), { status: 200 }));
