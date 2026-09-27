@@ -15199,12 +15199,34 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 .contractor-setting-section .contractor-email-report-controls { grid-template-columns:1fr; gap:10px; }
 
 @media (max-width:1200px) {
-  .contractor-dashboard-primary { grid-column:span 7; }
-  .contractor-dashboard-sidebar { grid-column:span 5; }
+  .contractor-dashboard-primary,
+  .contractor-dashboard-sidebar { grid-column:1 / -1; }
+  .contractor-dashboard-sidebar { grid-template-columns:1fr; }
   .contractor-overview-row { grid-template-columns:1fr; }
   .contractor-period-card { min-height:86px; }
   .contractor-report-controls { align-items:stretch; flex-direction:column; }
   .contractor-report-controls input[type="search"] { width:100%; }
+}
+
+@media (max-width:1400px) and (min-width:901px) {
+  .contractor-dashboard-primary,
+  .contractor-dashboard-sidebar { grid-column:1 / -1; }
+  .contractor-dashboard-sidebar { grid-template-columns:1fr; }
+  .contractor-scan-module {
+    grid-template-columns:minmax(260px,.8fr) minmax(360px,1.2fr);
+    column-gap:24px;
+    align-items:start;
+  }
+  .contractor-scan-module > .section-kicker,
+  .contractor-scan-module > h3,
+  .contractor-scan-module > .muted,
+  .contractor-scan-module > .contractor-scan-actions { grid-column:1; }
+  #contractorLogbookPane .contractor-scan-module .inventory-qr-card {
+    grid-column:2;
+    grid-row:1 / span 5;
+    width:100%;
+    margin:0;
+  }
 }
 
 @media (max-width:900px) {
@@ -15213,6 +15235,12 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
   .contractor-dashboard-primary,
   .contractor-dashboard-sidebar { grid-column:1 / -1; }
   .contractor-dashboard-sidebar { grid-template-columns:1fr; }
+  .contractor-scan-module { grid-template-columns:1fr; }
+  .contractor-scan-module > *,
+  #contractorLogbookPane .contractor-scan-module .inventory-qr-card {
+    grid-column:1;
+    grid-row:auto;
+  }
   .contractor-settings-content { grid-template-columns:1fr; }
 }
 
