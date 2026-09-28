@@ -25823,7 +25823,7 @@ function renderHvacTemperatureTrendChart(controller = null) {
       <div class="hvac-trend-legend">${latestCards}</div>
       ${equipmentState}
       <div class="hvac-trend-chart" role="img" aria-label="HVAC temperature history graph">
-        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
           ${stateBands}
           ${yTicks.map((value) => `<g><line x1="${chart.left}" y1="${y(value)}" x2="${width - chart.right}" y2="${y(value)}"/><text x="${chart.left - 10}" y="${y(value) + 4}" text-anchor="end">${fahrenheitToCelsius(value).toFixed(0)} C</text></g>`).join("")}
           ${xTicks.map((time) => `<text x="${x(time)}" y="${height - 10}" text-anchor="middle">${escapeHtml(tickDate(time))}</text>`).join("")}
