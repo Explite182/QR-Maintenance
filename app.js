@@ -7358,6 +7358,10 @@ const els = {
   contractorLogbookReportHour: document.getElementById("contractorLogbookReportHour"),
   contractorLogbookSaveReportScheduleBtn: document.getElementById("contractorLogbookSaveReportScheduleBtn"),
   contractorLogbookCreateBtn: document.getElementById("contractorLogbookCreateBtn"),
+  contractorAccessOpenBtn: document.getElementById("contractorAccessOpenBtn"),
+  contractorAccessCloseBtn: document.getElementById("contractorAccessCloseBtn"),
+  contractorAccessDrawer: document.getElementById("contractorAccessDrawer"),
+  contractorAccessBackdrop: document.getElementById("contractorAccessBackdrop"),
   contractorLogbookCopyBtn: document.getElementById("contractorLogbookCopyBtn"),
   contractorLogbookWriteNfcBtn: document.getElementById("contractorLogbookWriteNfcBtn"),
   contractorLogbookPrintBtn: document.getElementById("contractorLogbookPrintBtn"),
@@ -10846,6 +10850,23 @@ els.contractorLogbookRange?.addEventListener("change", loadContractorLogbook);
 els.contractorLogbookSearch?.addEventListener("input", () => { contractorLogbookSearch = els.contractorLogbookSearch.value.trim().toLowerCase(); renderContractorLogbook(); });
 
 els.contractorLogbookRefreshBtn?.addEventListener("click", loadContractorLogbook);
+
+function setContractorAccessDrawer(open) {
+  if (!els.contractorAccessDrawer || !els.contractorAccessBackdrop) return;
+  els.contractorAccessDrawer.classList.toggle("is-open", open);
+  els.contractorAccessDrawer.setAttribute("aria-hidden", String(!open));
+  els.contractorAccessBackdrop.hidden = !open;
+  document.body.classList.toggle("contractor-access-open", open);
+  if (open) els.contractorAccessCloseBtn?.focus();
+  else els.contractorAccessOpenBtn?.focus();
+}
+
+els.contractorAccessOpenBtn?.addEventListener("click", () => setContractorAccessDrawer(true));
+els.contractorAccessCloseBtn?.addEventListener("click", () => setContractorAccessDrawer(false));
+els.contractorAccessBackdrop?.addEventListener("click", () => setContractorAccessDrawer(false));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && els.contractorAccessDrawer?.classList.contains("is-open")) setContractorAccessDrawer(false);
+});
 
 window.addEventListener("focus", () => {
   if (inventoryTab === "contractors" && currentUser) loadContractorLogbook();
