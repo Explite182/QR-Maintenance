@@ -26981,6 +26981,7 @@ async function adjustHvacControllerSetpoint(controllerId = "", action = "") {
     ? (hasDesiredRoomSetpoints ? desiredRoomCool : numberOrNull(roomDisplay.coolSetpointF ?? callState.coolSetpoint)) ?? (occupied ? 74 : 82)
     : numberOrNull(controller[coolKey] ?? controller.data?.[coolKey] ?? callState.coolSetpoint) ?? (occupied ? 74 : 82);
   const step = 0.5;
+  const minimumSetpointSeparationF = 3.6; // 2.0 C
   let nextHeat = currentHeat;
   let nextCool = currentCool;
   let useRoomDisplaySetpoints = callState.setpointSource === "room-display";
@@ -26999,10 +27000,12 @@ async function adjustHvacControllerSetpoint(controllerId = "", action = "") {
   }
   nextHeat = Math.round(nextHeat * 2) / 2;
   nextCool = Math.round(nextCool * 2) / 2;
-  if (nextHeat > nextCool - 1) {
-    if (action.startsWith("heat")) nextHeat = nextCool - 1;
-    if (action.startsWith("cool")) nextCool = nextHeat + 1;
+  if (nextHeat > nextCool - minimumSetpointSeparationF) {
+    if (action.startsWith("heat")) nextHeat = nextCool - minimumSetpointSeparationF;
+    if (action.startsWith("cool")) nextCool = nextHeat + minimumSetpointSeparationF;
   }
+  nextHeat = Math.round(nextHeat * 10) / 10;
+  nextCool = Math.round(nextCool * 10) / 10;
   const now = new Date().toISOString();
   const roomDisplayDesiredSetpoints = roomDisplaySetpointMode === "active"
     ? {
