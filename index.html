@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260928-hvac-scale-68">
+  <link rel="stylesheet" href="/styles.css?v=20260928-contractor-complete-69">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
@@ -60,6 +60,13 @@
         </div>
         <p id="publicContractorLogbookMessage" class="login-message"></p>
       </form>
+      <div id="publicContractorCompletion" class="public-contractor-completion hidden" role="status" aria-live="polite">
+        <span class="public-contractor-completion-icon" aria-hidden="true">&#10003;</span>
+        <h2 id="publicContractorCompletionTitle">Submitted</h2>
+        <p id="publicContractorCompletionMessage">Your visit has been recorded.</p>
+        <button id="publicContractorCompletionDoneBtn" type="button">Done</button>
+        <small>This page will close automatically when your browser allows it.</small>
+      </div>
       <form id="publicPermitForm" class="stack hidden">
         <button id="publicPermitBackBtn" type="button" class="public-contractor-back secondary">Back to options</button>
         <h2>Submit Annual Permit</h2>
@@ -3122,7 +3129,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260928-hvac-scale-68"></script>
+  <script src="/app.js?v=20260928-contractor-complete-69"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

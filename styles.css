@@ -9521,6 +9521,30 @@ textarea:disabled {
 .public-contractor-task-menu button strong { font-size: 16px; }
 .public-contractor-task-menu button span { font-size: 13px; font-weight: 650; opacity: .8; }
 .public-contractor-back { width: fit-content; padding: 8px 12px; }
+.public-contractor-completion {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 34px 20px 20px;
+  text-align: center;
+}
+.public-contractor-completion.hidden { display: none; }
+.public-contractor-completion-icon {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #087b69;
+  box-shadow: 0 10px 24px rgba(8, 123, 105, .22);
+  font-size: 34px;
+  font-weight: 900;
+}
+.public-contractor-completion h2 { margin: 4px 0 0; font-size: 25px; }
+.public-contractor-completion p { margin: 0; color: var(--muted); font-size: 17px; font-weight: 700; }
+.public-contractor-completion button { width: min(280px, 100%); margin-top: 8px; }
+.public-contractor-completion small { max-width: 320px; color: var(--muted); }
 #publicSiteLogbookForm > h2 { margin: 4px 0 2px; font-size: 20px; }
 #publicSiteLogbookForm textarea { resize: vertical; }
 @media (max-width: 620px) { .contractor-checkin-card { padding: 20px 16px; } #publicSiteLogbookForm .form-grid { grid-template-columns: 1fr; } }

@@ -7411,6 +7411,10 @@ const els = {
   publicContractorWorkOrder: document.getElementById("publicContractorWorkOrder"),
   publicContractorSafety: document.getElementById("publicContractorSafety"),
   publicContractorLogbookMessage: document.getElementById("publicContractorLogbookMessage"),
+  publicContractorCompletion: document.getElementById("publicContractorCompletion"),
+  publicContractorCompletionTitle: document.getElementById("publicContractorCompletionTitle"),
+  publicContractorCompletionMessage: document.getElementById("publicContractorCompletionMessage"),
+  publicContractorCompletionDoneBtn: document.getElementById("publicContractorCompletionDoneBtn"),
   publicContractorLookupEmail: document.getElementById("publicContractorLookupEmail"),
   publicContractorVerificationCode: document.getElementById("publicContractorVerificationCode"),
   publicContractorSendCodeBtn: document.getElementById("publicContractorSendCodeBtn"),
@@ -10824,6 +10828,7 @@ els.publicContractorLogModeBtn?.addEventListener("click", () => { updatePublicSi
 els.publicPermitModeBtn?.addEventListener("click",()=>showPublicContractorTask("permit")); els.publicPermitBackBtn?.addEventListener("click",()=>showPublicContractorTask("menu")); els.publicPermitForm?.addEventListener("submit",submitPublicPermit); els.publicPermitEffectiveDate?.addEventListener("change",()=>{if(!els.publicPermitExpiryDate.value)els.publicPermitExpiryDate.value=defaultAnnualExpiry(els.publicPermitEffectiveDate.value);}); els.publicPermitSubmitter?.addEventListener("change",()=>{if(!els.publicPermitSignature.value)els.publicPermitSignature.value=els.publicPermitSubmitter.value;});
 els.publicContractorVisitBackBtn?.addEventListener("click", () => showPublicContractorTask("menu"));
 els.publicSiteLogbookBackBtn?.addEventListener("click", () => showPublicContractorTask("menu"));
+els.publicContractorCompletionDoneBtn?.addEventListener("click", closePublicContractorPage);
 els.publicSiteLogbookType?.addEventListener("change", updatePublicSiteLogbookSpecialField);
 els.publicSiteLogbookName?.addEventListener("change", () => {
   if (els.publicSiteLogbookSignature && !els.publicSiteLogbookSignature.value.trim()) els.publicSiteLogbookSignature.value = els.publicSiteLogbookName.value.trim();
@@ -42126,11 +42131,39 @@ function showPublicContractorTask(mode = "menu") {
   els.publicContractorLogbookForm?.classList.toggle("hidden", mode !== "visit");
   els.publicSiteLogbookForm?.classList.toggle("hidden", mode !== "logbook");
   els.publicPermitForm?.classList.toggle("hidden", mode !== "permit");
+  els.publicContractorCompletion?.classList.add("hidden");
   els.publicContractorVisitBackBtn?.classList.toggle("hidden", isDirectTask);
   els.publicSiteLogbookBackBtn?.classList.toggle("hidden", isDirectTask);
   els.publicPermitBackBtn?.classList.toggle("hidden", isDirectTask);
   if (mode === "visit") window.setTimeout(() => els.publicContractorName?.focus(), 60);
   if (mode === "logbook") window.setTimeout(() => els.publicSiteLogbookName?.focus(), 60);
+}
+
+function closePublicContractorPage() {
+  window.close();
+  window.setTimeout(() => {
+    if (document.visibilityState === "visible" && document.referrer && history.length > 1) history.back();
+  }, 150);
+}
+
+function completePublicContractorVisit(action) {
+  const time = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Vancouver",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date());
+  if (els.publicContractorCompletionTitle) {
+    els.publicContractorCompletionTitle.textContent = action === "sign-in" ? "You are signed in" : "You are signed out";
+  }
+  if (els.publicContractorCompletionMessage) {
+    els.publicContractorCompletionMessage.textContent = action === "sign-in"
+      ? `Your arrival was recorded at ${time}.`
+      : `Your departure was recorded at ${time}. Thank you.`;
+  }
+  els.publicContractorLogbookForm?.classList.add("hidden");
+  els.publicContractorCompletion?.classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.setTimeout(() => window.close(), 2200);
 }
 
 function defaultAnnualExpiry(effective) { const date=new Date(`${effective}T12:00:00`); if(Number.isNaN(date.getTime()))return ""; date.setFullYear(date.getFullYear()+1); return date.toISOString().slice(0,10); }
@@ -42207,10 +42240,8 @@ async function submitPublicContractorLogbook(event) {
     });
     const text = await response.text();
     if (!response.ok) throw new Error(text);
-    els.publicContractorLogbookMessage.textContent = action === "sign-in"
-      ? `Signed in at ${new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", hour: "numeric", minute: "2-digit" }).format(new Date())}.`
-      : "Signed out. Thank you.";
     els.publicContractorLogbookForm.reset();
+    completePublicContractorVisit(action);
   } catch (error) {
     els.publicContractorLogbookMessage.textContent = readableServerError(error?.message || error) || "The visit was not updated.";
   } finally {
