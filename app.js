@@ -25787,8 +25787,8 @@ function renderHvacTemperatureTrendChart(controller = null) {
   const minValue = Math.floor(rawMin - padding);
   const maxValue = Math.ceil(rawMax + padding);
   const width = 900;
-  const height = 320;
-  const chart = { left: 58, top: 20, right: 24, bottom: 42 };
+  const height = 380;
+  const chart = { left: 58, top: 20, right: 24, bottom: 118 };
   const plotWidth = width - chart.left - chart.right;
   const plotHeight = height - chart.top - chart.bottom;
   const x = (time) => chart.left + ((time - minTime) / Math.max(1, maxTime - minTime)) * plotWidth;
@@ -25806,6 +25806,18 @@ function renderHvacTemperatureTrendChart(controller = null) {
     const latest = values[values.length - 1];
     return `<span><i style="background:${item.color}"></i><b>${item.label}</b><strong>${fahrenheitToCelsius(latest).toFixed(1)} C</strong><em>${Math.min(...values).toFixed(1)}-${Math.max(...values).toFixed(1)} F</em></span>`;
   }).join("");
+  const stateIsActive = (value) => value === true || value === 1 || ["1", "true", "on", "active", "made"].includes(String(value || "").trim().toLowerCase());
+  const runtimeLanes = [
+    { key: "heatingCall", label: "Heat", color: "#fb7185", y: height - 92 },
+    { key: "coolingCall", label: "Cool", color: "#38bdf8", y: height - 74 },
+    { key: "fanCommand", label: "Fan", color: "#a78bfa", y: height - 56 },
+    { key: "fanProof", label: "Proof", color: "#2dd4bf", y: height - 38 }
+  ];
+  const runtimeLaneBackgrounds = runtimeLanes.map((lane) => `
+    <g class="hvac-runtime-lane">
+      <text x="${chart.left - 10}" y="${lane.y + 8}" text-anchor="end">${lane.label}</text>
+      <rect x="${chart.left}" y="${lane.y}" width="${plotWidth}" height="10" rx="2" />
+    </g>`).join("");
   const stateBands = readings.map((reading, index) => {
     const time = Date.parse(reading.recordedAt || "");
     if (!Number.isFinite(time)) return "";
@@ -25814,14 +25826,15 @@ function renderHvacTemperatureTrendChart(controller = null) {
     const endX = Number.isFinite(nextTime) ? x(nextTime) : Math.min(width - chart.right, startX + Math.max(5, plotWidth / Math.max(1, readings.length)));
     const bandWidth = Math.max(2, endX - startX);
     return [
-      reading.heatingCall ? `<rect x="${startX}" y="${chart.top}" width="${bandWidth}" height="${plotHeight}" fill="rgba(251,113,133,.09)" />` : "",
-      reading.coolingCall ? `<rect x="${startX}" y="${chart.top}" width="${bandWidth}" height="${plotHeight}" fill="rgba(56,189,248,.09)" />` : "",
-      reading.fanCommand ? `<rect x="${startX}" y="${height - 35}" width="${bandWidth}" height="5" fill="#a78bfa" />` : "",
-      reading.fanProof ? `<rect x="${startX}" y="${height - 27}" width="${bandWidth}" height="5" fill="#2dd4bf" />` : ""
+      stateIsActive(reading.heatingCall) ? `<rect x="${startX}" y="${chart.top}" width="${bandWidth}" height="${plotHeight}" fill="rgba(251,113,133,.07)" />` : "",
+      stateIsActive(reading.coolingCall) ? `<rect x="${startX}" y="${chart.top}" width="${bandWidth}" height="${plotHeight}" fill="rgba(56,189,248,.07)" />` : "",
+      ...runtimeLanes.map((lane) => stateIsActive(reading[lane.key])
+        ? `<rect class="hvac-runtime-active" x="${startX}" y="${lane.y}" width="${bandWidth}" height="10" rx="2" fill="${lane.color}" />`
+        : "")
     ].join("");
   }).join("");
   const latestReading = readings[readings.length - 1] || {};
-  const equipmentState = `<div class="hvac-trend-state-legend"><span class="is-heat">Heat ${latestReading.heatingCall ? "On" : "Off"}</span><span class="is-cool">Cool ${latestReading.coolingCall ? "On" : "Off"}</span><span class="is-fan">Fan ${latestReading.fanCommand ? "On" : "Off"}</span><span class="is-proof">Proof ${latestReading.fanProof ? "Made" : "Open"}</span></div>`;
+  const equipmentState = `<div class="hvac-trend-state-legend"><span class="is-heat">Heat ${stateIsActive(latestReading.heatingCall) ? "On" : "Off"}</span><span class="is-cool">Cool ${stateIsActive(latestReading.coolingCall) ? "On" : "Off"}</span><span class="is-fan">Fan ${stateIsActive(latestReading.fanCommand) ? "On" : "Off"}</span><span class="is-proof">Proof ${stateIsActive(latestReading.fanProof) ? "Made" : "Open"}</span></div>`;
   return `
     <section class="hvac-trend-card">
       <header><div><span>Temperature History</span><strong>${readings.length} readings</strong></div><nav>${rangeButtons}</nav></header>
@@ -25829,6 +25842,7 @@ function renderHvacTemperatureTrendChart(controller = null) {
       ${equipmentState}
       <div class="hvac-trend-chart" role="img" aria-label="HVAC temperature history graph">
         <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+          ${runtimeLaneBackgrounds}
           ${stateBands}
           ${yTicks.map((value) => `<g><line x1="${chart.left}" y1="${y(value)}" x2="${width - chart.right}" y2="${y(value)}"/><text x="${chart.left - 10}" y="${y(value) + 4}" text-anchor="end">${fahrenheitToCelsius(value).toFixed(0)} C</text></g>`).join("")}
           ${xTicks.map((time) => `<text x="${x(time)}" y="${height - 10}" text-anchor="middle">${escapeHtml(tickDate(time))}</text>`).join("")}
