@@ -27007,7 +27007,8 @@ async function adjustHvacControllerSetpoint(controllerId = "", action = "") {
   nextHeat = Math.round(nextHeat * 10) / 10;
   nextCool = Math.round(nextCool * 10) / 10;
   const now = new Date().toISOString();
-  const roomDisplayDesiredSetpoints = roomDisplaySetpointMode === "active"
+  const setpointAdjusted = action.startsWith("heat-") || action.startsWith("cool-");
+  const roomDisplayDesiredSetpoints = roomDisplaySetpointMode === "active" || setpointAdjusted
     ? {
         heatSetpointF: nextHeat,
         coolSetpointF: nextCool,
