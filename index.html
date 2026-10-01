@@ -12,8 +12,9 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20260928-contractor-console-72">
+  <link rel="stylesheet" href="/styles.css?v=20260928-club16-print-75">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
+  <link rel="stylesheet" href="/time-tracking.css?v=20260930-time-phase2-1">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
 </head>
 <body>
@@ -336,6 +337,7 @@
   </header>
 
   <div id="loginGreetingToast" class="login-greeting-toast hidden" role="status" aria-live="polite"></div>
+  <button id="currentTimerIndicator" class="current-timer-indicator app-only hidden" type="button" aria-label="Open current job timer"></button>
   <div id="syncBanner" class="sync-banner app-only hidden" role="status" aria-live="polite"></div>
   <button id="offlineStatusBtn" class="offline-status-pill app-only hidden" type="button" aria-expanded="false" aria-controls="offlineStatusPanel">
     <span class="offline-status-dot" aria-hidden="true"></span>
@@ -357,6 +359,9 @@
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="workOrdersPanel" aria-expanded="false">
             <span>Open Jobs</span>
+          </button>
+          <button type="button" class="sidebar-nav-btn hidden" data-open-target="timeTrackingPanel" aria-expanded="false">
+            <span>Time Tracking</span>
           </button>
           <button type="button" class="sidebar-nav-btn" data-open-target="estimatesPanel" aria-expanded="false">
             <span>Quotes / Estimates</span>
@@ -1368,6 +1373,18 @@
           </div>
         </div>
       </details>
+
+        <section id="timeTrackingPanel" class="work-orders-panel time-tracking-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
+          <div class="section-title clickable-panel-title" data-panel-toggle="timeTrackingPanel">
+            <h2>Time Tracking</h2>
+            <div class="panel-title-actions"><span>My time</span></div>
+          </div>
+          <div class="time-tracking-body" data-panel-body>
+            <section id="currentTimeCard" class="time-current-card" aria-live="polite"></section>
+            <section aria-label="Recent time entries"><h3>Recent Entries</h3><div id="timeEntryList" class="time-entry-list"></div></section>
+          </div>
+          <p id="timeTrackingStatus" class="time-tracking-status" aria-live="polite"></p>
+        </section>
 
         <section id="workOrdersPanel" class="work-orders-panel collapsible-panel sidebar-controlled-panel is-collapsed hidden">
         <div class="section-title clickable-panel-title" data-panel-toggle="workOrdersPanel">
@@ -3131,11 +3148,12 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20260928-hvac-display-sync-74"></script>
+  <script src="/app.js?v=20260930-time-phase2-1"></script>
+  <script src="/js/time-tracking.js?v=20260930-time-phase2-1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-navigator.serviceWorker.register("/sw.js?v=20260916-backdrop-fix-5").catch((error) => {
+navigator.serviceWorker.register("/sw.js?v=20260930-time-phase2-1").catch((error) => {
           console.warn("SiteWorks app install support was not started.", error);
         });
       });

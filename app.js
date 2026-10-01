@@ -10912,6 +10912,18 @@ els.contractorLogbookWriteNfcBtn?.addEventListener("click", async () => {
 els.contractorLogbookPrintBtn?.addEventListener("click", async () => {
   if (!contractorLogbookState.token) await createContractorLogbookLink();
   const locationRecord = getLocation(getContractorLogbookLocation());
+  const customerRecord = getCustomer(locationRecord?.customerId);
+  const club16Coquitlam = /club\s*16|trevor\s*linden/i.test(`${customerRecord?.name || ""} ${locationRecord?.name || ""}`) &&
+    /coquitlam/i.test(`${locationRecord?.name || ""} ${locationRecord?.address || ""}`);
+  if (club16Coquitlam) {
+    const url = contractorLogbookPublicUrl(contractorLogbookState.token, "visit");
+    els.labelSheet.innerHTML = `<div class="club16-contractor-print"><img class="club16-contractor-print-art" src="/assets/brand/club16-coquitlam-contractor-signin.png" alt="Club 16 contractor sign in and out instructions"><img class="club16-contractor-print-qr" src="${qrUrl(url)}" alt="Contractor sign in and out QR code"></div>`;
+    await Promise.all(Array.from(els.labelSheet.querySelectorAll("img")).map((image) => image.complete
+      ? Promise.resolve()
+      : new Promise((resolve) => { image.addEventListener("load", resolve, { once: true }); image.addEventListener("error", resolve, { once: true }); })));
+    window.print();
+    return;
+  }
   const labels = [["visit", "Contractor Sign In / Out", "Record arrival or departure"]];
   els.labelSheet.innerHTML = labels.map(([mode, title, instruction]) => {
     const url = contractorLogbookPublicUrl(contractorLogbookState.token, mode);
@@ -13590,6 +13602,7 @@ function render() {
   positionAssetPanelNearSelection(asset);
   renderPanelToggles();
   renderRole();
+  window.SiteWorksTimeTracking?.refreshView?.();
 
   if (!asset) return;
 
@@ -37294,6 +37307,7 @@ function renderWorkOrderItem(item) {
     ${billingAction}
     ${canManage ? `<button class="secondary mini" type="button" data-work-order-id="${item.id}" data-work-order-action="Open">Reopen</button>` : ""}
   ` : `
+    ${window.SiteWorksTimeTracking?.workOrderAction?.(item) || ""}
     ${canEditTicket ? `<button class="secondary mini" type="button" data-open-ticket-edit>Edit</button>` : ""}
     ${canWork && item.status === "Open" ? `<button class="secondary mini" type="button" data-work-order-id="${item.id}" data-work-order-action="In progress">Start</button>` : ""}
     ${canWork && item.status !== "Resolved" ? `<button class="secondary mini" type="button" data-work-order-id="${item.id}" data-work-order-action="Resolved">Resolve</button>` : ""}
@@ -46642,3 +46656,12 @@ function escapeHtml(value) {
 function escapeAttribute(value) {
   return escapeHtml(value);
 }
+
+window.siteworksTimeTrackingBridge = {
+  apiFetch: siteworksServerFetch,
+  canWorkOnTicket,
+  getCurrentUser: () => currentUser,
+  getWorkOrder: (id) => state.workOrders.find((item) => String(item.id) === String(id)) || null,
+  openPanel,
+  renderApp: render
+};
