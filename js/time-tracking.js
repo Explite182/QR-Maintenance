@@ -120,6 +120,7 @@
       const payload = { workOrderId, clientEventId:eventId(switching ? "switch" : "start"), deviceEventAt:new Date().toISOString(), location };
       const result = await api(switching ? "/api/time/switch" : "/api/time/start", { method:"POST", body:JSON.stringify(payload) });
       state.active = result.active;
+      if (result.warning) window.alert(result.warning);
       await refreshData(); openPanel();
     } catch (error) {
       window.alert(error.message);
