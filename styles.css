@@ -20967,7 +20967,12 @@ body.panel-schedule-open {
   body {
     font-size: 14px;
     background: #f4f7f9;
-    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+    padding-bottom: calc(220px + env(safe-area-inset-bottom));
+  }
+
+  .app-shell {
+    padding-bottom: calc(220px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(220px + env(safe-area-inset-bottom));
   }
 
   .app-header {
@@ -22371,6 +22376,11 @@ body.panel-schedule-open {
 }
 
 @media print {
+  @page {
+    size: letter portrait;
+    margin: 0;
+  }
+
   body > :not(.label-sheet) {
     display: none !important;
   }
@@ -22381,6 +22391,41 @@ body.panel-schedule-open {
     gap: 0.25in;
     padding: 0.25in;
     background: white;
+  }
+
+  .label-sheet:has(.club16-contractor-print) {
+    display: block;
+    width: 8.5in;
+    height: 11in;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .club16-contractor-print {
+    position: relative;
+    width: 8.5in;
+    height: 11in;
+    overflow: hidden;
+    background: #fff;
+    break-inside: avoid;
+  }
+
+  .club16-contractor-print-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+  }
+
+  .club16-contractor-print-qr {
+    position: absolute;
+    left: 39.45%;
+    top: 52.1%;
+    width: 21.55%;
+    height: auto;
+    aspect-ratio: 1;
+    background: #fff;
+    object-fit: contain;
   }
 
   .print-label {
