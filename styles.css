@@ -21002,12 +21002,12 @@ body.panel-schedule-open {
   body {
     font-size: 14px;
     background: #f4f7f9;
-    padding-bottom: calc(220px + env(safe-area-inset-bottom));
+    padding-bottom: calc(140px + env(safe-area-inset-bottom));
   }
 
   .app-shell {
-    padding-bottom: calc(220px + env(safe-area-inset-bottom));
-    scroll-padding-bottom: calc(220px + env(safe-area-inset-bottom));
+    padding-bottom: calc(140px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(140px + env(safe-area-inset-bottom));
   }
 
   .app-header {
@@ -21032,6 +21032,26 @@ body.panel-schedule-open {
   .app-header > div:first-child {
     width: 100%;
     min-width: 0;
+  }
+
+  .app-header .offline-status-pill {
+    position: static;
+    display: inline-grid;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 28px;
+    margin-top: 7px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    box-shadow: none;
+    font-size: 11px;
+    backdrop-filter: none;
+  }
+
+  .app-header .offline-status-dot {
+    width: 8px;
+    height: 8px;
+    box-shadow: 0 0 0 3px rgba(15, 122, 58, 0.12);
   }
 
   .app-header h1 {
@@ -21168,6 +21188,13 @@ body.panel-schedule-open {
     width: auto;
     max-height: calc(100vh - 306px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     border-radius: 12px;
+  }
+
+  .offline-status-panel {
+    top: calc(142px + env(safe-area-inset-top));
+    bottom: auto;
+    max-height: calc(100vh - 166px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
   }
 
   html[data-theme="dark"] #logoutBtn {

@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20261003-lighting-zone-confirmation-header-1">
+  <link rel="stylesheet" href="/styles.css?v=20261003-mobile-sync-header-1">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <link rel="stylesheet" href="/time-tracking.css?v=20260930-time-phase2-1">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
@@ -314,6 +314,10 @@
     <div>
       <p class="eyebrow">Facility Service &amp; Maintenance</p>
       <h1>SiteWorks</h1>
+      <button id="offlineStatusBtn" class="offline-status-pill app-only hidden" type="button" aria-expanded="false" aria-controls="offlineStatusPanel">
+        <span class="offline-status-dot" aria-hidden="true"></span>
+        <span id="offlineStatusText">Online</span>
+      </button>
     </div>
     <div class="header-actions">
       <label id="userSwitcherWrap" class="user-switcher hidden">
@@ -339,10 +343,6 @@
   <div id="loginGreetingToast" class="login-greeting-toast hidden" role="status" aria-live="polite"></div>
   <button id="currentTimerIndicator" class="current-timer-indicator app-only hidden" type="button" aria-label="Open current job timer"></button>
   <div id="syncBanner" class="sync-banner app-only hidden" role="status" aria-live="polite"></div>
-  <button id="offlineStatusBtn" class="offline-status-pill app-only hidden" type="button" aria-expanded="false" aria-controls="offlineStatusPanel">
-    <span class="offline-status-dot" aria-hidden="true"></span>
-    <span id="offlineStatusText">Online</span>
-  </button>
   <section id="offlineStatusPanel" class="offline-status-panel app-only hidden" aria-live="polite"></section>
 
   <main class="app-shell app-only hidden">
@@ -3146,7 +3146,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20261003-lighting-zone-confirmation-header-1"></script>
+  <script src="/app.js?v=20261003-mobile-sync-header-1"></script>
   <script src="/js/time-tracking.js?v=20261001-time-null-location-2"></script>
   <script>
     if ("serviceWorker" in navigator) {
