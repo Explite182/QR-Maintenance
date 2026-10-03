@@ -25820,9 +25820,19 @@ function renderHvacTemperatureTrendChart(controller = null) {
   const padding = Math.max(2, (rawMax - rawMin) * 0.12);
   const minValue = Math.floor(rawMin - padding);
   const maxValue = Math.ceil(rawMax + padding);
+  const points = controller?.points && typeof controller.points === "object" ? controller.points : controller?.data?.points || {};
+  const stageLanes = [
+    ...[1, 2, 3, 4].filter((stage) => points[`heatStage${stage}`]).map((stage) => ({ key: "heatStages", stage, label: `Heat ${stage} ${points[`heatStage${stage}`]}`, color: "#fb7185" })),
+    ...[1, 2, 3, 4].filter((stage) => points[`coolStage${stage}`]).map((stage) => ({ key: "coolStages", stage, label: `Cool ${stage} ${points[`coolStage${stage}`]}`, color: "#38bdf8" }))
+  ];
+  const runtimeLanes = [
+    ...stageLanes,
+    { key: "fanCommand", label: `Fan${points.fanCommand ? ` ${points.fanCommand}` : ""}`, color: "#a78bfa" },
+    { key: "fanProof", label: `Proof${points.fanProof ? ` ${points.fanProof}` : ""}`, color: "#2dd4bf" }
+  ];
   const width = 900;
-  const height = 380;
-  const chart = { left: 58, top: 20, right: 24, bottom: 118 };
+  const height = Math.max(380, 292 + runtimeLanes.length * 18);
+  const chart = { left: 112, top: 20, right: 24, bottom: 46 + runtimeLanes.length * 18 };
   const plotWidth = width - chart.left - chart.right;
   const plotHeight = height - chart.top - chart.bottom;
   const x = (time) => chart.left + ((time - minTime) / Math.max(1, maxTime - minTime)) * plotWidth;
@@ -25841,12 +25851,7 @@ function renderHvacTemperatureTrendChart(controller = null) {
     return `<span><i style="background:${item.color}"></i><b>${item.label}</b><strong>${fahrenheitToCelsius(latest).toFixed(1)} C</strong><em>${Math.min(...values).toFixed(1)}-${Math.max(...values).toFixed(1)} F</em></span>`;
   }).join("");
   const stateIsActive = (value) => value === true || value === 1 || ["1", "true", "on", "active", "made"].includes(String(value || "").trim().toLowerCase());
-  const runtimeLanes = [
-    { key: "heatingCall", label: "Heat", color: "#fb7185", y: height - 92 },
-    { key: "coolingCall", label: "Cool", color: "#38bdf8", y: height - 74 },
-    { key: "fanCommand", label: "Fan", color: "#a78bfa", y: height - 56 },
-    { key: "fanProof", label: "Proof", color: "#2dd4bf", y: height - 38 }
-  ];
+  runtimeLanes.forEach((lane, index) => { lane.y = chart.top + plotHeight + 16 + index * 18; });
   const runtimeLaneBackgrounds = runtimeLanes.map((lane) => `
     <g class="hvac-runtime-lane">
       <text x="${chart.left - 10}" y="${lane.y + 8}" text-anchor="end">${lane.label}</text>
@@ -25862,7 +25867,7 @@ function renderHvacTemperatureTrendChart(controller = null) {
     return [
       stateIsActive(reading.heatingCall) ? `<rect x="${startX}" y="${chart.top}" width="${bandWidth}" height="${plotHeight}" fill="rgba(251,113,133,.07)" />` : "",
       stateIsActive(reading.coolingCall) ? `<rect x="${startX}" y="${chart.top}" width="${bandWidth}" height="${plotHeight}" fill="rgba(56,189,248,.07)" />` : "",
-      ...runtimeLanes.map((lane) => stateIsActive(reading[lane.key])
+      ...runtimeLanes.map((lane) => stateIsActive(lane.stage ? reading[lane.key]?.[lane.stage - 1] : reading[lane.key])
         ? `<rect class="hvac-runtime-active" x="${startX}" y="${lane.y}" width="${bandWidth}" height="10" rx="2" fill="${lane.color}" />`
         : "")
     ].join("");
