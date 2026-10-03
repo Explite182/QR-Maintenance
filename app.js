@@ -14819,8 +14819,8 @@ function getLightingCommandZoneName(command = {}) {
 }
 
 function getLightingScheduleTargetZones(schedule = {}) {
-  const scheduleZoneId = schedule.zoneId || schedule.zone_id || "";
-  if (scheduleZoneId) return lightingZonesCache.filter((zone) => zone.id === scheduleZoneId);
+  const scheduleZoneIds = getLightingScheduleZoneIds(schedule);
+  if (scheduleZoneIds.length) return lightingZonesCache.filter((zone) => scheduleZoneIds.includes(String(zone.id)));
   return lightingZonesCache.filter((zone) => zone.customerId === selectedCustomerId && zone.locationId === selectedLocationId);
 }
 
@@ -15188,11 +15188,45 @@ function renderLightingZoneControllerOptions() {
   select.innerHTML = getLightingControllerOptionsHtml();
 }
 
-function renderLightingScheduleZoneOptions() {
-  const select = document.querySelector("[data-lighting-schedule-zone]");
-  if (!select) return;
-  select.innerHTML = getLightingZoneOptionsHtml(select.value || "");
+function getLightingScheduleZoneIds(schedule = {}) {
+  const data = schedule.data && typeof schedule.data === "object" ? schedule.data : {};
+  const values = schedule.zoneIds || schedule.zone_ids || data.zoneIds || data.zone_ids;
+  if (Array.isArray(values)) return values.map(String).filter(Boolean);
+  const legacy = schedule.zoneId || schedule.zone_id || data.zoneId || data.zone_id || "";
+  return legacy ? [String(legacy)] : [];
 }
+
+function getLightingScheduleZonePickerHtml(selectedIds = [], allZones = selectedIds.length === 0) {
+  const selected = new Set(selectedIds.map(String));
+  if (!lightingZonesCache.length) return `<span class="muted">No zones are configured for this location.</span>`;
+  return `
+    <label class="lighting-schedule-zone-option is-all-zones">
+      <input type="checkbox" name="allZones" value="true"${allZones ? " checked" : ""}>
+      <span>All zones</span>
+    </label>` + lightingZonesCache.map((zone) => `
+    <label class="lighting-schedule-zone-option">
+      <input type="checkbox" name="zoneIds" value="${escapeHtml(zone.id)}"${selected.has(String(zone.id)) ? " checked" : ""}>
+      <span>${escapeHtml(zone.name || `Output ${zone.outputNumber || "?"}`)}</span>
+    </label>`).join("");
+}
+
+function renderLightingScheduleZoneOptions() {
+  document.querySelectorAll("[data-lighting-schedule-zones]").forEach((picker) => {
+    const selected = [...picker.querySelectorAll('input[name="zoneIds"]:checked')].map((input) => input.value);
+    const allZones = picker.querySelector('input[name="allZones"]')?.checked ?? selected.length === 0;
+    picker.innerHTML = getLightingScheduleZonePickerHtml(selected, allZones);
+  });
+}
+
+document.addEventListener("change", (event) => {
+  const input = event.target.closest('[data-lighting-schedule-zones] input[type="checkbox"]');
+  if (!input) return;
+  const picker = input.closest("[data-lighting-schedule-zones]");
+  const allZones = picker.querySelector('input[name="allZones"]');
+  const zoneInputs = [...picker.querySelectorAll('input[name="zoneIds"]')];
+  if (input.name === "allZones" && input.checked) zoneInputs.forEach((zoneInput) => { zoneInput.checked = false; });
+  if (input.name === "zoneIds" && input.checked && allZones) allZones.checked = false;
+});
 
 function renderLightingOverrideZoneOptions() {
   const select = document.querySelector("[data-lighting-override-zone]");
@@ -15817,8 +15851,8 @@ function renderLightingControllerActiveControlSummary(controller = {}) {
   }).length;
   const activeSchedules = lightingSchedulesCache.filter((schedule) => {
     if (schedule.enabled === false) return false;
-    const zoneId = schedule.zoneId || schedule.zone_id || "";
-    return !zoneId || controllerZoneIds.has(zoneId);
+    const zoneIds = getLightingScheduleZoneIds(schedule);
+    return !zoneIds.length || zoneIds.some((zoneId) => controllerZoneIds.has(zoneId));
   }).length;
   return `<span>Active controls <strong>${activeOverrides} override(s) | ${activeInputs} input(s) | ${activeSchedules} schedule(s) | ${feedbackInputs} feedback input(s)</strong></span>`;
 }
@@ -16117,8 +16151,8 @@ function renderLightingSchedules() {
           <label>Schedule name
             <input name="name" value="${escapeHtml(schedule.name || "")}" required>
           </label>
-          <label>Zone
-            <select name="zoneId">${getLightingZoneOptionsHtml(schedule.zoneId || "")}</select>
+          <label>Zones
+            <div class="lighting-schedule-zone-picker" data-lighting-schedule-zones>${getLightingScheduleZonePickerHtml(getLightingScheduleZoneIds(schedule))}</div>
           </label>
           <label>Days
             <select name="days">
@@ -17148,8 +17182,14 @@ async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
     return;
   }
   const formData = new FormData(form);
-  const zoneId = String(formData.get("zoneId") || "").trim();
-  const selectedZone = lightingZonesCache.find((zone) => zone.id === zoneId);
+  const allZones = formData.get("allZones") === "true";
+  const zoneIds = allZones ? [] : formData.getAll("zoneIds").map((value) => String(value || "").trim()).filter(Boolean);
+  if (!allZones && !zoneIds.length) {
+    if (status) status.textContent = "Select at least one zone, or choose All zones.";
+    return;
+  }
+  const selectedZones = lightingZonesCache.filter((zone) => zoneIds.includes(String(zone.id)));
+  const zoneId = zoneIds.length === 1 ? zoneIds[0] : "";
   const existingSchedule = existingScheduleId
     ? lightingSchedulesCache.find((item) => item.id === existingScheduleId) || getLightingSchedules().find((item) => item.id === existingScheduleId)
     : null;
@@ -17160,7 +17200,8 @@ async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
     customerId: selectedCustomerId,
     locationId: selectedLocationId,
     zoneId,
-    zoneName: selectedZone?.name || (zoneId ? existingSchedule?.zoneName : "All zones") || "All zones",
+    zoneIds,
+    zoneName: selectedZones.length ? selectedZones.map((zone) => zone.name).join(", ") : "All zones",
     name: String(formData.get("name") || "").trim(),
     days: String(formData.get("days") || "").trim(),
     onTime: String(formData.get("onTime") || "").trim(),
@@ -17195,6 +17236,7 @@ async function saveLightingScheduleFromForm(form, existingScheduleId = "") {
       offOffsetMinutes: schedule.offOffsetMinutes,
       data: {
         zoneName: schedule.zoneName,
+        zoneIds: schedule.zoneIds,
         onMode: schedule.onMode,
         offMode: schedule.offMode,
         onOffsetMinutes: schedule.onOffsetMinutes,
