@@ -15479,10 +15479,10 @@ function getLightingZoneFeedbackStatus(zone = {}) {
   const controllerIsFresh = Number.isFinite(lastActivityTime)
     && Date.now() - lastActivityTime <= LIGHTING_CONTROLLER_ONLINE_WINDOW_MS;
   if (controller && !controllerIsFresh) {
-    return { label: "Feedback unavailable", className: "is-stale" };
+    return { label: "Confirmation unavailable", className: "is-stale" };
   }
   if (!getLightingInputHasLiveState(input)) {
-    return { label: "Feedback waiting", className: "is-waiting" };
+    return { label: "Confirmation waiting", className: "is-waiting" };
   }
   const activeStateIsClosed = String(input.activeState || input.active_state || "Closed").toLowerCase() !== "open";
   const contactMade = activeStateIsClosed ? getLightingInputIsActive(input) : !getLightingInputIsActive(input);
@@ -15493,19 +15493,19 @@ function getLightingZoneFeedbackStatus(zone = {}) {
   const outputState = String(reportedOutput?.state || "").toLowerCase();
   if (!outputState) {
     return {
-      label: contactMade ? "Contact made" : "Contact not made",
+      label: contactMade ? "Confirmation: On" : "Confirmation: Off",
       className: contactMade ? "is-made" : "is-not-made"
     };
   }
   const outputIsOn = outputState === "on" || outputState === "true" || outputState === "1";
   if (outputIsOn !== contactMade) {
     return {
-      label: `Mismatch: contact ${contactMade ? "made" : "not made"}`,
+      label: `Confirmation mismatch: ${contactMade ? "On" : "Off"}`,
       className: "is-mismatch"
     };
   }
   return {
-    label: outputIsOn ? "Confirmed ON" : "Confirmed OFF",
+    label: outputIsOn ? "Confirmation: On" : "Confirmation: Off",
     className: outputIsOn ? "is-made" : "is-not-made"
   };
 }
@@ -15758,8 +15758,10 @@ function renderLightingZones() {
     return `
       <details class="lighting-zone-card ${stateClass}" data-lighting-zone-details="${escapeHtml(zone.id)}"${isOpen ? " open" : ""}>
         <summary>
-          <span>${escapeHtml(zone.name)}</span>
-          ${feedbackStatus ? `<span class="lighting-zone-feedback ${feedbackStatus.className}">${escapeHtml(feedbackStatus.label)}</span>` : ""}
+          <span class="lighting-zone-heading">
+            <span class="lighting-zone-name">${escapeHtml(zone.name)}</span>
+            ${feedbackStatus ? `<span class="lighting-zone-feedback ${feedbackStatus.className}">${escapeHtml(feedbackStatus.label)}</span>` : ""}
+          </span>
           <strong>${escapeHtml(displayedState)}</strong>
         </summary>
         <div class="lighting-zone-details">

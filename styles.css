@@ -8111,13 +8111,24 @@ textarea:disabled {
 
 .lighting-zone-card summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-height: 58px;
   padding: 12px 14px;
   cursor: pointer;
   list-style: none;
+}
+
+.lighting-zone-card summary .lighting-zone-heading {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.lighting-zone-card summary .lighting-zone-name {
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .lighting-zone-card summary::-webkit-details-marker {
@@ -8145,39 +8156,37 @@ textarea:disabled {
 }
 
 .lighting-zone-card summary .lighting-zone-feedback {
+  width: fit-content;
   min-width: 0;
-  padding: 5px 9px;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   color: #475569;
-  background: #f8fafc;
+  background: transparent;
   font-size: 0.72rem;
   font-weight: 900;
-  text-align: center;
+  text-align: left;
   white-space: nowrap;
 }
 
 .lighting-zone-card summary .lighting-zone-feedback.is-made {
-  border-color: #6ee7b7;
   color: #047857;
-  background: #ecfdf5;
+  background: transparent;
 }
 
 .lighting-zone-card summary .lighting-zone-feedback.is-not-made {
   color: #475569;
-  background: #f1f5f9;
+  background: transparent;
 }
 
 .lighting-zone-card summary .lighting-zone-feedback.is-stale {
-  border-color: #94a3b8;
   color: #475569;
-  background: #e2e8f0;
+  background: transparent;
 }
 
 .lighting-zone-card summary .lighting-zone-feedback.is-mismatch {
-  border-color: #fca5a5;
   color: #b91c1c;
-  background: #fef2f2;
+  background: transparent;
 }
 
 .lighting-zone-card.is-feedback-fault {
@@ -8712,21 +8721,18 @@ textarea:disabled {
 }
 
 .lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card summary .lighting-zone-feedback {
-  border-color: rgba(148, 163, 184, 0.42);
   color: #cbd5e1;
-  background: #111827;
+  background: transparent;
 }
 
 .lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card summary .lighting-zone-feedback.is-made {
-  border-color: rgba(110, 231, 183, 0.72);
   color: #a7f3d0;
-  background: #064e3b;
+  background: transparent;
 }
 
 .lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card summary .lighting-zone-feedback.is-mismatch {
-  border-color: rgba(252, 165, 165, 0.8);
   color: #fecaca;
-  background: #7f1d1d;
+  background: transparent;
 }
 
 .lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card.is-feedback-fault {
@@ -8752,11 +8758,6 @@ textarea:disabled {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .lighting-zone-card summary .lighting-zone-feedback {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-self: start;
-  }
 }
 
 .lighting-hmi-screen .lighting-tab-panel[data-lighting-panel="zones"] .lighting-zone-card summary strong {
