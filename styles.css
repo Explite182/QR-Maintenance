@@ -15184,6 +15184,7 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 #contractorLogbookSection > summary { display:none; }
 #contractorLogbookPane .contractor-logbook-controls { display:grid; gap:22px; padding:28px; color:#13233d; background:#f4f6f7; }
 .contractor-dashboard-header { display:flex; align-items:end; justify-content:space-between; gap:32px; padding:2px 2px 6px; }
+.contractor-dashboard-header > :first-child { min-width:0; }
 .contractor-dashboard-header h2 { margin:0; font-size:28px; line-height:1.15; letter-spacing:0; }
 .contractor-dashboard-header p { margin:5px 0 0; color:#61738d; font-size:15px; }
 .contractor-dashboard-header .section-kicker { color:#087b69; }
@@ -15324,7 +15325,9 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 
 /* Contractor operations console and site-access drawer */
 .contractor-dashboard-primary { grid-column:1 / -1; }
-.contractor-logbook-toolbar { grid-template-columns:minmax(220px,290px) 42px auto; }
+.contractor-logbook-toolbar { width:min(100%,360px); min-width:0; grid-template-columns:42px minmax(0,1fr); }
+.contractor-logbook-toolbar .contractor-location-control { grid-column:1 / -1; }
+.contractor-logbook-toolbar #contractorAccessOpenBtn { min-width:0; width:100%; }
 .contractor-refresh-button { width:42px; min-width:42px; padding:0; font-size:21px; }
 .contractor-access-backdrop { position:fixed; z-index:1198; inset:0; background:rgba(15,28,38,.32); backdrop-filter:blur(2px); }
 .contractor-access-backdrop[hidden] { display:none; }

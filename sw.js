@@ -1,8 +1,8 @@
-const SITEWORKS_SW_VERSION = "20261003-mobile-sync-header-1";
+const SITEWORKS_SW_VERSION = "20261004-site-access-button-1";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
-  "/styles.css?v=20261003-mobile-sync-header-1",
+  "/styles.css?v=20261004-site-access-button-1",
   "/time-tracking.css?v=20260930-time-phase2-1",
   "/keybox.css?v=20260809-key-search-25",
   "/keybox.js?v=20260809-key-wizard-22",
