@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260916-backdrop-fix-5">
   <link rel="icon" type="image/png" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
   <link rel="apple-touch-icon" href="/icons/siteworks-icon-192.png?v=20260916-backdrop-fix-5">
-  <link rel="stylesheet" href="/styles.css?v=20261004-site-access-button-1">
+  <link rel="stylesheet" href="/styles.css?v=20261004-contractor-returning-soon-1">
   <link rel="stylesheet" href="/keybox.css?v=20260809-key-search-25">
   <link rel="stylesheet" href="/time-tracking.css?v=20260930-time-phase2-1">
   <script src="/keybox.js?v=20260809-key-wizard-22"></script>
@@ -33,16 +33,6 @@
       </div>
       <form id="publicContractorLogbookForm" class="stack hidden">
         <button id="publicContractorVisitBackBtn" type="button" class="public-contractor-back secondary">Back to options</button>
-        <details class="contractor-returning-visitor">
-          <summary>Returning contractor? Fill my saved details</summary>
-          <div class="stack">
-            <label>Verified email <input id="publicContractorLookupEmail" type="email" autocomplete="email"></label>
-            <button id="publicContractorSendCodeBtn" type="button" class="secondary">Email Verification Code</button>
-            <label>Verification code <input id="publicContractorVerificationCode" inputmode="numeric" maxlength="6" placeholder="6-digit code"></label>
-            <button id="publicContractorVerifyBtn" type="button" class="secondary">Verify and Fill Details</button>
-            <p id="publicContractorVerificationMessage" class="login-message"></p>
-          </div>
-        </details>
         <div class="form-grid">
           <label>Your name <input id="publicContractorName" required autocomplete="name"></label>
           <label>Company <input id="publicContractorCompany" required autocomplete="organization"></label>
@@ -60,6 +50,16 @@
           <button type="submit" name="contractorAction" value="sign-out" class="secondary" formnovalidate>Sign Out</button>
         </div>
         <p id="publicContractorLogbookMessage" class="login-message"></p>
+        <details class="contractor-returning-visitor">
+          <summary><span>Returning contractor login</span><small>Coming Soon</small></summary>
+          <div class="stack">
+            <label>Verified email <input id="publicContractorLookupEmail" type="email" autocomplete="email"></label>
+            <button id="publicContractorSendCodeBtn" type="button" class="secondary">Email Verification Code</button>
+            <label>Verification code <input id="publicContractorVerificationCode" inputmode="numeric" maxlength="6" placeholder="6-digit code"></label>
+            <button id="publicContractorVerifyBtn" type="button" class="secondary">Verify and Fill Details</button>
+            <p id="publicContractorVerificationMessage" class="login-message"></p>
+          </div>
+        </details>
       </form>
       <div id="publicContractorCompletion" class="public-contractor-completion hidden" role="status" aria-live="polite">
         <span class="public-contractor-completion-icon" aria-hidden="true">&#10003;</span>

@@ -14459,13 +14459,34 @@ html[data-theme="dark"] .pm-calendar-tech-lane.is-unassigned {
 }
 
 .contractor-returning-visitor {
+  margin-top: 12px;
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px dashed var(--line);
   border-radius: 8px;
-  background: #f8fbfa;
+  background: var(--panel-soft);
 }
 
-.contractor-returning-visitor > summary { cursor: pointer; font-weight: 900; }
+.contractor-returning-visitor > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 800;
+}
+.contractor-returning-visitor > summary small {
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 .contractor-returning-visitor > .stack { margin-top: 10px; }
 
 .contractor-correction-note {
