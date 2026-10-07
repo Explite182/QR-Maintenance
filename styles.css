@@ -22563,7 +22563,7 @@ body.panel-schedule-open {
     background: white;
   }
 
-  .label-sheet:has(.club16-contractor-print) {
+  .label-sheet:has(.contractor-access-poster) {
     display: block;
     width: 8.5in;
     height: 11in;
@@ -22571,32 +22571,75 @@ body.panel-schedule-open {
     overflow: hidden;
   }
 
-  .club16-contractor-print {
-    position: relative;
+  .contractor-access-poster {
+    display: grid;
+    grid-template-rows: auto auto auto 1fr auto auto;
+    gap: 0.18in;
     width: 8.5in;
     height: 11in;
+    padding: 0.34in;
     overflow: hidden;
+    box-sizing: border-box;
+    color: #111827;
     background: #fff;
     break-inside: avoid;
   }
 
-  .club16-contractor-print-art {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: fill;
+  .contractor-poster-brand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 0.78in;
+    padding: 0.16in 0.22in;
+    color: #fff;
+    background: #15232b;
   }
 
-  .club16-contractor-print-qr {
-    position: absolute;
-    left: 39.45%;
-    top: 52.1%;
-    width: 21.55%;
-    height: auto;
-    aspect-ratio: 1;
-    background: #fff;
-    object-fit: contain;
+  .contractor-poster-brand div,
+  .contractor-poster-title,
+  .contractor-poster-location,
+  .contractor-poster-qr,
+  .contractor-poster-important,
+  .contractor-poster-notices div {
+    display: grid;
   }
+
+  .contractor-poster-brand span { font-size: 10pt; text-transform: uppercase; }
+  .contractor-poster-brand strong { font-size: 22pt; line-height: 1.05; }
+  .contractor-poster-brand small { font-size: 10pt; font-weight: 800; }
+  .contractor-poster-title { gap: 0.02in; text-align: center; }
+  .contractor-poster-title > span { font-size: 21pt; font-weight: 900; text-transform: uppercase; }
+  .contractor-poster-title h1 { margin: 0; color: #d71920; font-size: 44pt; line-height: 1; text-transform: uppercase; }
+  .contractor-poster-title p { max-width: 7.2in; margin: 0.05in auto 0; font-size: 12pt; }
+  .contractor-poster-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.12in; }
+  .contractor-poster-step { display: flex; gap: 0.1in; min-height: 1.05in; padding: 0.14in; border: 1px solid #d9e0e3; border-radius: 0.08in; background: #f4f7f8; }
+  .contractor-poster-step > b { display: grid; flex: 0 0 0.34in; width: 0.34in; height: 0.34in; place-items: center; border-radius: 50%; color: #fff; background: #d71920; font-size: 16pt; }
+  .contractor-poster-step div { display: grid; align-content: start; gap: 0.06in; }
+  .contractor-poster-step strong { font-size: 12pt; text-transform: uppercase; }
+  .contractor-poster-step span { font-size: 9pt; line-height: 1.25; }
+  .contractor-poster-main { display: grid; grid-template-columns: 1fr 1.12fr 1fr; gap: 0.14in; min-height: 3.65in; }
+  .contractor-poster-main > div { align-content: start; padding: 0.18in; border: 1px solid #d9e0e3; border-radius: 0.08in; background: #f7f9fa; }
+  .contractor-poster-location { gap: 0.09in; }
+  .contractor-poster-location span,
+  .contractor-poster-important > span { color: #5d6870; font-size: 10pt; font-weight: 900; text-transform: uppercase; }
+  .contractor-poster-location strong { color: #d71920; font-size: 22pt; line-height: 1.05; overflow-wrap: anywhere; }
+  .contractor-poster-location p { margin: 0; font-size: 13pt; line-height: 1.35; white-space: pre-line; }
+  .contractor-poster-qr { justify-items: center; gap: 0.08in; text-align: center; }
+  .contractor-poster-qr img { width: 2.35in; height: 2.35in; padding: 0.08in; border: 0.06in solid #d71920; border-radius: 0.12in; background: #fff; object-fit: contain; }
+  .contractor-poster-qr strong { width: 100%; padding: 0.08in; color: #fff; background: #d71920; font-size: 14pt; text-transform: uppercase; }
+  .contractor-poster-qr span { font-size: 8.5pt; }
+  .contractor-poster-important { gap: 0.08in; }
+  .contractor-poster-important > span { color: #d71920; font-size: 15pt; }
+  .contractor-poster-important ul { display: grid; gap: 0.09in; margin: 0; padding: 0; list-style: none; }
+  .contractor-poster-important li { position: relative; padding-left: 0.25in; font-size: 9.5pt; line-height: 1.2; }
+  .contractor-poster-important li::before { position: absolute; left: 0; content: "OK"; color: #d71920; font-size: 7pt; font-weight: 900; }
+  .contractor-poster-notices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.12in; }
+  .contractor-poster-notices div { gap: 0.05in; min-height: 0.86in; padding: 0.13in; border: 1px solid #d9e0e3; border-radius: 0.08in; background: #f4f7f8; }
+  .contractor-poster-notices strong { font-size: 11pt; text-transform: uppercase; }
+  .contractor-poster-notices p { margin: 0; font-size: 8.5pt; line-height: 1.25; }
+  .contractor-access-poster footer { display: flex; align-items: center; justify-content: space-between; gap: 0.15in; min-height: 0.48in; padding: 0.12in 0.18in; color: #fff; background: #15232b; }
+  .contractor-access-poster footer strong { font-size: 11pt; }
+  .contractor-access-poster footer span { font-size: 8pt; text-align: right; }
 
   .print-label {
     position: relative;

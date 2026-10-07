@@ -10924,24 +10924,67 @@ els.contractorLogbookPrintBtn?.addEventListener("click", async () => {
   if (!contractorLogbookState.token) await createContractorLogbookLink();
   const locationRecord = getLocation(getContractorLogbookLocation());
   const customerRecord = getCustomer(locationRecord?.customerId);
-  const club16Coquitlam = /club\s*16|trevor\s*linden/i.test(`${customerRecord?.name || ""} ${locationRecord?.name || ""}`) &&
-    /coquitlam/i.test(`${locationRecord?.name || ""} ${locationRecord?.address || ""}`);
-  if (club16Coquitlam) {
-    const url = contractorLogbookPublicUrl(contractorLogbookState.token, "visit");
-    els.labelSheet.innerHTML = `<div class="club16-contractor-print"><img class="club16-contractor-print-art" src="/assets/brand/club16-coquitlam-contractor-signin.png" alt="Club 16 contractor sign in and out instructions"><img class="club16-contractor-print-qr" src="${qrUrl(url)}" alt="Contractor sign in and out QR code"></div>`;
-    await Promise.all(Array.from(els.labelSheet.querySelectorAll("img")).map((image) => image.complete
-      ? Promise.resolve()
-      : new Promise((resolve) => { image.addEventListener("load", resolve, { once: true }); image.addEventListener("error", resolve, { once: true }); })));
-    window.print();
-    return;
-  }
-  const labels = [["visit", "Contractor Sign In / Out", "Record arrival or departure"]];
-  els.labelSheet.innerHTML = labels.map(([mode, title, instruction]) => {
-    const url = contractorLogbookPublicUrl(contractorLogbookState.token, mode);
-    return `<div class="print-label print-label-nfc"><img alt="" src="${qrUrl(url)}"><div class="print-label-copy"><span class="label-brand">SiteWorks</span><strong>${escapeHtml(title)}</strong><span>${escapeHtml(locationRecord?.name || "Location")}</span><span>${escapeHtml(instruction)}</span></div></div>`;
-  }).join("");
+  const url = contractorLogbookPublicUrl(contractorLogbookState.token, "visit");
+  els.labelSheet.innerHTML = renderContractorAccessPoster(customerRecord, locationRecord, url);
+  await Promise.all(Array.from(els.labelSheet.querySelectorAll("img")).map((image) => image.complete
+    ? Promise.resolve()
+    : new Promise((resolve) => { image.addEventListener("load", resolve, { once: true }); image.addEventListener("error", resolve, { once: true }); })));
   window.print();
 });
+
+function renderContractorAccessPoster(customerRecord = null, locationRecord = null, url = "") {
+  const customerName = customerRecord?.name || "SiteWorks Customer";
+  const locationName = locationRecord?.name || "Location";
+  const address = locationRecord?.address || "Address not entered";
+  const step = (number, title, text) => `<div class="contractor-poster-step"><b>${number}</b><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span></div></div>`;
+  return `
+    <article class="contractor-access-poster">
+      <header class="contractor-poster-brand">
+        <div><span>Contractor access for</span><strong>${escapeHtml(customerName)}</strong></div>
+        <small>Powered by SiteWorks</small>
+      </header>
+      <section class="contractor-poster-title">
+        <span>Contractor &amp; Service Personnel</span>
+        <h1>Sign In / Out</h1>
+        <p>All contractors, service technicians, and vendors must sign in before beginning work and sign out when leaving.</p>
+      </section>
+      <section class="contractor-poster-steps">
+        ${step(1, "Scan", "Open the QR code with your phone.")}
+        ${step(2, "Sign In", "Enter your contact and visit details.")}
+        ${step(3, "Work Safely", "Review and acknowledge site requirements.")}
+        ${step(4, "Sign Out", "Scan again before leaving the facility.")}
+      </section>
+      <section class="contractor-poster-main">
+        <div class="contractor-poster-location">
+          <span>Current location</span>
+          <strong>${escapeHtml(locationName)}</strong>
+          <p>${escapeHtml(address)}</p>
+        </div>
+        <div class="contractor-poster-qr">
+          <img src="${qrUrl(url)}" alt="Contractor sign in and out QR code">
+          <strong>Scan to Sign In / Out</strong>
+          <span>Use your phone camera to open the secure sign-in page.</span>
+        </div>
+        <div class="contractor-poster-important">
+          <span>Important</span>
+          <ul>
+            <li>Sign in before starting work</li>
+            <li>Review site safety information</li>
+            <li>Follow all facility rules</li>
+            <li>Wear required PPE</li>
+            <li>Sign out when work is complete</li>
+            <li>Report safety concerns to site staff</li>
+          </ul>
+        </div>
+      </section>
+      <section class="contractor-poster-notices">
+        <div><strong>Site Safety</strong><p>Follow posted rules and instructions from site staff. Stop work and report unsafe conditions immediately.</p></div>
+        <div><strong>Need Assistance?</strong><p>Contact a site representative before beginning work if you cannot sign in or need assistance.</p></div>
+        <div><strong>Emergency</strong><p>Follow facility procedures, notify site staff immediately, and call 911 if required.</p></div>
+      </section>
+      <footer><strong>SiteWorks Contractor Access</strong><span>Digital logbook | Site access | Safety acknowledgement | Visit history</span></footer>
+    </article>`;
+}
 
 els.contractorLogbookExportBtn?.addEventListener("click", exportContractorLogbookCsv);
 els.contractorLogbookPrintReportBtn?.addEventListener("click", printContractorLogbookReport);
