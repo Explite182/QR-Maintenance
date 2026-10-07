@@ -9814,6 +9814,17 @@ document.addEventListener("pointerdown", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const keyLocationButton = event.target.closest("[data-key-location-view]");
+  if (keyLocationButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const locationId = keyLocationButton.dataset.keyLocationView || "";
+    if (!locationId || !getLocation(locationId) || !els.locationFilter) return;
+    els.locationFilter.value = locationId;
+    els.locationFilter.dispatchEvent(new Event("change", { bubbles: true }));
+    return;
+  }
+
   if (window.SiteWorksKeybox?.handleClick(event, getKeyboxContext())) return;
 
   const actionButton = event.target.closest("[data-key-action]");
@@ -19817,6 +19828,10 @@ function renderKeys() {
   if (focusedKeyId && !keys.some((key) => key.id === focusedKeyId)) focusedKeyId = "";
   if (els.keyCount) els.keyCount.textContent = keys.length;
   if (els.keySearch && els.keySearch.value !== keyQuery) els.keySearch.value = keyQuery;
+  if (selectedLocationId === ALL_LOCATIONS) {
+    els.keyList.innerHTML = renderKeyLocationOverview(keys);
+    return;
+  }
   els.keyList.innerHTML = `${renderKeyCabinet(keys)}${
     keys.length
       ? keys.map(renderKeyRecord).join("")
@@ -20197,6 +20212,43 @@ async function deleteWorkOrder(workOrderId) {
   const deleted = await finishCloudDelete("Job", deleteStructuredRows("work_orders", "id", [workOrder.id]));
   if (!deleted) clearRecentlyDeletedRecord("workOrders", workOrder.id);
   render();
+}
+
+function renderKeyLocationOverview(keys = []) {
+  const locations = locationsForCustomer(selectedCustomerId)
+    .filter((locationRecord) => canSeeLocation(locationRecord.id, locationRecord.customerId));
+  const cards = locations.map((locationRecord) => {
+    const locationKeys = keys.filter((key) => key.locationId === locationRecord.id);
+    const checkedOut = locationKeys.filter((key) => isKeyCheckedOut(key)).length;
+    const overdue = locationKeys.filter((key) => isKeyOverdue(key)).length;
+    const available = Math.max(0, locationKeys.length - checkedOut);
+    return `
+      <article class="key-location-overview-card">
+        <div>
+          <span>Key location</span>
+          <h3>${escapeHtml(locationRecord.name || "Unnamed location")}</h3>
+        </div>
+        <dl>
+          <div><dt>Total</dt><dd>${locationKeys.length}</dd></div>
+          <div><dt>Available</dt><dd>${available}</dd></div>
+          <div><dt>Checked out</dt><dd>${checkedOut}</dd></div>
+          <div><dt>Overdue</dt><dd>${overdue}</dd></div>
+        </dl>
+        <button type="button" class="secondary" data-key-location-view="${escapeAttribute(locationRecord.id)}">Open location</button>
+      </article>`;
+  }).join("");
+  const unassignedCount = keys.filter((key) => !key.locationId).length;
+  return `
+    <section class="key-location-overview" aria-label="Key locations">
+      <header>
+        <div><span>All locations</span><h2>Key Control Centers</h2></div>
+        <p>Select a location to open its physical key cabinet.</p>
+      </header>
+      <div class="key-location-overview-grid">
+        ${cards || `<p class="muted">No locations are available for this customer.</p>`}
+      </div>
+      ${unassignedCount ? `<p class="key-location-unassigned">${unassignedCount} key${unassignedCount === 1 ? " is" : "s are"} not assigned to a location.</p>` : ""}
+    </section>`;
 }
 
 async function deleteServiceRequest(requestId) {

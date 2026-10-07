@@ -3737,6 +3737,90 @@ textarea:disabled {
   gap: 10px;
 }
 
+.key-location-overview {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.key-location-overview > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.key-location-overview > header span,
+.key-location-overview-card > div > span {
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.key-location-overview h2,
+.key-location-overview h3,
+.key-location-overview p {
+  margin: 0;
+}
+
+.key-location-overview > header p {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.key-location-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.key-location-overview-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.key-location-overview-card dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.key-location-overview-card dl div {
+  min-width: 0;
+}
+
+.key-location-overview-card dt {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.key-location-overview-card dd {
+  margin: 2px 0 0;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.key-location-unassigned {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+@media (max-width: 650px) {
+  .key-location-overview { padding: 16px; }
+  .key-location-overview > header { align-items: start; flex-direction: column; }
+}
+
 .monitoring-live-grid .system-portfolio-list,
 .lighting-hmi-zone-grid .system-portfolio-list {
   grid-column: 1 / -1;
