@@ -27298,7 +27298,11 @@ function renderHvacAllLocations(panel, controllers = [], equipment = []) {
             : {};
           const callState = controller ? hvacTemperatureCallState(controller, liveHvac) : { label: "No controller" };
           const roomTemp = controller ? hvacTemperatureFromController(controller, liveHvac, "space").value : "";
-          const roomTempLabel = Number.isFinite(Number(roomTemp)) ? `${Number(roomTemp).toFixed(1)} F` : "Not ready";
+          const hasRoomTemp = roomTemp !== "" && roomTemp !== null && roomTemp !== undefined && Number.isFinite(Number(roomTemp));
+          const roomTempF = hasRoomTemp ? Number(roomTemp) : null;
+          const roomTempLabel = roomTempF !== null
+            ? `${((roomTempF - 32) * 5 / 9).toFixed(1)} C (${roomTempF.toFixed(1)} F)`
+            : "Unavailable";
           const fanActive = controller ? hvacLiveChannelActive(controller, "outputs", controller?.points?.fanCommand || "") : false;
           const lastSeen = controller?.lastSeenAt || controller?.last_seen_at || "";
           return systemPortfolioRow({
