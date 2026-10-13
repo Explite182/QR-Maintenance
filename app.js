@@ -17513,6 +17513,7 @@ async function applyLightingZoneCommand(zoneId, desiredState, brightnessValue = 
     desired_state: release ? existing.desiredState : desiredState,
     expiresAt: release ? existing.expiresAt : new Date(now.getTime() + 120 * 60000).toISOString(),
     enabled: !release, source: "zone-control",
+    notes: existing?.notes || "Manual zone control from SiteWorks; expires after two hours.",
     createdAt: existing?.createdAt || now.toISOString(),
     updatedAt: now.toISOString(),
     data: { ...(existing?.data || {}), source: "zone-control", zoneName: zone.name, restoreState, brightnessLevel }
