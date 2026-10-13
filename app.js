@@ -16968,9 +16968,16 @@ function renderLightingInputs() {
   if (lightingInputsLoadedScope !== scopeKey && !lightingInputsLoading) {
     loadLightingInputsForCurrentScope();
   }
-  const inputs = lightingInputsLoadedScope === scopeKey
+  const inputs = (lightingInputsLoadedScope === scopeKey
     ? lightingInputsCache
-    : getLightingInputs().filter((input) => input.customerId === selectedCustomerId && input.locationId === selectedLocationId);
+    : getLightingInputs().filter((input) => input.customerId === selectedCustomerId && input.locationId === selectedLocationId))
+    .slice().sort((a, b) => {
+      const controllerA = String(a.controllerId || a.controller_id || "");
+      const controllerB = String(b.controllerId || b.controller_id || "");
+      const controllerOrder = controllerA.localeCompare(controllerB);
+      const channelOrder = Number(a.inputNumber || a.input_number || 0) - Number(b.inputNumber || b.input_number || 0);
+      return controllerOrder || channelOrder || String(a.id || "").localeCompare(String(b.id || ""));
+    });
   if (count) count.textContent = String(inputs.length || 0);
   if (!list) return;
   if (shouldPreserveLightingForm(list, "[data-lighting-input-edit-form]")) return;
