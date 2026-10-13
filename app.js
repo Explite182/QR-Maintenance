@@ -25912,7 +25912,9 @@ async function loadHvacTemperatureHistoryForCurrentController({ force = false } 
     const response = await siteworksApi.loadHvacTemperatureHistory(controller.id, selectedHvacTrendRange);
     if (!response.ok) throw new Error(`Temperature history load failed: ${response.status}`);
     const payload = await response.json();
-    hvacTemperatureHistoryCache = Array.isArray(payload.readings) ? payload.readings : [];
+    hvacTemperatureHistoryCache = Array.isArray(payload.readings)
+      ? payload.readings.slice().sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt))
+      : [];
     hvacTemperatureHistoryLoadedKey = key;
   } catch (error) {
     console.warn("HVAC temperature history could not be loaded.", error);
@@ -26012,7 +26014,8 @@ function renderHvacTemperatureTrendChart(controller = null) {
     ].join("");
   }).join("");
   const latestReading = readings[readings.length - 1] || {};
-  const equipmentState = `<div class="hvac-trend-state-legend"><span class="is-heat">Heat ${stateIsActive(latestReading.heatingCall) ? "On" : "Off"}</span><span class="is-cool">Cool ${stateIsActive(latestReading.coolingCall) ? "On" : "Off"}</span><span class="is-fan">Fan ${stateIsActive(latestReading.fanCommand) ? "On" : "Off"}</span><span class="is-proof">Proof ${stateIsActive(latestReading.fanProof) ? "Made" : "Open"}</span></div>`;
+  const historyStateLabel = (value, onLabel = "On", offLabel = "Off") => value === null || value === undefined ? "Unavailable" : stateIsActive(value) ? onLabel : offLabel;
+  const equipmentState = `<div class="hvac-trend-state-legend"><span class="is-heat">Heat ${historyStateLabel(latestReading.heatingCall)}</span><span class="is-cool">Cool ${historyStateLabel(latestReading.coolingCall)}</span><span class="is-fan">Fan ${historyStateLabel(latestReading.fanCommand)}</span><span class="is-proof">Proof ${points.fanProof ? historyStateLabel(latestReading.fanProof, "Made", "Open") : "Not wired"}</span></div>`;
   return `
     <section class="hvac-trend-card">
       <header><div><span>Temperature History</span><strong>${readings.length} readings</strong></div><nav>${rangeButtons}</nav></header>
