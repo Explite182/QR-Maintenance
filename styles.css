@@ -8640,6 +8640,8 @@ textarea:disabled {
   gap: 12px;
 }
 
+.lighting-hmi-zone-control { display:grid; gap:8px; min-width:0; align-content:start; }
+.lighting-hmi-zone-control > .lighting-hmi-zone-tile { width:100%; }
 .lighting-hmi-zone-tile {
   position: relative;
   display: grid;
