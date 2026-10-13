@@ -16032,9 +16032,11 @@ function renderLightingControllers() {
   if (lightingOverridesLoadedScope !== scopeKey && !lightingOverridesLoading) {
     loadLightingOverridesForCurrentScope();
   }
-  const controllers = lightingControllersLoadedScope === scopeKey
+  const controllers = (lightingControllersLoadedScope === scopeKey
     ? lightingControllersCache
-    : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId);
+    : getLightingControllers().filter((controller) => controller.customerId === selectedCustomerId && controller.locationId === selectedLocationId))
+    .slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true, sensitivity: "base" })
+      || String(a.id || "").localeCompare(String(b.id || "")));
   if (shouldPreserveLightingForm(list, "[data-lighting-controller-edit-form]")) {
     restorePendingLightingApiKeyForms();
     return;
