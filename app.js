@@ -6499,6 +6499,7 @@ let lightingZonesLoadedScope = "";
 let lightingZonesLoading = false;
 let editingLightingZoneId = "";
 const openLightingZoneDetails = new Set();
+const openLightingInputDetails = new Set();
 let lightingInputsCache = [];
 let lightingInputsLoadedScope = "";
 let lightingInputsLoading = false;
@@ -10387,6 +10388,15 @@ document.addEventListener("toggle", (event) => {
     } else {
       openPumpScadaDrawers.delete(drawerKey);
     }
+    return;
+  }
+  const inputDetails = event.target.closest?.("[data-lighting-input-details]");
+  if (inputDetails) {
+    if (!inputDetails.isConnected) return;
+    const inputId = inputDetails.dataset.lightingInputDetails || "";
+    if (!inputId) return;
+    if (inputDetails.open) openLightingInputDetails.add(inputId);
+    else openLightingInputDetails.delete(inputId);
     return;
   }
   const zoneDetails = event.target.closest?.("[data-lighting-zone-details]");
@@ -17086,7 +17096,7 @@ function renderLightingInputs() {
     const actionText = getLightingInputActionDescription(input);
     const statusClass = input.enabled === false ? "is-disabled" : (isActive ? "is-active" : (hasLiveState ? "is-inactive" : "is-waiting"));
     return `
-      <details class="lighting-list-row lighting-input-collapsible${liveClass}">
+      <details class="lighting-list-row lighting-input-collapsible${liveClass}" data-lighting-input-details="${escapeAttribute(input.id)}"${openLightingInputDetails.has(input.id) ? " open" : ""}>
         <summary class="lighting-input-row-head">
           <div class="lighting-contact-visual is-${escapeHtml(contactState)}" aria-hidden="true">
             <span class="lighting-contact-terminal"></span>
