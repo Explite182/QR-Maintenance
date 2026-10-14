@@ -169,6 +169,60 @@
     byId("timeTrackingPanel")?.scrollIntoView({ behavior:"smooth", block:"start" });
   }
 
+  async function openSiteGps(id) {
+    if (bridge()?.getCurrentUser()?.role !== "Admin") return;
+    try {
+      const result = await api(`/api/time/sites/${encodeURIComponent(id)}`);
+      byId("timeSiteGpsDialog")?.remove();
+      const dialog = document.createElement("dialog");
+      dialog.id = "timeSiteGpsDialog";
+      dialog.className = "time-site-gps-dialog";
+      const settings = result.settings || {};
+      dialog.innerHTML = `<form class="stack"><h3 id="timeSiteGpsTitle">Site GPS: ${escapeHtml(result.locationName)}</h3>
+        <label>Latitude<input name="latitude" type="number" step="any" min="-90" max="90" required value="${escapeHtml(settings.latitude ?? "")}"></label>
+        <label>Longitude<input name="longitude" type="number" step="any" min="-180" max="180" required value="${escapeHtml(settings.longitude ?? "")}"></label>
+        <label>Allowed distance (metres)<input name="radiusM" type="number" step="1" min="10" max="10000" required value="${escapeHtml(settings.geofence_radius_m ?? 100)}"></label>
+        <button type="button" class="secondary" data-site-current>Use my current location</button>
+        <p role="status" aria-live="polite"></p><div class="record-actions"><button type="submit" class="primary">Save GPS</button>
+        <button type="button" class="secondary" data-site-close>Cancel</button></div></form>`;
+      dialog.setAttribute("aria-labelledby", "timeSiteGpsTitle");
+      document.body.append(dialog);
+      const form = dialog.querySelector("form");
+      const message = dialog.querySelector("[role=status]");
+      let busy = false;
+      const setControls = value => {
+        busy = value;
+        form.querySelectorAll("input,button").forEach(control => { control.disabled = value; });
+      };
+      dialog.querySelector("[data-site-close]").onclick = () => dialog.close();
+      dialog.addEventListener("close", () => dialog.remove(), {once:true});
+      dialog.addEventListener("cancel", event => { if (busy) event.preventDefault(); });
+      dialog.querySelector("[data-site-current]").onclick = async () => {
+        if (!window.confirm(`Are you physically at ${result.locationName}? Only use your current location while at this site.`)) return;
+        setControls(true); message.textContent = "Getting your location...";
+        try {
+          const gps = await captureLocation();
+          if (gps.error) { message.textContent = gps.error === "TIMEOUT" ? "Your phone took too long to return a location. Please try again." : "Your device location is unavailable. Try again or enter the site coordinates."; return; }
+          if (!Number.isFinite(gps.latitude) || !Number.isFinite(gps.longitude)) { message.textContent = "No valid device coordinates returned. Please try again."; return; }
+          form.elements.latitude.value = gps.latitude;
+          form.elements.longitude.value = gps.longitude;
+          message.textContent = `Location captured. GPS accuracy: ${Number.isFinite(gps.accuracy) ? `${Math.round(gps.accuracy)} metres` : "unknown"}. Review before saving.`;
+        } finally { setControls(false); }
+      };
+      form.onsubmit = async event => {
+        event.preventDefault(); if (busy || !form.reportValidity()) return;
+        const body = {latitude:form.elements.latitude.value,longitude:form.elements.longitude.value,radiusM:form.elements.radiusM.value};
+        setControls(true); message.textContent = "Saving site GPS...";
+        try {
+          await api(`/api/time/sites/${encodeURIComponent(id)}`, {method:"PUT",body:JSON.stringify(body)});
+          dialog.close(); window.alert("Site GPS saved. Future timer starts and stops will use these coordinates.");
+        } catch (error) { message.textContent = error.message; }
+        finally { setControls(false); }
+      };
+      dialog.showModal();
+    } catch (error) { window.alert(error.message); }
+  }
+
   async function initialize() {
     if (!bridge()) return;
     const userId = String(bridge().getCurrentUser()?.id || "");
@@ -196,6 +250,8 @@
   }
 
   document.addEventListener("click", (event) => {
+    const siteButton = event.target.closest("[data-time-site]");
+    if (siteButton) { event.preventDefault(); openSiteGps(siteButton.dataset.timeSite); return; }
     const startButton = event.target.closest("[data-time-start]");
     if (startButton) { event.preventDefault(); startOrSwitch(startButton.dataset.timeStart); return; }
     if (event.target.closest("[data-time-stop]")) { event.preventDefault(); stop(); return; }
@@ -208,6 +264,10 @@
   }, true);
 
   window.SiteWorksTimeTracking = {
+    siteSettingsAction(id) {
+      return state.enabled && bridge()?.getCurrentUser()?.role === "Admin"
+        ? `<button type="button" class="secondary mini" data-time-site="${escapeHtml(id)}">Site GPS</button>` : "";
+    },
     workOrderAction(item) {
       if (!state.enabled || !bridge()?.canWorkOnTicket(item) || ["Closed","Resolved"].includes(item.status)) return "";
       const activeHere = String(state.active?.workOrderId || "") === String(item.id);
