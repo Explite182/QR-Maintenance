@@ -14846,6 +14846,7 @@ function renderLightingAllLocations(list) {
 function getLatestLightingCommandForZone(zoneId) {
   return lightingCommandsCache.find((command) => {
     if (command.zoneId !== zoneId && command.zone_id !== zoneId) return false;
+    if (["device-state-change", "device-relay-event"].includes(command.commandType || command.command_type)) return false;
     const status = String(command.status || "pending").toLowerCase();
     if (["expired", "cancelled", "canceled"].includes(status)) return false;
     if (isLightingCommandStale(command)) return false;
