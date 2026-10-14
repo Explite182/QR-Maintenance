@@ -15309,10 +15309,34 @@ function renderLightingInputControllerOptions() {
 }
 
 function renderLightingInputZoneOptions() {
-  document.querySelectorAll("[data-lighting-input-zone]").forEach((select) => {
-    select.innerHTML = getLightingZoneOptionsHtml(select.value || "");
+  document.querySelectorAll("[data-lighting-input-zones]").forEach((picker) => {
+    const controllerId = picker.closest("form")?.querySelector('[name="controllerId"]')?.value || "";
+    const selected = [...picker.querySelectorAll('input[name="zoneIds"]:checked')].map(input => input.value);
+    const all = picker.querySelector('[name="allZones"]')?.checked === true;
+    picker.innerHTML = getLightingInputZonePickerHtml(controllerId, selected, all);
   });
 }
+
+function getLightingInputZoneIds(input = {}) {
+  return [...new Set(getLightingScheduleZoneIds(input))];
+}
+
+function getLightingInputZonePickerHtml(controllerId, selectedIds = [], allZones = false) {
+  const zones = lightingZonesCache.filter(zone => controllerId && String(zone.controllerId || zone.controller_id || "") === String(controllerId));
+  const selected = new Set(selectedIds.map(String));
+  if (!zones.length) return `<span class="muted">No zones available for the selected controller.</span>`;
+  return `<label class="lighting-schedule-zone-option is-all-zones"><input type="checkbox" name="allZones" value="true"${allZones ? " checked" : ""}><span>All zones on this controller</span></label>`
+    + zones.map(zone => `<label class="lighting-schedule-zone-option"><input type="checkbox" name="zoneIds" value="${escapeHtml(zone.id)}"${!allZones && selected.has(String(zone.id)) ? " checked" : ""}><span>${escapeHtml(zone.name || `Output ${zone.outputNumber}`)}</span></label>`).join("");
+}
+
+document.addEventListener("change", event => {
+  if (event.target.matches("[data-lighting-input-controller]")) { renderLightingInputZoneOptions(); return; }
+  const input = event.target.closest('[data-lighting-input-zones] input[type="checkbox"]');
+  if (!input) return;
+  const picker = input.closest("[data-lighting-input-zones]");
+  if (input.name === "allZones" && input.checked) picker.querySelectorAll('[name="zoneIds"]').forEach(zone => { zone.checked = false; });
+  if (input.name === "zoneIds" && input.checked) picker.querySelector('[name="allZones"]').checked = false;
+});
 
 function renderLightingFirmwareOptions() {
   document.querySelectorAll("[data-lighting-firmware-controller]").forEach((select) => {
@@ -15421,6 +15445,8 @@ function isLightingInputRelayFeedback(input = {}) {
 }
 
 function getLightingInputTargetName(input = {}) {
+  const ids = getLightingInputZoneIds(input);
+  if (ids.length) return ids.map(id => lightingZonesCache.find(zone => String(zone.id) === id)?.name || "Selected zone").join(", ");
   const zoneId = input.zoneId || input.zone_id || "";
   if (!zoneId) return "All zones";
   const zone = lightingZonesCache.find((item) => item.id === zoneId);
@@ -15518,8 +15544,8 @@ function getLightingZoneFeedbackInputs(zone = {}) {
     if (!isLightingInputRelayFeedback(input)) return false;
     const inputControllerId = String(input.controllerId || input.controller_id || "").trim();
     if (inputControllerId && zoneControllerId && inputControllerId !== zoneControllerId) return false;
-    const targetZoneId = String(input.zoneId || input.zone_id || "").trim();
-    if (targetZoneId) return targetZoneId === String(zone.id || "");
+    const targetIds = getLightingInputZoneIds(input);
+    if (targetIds.length) return targetIds.includes(String(zone.id || ""));
     const targetOutput = Number(input.outputNumber ?? input.output_number ?? input.data?.outputNumber ?? input.data?.output_number ?? 0) || 0;
     const zoneOutput = Number(zone.outputNumber ?? zone.output_number ?? 0) || 0;
     return targetOutput > 0 && targetOutput === zoneOutput;
@@ -15594,8 +15620,8 @@ function getLightingZoneInputEffect(zone = {}) {
     if (!actionState) return false;
     const inputControllerId = String(input.controllerId || input.controller_id || "").trim();
     if (inputControllerId && zoneControllerId && inputControllerId !== zoneControllerId) return false;
-    const targetZoneId = input.zoneId || input.zone_id || "";
-    return !targetZoneId || targetZoneId === zone.id;
+    const targetIds = getLightingInputZoneIds(input);
+    return !targetIds.length || targetIds.includes(String(zone.id));
   });
   if (!effects.length) return null;
   const offEffect = effects.find((input) => getLightingInputActionState(input) === "Off");
@@ -17030,9 +17056,7 @@ function renderLightingInputs() {
               ${["Closed", "Open"].map((state) => `<option value="${state}"${state === input.activeState ? " selected" : ""}>${state}</option>`).join("")}
             </select>
           </label>
-          <label>Zone
-            <select name="zoneId" data-lighting-input-zone>${getLightingZoneOptionsHtml(input.zoneId || "")}</select>
-          </label>
+          <fieldset><legend>Zones</legend><div class="lighting-schedule-zone-picker" data-lighting-input-zones>${getLightingInputZonePickerHtml(input.controllerId || input.controller_id || "", getLightingInputZoneIds(input), !getLightingInputZoneIds(input).length)}</div></fieldset>
           <label>Action
             <select name="action">
               ${["No action", "Monitor relay feedback", "Timed override", "Press toggles zone", "Turn zone on", "Turn zone off", "Press turns zone on", "Press turns zone off", "Hold off when active", "Allow schedule when active", "Manual override on", "Manual override off"].map((action) => `<option value="${action}"${action === input.action ? " selected" : ""}>${action}</option>`).join("")}
@@ -17141,7 +17165,15 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
   }
   const formData = new FormData(form);
   const controllerId = String(formData.get("controllerId") || "").trim();
-  const zoneId = String(formData.get("zoneId") || "").trim();
+  const targetAllZones = formData.get("allZones") === "true";
+  const zoneIds = targetAllZones ? [] : [...new Set(formData.getAll("zoneIds").map(String).filter(Boolean))];
+  const selectedZones = lightingZonesCache.filter(zone => zoneIds.includes(String(zone.id)));
+  if (!controllerId || (!targetAllZones && !zoneIds.length) || selectedZones.length !== zoneIds.length
+    || selectedZones.some(zone => String(zone.controllerId || zone.controller_id || "") !== controllerId)) {
+    if (status) status.textContent = "Choose a controller and at least one of its zones, or All zones on this controller.";
+    return;
+  }
+  const zoneId = zoneIds.length === 1 ? zoneIds[0] : "";
   const selectedController = lightingControllersCache.find((controller) => controller.id === controllerId);
   const selectedZone = lightingZonesCache.find((zone) => zone.id === zoneId);
   const existingInput = existingInputId
@@ -17158,9 +17190,10 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
     controllerId,
     controllerName: selectedController?.name || existingInput?.controllerName || "",
     zoneId,
-    zoneName: selectedZone?.name || (zoneId ? existingInput?.zoneName : "All zones") || "All zones",
+    zoneIds,
+    zoneName: targetAllZones ? "All zones on this controller" : selectedZones.map(zone => zone.name).join(", "),
     outputNumber: selectedZone ? Number(selectedZone.outputNumber || selectedZone.output_number || 0) || null : null,
-    targetAllZones: !zoneId,
+    targetAllZones,
     inputNumber: String(formData.get("inputNumber") || "1").trim(),
     inputType: String(formData.get("inputType") || "Aux contact").trim(),
     label: String(formData.get("label") || "").trim(),
@@ -17197,6 +17230,7 @@ async function saveLightingInputFromForm(form, existingInputId = "") {
         ...existingData,
         controllerName: input.controllerName,
         zoneName: input.zoneName,
+        zoneIds: input.zoneIds,
         outputNumber: input.outputNumber,
         output_number: input.outputNumber,
         targetAllZones: input.targetAllZones,

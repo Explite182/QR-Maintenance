@@ -2061,11 +2061,7 @@
                     <option>Open</option>
                   </select>
                 </label>
-                <label>Assigned zone
-                  <select name="zoneId" data-lighting-input-zone>
-                    <option value="">All zones</option>
-                  </select>
-                </label>
+                <fieldset><legend>Zones</legend><div class="lighting-schedule-zone-picker" data-lighting-input-zones></div></fieldset>
                 <label>Action
                   <select name="action">
                     <option>No action</option>
@@ -3146,7 +3142,7 @@
   <script src="/js/panel-hmi-standard-model.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-siteworks-adapter.js?v=20260916-backdrop-fix-5"></script>
   <script src="/js/panel-hmi-standard-renderer.js?v=20260916-backdrop-fix-5"></script>
-  <script src="/app.js?v=20261014-lighting-hold-metadata-1"></script>
+  <script src="/app.js?v=20261014-lighting-input-zones-1"></script>
   <script src="/js/time-tracking.js?v=20261014-site-gps-1"></script>
   <script>
     if ("serviceWorker" in navigator) {
