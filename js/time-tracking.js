@@ -28,9 +28,11 @@
     return Math.max(0, Math.floor((end - new Date(entry.startAt).getTime()) / 1000));
   }
 
-  function verificationLabel(status) {
+  function verificationLabel(status, deviceLocationCaptured = false) {
+    if (status === "LOCATION_UNAVAILABLE" && deviceLocationCaptured) return "GPS captured; site not verified";
     return ({ VERIFIED:"Verified",LOW_ACCURACY:"Low accuracy",LOCATION_DENIED:"Location denied",OUTSIDE_GEOFENCE:"Outside geofence",
-      LOCATION_UNAVAILABLE:"Location unavailable",OFFLINE_PENDING_VERIFICATION:"Pending verification" })[status] || "Unavailable";
+      LOCATION_UNAVAILABLE:"Device location unavailable",LOCATION_TIMEOUT:"Device location timed out",
+      SITE_COORDINATES_NOT_CONFIGURED:"Site coordinates not configured",OFFLINE_PENDING_VERIFICATION:"Pending verification" })[status] || "Unavailable";
   }
 
   async function api(path, options = {}) {
@@ -48,11 +50,14 @@
   function captureLocation() {
     return new Promise((resolve) => {
       if (!navigator.geolocation) return resolve({ error: "UNAVAILABLE" });
+      try {
       navigator.geolocation.getCurrentPosition(
-        (position) => resolve({ latitude:position.coords.latitude, longitude:position.coords.longitude, accuracy:position.coords.accuracy }),
-        (error) => resolve({ error:error.code === error.PERMISSION_DENIED ? "DENIED" : "UNAVAILABLE" }),
+        (position) => resolve({ latitude:position.coords.latitude, longitude:position.coords.longitude, accuracy:position.coords.accuracy,
+          capturedAt: new Date(position.timestamp || Date.now()).toISOString() }),
+        (error) => resolve({ error:error.code === 1 ? "DENIED" : error.code === 3 ? "TIMEOUT" : "UNAVAILABLE" }),
         { enableHighAccuracy:true, timeout:12000, maximumAge:30000 }
       );
+      } catch (_) { resolve({ error: "UNAVAILABLE" }); }
     });
   }
 
@@ -75,7 +80,7 @@
     return `<article class="time-entry-row">
       <div><strong>${escapeHtml(entry.workOrderNumber)} · ${escapeHtml(entry.jobTitle || "Job")}</strong>
       <span>${escapeHtml(entry.customer)} · ${escapeHtml(entry.location)}</span></div>
-      <div><strong>${formatElapsed(entry.durationSeconds)}</strong><span>${escapeHtml(verificationLabel(entry.startVerification))} / ${escapeHtml(verificationLabel(entry.stopVerification))}</span></div>
+      <div><strong>${formatElapsed(entry.durationSeconds)}</strong><span>Start GPS: ${escapeHtml(verificationLabel(entry.startVerification, entry.startDeviceLocationCaptured))}<br>Stop GPS: ${escapeHtml(verificationLabel(entry.stopVerification, entry.stopDeviceLocationCaptured))}</span></div>
     </article>`;
   }
 
@@ -96,7 +101,7 @@
       <h3>${escapeHtml(active.customer || active.jobTitle)}</h3><p>${escapeHtml(active.location)}</p>
       <dl><div><dt>Started</dt><dd>${new Date(active.startAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</dd></div>
       <div><dt>Elapsed</dt><dd data-time-elapsed>${formatElapsed(elapsedSeconds(active))}</dd></div>
-      <div><dt>Location</dt><dd>${escapeHtml(verificationLabel(active.startVerification))}</dd></div></dl>
+      <div><dt>GPS verification</dt><dd>${escapeHtml(verificationLabel(active.startVerification, active.startDeviceLocationCaptured))}</dd></div></dl>
       <button class="primary time-end-button" type="button" data-time-stop>End Job</button>`
       : `<div class="time-empty"><strong>No active job timer</strong><span>Open an eligible job and select Start Timer.</span></div>`;
     const list = byId("timeEntryList");
@@ -132,7 +137,8 @@
     setBusy(true, "Checking your location...");
     try {
       const location = await captureLocation();
-      await api("/api/time/stop", { method:"POST", body:JSON.stringify({ clientEventId:eventId("stop"), deviceEventAt:new Date().toISOString(), location }) });
+      const result = await api("/api/time/stop", { method:"POST", body:JSON.stringify({ clientEventId:eventId("stop"), deviceEventAt:new Date().toISOString(), location }) });
+      if (result.warning) window.alert(result.warning);
       state.active = null; await refreshData();
     } catch (error) { window.alert(error.message); }
     finally { setBusy(false); }
