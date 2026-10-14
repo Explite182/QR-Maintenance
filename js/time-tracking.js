@@ -3,6 +3,7 @@
 
   const state = { enabled: false, active: null, entries: [], selectedWorkOrderId: "", busy: false, bootstrappedUserId: "", initializing: false };
   let elapsedTimer = null;
+  const expandedEntries = new Set();
 
   const bridge = () => window.siteworksTimeTrackingBridge;
   const byId = (id) => document.getElementById(id);
@@ -76,12 +77,30 @@
     renderView();
   }
 
+  function renderGpsDetail(entry, phase) {
+    const gps = entry[`${phase}Gps`];
+    const at = phase === "start" ? entry.startAt : entry.endAt;
+    const captured = gps && typeof gps.latitude === "number" && typeof gps.longitude === "number"
+      && Number.isFinite(gps.latitude) && Math.abs(gps.latitude) <= 90
+      && Number.isFinite(gps.longitude) && Math.abs(gps.longitude) <= 180;
+    const label = phase === "start" ? "Start" : "Stop";
+    if (!at) return `<section><h4>${label}</h4><p>Timer has not stopped yet.</p></section>`;
+    const status = verificationLabel(entry[phase === "start" ? "startVerification" : "stopVerification"], entry[`${phase}DeviceLocationCaptured`]);
+    const accuracy = typeof gps?.accuracy === "number" && Number.isFinite(gps.accuracy) && gps.accuracy >= 0 ? `${Math.round(gps.accuracy)} m` : "Not recorded";
+    return `<section><h4>${label}</h4><dl>
+      <div><dt>Time</dt><dd>${escapeHtml(new Date(at).toLocaleString())}</dd></div>
+      <div><dt>Verification</dt><dd>${escapeHtml(status)}</dd></div>
+      <div><dt>GPS accuracy</dt><dd>${escapeHtml(accuracy)}</dd></div>
+      ${captured ? `<div><dt>Coordinates</dt><dd>${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}</dd></div>` : ""}</dl>
+      ${captured ? `<a href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(`${gps.latitude},${gps.longitude}`)}" target="_blank" rel="noopener noreferrer">View ${label} on Map</a>` : "<p>No saved device coordinates for this reading.</p>"}</section>`;
+  }
+
   function renderEntry(entry) {
-    return `<article class="time-entry-row">
+    return `<details class="time-entry-details" data-time-entry="${escapeHtml(entry.id)}"${expandedEntries.has(String(entry.id)) ? " open" : ""}><summary class="time-entry-row">
       <div><strong>${escapeHtml(entry.workOrderNumber)} · ${escapeHtml(entry.jobTitle || "Job")}</strong>
       <span>${escapeHtml(entry.customer)} · ${escapeHtml(entry.location)}</span></div>
       <div><strong>${formatElapsed(entry.durationSeconds)}</strong><span>Start GPS: ${escapeHtml(verificationLabel(entry.startVerification, entry.startDeviceLocationCaptured))}<br>Stop GPS: ${escapeHtml(verificationLabel(entry.stopVerification, entry.stopDeviceLocationCaptured))}</span></div>
-    </article>`;
+    </summary><div class="time-entry-gps">${renderGpsDetail(entry, "start")}${renderGpsDetail(entry, "stop")}</div></details>`;
   }
 
   function renderView() {
@@ -182,6 +201,11 @@
     if (event.target.closest("[data-time-stop]")) { event.preventDefault(); stop(); return; }
     if (event.target.closest("#currentTimerIndicator")) { event.preventDefault(); openPanel(); }
   });
+  document.addEventListener("toggle", (event) => {
+    if (!event.target.matches?.("details[data-time-entry]")) return;
+    const id = event.target.dataset.timeEntry;
+    if (event.target.open) expandedEntries.add(id); else expandedEntries.delete(id);
+  }, true);
 
   window.SiteWorksTimeTracking = {
     workOrderAction(item) {
