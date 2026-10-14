@@ -20828,6 +20828,7 @@ function renderLocationEditor(locationRecord) {
         </label>
         <div class="record-actions">
           <button type="submit" class="secondary mini" ${disabled}>Save Location</button>
+          ${window.SiteWorksTimeTracking?.siteSettingsAction(locationRecord.id) || ""}
           <button type="button" class="secondary mini" data-copy-location-request-link="${escapeAttribute(locationRecord.id)}" data-link-label="Copy Request QR Link" ${disabled}>Copy Request QR Link</button>
           <button type="button" class="secondary mini" data-copy-location-request-link="${escapeAttribute(locationRecord.id)}" data-link-label="Copy Request NFC Link" ${disabled}>Copy Request NFC Link</button>
           <button type="button" class="secondary mini" data-print-location-request-label="${escapeAttribute(locationRecord.id)}" ${disabled}>Print Request QR + NFC</button>
