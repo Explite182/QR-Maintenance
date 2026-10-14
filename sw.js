@@ -1,4 +1,4 @@
-const SITEWORKS_SW_VERSION = "20261013-lighting-mobile-1";
+const SITEWORKS_SW_VERSION = "20261013-time-gps-reasons-1";
 const STATIC_CACHE = `siteworks-static-${SITEWORKS_SW_VERSION}`;
 
 const STATIC_ASSETS = [
@@ -11,7 +11,7 @@ const STATIC_ASSETS = [
   "/js/panel-hmi-siteworks-adapter.js?v=20260901-pm-history-optional-12",
   "/js/panel-hmi-standard-renderer.js?v=20260901-pm-history-optional-12",
   "/app.js?v=20261013-lighting-input-open-1",
-  "/js/time-tracking.js?v=20261001-time-null-location-2",
+  "/js/time-tracking.js?v=20261013-time-gps-reasons-1",
   "/vendor/pdfjs/pdf.min.js?v=3.11.174",
   "/vendor/pdfjs/pdf.worker.min.js?v=3.11.174",
   "/manifest.webmanifest?v=20260901-pm-history-optional-12",
